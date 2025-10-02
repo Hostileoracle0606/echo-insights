@@ -7,3 +7,6 @@
 <!-- 2025-09-23 -->
 - ADR: standardized on structured logging format.
 
+<!-- 2025-10-02 -->
+- ADR: introduced health check endpoints.
+
