@@ -4,3 +4,6 @@
 <!-- 2025-10-02 -->
 - Fixed search indexing delay.
 
+<!-- 2025-10-03 -->
+- Improved startup time by deferring non-critical initialization.
+
