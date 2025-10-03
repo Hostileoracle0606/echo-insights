@@ -10,3 +10,6 @@
 <!-- 2025-09-30 -->
 - Reviewed module boundaries and updated internal interfaces.
 
+<!-- 2025-10-02 -->
+- Cleaned up unused imports and dead code paths.
+
