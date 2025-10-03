@@ -10,3 +10,6 @@
 <!-- 2025-10-02 -->
 - ADR: introduced health check endpoints.
 
+<!-- 2025-10-03 -->
+- ADR: adopted semantic versioning for releases.
+
