@@ -13,3 +13,6 @@
 <!-- 2025-10-03 -->
 - ADR: adopted semantic versioning for releases.
 
+<!-- 2025-10-06 -->
+- ADR: standardized on structured logging format.
+
