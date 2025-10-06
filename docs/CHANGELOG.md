@@ -7,3 +7,6 @@
 <!-- 2025-10-03 -->
 - Improved startup time by deferring non-critical initialization.
 
+<!-- 2025-10-06 -->
+- Resolved stale cache invalidation issue.
+
