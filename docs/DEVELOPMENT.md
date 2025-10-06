@@ -16,3 +16,6 @@
 <!-- 2025-10-03 -->
 - Standardized date/time handling across modules.
 
+<!-- 2025-10-06 -->
+- Consolidated duplicate helper functions.
+
