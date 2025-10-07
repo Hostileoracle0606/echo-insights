@@ -10,3 +10,6 @@
 <!-- 2025-10-06 -->
 - Resolved stale cache invalidation issue.
 
+<!-- 2025-10-07 -->
+- Added bulk operation support.
+
