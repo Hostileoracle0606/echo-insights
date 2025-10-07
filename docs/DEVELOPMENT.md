@@ -19,3 +19,6 @@
 <!-- 2025-10-06 -->
 - Consolidated duplicate helper functions.
 
+<!-- 2025-10-07 -->
+- Documented graceful degradation patterns.
+
