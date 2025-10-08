@@ -22,3 +22,6 @@
 <!-- 2025-10-07 -->
 - Documented graceful degradation patterns.
 
+<!-- 2025-10-08 -->
+- Improved type definitions for external API responses.
+
