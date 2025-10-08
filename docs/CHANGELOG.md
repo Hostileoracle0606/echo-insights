@@ -13,3 +13,6 @@
 <!-- 2025-10-07 -->
 - Added bulk operation support.
 
+<!-- 2025-10-08 -->
+- Fixed file upload size validation.
+
