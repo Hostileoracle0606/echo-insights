@@ -19,3 +19,6 @@
 <!-- 2025-10-07 -->
 - ADR: moved config to environment-based injection.
 
+<!-- 2025-10-08 -->
+- ADR: adopted pub/sub for inter-service communication.
+
