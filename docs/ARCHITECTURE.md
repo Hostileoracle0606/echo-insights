@@ -16,3 +16,6 @@
 <!-- 2025-10-06 -->
 - ADR: standardized on structured logging format.
 
+<!-- 2025-10-07 -->
+- ADR: moved config to environment-based injection.
+
