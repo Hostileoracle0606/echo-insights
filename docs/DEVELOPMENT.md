@@ -25,3 +25,6 @@
 <!-- 2025-10-08 -->
 - Improved type definitions for external API responses.
 
+<!-- 2025-10-09 -->
+- Simplified state management flow in core module.
+
