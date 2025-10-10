@@ -25,3 +25,6 @@
 <!-- 2025-10-09 -->
 - ADR: chose optimistic locking for concurrent updates.
 
+<!-- 2025-10-10 -->
+- ADR: selected repository pattern for data access layer.
+
