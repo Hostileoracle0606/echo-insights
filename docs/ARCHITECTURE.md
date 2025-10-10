@@ -22,3 +22,6 @@
 <!-- 2025-10-08 -->
 - ADR: adopted pub/sub for inter-service communication.
 
+<!-- 2025-10-09 -->
+- ADR: chose optimistic locking for concurrent updates.
+
