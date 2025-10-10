@@ -28,3 +28,6 @@
 <!-- 2025-10-09 -->
 - Simplified state management flow in core module.
 
+<!-- 2025-10-10 -->
+- Reviewed module boundaries and updated internal interfaces.
+
