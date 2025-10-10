@@ -16,3 +16,6 @@
 <!-- 2025-10-08 -->
 - Fixed file upload size validation.
 
+<!-- 2025-10-10 -->
+- Added graceful shutdown with connection draining.
+
