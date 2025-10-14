@@ -28,3 +28,6 @@
 <!-- 2025-10-10 -->
 - ADR: selected repository pattern for data access layer.
 
+<!-- 2025-10-14 -->
+- ADR: moved config to environment-based injection.
+
