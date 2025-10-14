@@ -19,3 +19,6 @@
 <!-- 2025-10-10 -->
 - Added graceful shutdown with connection draining.
 
+<!-- 2025-10-14 -->
+- Added bulk operation support.
+
