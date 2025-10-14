@@ -31,3 +31,6 @@
 <!-- 2025-10-10 -->
 - Reviewed module boundaries and updated internal interfaces.
 
+<!-- 2025-10-14 -->
+- Documented graceful degradation patterns.
+
