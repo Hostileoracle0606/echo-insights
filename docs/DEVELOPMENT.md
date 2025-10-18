@@ -34,3 +34,6 @@
 <!-- 2025-10-14 -->
 - Documented graceful degradation patterns.
 
+<!-- 2025-10-17 -->
+- Added retry logic documentation for transient failures.
+
