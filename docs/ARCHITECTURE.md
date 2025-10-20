@@ -31,3 +31,6 @@
 <!-- 2025-10-14 -->
 - ADR: moved config to environment-based injection.
 
+<!-- 2025-10-20 -->
+- ADR: introduced health check endpoints.
+
