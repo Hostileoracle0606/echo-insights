@@ -22,3 +22,6 @@
 <!-- 2025-10-14 -->
 - Added bulk operation support.
 
+<!-- 2025-10-20 -->
+- Fixed search indexing delay.
+
