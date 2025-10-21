@@ -37,3 +37,6 @@
 <!-- 2025-10-17 -->
 - Added retry logic documentation for transient failures.
 
+<!-- 2025-10-20 -->
+- Cleaned up unused imports and dead code paths.
+
