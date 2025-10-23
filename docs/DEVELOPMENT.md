@@ -43,3 +43,6 @@
 <!-- 2025-10-22 -->
 - Reviewed module boundaries and updated internal interfaces.
 
+<!-- 2025-10-23 -->
+- Added retry logic documentation for transient failures.
+
