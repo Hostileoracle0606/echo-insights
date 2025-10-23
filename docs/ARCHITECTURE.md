@@ -34,3 +34,6 @@
 <!-- 2025-10-20 -->
 - ADR: introduced health check endpoints.
 
+<!-- 2025-10-23 -->
+- ADR: chose connection pooling strategy.
+
