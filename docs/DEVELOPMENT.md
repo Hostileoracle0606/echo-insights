@@ -40,3 +40,6 @@
 <!-- 2025-10-20 -->
 - Cleaned up unused imports and dead code paths.
 
+<!-- 2025-10-22 -->
+- Reviewed module boundaries and updated internal interfaces.
+
