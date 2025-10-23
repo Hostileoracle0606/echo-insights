@@ -25,3 +25,6 @@
 <!-- 2025-10-20 -->
 - Fixed search indexing delay.
 
+<!-- 2025-10-23 -->
+- Improved WebSocket reconnection logic.
+
