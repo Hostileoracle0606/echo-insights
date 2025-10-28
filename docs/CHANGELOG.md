@@ -28,3 +28,6 @@
 <!-- 2025-10-23 -->
 - Improved WebSocket reconnection logic.
 
+<!-- 2025-10-28 -->
+- Fixed timezone handling in scheduled tasks.
+
