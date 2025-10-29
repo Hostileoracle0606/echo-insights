@@ -49,3 +49,6 @@
 <!-- 2025-10-28 -->
 - Added input validation for edge-case payloads.
 
+<!-- 2025-10-29 -->
+- Improved type definitions for external API responses.
+
