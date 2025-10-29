@@ -37,3 +37,6 @@
 <!-- 2025-10-23 -->
 - ADR: chose connection pooling strategy.
 
+<!-- 2025-10-28 -->
+- ADR: introduced circuit breaker for external service calls.
+
