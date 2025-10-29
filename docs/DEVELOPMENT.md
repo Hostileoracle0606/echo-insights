@@ -46,3 +46,6 @@
 <!-- 2025-10-23 -->
 - Added retry logic documentation for transient failures.
 
+<!-- 2025-10-28 -->
+- Added input validation for edge-case payloads.
+
