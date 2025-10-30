@@ -31,3 +31,6 @@
 <!-- 2025-10-28 -->
 - Fixed timezone handling in scheduled tasks.
 
+<!-- 2025-10-30 -->
+- Added bulk operation support.
+
