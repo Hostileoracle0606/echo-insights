@@ -40,3 +40,6 @@
 <!-- 2025-10-28 -->
 - ADR: introduced circuit breaker for external service calls.
 
+<!-- 2025-10-30 -->
+- ADR: moved config to environment-based injection.
+
