@@ -4,6 +4,8 @@ type SR = typeof window extends never ? never : any;
 
 interface Options {
   onFinalChunk?: (text: string) => void;
+  onSilence?: () => void;
+  silenceMs?: number;
 }
 
 export function useSpeechRecognition(opts: Options = {}) {
@@ -14,7 +16,20 @@ export function useSpeechRecognition(opts: Options = {}) {
   const [error, setError] = useState<string | null>(null);
   const recRef = useRef<SR | null>(null);
   const onFinalRef = useRef(opts.onFinalChunk);
+  const onSilenceRef = useRef(opts.onSilence);
+  const silenceMsRef = useRef(opts.silenceMs ?? 1600);
+  const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const listeningRef = useRef(false);
   onFinalRef.current = opts.onFinalChunk;
+  onSilenceRef.current = opts.onSilence;
+  silenceMsRef.current = opts.silenceMs ?? 1600;
+
+  const armSilence = () => {
+    if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+    silenceTimerRef.current = setTimeout(() => {
+      if (listeningRef.current) onSilenceRef.current?.();
+    }, silenceMsRef.current);
+  };
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -41,6 +56,8 @@ export function useSpeechRecognition(opts: Options = {}) {
         onFinalRef.current?.(finalText.trim());
       }
       setInterim(interimText);
+      // Any speech activity (interim or final) re-arms the silence timer
+      if (finalText || interimText) armSilence();
     };
     rec.onerror = (e: any) => {
       if (e.error === "no-speech" || e.error === "aborted") return;
@@ -66,6 +83,8 @@ export function useSpeechRecognition(opts: Options = {}) {
     try {
       recRef.current.start();
       setListening(true);
+      listeningRef.current = true;
+      armSilence();
     } catch {
       // already started
     }
@@ -73,6 +92,8 @@ export function useSpeechRecognition(opts: Options = {}) {
 
   const stop = () => {
     setListening(false);
+    listeningRef.current = false;
+    if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
     try { recRef.current?.stop(); } catch { /* ignore */ }
     setInterim("");
   };
