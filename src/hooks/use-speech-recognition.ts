@@ -83,6 +83,8 @@ export function useSpeechRecognition(opts: Options = {}) {
     try {
       recRef.current.start();
       setListening(true);
+      listeningRef.current = true;
+      armSilence();
     } catch {
       // already started
     }
@@ -90,6 +92,8 @@ export function useSpeechRecognition(opts: Options = {}) {
 
   const stop = () => {
     setListening(false);
+    listeningRef.current = false;
+    if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
     try { recRef.current?.stop(); } catch { /* ignore */ }
     setInterim("");
   };
