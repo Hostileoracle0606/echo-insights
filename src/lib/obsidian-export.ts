@@ -1,4 +1,3 @@
-import JSZip from "jszip";
 import type { JournalState, Entity, Relation } from "./journal-types";
 
 function entityNoteFilename(e: Entity): string {
@@ -65,6 +64,7 @@ function entityToMarkdown(
 }
 
 export async function exportToObsidianZip(state: JournalState): Promise<Blob> {
+  const { default: JSZip } = await import("jszip");
   const zip = new JSZip();
   const root = zip.folder("Lumen Vault")!;
   const entitiesFolder = root.folder("Entities")!;
