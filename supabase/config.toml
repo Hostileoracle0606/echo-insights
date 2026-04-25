@@ -1,0 +1,4 @@
+project_id = "sqmrrfdriwvvyozssbcw"
+
+[functions.extract-graph]
+verify_jwt = false
