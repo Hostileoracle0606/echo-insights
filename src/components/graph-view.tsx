@@ -27,7 +27,10 @@ export function GraphView({ entities, relations, highlightId, onSelect }: Props)
 
   useEffect(() => {
     let mounted = true;
-    import("react-force-graph-2d").then((m) => { if (mounted) setComp(() => m.default); });
+    // Browser-only: react-force-graph-2d depends on canvas/DOM and cannot be bundled for SSR.
+    import(/* @vite-ignore */ "react-force-graph-2d" as string).then((m: any) => {
+      if (mounted) setComp(() => m.default);
+    });
     return () => { mounted = false; };
   }, []);
 
