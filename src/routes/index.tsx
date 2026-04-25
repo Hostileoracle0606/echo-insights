@@ -224,10 +224,12 @@ function Index() {
               </button>
               <div className="text-center sm:text-left">
                 <p className="font-display text-sm">
-                  {speech.listening ? "Listening…" : thinking ? "Thinking…" : "Tap to speak"}
+                  {speech.listening
+                    ? thinking ? "Listening · weaving…" : "Listening…"
+                    : thinking ? "Thinking…" : "Tap to speak"}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  {speech.listening ? "Tap again when finished." : "Anything on your mind."}
+                  {speech.listening ? "Graph updates as you speak. Pause to be asked." : "Anything on your mind."}
                 </p>
               </div>
             </div>
