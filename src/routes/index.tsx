@@ -20,8 +20,83 @@ function Index() {
   const [thinking, setThinking] = useState(false);
   const [highlight, setHighlight] = useState<string | null>(null);
   const [activeFollowUpId, setActiveFollowUpId] = useState<string | null>(null);
-  const speech = useSpeechRecognition();
+
+  // Refs for live streaming pipeline
+  const stateRef = useRef<JournalState>(state);
+  stateRef.current = state;
+  const pendingChunksRef = useRef<string[]>([]);   // chunks queued for processing
+  const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const inFlightRef = useRef(false);
+  const activeFollowUpIdRef = useRef<string | null>(null);
+  activeFollowUpIdRef.current = activeFollowUpId;
+
   const transcriptRef = useRef<HTMLDivElement | null>(null);
+
+  async function processUtterance(text: string, opts?: { followUpId?: string; silent?: boolean }) {
+    if (!text.trim()) return;
+    if (!opts?.silent) setThinking(true);
+    inFlightRef.current = true;
+    try {
+      const ents = Object.values(stateRef.current.entities);
+      const existing = ents.slice(0, 30).map((e) => ({ name: e.name, type: e.type, description: e.description }));
+      const { data, error } = await supabase.functions.invoke("extract-graph", {
+        body: { text, existingEntities: existing },
+      });
+      if (error) throw error;
+      if ((data as any)?.error) throw new Error((data as any).error);
+      const payload = data as ExtractedPayload;
+
+      setState((prev) => {
+        const merged = mergeExtraction(prev, text, payload);
+        let next = merged.next;
+        if (opts?.followUpId) next = answerFollowUp(next, opts.followUpId);
+        return next;
+      });
+
+      const newCount = (payload.entities ?? []).length;
+      if (newCount > 0 && !opts?.silent) {
+        toast.success(`+${newCount} ${newCount === 1 ? "entity" : "entities"}`);
+      }
+    } catch (e: any) {
+      console.error(e);
+      if (!opts?.silent) toast.error(e?.message || "Couldn't analyze that — try again.");
+    } finally {
+      setThinking(false);
+      inFlightRef.current = false;
+      setActiveFollowUpId(null);
+    }
+  }
+
+  // Drain any queued chunks as one batched utterance (keeps context together)
+  async function flushPending(asAnswerToFollowUpId?: string) {
+    if (inFlightRef.current) {
+      // try again shortly
+      if (flushTimerRef.current) clearTimeout(flushTimerRef.current);
+      flushTimerRef.current = setTimeout(() => flushPending(asAnswerToFollowUpId), 250);
+      return;
+    }
+    const chunks = pendingChunksRef.current;
+    if (chunks.length === 0) return;
+    const text = chunks.join(" ").trim();
+    pendingChunksRef.current = [];
+    await processUtterance(text, { followUpId: asAnswerToFollowUpId, silent: true });
+  }
+
+  const speech = useSpeechRecognition({
+    onFinalChunk: (chunk) => {
+      pendingChunksRef.current.push(chunk);
+      // schedule a near-term flush so the graph updates as you speak (live)
+      if (flushTimerRef.current) clearTimeout(flushTimerRef.current);
+      flushTimerRef.current = setTimeout(() => flushPending(), 600);
+    },
+    onSilence: () => {
+      // User paused — flush whatever's pending; this also surfaces a follow-up
+      const fid = activeFollowUpIdRef.current ?? undefined;
+      if (flushTimerRef.current) clearTimeout(flushTimerRef.current);
+      flushPending(fid);
+    },
+    silenceMs: 1600,
+  });
 
   // hydrate from localStorage on client
   useEffect(() => {
@@ -41,47 +116,15 @@ function Index() {
   const relations = useMemo(() => Object.values(state.relations), [state.relations]);
   const openFollowUp = state.followUps.find((f) => !f.answered) ?? null;
 
-  async function processUtterance(text: string, opts?: { followUpId?: string }) {
-    if (!text.trim()) return;
-    setThinking(true);
-    try {
-      const existing = entities.slice(0, 30).map((e) => ({ name: e.name, type: e.type, description: e.description }));
-      const { data, error } = await supabase.functions.invoke("extract-graph", {
-        body: { text, existingEntities: existing },
-      });
-      if (error) throw error;
-      if ((data as any)?.error) throw new Error((data as any).error);
-      const payload = data as ExtractedPayload;
-
-      setState((prev) => {
-        const merged = mergeExtraction(prev, text, payload);
-        let next = merged.next;
-        if (opts?.followUpId) next = answerFollowUp(next, opts.followUpId);
-        return next;
-      });
-
-      const newCount = (payload.entities ?? []).length;
-      if (newCount > 0) {
-        toast.success(`Added ${newCount} ${newCount === 1 ? "entity" : "entities"} to your graph.`);
-      }
-    } catch (e: any) {
-      console.error(e);
-      toast.error(e?.message || "Couldn't analyze that — try again.");
-    } finally {
-      setThinking(false);
-      setActiveFollowUpId(null);
-    }
-  }
-
   function toggleListening() {
     if (speech.listening) {
       speech.stop();
-      const text = speech.transcript.trim();
-      if (text) {
-        processUtterance(text, { followUpId: activeFollowUpId ?? undefined });
-        speech.reset();
-      }
+      // flush any leftovers when manually stopping
+      if (flushTimerRef.current) clearTimeout(flushTimerRef.current);
+      flushPending(activeFollowUpIdRef.current ?? undefined);
+      speech.reset();
     } else {
+      pendingChunksRef.current = [];
       speech.reset();
       speech.start();
     }
@@ -90,6 +133,7 @@ function Index() {
   function answerByVoice(followUpId: string) {
     setActiveFollowUpId(followUpId);
     if (!speech.listening) {
+      pendingChunksRef.current = [];
       speech.reset();
       speech.start();
     }
