@@ -54,8 +54,13 @@ export function GraphView({ entities, relations, highlightId, onSelect }: Props)
       color: TYPE_COLORS[e.type] ?? TYPE_COLORS.other,
     })),
     links: relations
-      .filter((r) => entities.find((e) => e.id === r.source) && entities.find((e) => e.id === r.target))
-      .map((r) => ({ source: r.source, target: r.target, label: r.label })),
+      .filter(
+        (r) =>
+          !r.supersededAt &&
+          entities.find((e) => e.id === r.source) &&
+          entities.find((e) => e.id === r.target),
+      )
+      .map((r) => ({ id: r.id, source: r.source, target: r.target, label: r.label })),
   }), [entities, relations]);
 
   return (
