@@ -27,6 +27,15 @@ export interface Relation {
   label: string;       // e.g. "works_with", "lives_in", "feels"
   metadata: Record<string, string | number | boolean>;
   createdAt: string;
+  /**
+   * When set, the relation has been soft-superseded — typically because
+   * the user contradicted it in conversation and the extractor flagged
+   * it via `supersedes`. Hidden from the graph view and the Obsidian
+   * export; preserved in storage as an audit trail. Reversible: if the
+   * user re-asserts the same source/label/target, the merge step clears
+   * the timestamp.
+   */
+  supersededAt?: string;
 }
 
 export interface JournalEntry {
