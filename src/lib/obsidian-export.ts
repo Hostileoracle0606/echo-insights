@@ -70,7 +70,7 @@ export async function exportToObsidianZip(state: JournalState): Promise<Blob> {
   const entitiesFolder = root.folder("Entities")!;
   const journalFolder = root.folder("Journal")!;
 
-  const allRelations = Object.values(state.relations);
+  const allRelations = Object.values(state.relations).filter((r) => !r.supersededAt);
   const byId = state.entities;
 
   for (const e of Object.values(state.entities)) {
