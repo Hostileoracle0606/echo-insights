@@ -1,11 +1,62 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
-type SR = typeof window extends never ? never : any;
+type MicPermissionState = PermissionState | "unknown" | "unsupported";
+
+type SpeechRecognitionAlternativeLike = {
+  transcript: string;
+};
+
+type SpeechRecognitionResultLike = {
+  isFinal: boolean;
+  [index: number]: SpeechRecognitionAlternativeLike;
+};
+
+type SpeechRecognitionEventLike = {
+  resultIndex: number;
+  results: {
+    length: number;
+    [index: number]: SpeechRecognitionResultLike;
+  };
+};
+
+type SpeechRecognitionErrorEventLike = {
+  error: string;
+};
+
+type SpeechRecognitionLike = {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
+  onerror: ((event: SpeechRecognitionErrorEventLike) => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+};
+
+type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
+
+type WindowWithSpeechRecognition = Window &
+  typeof globalThis & {
+    SpeechRecognition?: SpeechRecognitionConstructor;
+    webkitSpeechRecognition?: SpeechRecognitionConstructor;
+  };
 
 interface Options {
   onFinalChunk?: (text: string) => void;
   onSilence?: () => void;
   silenceMs?: number;
+}
+
+function friendlySpeechError(code: string) {
+  if (code === "not-allowed" || code === "service-not-allowed") {
+    return "Microphone permission is blocked. Allow microphone access for this page, then try again.";
+  }
+  if (code === "audio-capture")
+    return "No microphone was found. Check your input device and try again.";
+  if (code === "network")
+    return "Speech recognition is having network trouble. Try again in a moment.";
+  return code || "Speech recognition could not start.";
 }
 
 export function useSpeechRecognition(opts: Options = {}) {
@@ -14,7 +65,8 @@ export function useSpeechRecognition(opts: Options = {}) {
   const [interim, setInterim] = useState("");
   const [transcript, setTranscript] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const recRef = useRef<SR | null>(null);
+  const [permissionState, setPermissionState] = useState<MicPermissionState>("unknown");
+  const recRef = useRef<SpeechRecognitionLike | null>(null);
   const onFinalRef = useRef(opts.onFinalChunk);
   const onSilenceRef = useRef(opts.onSilence);
   const silenceMsRef = useRef(opts.silenceMs ?? 1600);
@@ -31,9 +83,52 @@ export function useSpeechRecognition(opts: Options = {}) {
     }, silenceMsRef.current);
   };
 
+  const clearSilenceTimer = useCallback(() => {
+    if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+  }, []);
+
+  const markStopped = useCallback(() => {
+    setListening(false);
+    listeningRef.current = false;
+    clearSilenceTimer();
+  }, [clearSilenceTimer]);
+
+  const requestMicrophoneAccess = async () => {
+    if (typeof navigator === "undefined") return true;
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setPermissionState("unsupported");
+      return true;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream.getTracks().forEach((track) => track.stop());
+      setPermissionState("granted");
+      return true;
+    } catch (accessError) {
+      markStopped();
+      if (accessError instanceof DOMException) {
+        if (accessError.name === "NotAllowedError" || accessError.name === "SecurityError") {
+          setPermissionState("denied");
+          setError(
+            "Microphone permission is blocked. Allow microphone access for this page, then try again.",
+          );
+          return false;
+        }
+        if (accessError.name === "NotFoundError") {
+          setError("No microphone was found. Check your input device and try again.");
+          return false;
+        }
+      }
+      setError("Microphone access failed. Check browser permissions and try again.");
+      return false;
+    }
+  };
+
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const browserWindow = window as WindowWithSpeechRecognition;
+    const SR = browserWindow.SpeechRecognition || browserWindow.webkitSpeechRecognition;
     if (!SR) {
       setSupported(false);
       return;
@@ -43,7 +138,7 @@ export function useSpeechRecognition(opts: Options = {}) {
     rec.continuous = true;
     rec.interimResults = true;
     rec.lang = "en-US";
-    rec.onresult = (event: any) => {
+    rec.onresult = (event) => {
       let interimText = "";
       let finalText = "";
       for (let i = event.resultIndex; i < event.results.length; i++) {
@@ -59,42 +154,88 @@ export function useSpeechRecognition(opts: Options = {}) {
       // Any speech activity (interim or final) re-arms the silence timer
       if (finalText || interimText) armSilence();
     };
-    rec.onerror = (e: any) => {
+    rec.onerror = (e) => {
       if (e.error === "no-speech" || e.error === "aborted") return;
-      setError(e.error || "speech error");
+      if (e.error === "not-allowed" || e.error === "service-not-allowed") {
+        setPermissionState("denied");
+        markStopped();
+      }
+      if (e.error === "audio-capture") markStopped();
+      setError(friendlySpeechError(e.error));
     };
     rec.onend = () => {
       setListening((wasListening) => {
         if (wasListening) {
-          try { rec.start(); return true; } catch { return false; }
+          try {
+            rec.start();
+            return true;
+          } catch {
+            listeningRef.current = false;
+            return false;
+          }
         }
         return false;
       });
     };
     recRef.current = rec;
     return () => {
-      try { rec.stop(); } catch { /* ignore */ }
+      try {
+        rec.stop();
+      } catch {
+        /* ignore */
+      }
+    };
+  }, [markStopped]);
+
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !navigator.permissions?.query) return;
+    let permissionStatus: PermissionStatus | null = null;
+    let mounted = true;
+
+    navigator.permissions
+      .query({ name: "microphone" as PermissionName })
+      .then((status) => {
+        if (!mounted) return;
+        permissionStatus = status;
+        setPermissionState(status.state);
+        status.onchange = () => setPermissionState(status.state);
+      })
+      .catch(() => setPermissionState("unknown"));
+
+    return () => {
+      mounted = false;
+      if (permissionStatus) permissionStatus.onchange = null;
     };
   }, []);
 
-  const start = () => {
+  const start = async () => {
     setError(null);
-    if (!recRef.current) return;
+    if (!recRef.current) {
+      setError("Speech recognition is not available in this browser.");
+      return false;
+    }
+
+    const micAllowed = await requestMicrophoneAccess();
+    if (!micAllowed) return false;
+
     try {
       recRef.current.start();
       setListening(true);
       listeningRef.current = true;
       armSilence();
+      return true;
     } catch {
-      // already started
+      return listeningRef.current;
     }
   };
 
   const stop = () => {
-    setListening(false);
-    listeningRef.current = false;
-    if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
-    try { recRef.current?.stop(); } catch { /* ignore */ }
+    markStopped();
+    try {
+      recRef.current?.stop();
+    } catch {
+      /* ignore */
+    }
     setInterim("");
   };
 
@@ -104,5 +245,16 @@ export function useSpeechRecognition(opts: Options = {}) {
     setError(null);
   };
 
-  return { supported, listening, interim, transcript, error, start, stop, reset, setTranscript };
+  return {
+    supported,
+    permissionState,
+    listening,
+    interim,
+    transcript,
+    error,
+    start,
+    stop,
+    reset,
+    setTranscript,
+  };
 }

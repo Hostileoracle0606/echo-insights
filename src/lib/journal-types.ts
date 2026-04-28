@@ -4,9 +4,9 @@ export type EntityType =
   | "organization"
   | "project"
   | "event"
+  | "activity"
   | "concept"
   | "emotion"
-  | "object"
   | "other";
 
 export interface Entity {
@@ -18,6 +18,14 @@ export interface Entity {
   mentions: number;
   firstSeen: string;   // ISO
   lastSeen: string;    // ISO
+  /**
+   * Wiki-mode question backlog: lines of questioning Lumen could pursue
+   * to deepen this node. Populated by the wiki extractor; left empty by
+   * granular mode. Each entry is roughly a wiki page section heading
+   * waiting to be filled. We track which have been asked separately via
+   * `askedQuestions` on JournalState — the strings here are the open set.
+   */
+  questions?: string[];
 }
 
 export interface Relation {
@@ -55,9 +63,27 @@ export interface FollowUp {
   answered: boolean;
 }
 
+export interface AskedQuestion {
+  question: string;
+  targetEntityIds: string[];
+  askedAt: string; // ISO
+}
+
 export interface JournalState {
   entries: JournalEntry[];
   entities: Record<string, Entity>;
   relations: Record<string, Relation>;
   followUps: FollowUp[];
+  askedQuestions?: AskedQuestion[];
 }
+
+/**
+ * Extraction mode controls how the Groq extractor decides what becomes a
+ * node:
+ *  - "wiki":     each node must support a real line of questioning. Fewer,
+ *                deeper nodes; question backlog populated; cleaner export.
+ *  - "granular": every named entity becomes a node, even passing mentions.
+ *                More noise but higher recall — useful when you'd rather
+ *                capture everything and prune later.
+ */
+export type ExtractionMode = "wiki" | "granular";

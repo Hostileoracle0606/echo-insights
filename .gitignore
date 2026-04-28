@@ -15,10 +15,23 @@ dist-ssr
 .tanstack/**
 .nitro
 *.local
+.env
+.env.*
+!.env.example
 
 # Wrangler / Cloudflare
 .wrangler/
 .dev.vars
+
+# Python virtualenvs
+.venv/
+**/.venv/
+
+# Demo export artifacts
+demo-export/
+
+# Supabase local state
+supabase/.temp/
 
 # Editor directories and files
 .vscode/*
