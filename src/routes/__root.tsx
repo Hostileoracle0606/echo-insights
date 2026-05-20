@@ -1,4 +1,9 @@
 import { Outlet, Link, createRootRoute, HeadContent, Scripts } from "@tanstack/react-router";
+import { createServerFn } from "@tanstack/react-start";
+import { getRequest, getResponse } from "@tanstack/react-start/server";
+import type { Session } from "@supabase/supabase-js";
+import { SessionProvider } from "@/lib/auth/session";
+import { getServerSupabase } from "@/lib/supabase/server";
 import appCss from "../styles.css?url";
 
 function NotFoundComponent() {
@@ -23,6 +28,20 @@ function NotFoundComponent() {
   );
 }
 
+const getInitialSession = createServerFn({ method: "GET" }).handler(
+  async (): Promise<Session | null> => {
+    const request = getRequest();
+    const rawResponse = getResponse();
+    // getResponse() returns { headers: Headers, ... } — we only need
+    // response.headers.append() inside getServerSupabase, so a minimal
+    // shim satisfies the interface at runtime.
+    const responseShim = { headers: rawResponse.headers } as unknown as Response;
+    const supabase = getServerSupabase(request, responseShim);
+    const { data: { session } } = await supabase.auth.getSession();
+    return session;
+  },
+);
+
 export const Route = createRootRoute({
   head: () => ({
     meta: [
@@ -40,10 +59,23 @@ export const Route = createRootRoute({
       { rel: "stylesheet", href: appCss },
     ],
   }),
+  loader: async () => {
+    const session = await getInitialSession();
+    return { session };
+  },
   shellComponent: RootShell,
-  component: () => <Outlet />,
+  component: RouteComponent,
   notFoundComponent: NotFoundComponent,
 });
+
+function RouteComponent() {
+  const { session } = Route.useLoaderData() as { session: Session | null };
+  return (
+    <SessionProvider initialSession={session}>
+      <Outlet />
+    </SessionProvider>
+  );
+}
 
 function RootShell({ children }: { children: React.ReactNode }) {
   return (
