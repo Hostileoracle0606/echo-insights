@@ -1,4 +1,4 @@
-project_id = "sqmrrfdriwvvyozssbcw"
+project_id = "bjoevzvsdlhlcjywpyfx"
 
 [functions.extract-graph]
 verify_jwt = false
