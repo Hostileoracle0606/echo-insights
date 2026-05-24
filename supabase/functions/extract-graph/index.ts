@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -342,6 +343,46 @@ serve(async (req) => {
   try {
     const body = (await req.json()) as Body;
     const { text } = body;
+
+    // ── Auth preamble (verify_jwt = true ensures a valid JWT) ──────
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) {
+      return new Response(JSON.stringify({ error: "missing authorization" }), {
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const supabaseUserClient = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_ANON_KEY")!,
+      { global: { headers: { Authorization: authHeader } } },
+    );
+    const { data: { user }, error: userError } =
+      await supabaseUserClient.auth.getUser();
+    if (userError || !user) {
+      return new Response(JSON.stringify({ error: "invalid session" }), {
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Optional notebook_id ownership check — if provided, verify the
+    // user owns it. The client will pass this once Task 10 lands.
+    const notebookId: string | undefined =
+      (body as Record<string, unknown>).notebook_id as string | undefined ??
+      (body as Record<string, unknown>).notebookId as string | undefined;
+    if (notebookId) {
+      const { data: notebook, error: nbErr } = await supabaseUserClient
+        .from("notebooks")
+        .select("id")
+        .eq("id", notebookId)
+        .single();
+      if (nbErr || !notebook) {
+        return new Response(JSON.stringify({ error: "notebook not found" }), {
+          status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+    // ── End auth preamble ──────────────────────────────────────────
+
     if (!text || text.trim().length < 2) {
       return new Response(JSON.stringify(emptyResult()), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },

@@ -34,6 +34,7 @@ import {
   answerFollowUp,
   clearState,
   DEFAULT_EXTRACTION_MODE,
+  ensureActiveNotebook,
   loadExtractionMode,
   loadState,
   mergeExtraction,
@@ -52,8 +53,15 @@ import {
   GEMINI_LIVE_SYSTEM_INSTRUCTION,
 } from "@/lib/conversation-policy";
 import { toast, Toaster } from "sonner";
+import { useSession } from "@/lib/auth/session";
+import { requireAuthOrRedirect } from "@/lib/auth/require-auth";
 
-export const Route = createFileRoute("/")({ component: Index });
+export const Route = createFileRoute("/")({
+  beforeLoad: async () => {
+    await requireAuthOrRedirect();
+  },
+  component: Index,
+});
 
 const EMPTY_STATE: JournalState = {
   entries: [],
@@ -401,6 +409,9 @@ function SpeakerLabel({ name, pulse }: { name: string; pulse: boolean }) {
 }
 
 function Index() {
+  const { user } = useSession();
+  const [notebookId, setNotebookId] = useState<string | null>(null);
+  const notebookIdRef = useRef<string | null>(null);
   const [state, setState] = useState<JournalState>(EMPTY_STATE);
   const [extractionMode, setExtractionMode] = useState<ExtractionMode>(DEFAULT_EXTRACTION_MODE);
   const [hydrated, setHydrated] = useState(false);
@@ -806,19 +817,36 @@ function Index() {
   });
 
   useEffect(() => {
-    const pageRefresh = isPageRefresh();
-    const initialState = pageRefresh ? EMPTY_STATE : loadState();
-    if (pageRefresh) clearState();
-    setState(initialState);
-    stateRef.current = initialState;
-    // Mode is loaded under a separate key so it survives clearState().
-    setExtractionMode(loadExtractionMode());
-    setHydrated(true);
-  }, []);
+    if (!user) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const notebook = await ensureActiveNotebook(user.id);
+        if (cancelled) return;
+        setNotebookId(notebook.id);
+        notebookIdRef.current = notebook.id;
+        const pageRefresh = isPageRefresh();
+        const initialState = pageRefresh ? EMPTY_STATE : await loadState(notebook.id);
+        if (pageRefresh) await clearState(notebook.id);
+        if (cancelled) return;
+        setState(initialState);
+        stateRef.current = initialState;
+        setExtractionMode(loadExtractionMode());
+        setHydrated(true);
+      } catch (e) {
+        console.error("Failed to initialize notebook:", e);
+        // Fallback to empty state so the UI still renders
+        setHydrated(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [user]);
 
   useEffect(() => {
-    if (hydrated) saveState(state);
-  }, [state, hydrated]);
+    if (hydrated && notebookId && user) {
+      void saveState(notebookId, user.id, state);
+    }
+  }, [state, hydrated, notebookId, user]);
 
   useEffect(() => {
     const el = topPillRef.current;
@@ -965,7 +993,7 @@ function Index() {
 
   function handleClear() {
     if (!confirm("Erase your journal, graph, and follow-ups? This cannot be undone.")) return;
-    clearState();
+    if (notebookId) void clearState(notebookId);
     setState(EMPTY_STATE);
     stateRef.current = EMPTY_STATE;
     setConversation([]);

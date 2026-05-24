@@ -87,3 +87,18 @@ export interface JournalState {
  *                capture everything and prune later.
  */
 export type ExtractionMode = "wiki" | "granular";
+
+export interface Notebook {
+  id: string;             // uuid
+  userId: string;         // auth.users.id
+  title: string;
+  titleSource: "ai" | "user" | "auto";
+  startedAt: string;      // ISO
+  endedAt?: string;       // ISO
+  durationSeconds?: number;
+  entityCount: number;
+  summary?: string;
+  archivedAt?: string;    // ISO
+  createdAt: string;
+  updatedAt: string;
+}

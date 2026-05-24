@@ -1,7 +1,7 @@
 project_id = "bjoevzvsdlhlcjywpyfx"
 
 [functions.extract-graph]
-verify_jwt = false
+verify_jwt = true
 
 [functions.speak-agent]
-verify_jwt = false
+verify_jwt = true

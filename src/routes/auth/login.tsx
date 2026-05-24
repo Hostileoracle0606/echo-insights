@@ -25,7 +25,7 @@ function Login() {
       if (mode === "password") {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
-        router.navigate({ to: "/app" });
+        router.navigate({ to: "/" });
       } else {
         const { error } = await supabase.auth.signInWithOtp({
           email,
