@@ -121,7 +121,11 @@ extension LumenColorsContext on BuildContext {
 
 ## `lib/theme/lumen_text.dart`
 
-Builds a Flutter `TextTheme` covering **all 15 slots** — `displayLarge/Medium/Small`, `headlineLarge/Medium/Small`, `titleLarge/Medium/Small`, `bodyLarge/Medium/Small`, `labelLarge/Medium/Small`. Leaving any slot undefined means it silently falls back to Flutter's default (Roboto-ish) style instead of Inter/Fraunces — exactly how `graph_canvas.dart:190`'s existing `Theme.of(context).textTheme.titleLarge` call would have kept rendering in a Material default today. Fraunces → `display*`/`headline*`, **and** `titleLarge` (see below); Inter → everything else. Fraunces gets the `ss01`/`ss02` stylistic sets via `FontFeature.stylisticSet`, matching `styles.css`'s `font-feature-settings`.
+Builds a Flutter `TextTheme` covering **all 15 slots** — `displayLarge/Medium/Small`, `headlineLarge/Medium/Small`, `titleLarge/Medium/Small`, `bodyLarge/Medium/Small`, `labelLarge/Medium/Small`. Leaving any slot undefined means it silently falls back to Flutter's default (Roboto-ish) style instead of Inter/Fraunces — exactly how `graph_canvas.dart:190`'s existing `Theme.of(context).textTheme.titleLarge` call would have kept rendering in a Material default today. Fraunces → `display*`/`headline*`, **and** `titleLarge` (see below); Inter → everything else.
+
+**Stylistic sets — `ss01` only, and why it must be a variable font.** `styles.css` requests `"ss01","ss02"`, but verification against the actual font files (see "Font assets" below) found: (1) the static Fraunces served by font CDNs is subset down to `liga`/`rvrn` — **both stylistic sets are stripped**, so a static-file approach silently loses the display treatment entirely; (2) even the canonical *variable* Fraunces that Google Fonts serves the web app contains `ss01` but **not** `ss02` — meaning the web app's `ss02` request is already a no-op in production. So the faithful, verified port applies `FontFeature.stylisticSet(1)` only, and **must** use the variable font to get even that. All Fraunces styles are built through a private `_fraunces(...)` helper that centralizes this (DRY — the alternative repeats a long feature/variation list across eight styles).
+
+**Fraunces variable axes need explicit `fontVariations`, not just `fontWeight`.** The Google Fonts Fraunces variable build defaults to `wght`=900 (Black), `opsz`=9 (smallest optical size), `WONK`=1 (quirky alternate glyphs on) — all wrong for a calm editorial heading. The helper pins `wght` per style, `opsz` to the point size (Fraunces' optical-size axis is designed to track size: small at body, high at display), `SOFT`=0, and `WONK`=0.
 
 Sizes are grounded in the actual web source, not invented, with two exceptions flagged inline where no second data point exists:
 
@@ -132,34 +136,53 @@ class LumenText {
   static const displayFontFamily = 'Fraunces';
   static const sansFontFamily = 'Inter';
 
+  // Centralizes Fraunces' stylistic set + variable-axis settings so the
+  // eight display/headline/title styles below don't each repeat them.
+  // opsz tracks the point size (clamped to the axis range 9–144); WONK
+  // and SOFT pinned off for the calm editorial look; ss01 only (ss02 is
+  // absent from the Google Fonts Fraunces build — see prose above).
+  static TextStyle _fraunces({
+    required double size,
+    required Color color,
+    double? height,
+    double? letterSpacing,
+    double weight = 400,
+  }) => TextStyle(
+    fontFamily: displayFontFamily,
+    fontSize: size,
+    height: height,
+    letterSpacing: letterSpacing,
+    color: color,
+    fontFeatures: const [FontFeature.stylisticSet(1)],
+    fontVariations: [
+      FontVariation('wght', weight),
+      FontVariation('opsz', size.clamp(9.0, 144.0)),
+      const FontVariation('SOFT', 0),
+      const FontVariation('WONK', 0),
+    ],
+  );
+
   static TextTheme textTheme({required Color foreground, required Color mutedForeground}) => TextTheme(
     // Grounded in the sidebar empty-state hero ("Voice / Journal",
     // font-display text-[40px] leading-[0.95] tracking-tight) — the one
     // place the web app goes bigger than a page headline.
-    displayLarge: TextStyle(fontFamily: displayFontFamily, fontSize: 40, height: 0.95, letterSpacing: -1.0, color: foreground,
-      fontFeatures: const [FontFeature.stylisticSet(1), FontFeature.stylisticSet(2)]),
+    displayLarge: _fraunces(size: 40, height: 0.95, letterSpacing: -1.0, color: foreground),
     // displayMedium/Small: no second hero instance observed in the web
     // app — these are an interpolated step-down, not a citation. Confirm
     // visually the first time a screen actually needs them.
-    displayMedium: TextStyle(fontFamily: displayFontFamily, fontSize: 34, height: 0.98, color: foreground,
-      fontFeatures: const [FontFeature.stylisticSet(1), FontFeature.stylisticSet(2)]),
-    displaySmall: TextStyle(fontFamily: displayFontFamily, fontSize: 28, height: 1.0, color: foreground,
-      fontFeatures: const [FontFeature.stylisticSet(1), FontFeature.stylisticSet(2)]),
+    displayMedium: _fraunces(size: 34, height: 0.98, color: foreground),
+    displaySmall: _fraunces(size: 28, height: 1.0, color: foreground),
     // Matches the auth pages' CardTitle ("Welcome back", font-display
     // text-2xl tracking-tight) — login_screen.dart already reads
     // headlineLarge today.
-    headlineLarge: TextStyle(fontFamily: displayFontFamily, fontSize: 24, height: 1.0, letterSpacing: -0.6, color: foreground,
-      fontFeatures: const [FontFeature.stylisticSet(1), FontFeature.stylisticSet(2)]),
+    headlineLarge: _fraunces(size: 24, height: 1.0, letterSpacing: -0.6, color: foreground),
     // Matches the "Lumen" wordmark lockup (font-display text-xl).
-    headlineMedium: TextStyle(fontFamily: displayFontFamily, fontSize: 20, color: foreground,
-      fontFeatures: const [FontFeature.stylisticSet(1), FontFeature.stylisticSet(2)]),
-    headlineSmall: TextStyle(fontFamily: displayFontFamily, fontSize: 17, color: foreground,
-      fontFeatures: const [FontFeature.stylisticSet(1), FontFeature.stylisticSet(2)]),
+    headlineMedium: _fraunces(size: 20, color: foreground),
+    headlineSmall: _fraunces(size: 17, color: foreground),
     // Matches the entity sidebar's name heading (font-display text-2xl
     // leading-tight) — the exact role graph_canvas.dart:190 already
     // calls via textTheme.titleLarge today.
-    titleLarge: TextStyle(fontFamily: displayFontFamily, fontSize: 24, height: 1.2, color: foreground,
-      fontFeatures: const [FontFeature.stylisticSet(1), FontFeature.stylisticSet(2)]),
+    titleLarge: _fraunces(size: 24, height: 1.2, color: foreground),
     // titleMedium/Small: no direct web citation. Defaulted to Inter per
     // the audit's "Inter does the work; Fraunces stays special"
     // principle rather than inventing a second serif size.
@@ -193,13 +216,23 @@ class LumenText {
 }
 ```
 
-**Font assets required.** `pubspec.yaml` currently declares no fonts. This phase adds:
+**Font assets required.** `pubspec.yaml` currently declares no fonts. This phase vendors the two **variable** font files — one per family — under `assets/fonts/` and registers them in a `fonts:` block.
 
-- Vendored static font files (Fraunces + Inter, both OFL-licensed, sourced from Google Fonts' official repo) under `assets/fonts/`.
-- A `fonts:` block in `pubspec.yaml` registering both families.
-- Minimum weights to vendor: **Inter** Regular (400) and Medium (500) — covers body text and the `labelLarge`/`labelMedium`/eyebrow medium-weight uses above. **Fraunces** Regular (400) only — nothing in the audit calls for a heavier display weight; headings rely on the serif character at regular weight, not boldness.
+- **Why variable, not static** (corrected from the original draft after verifying real files): static instances from font CDNs are subset down to `liga`/`rvrn`, stripping both stylistic sets; and the Google Fonts repo only publishes the variable builds anyway. The variable file is unsubset, so it retains `ss01`, and a single file covers both Inter weights (400 body, 500 labels) via the `wght` axis — no separate weight files to vendor. Still bundled (not the `google_fonts` runtime package) so the app works fully offline.
+- **Sources** (OFL-licensed, the exact files Google Fonts serves the web app):
+  - Inter: `https://github.com/google/fonts/raw/main/ofl/inter/Inter[opsz,wght].ttf` → save as `assets/fonts/Inter.ttf`
+  - Fraunces: `https://github.com/google/fonts/raw/main/ofl/fraunces/Fraunces[SOFT,WONK,opsz,wght].ttf` → save as `assets/fonts/Fraunces.ttf`
+- **`pubspec.yaml` registration** declares each family with its single variable file (no per-weight `weight:` entries — weight is selected at runtime via `FontVariation('wght', …)` for Fraunces and `fontWeight` for Inter):
 
-Static files (not the `google_fonts` package) so the `ss01`/`ss02` stylistic sets render exactly as specified and the app works fully offline.
+  ```yaml
+  fonts:
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/Inter.ttf
+    - family: Fraunces
+      fonts:
+        - asset: assets/fonts/Fraunces.ttf
+  ```
 
 ## `lib/theme/lumen_theme.dart`
 
@@ -375,9 +408,9 @@ One widget smoke test: pump `MaterialApp(theme: LumenTheme.light(), home: ...)`,
 | File                          | Contains                                                                                   |
 | ----------------------------- | ------------------------------------------------------------------------------------------ |
 | `lib/theme/lumen_colors.dart` | `LumenColors` (`ThemeExtension`), light palette, `entityColors` map, `BuildContext` getter |
-| `lib/theme/lumen_text.dart`   | `LumenText`: `TextTheme` builder + `eyebrow()`                                             |
+| `lib/theme/lumen_text.dart`   | `LumenText`: `TextTheme` builder, `_fraunces()` helper, `eyebrow()`                        |
 | `lib/theme/lumen_theme.dart`  | `LumenSurface` (`ThemeExtension`, radius+shadow), `LumenTheme.light()`                     |
 | `lib/app.dart`                | Swap `ThemeData(...)` for `LumenTheme.light()`                                             |
-| `pubspec.yaml`                | Add `fonts:` block                                                                         |
-| `assets/fonts/`               | Vendored Fraunces + Inter static files                                                     |
+| `pubspec.yaml`                | Add `fonts:` block (Inter + Fraunces variable files)                                       |
+| `assets/fonts/`               | Vendored Inter + Fraunces **variable** `.ttf` files (one per family)                       |
 | `test/`                       | One theme smoke test                                                                       |
