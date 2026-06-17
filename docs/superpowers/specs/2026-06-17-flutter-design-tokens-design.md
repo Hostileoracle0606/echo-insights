@@ -121,7 +121,9 @@ extension LumenColorsContext on BuildContext {
 
 ## `lib/theme/lumen_text.dart`
 
-Builds a Flutter `TextTheme`, mapping families the same way the web does: Fraunces → `display*`/`headline*` (the `h1`–`h3` territory), Inter → everything else. Fraunces gets the `ss01`/`ss02` stylistic sets via `FontFeature.stylisticSet`, matching `styles.css`'s `font-feature-settings`.
+Builds a Flutter `TextTheme` covering **all 15 slots** — `displayLarge/Medium/Small`, `headlineLarge/Medium/Small`, `titleLarge/Medium/Small`, `bodyLarge/Medium/Small`, `labelLarge/Medium/Small`. Leaving any slot undefined means it silently falls back to Flutter's default (Roboto-ish) style instead of Inter/Fraunces — exactly how `graph_canvas.dart:190`'s existing `Theme.of(context).textTheme.titleLarge` call would have kept rendering in a Material default today. Fraunces → `display*`/`headline*`, **and** `titleLarge` (see below); Inter → everything else. Fraunces gets the `ss01`/`ss02` stylistic sets via `FontFeature.stylisticSet`, matching `styles.css`'s `font-feature-settings`.
+
+Sizes are grounded in the actual web source, not invented, with two exceptions flagged inline where no second data point exists:
 
 ```dart
 class LumenText {
@@ -131,14 +133,38 @@ class LumenText {
   static const sansFontFamily = 'Inter';
 
   static TextTheme textTheme({required Color foreground, required Color mutedForeground}) => TextTheme(
-    headlineLarge: TextStyle(
-      fontFamily: displayFontFamily, fontSize: 24, height: 1.0, color: foreground,
-      fontFeatures: const [FontFeature.stylisticSet(1), FontFeature.stylisticSet(2)],
-    ),
+    // Grounded in the sidebar empty-state hero ("Voice / Journal",
+    // font-display text-[40px] leading-[0.95] tracking-tight) — the one
+    // place the web app goes bigger than a page headline.
+    displayLarge: TextStyle(fontFamily: displayFontFamily, fontSize: 40, height: 0.95, letterSpacing: -1.0, color: foreground,
+      fontFeatures: const [FontFeature.stylisticSet(1), FontFeature.stylisticSet(2)]),
+    // displayMedium/Small: no second hero instance observed in the web
+    // app — these are an interpolated step-down, not a citation. Confirm
+    // visually the first time a screen actually needs them.
+    displayMedium: TextStyle(fontFamily: displayFontFamily, fontSize: 34, height: 0.98, color: foreground,
+      fontFeatures: const [FontFeature.stylisticSet(1), FontFeature.stylisticSet(2)]),
+    displaySmall: TextStyle(fontFamily: displayFontFamily, fontSize: 28, height: 1.0, color: foreground,
+      fontFeatures: const [FontFeature.stylisticSet(1), FontFeature.stylisticSet(2)]),
+    // Matches the auth pages' CardTitle ("Welcome back", font-display
+    // text-2xl tracking-tight) — login_screen.dart already reads
+    // headlineLarge today.
+    headlineLarge: TextStyle(fontFamily: displayFontFamily, fontSize: 24, height: 1.0, letterSpacing: -0.6, color: foreground,
+      fontFeatures: const [FontFeature.stylisticSet(1), FontFeature.stylisticSet(2)]),
+    // Matches the "Lumen" wordmark lockup (font-display text-xl).
     headlineMedium: TextStyle(fontFamily: displayFontFamily, fontSize: 20, color: foreground,
       fontFeatures: const [FontFeature.stylisticSet(1), FontFeature.stylisticSet(2)]),
     headlineSmall: TextStyle(fontFamily: displayFontFamily, fontSize: 17, color: foreground,
       fontFeatures: const [FontFeature.stylisticSet(1), FontFeature.stylisticSet(2)]),
+    // Matches the entity sidebar's name heading (font-display text-2xl
+    // leading-tight) — the exact role graph_canvas.dart:190 already
+    // calls via textTheme.titleLarge today.
+    titleLarge: TextStyle(fontFamily: displayFontFamily, fontSize: 24, height: 1.2, color: foreground,
+      fontFeatures: const [FontFeature.stylisticSet(1), FontFeature.stylisticSet(2)]),
+    // titleMedium/Small: no direct web citation. Defaulted to Inter per
+    // the audit's "Inter does the work; Fraunces stays special"
+    // principle rather than inventing a second serif size.
+    titleMedium: TextStyle(fontFamily: sansFontFamily, fontSize: 16, fontWeight: FontWeight.w500, color: foreground),
+    titleSmall: TextStyle(fontFamily: sansFontFamily, fontSize: 14, fontWeight: FontWeight.w500, color: foreground),
     bodyLarge: TextStyle(fontFamily: sansFontFamily, fontSize: 15, color: foreground),
     bodyMedium: TextStyle(fontFamily: sansFontFamily, fontSize: 13, color: foreground),
     bodySmall: TextStyle(fontFamily: sansFontFamily, fontSize: 12, color: mutedForeground),
@@ -148,20 +174,27 @@ class LumenText {
   );
 
   // The "eyebrow" convention: tiny uppercase, wide tracking, used
-  // throughout the web app as a recognizable component (speaker labels,
+  // throughout the web app as a recognizable component (section labels,
   // "Upserting" badges) rather than a generic type-scale rung. Named
   // explicitly so call sites opt in rather than overloading labelSmall.
+  // Correction from the prior draft: web evidence (entity sidebar
+  // section labels) shows font-semibold at this size, not font-medium.
+  // Tracking varies in practice (0.14em on dense labels, 0.22em on
+  // page-level labels like "Lumen Notebook") — this defaults to the more
+  // common 0.14em; call sites needing the wider variant can
+  // `.copyWith(letterSpacing: ...)`.
   static TextStyle eyebrow(Color color) => TextStyle(
     fontFamily: sansFontFamily,
     fontSize: 10,
-    fontWeight: FontWeight.w500,
-    letterSpacing: 1.8, // ≈0.18em at 10px
+    fontWeight: FontWeight.w600,
+    letterSpacing: 1.4, // ≈0.14em at 10px
     color: color,
   );
 }
 ```
 
 **Font assets required.** `pubspec.yaml` currently declares no fonts. This phase adds:
+
 - Vendored static font files (Fraunces + Inter, both OFL-licensed, sourced from Google Fonts' official repo) under `assets/fonts/`.
 - A `fonts:` block in `pubspec.yaml` registering both families.
 - Minimum weights to vendor: **Inter** Regular (400) and Medium (500) — covers body text and the `labelLarge`/`labelMedium`/eyebrow medium-weight uses above. **Fraunces** Regular (400) only — nothing in the audit calls for a heavier display weight; headings rely on the serif character at regular weight, not boldness.
@@ -212,26 +245,77 @@ class LumenTheme {
 
   static ThemeData light() {
     const colors = LumenColors.light;
+
+    // Material 3's ColorScheme has ~35 roles. The ColorScheme.light(...)
+    // convenience constructor — and ColorScheme.fromSeed(...), the thing
+    // being removed from app.dart — fill every role you DON'T specify
+    // with Material's own baseline (purple-ish) defaults. That's exactly
+    // the bug: a screen using, say, surfaceContainerHighest or
+    // tertiaryContainer would silently render in stock Material purple
+    // even after this theme lands. So every role below is set
+    // explicitly via the base ColorScheme(...) constructor, which makes
+    // each one a required argument — the compiler enforces completeness.
+    //
+    // Roles with no direct web equivalent either collapse onto the
+    // nearest real token (the web has exactly two surface lightness
+    // steps — paper and card — so Material's five-step surfaceContainer
+    // ladder collapses onto those two rather than inventing intermediate
+    // tints the web never designed) or are derived with a single,
+    // clearly-labeled blend (errorContainer, outlineVariant). Deprecated
+    // roles (background, onBackground, surfaceVariant) are intentionally
+    // omitted — Material 3 superseded them with surface/surfaceContainer*/
+    // onSurfaceVariant, set below.
+    final colorScheme = ColorScheme(
+      brightness: Brightness.light,
+      primary: colors.ink,
+      onPrimary: colors.paper,
+      primaryContainer: colors.secondary,
+      onPrimaryContainer: colors.ink,
+      // Material's "secondary" role gets Lumen's sage accent, not
+      // LumenColors.secondary (the web's --secondary neutral token,
+      // used above for primaryContainer instead). The two are unrelated
+      // despite the name collision — LumenColors.secondary stays
+      // available via context.lumenColors.secondary for direct token
+      // access without going through Material's role vocabulary.
+      secondary: colors.sage,
+      onSecondary: colors.paper,
+      secondaryContainer: colors.muted,
+      onSecondaryContainer: colors.ink,
+      // Amber is the web's --accent token; Material's tertiary slot is
+      // its natural home since primary is already taken by ink.
+      tertiary: colors.amber,
+      onTertiary: colors.ink,
+      tertiaryContainer: colors.amberSoft,
+      onTertiaryContainer: colors.ink,
+      error: colors.destructive,
+      onError: colors.destructiveForeground,
+      errorContainer: Color.lerp(colors.destructive, colors.paper, 0.85)!,
+      onErrorContainer: colors.destructive,
+      surface: colors.paper,
+      onSurface: colors.ink,
+      surfaceDim: colors.muted,
+      surfaceBright: colors.card,
+      surfaceContainerLowest: colors.paper,
+      surfaceContainerLow: colors.card,
+      surfaceContainer: colors.card,
+      surfaceContainerHigh: colors.card,
+      surfaceContainerHighest: colors.card,
+      onSurfaceVariant: colors.mutedForeground,
+      outline: colors.border,
+      outlineVariant: Color.lerp(colors.border, colors.paper, 0.5)!,
+      shadow: colors.ink,
+      scrim: colors.ink,
+      inverseSurface: colors.ink,
+      onInverseSurface: colors.paper,
+      inversePrimary: colors.amberSoft,
+      surfaceTint: colors.ink,
+    );
+
     return ThemeData(
       useMaterial3: true,
       brightness: Brightness.light,
       scaffoldBackgroundColor: colors.paper,
-      colorScheme: ColorScheme.light(
-        primary: colors.ink,
-        onPrimary: colors.paper,
-        // Material's "secondary" role gets Lumen's sage accent, not
-        // LumenColors.secondary (the web's --secondary neutral token).
-        // The two are unrelated despite the name collision — the latter
-        // stays available via context.lumenColors.secondary for direct
-        // token access (e.g. inactive segment backgrounds) without going
-        // through Material's role vocabulary.
-        secondary: colors.sage,
-        surface: colors.card,
-        onSurface: colors.ink,
-        error: colors.destructive,
-        onError: colors.destructiveForeground,
-        outline: colors.border,
-      ),
+      colorScheme: colorScheme,
       textTheme: LumenText.textTheme(foreground: colors.ink, mutedForeground: colors.mutedForeground),
       extensions: [colors, LumenSurface.light],
     );
@@ -261,12 +345,12 @@ One widget smoke test: pump `MaterialApp(theme: LumenTheme.light(), home: ...)`,
 
 ## File summary
 
-| File | Contains |
-|---|---|
+| File                          | Contains                                                                                   |
+| ----------------------------- | ------------------------------------------------------------------------------------------ |
 | `lib/theme/lumen_colors.dart` | `LumenColors` (`ThemeExtension`), light palette, `entityColors` map, `BuildContext` getter |
-| `lib/theme/lumen_text.dart` | `LumenText`: `TextTheme` builder + `eyebrow()` |
-| `lib/theme/lumen_theme.dart` | `LumenSurface` (`ThemeExtension`, radius+shadow), `LumenTheme.light()` |
-| `lib/app.dart` | Swap `ThemeData(...)` for `LumenTheme.light()` |
-| `pubspec.yaml` | Add `fonts:` block |
-| `assets/fonts/` | Vendored Fraunces + Inter static files |
-| `test/` | One theme smoke test |
+| `lib/theme/lumen_text.dart`   | `LumenText`: `TextTheme` builder + `eyebrow()`                                             |
+| `lib/theme/lumen_theme.dart`  | `LumenSurface` (`ThemeExtension`, radius+shadow), `LumenTheme.light()`                     |
+| `lib/app.dart`                | Swap `ThemeData(...)` for `LumenTheme.light()`                                             |
+| `pubspec.yaml`                | Add `fonts:` block                                                                         |
+| `assets/fonts/`               | Vendored Fraunces + Inter static files                                                     |
+| `test/`                       | One theme smoke test                                                                       |
