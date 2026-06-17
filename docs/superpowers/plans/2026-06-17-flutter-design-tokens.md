@@ -54,11 +54,14 @@ void main() {
   });
 
   test('entityColors covers every EntityType', () {
+    // entityColors is `static const` (it has no light/dark variant, so it
+    // isn't part of the instance), so it's read off the class, not an
+    // instance: LumenColors.entityColors, not LumenColors.light.entityColors.
     for (final type in EntityType.values) {
-      expect(LumenColors.light.entityColors[type], isNotNull,
+      expect(LumenColors.entityColors[type], isNotNull,
           reason: 'missing color for $type');
     }
-    expect(LumenColors.light.entityColors[EntityType.person], const Color(0xFFC97B3A));
+    expect(LumenColors.entityColors[EntityType.person], const Color(0xFFC97B3A));
   });
 
   test('copyWith overrides one field and leaves the rest', () {
@@ -702,8 +705,8 @@ flutter:
 
 - [ ] **Step 4: Resolve and verify the manifest**
 
-Run: `flutter pub get && flutter analyze`
-Expected: `flutter pub get` exits 0; `flutter analyze` reports `No issues found!` (a malformed `fonts:` block or missing asset surfaces as a pub error here).
+Run: `flutter pub get && flutter analyze lib/ test/`
+Expected: `flutter pub get` exits 0; `flutter analyze lib/ test/` reports `No issues found!` (a malformed `fonts:` block or missing asset surfaces shows up as a pub error here). Scoped to `lib/`/`test/`, not a bare `flutter analyze` — the repo has one pre-existing, unrelated `info` lint at `tool/ui_preview_app.dart:15` (`prefer_const_constructors`) that a bare run would also report; this work doesn't touch `tool/`, so it's out of scope to fix here.
 
 - [ ] **Step 5: Commit**
 
@@ -792,8 +795,8 @@ Replace with:
 
 - [ ] **Step 4: Run the full test suite + analyzer**
 
-Run: `flutter test && flutter analyze`
-Expected: all tests PASS (existing `agenda`/`slugify`/`merge`/`noise_filter` tests plus the 4 new theme test files); `flutter analyze` reports `No issues found!`. If the analyzer warns that `package:flutter/material.dart`'s `Color`/`ColorScheme` import in `app.dart` is now unused, remove it — but `Color` is still used elsewhere in `app.dart`, so it should remain.
+Run: `flutter test && flutter analyze lib/ test/`
+Expected: all tests PASS (existing `agenda`/`slugify`/`merge`/`noise_filter` tests plus the 4 new theme test files); `flutter analyze lib/ test/` reports `No issues found!`. Scoped to exclude `tool/`, which has one pre-existing, unrelated `info` lint (see Task 4 Step 4) — a bare `flutter analyze` would report it too. If the analyzer warns that `package:flutter/material.dart`'s `Color`/`ColorScheme` import in `app.dart` is now unused, remove it — but `Color` is still used elsewhere in `app.dart`, so it should remain.
 
 - [ ] **Step 5: Manual verification (asset loads at runtime)**
 
@@ -824,4 +827,8 @@ git commit -m "feat(theme): wire app.dart to LumenTheme.light(), drop purple see
 
 **Type consistency:** `LumenColors` field names match across the test, the class, and `LumenTheme`'s `colors.*` reads. `LumenText.textTheme({foreground, mutedForeground})` signature matches its one call site in `LumenTheme.light()`. `LumenSurface` field names (`radiusLg`, `shadowPaper`, …) match between class, `static final light`, and the Task 3 test. `entityColors` keyed by `EntityType` (verified all 9 enum values exist in `lib/models/entity.dart`). `context.lumenColors` getter defined in Task 1, used in Task 5. ✓
 
-**Known platform caveat documented inline:** `extensions: const [...]` may need `const` dropped (LumenSurface.light is `final`); the `dart:ui` import covers `FontVariation`/`FontFeature`; `flutter test` can't verify font rasterization so Task 5 Step 5 adds a manual runtime check. All noted at their step.
+**Fixed during review (2nd pass):**
+- *(P1, compile error)* Task 1's test read `LumenColors.light.entityColors[...]` — invalid, since `entityColors` is `static const` and Dart doesn't allow instance access to static members. Corrected to `LumenColors.entityColors[...]` (the class itself, not an instance) in both assertions, with a comment explaining why it's static (no light/dark variant exists for it).
+- *(P2, false failure)* Task 4 Step 4 and Task 5 Step 4 expected a bare `flutter analyze` to report `No issues found!`, but the repo already has one pre-existing, unrelated `info` lint (`prefer_const_constructors` at `tool/ui_preview_app.dart:15`) that a bare run would surface — an implementation worker would hit a false failure unrelated to this work. Both commands are now scoped to `flutter analyze lib/ test/`, with the pre-existing issue called out explicitly so it isn't mistaken for a regression.
+
+**Other platform caveats documented inline:** the `dart:ui` import covers `FontVariation`/`FontFeature`; `flutter test` can't verify font rasterization, so Task 5 Step 5 adds a manual runtime check; `extensions: [colors, LumenSurface.light]` is intentionally a non-const list (`LumenSurface.light` is `static final`, not `const`, since its shadow colors use runtime `withValues`) — noted directly in Task 3's code comment.
