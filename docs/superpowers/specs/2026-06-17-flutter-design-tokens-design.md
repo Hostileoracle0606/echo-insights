@@ -246,7 +246,10 @@ class LumenTheme {
   static ThemeData light() {
     const colors = LumenColors.light;
 
-    // Material 3's ColorScheme has ~35 roles. The ColorScheme.light(...)
+    // Material 3's ColorScheme has ~47 roles (including the 12
+    // *Fixed/*FixedDim/on*Fixed/on*FixedVariant roles per primary/
+    // secondary/tertiary, added for components that must stay the same
+    // color across brightness changes). The ColorScheme.light(...)
     // convenience constructor — and ColorScheme.fromSeed(...), the thing
     // being removed from app.dart — fill every role you DON'T specify
     // with Material's own baseline (purple-ish) defaults. That's exactly
@@ -255,14 +258,21 @@ class LumenTheme {
     // even after this theme lands. So every role below is set
     // explicitly via the base ColorScheme(...) constructor, which makes
     // each one a required argument — the compiler enforces completeness.
+    // (The *Fixed roles are technically optional on this constructor —
+    // omitting them falls back to primary/secondary/tertiary rather than
+    // Material purple, so it's a smaller gap than the others here — but
+    // they're set explicitly anyway for the same completeness guarantee.)
     //
     // Roles with no direct web equivalent either collapse onto the
     // nearest real token (the web has exactly two surface lightness
     // steps — paper and card — so Material's five-step surfaceContainer
     // ladder collapses onto those two rather than inventing intermediate
-    // tints the web never designed) or are derived with a single,
-    // clearly-labeled blend (errorContainer, outlineVariant). Deprecated
-    // roles (background, onBackground, surfaceVariant) are intentionally
+    // tints the web never designed; likewise the *Fixed roles collapse
+    // onto their *Container counterparts since Lumen has no light/dark
+    // pair yet to derive a distinct "Dim" variant from — revisit once
+    // dark mode exists) or are derived with a single, clearly-labeled
+    // blend (errorContainer, outlineVariant). Deprecated roles
+    // (background, onBackground, surfaceVariant) are intentionally
     // omitted — Material 3 superseded them with surface/surfaceContainer*/
     // onSurfaceVariant, set below.
     final colorScheme = ColorScheme(
@@ -271,6 +281,15 @@ class LumenTheme {
       onPrimary: colors.paper,
       primaryContainer: colors.secondary,
       onPrimaryContainer: colors.ink,
+      // Fixed/FixedDim collapse onto the same value as primaryContainer
+      // (no distinct "dim" tint exists in Lumen's vocabulary); the
+      // FixedVariant on-color uses mutedForeground rather than duplicating
+      // onPrimaryFixed, since "Variant" specifically means lower-emphasis
+      // text and Lumen already has a real token for that.
+      primaryFixed: colors.secondary,
+      primaryFixedDim: colors.secondary,
+      onPrimaryFixed: colors.ink,
+      onPrimaryFixedVariant: colors.mutedForeground,
       // Material's "secondary" role gets Lumen's sage accent, not
       // LumenColors.secondary (the web's --secondary neutral token,
       // used above for primaryContainer instead). The two are unrelated
@@ -281,12 +300,20 @@ class LumenTheme {
       onSecondary: colors.paper,
       secondaryContainer: colors.muted,
       onSecondaryContainer: colors.ink,
+      secondaryFixed: colors.muted,
+      secondaryFixedDim: colors.muted,
+      onSecondaryFixed: colors.ink,
+      onSecondaryFixedVariant: colors.mutedForeground,
       // Amber is the web's --accent token; Material's tertiary slot is
       // its natural home since primary is already taken by ink.
       tertiary: colors.amber,
       onTertiary: colors.ink,
       tertiaryContainer: colors.amberSoft,
       onTertiaryContainer: colors.ink,
+      tertiaryFixed: colors.amberSoft,
+      tertiaryFixedDim: colors.amberSoft,
+      onTertiaryFixed: colors.ink,
+      onTertiaryFixedVariant: colors.mutedForeground,
       error: colors.destructive,
       onError: colors.destructiveForeground,
       errorContainer: Color.lerp(colors.destructive, colors.paper, 0.85)!,
