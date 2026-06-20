@@ -21,7 +21,7 @@
 | Create `lib/screens/journal/wikilink.dart` | `WikiLink` — an entity name as ink text with an amber underline; tappable when `onTap != null`, plain text when null (self-links). |
 | Create `lib/screens/journal/entity_note_sheet.dart` | `EntityNoteSheet(entityId)` + `showEntityNoteSheet(context, entityId)` helper. Owns history, reads `journalProvider`, builds header + description + Connections + Mentioned-by + Recent mentions inside a `DraggableScrollableSheet`. |
 | Modify `lib/screens/journal/graph_canvas.dart` | `_handleTap` presents `showEntityNoteSheet`; delete the dark `_EntitySheet`. |
-| Create tests | `test/relative_time_test.dart`, `test/screens/journal/wikilink_test.dart`, `test/screens/journal/entity_note_sheet_test.dart`. |
+| Create tests | `test/relative_time_test.dart`, `test/snippet_test.dart`, `test/screens/journal/wikilink_test.dart`, `test/screens/journal/entity_note_sheet_test.dart`. |
 
 Dependencies: Task 3 uses Tasks 1–2; Task 4 modifies Task 3; Task 5 uses Task 3's helper.
 
