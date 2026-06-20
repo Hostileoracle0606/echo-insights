@@ -57,7 +57,7 @@ All surfaces use the Phase-2/3 token layer (`LumenColors`, `LumenText`, `context
 
 ## Data flow
 
-`EntityNoteSheet` is a `ConsumerStatefulWidget` reading the current `JournalState` from `journalProvider`. State is the navigation history: `List<String> _history` (seeded with the tapped id); the displayed entity is `_history.last`. A wikilink tap does `setState(() => _history.add(targetId))`; the back chevron does `setState(() => _history.removeLast())`. For the current entity it computes outbound/inbound relation lists and the mentions list with simple in-memory filters (`relations.values.where(...)`, `entries.where(...)`). No new providers, no persistence, no network. If the current id is absent from state (e.g. cleared mid-traversal), the sheet shows a minimal "Note unavailable" body with the back chevron still available.
+`EntityNoteSheet` is a `ConsumerStatefulWidget` reading the current `JournalState` from `journalProvider`. State is the navigation history: `List<String> _history` (seeded with the tapped id); the displayed entity is `_history.last`. A wikilink tap does `setState(() => _history.add(targetId))`; the back chevron does `setState(() => _history.removeLast())`. For the current entity it computes outbound/inbound relation lists and the mentions list with simple in-memory filters (`relations.values.where(...)`, `entries.where(...)`). No new providers, no persistence, no network. If the current id is absent from state (e.g. cleared mid-traversal), the sheet shows a minimal "Note unavailable" body; the same chrome rules apply — the back chevron is shown only when history depth > 1 (so a missing *root* entity shows no chevron), and the close `×` is always available to dismiss.
 
 ## Testing
 
