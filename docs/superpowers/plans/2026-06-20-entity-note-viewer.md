@@ -17,6 +17,7 @@
 | File | Responsibility |
 |---|---|
 | Create `lib/logic/relative_time.dart` | Pure `relativeTime(DateTime, {DateTime? now})` → "just now / 5m ago / 2h ago / 3d ago / Apr 26". |
+| Create `lib/logic/snippet.dart` | Pure `snippet(String, {int max = 140})` → one-line, word-boundary-truncated entry preview with an ellipsis. |
 | Create `lib/screens/journal/wikilink.dart` | `WikiLink` — an entity name as ink text with an amber underline; tappable when `onTap != null`, plain text when null (self-links). |
 | Create `lib/screens/journal/entity_note_sheet.dart` | `EntityNoteSheet(entityId)` + `showEntityNoteSheet(context, entityId)` helper. Owns history, reads `journalProvider`, builds header + description + Connections + Mentioned-by + Recent mentions inside a `DraggableScrollableSheet`. |
 | Modify `lib/screens/journal/graph_canvas.dart` | `_handleTap` presents `showEntityNoteSheet`; delete the dark `_EntitySheet`. |
@@ -28,11 +29,13 @@ Dependencies: Task 3 uses Tasks 1–2; Task 4 modifies Task 3; Task 5 uses Task 
 
 ---
 
-### Task 1: `relativeTime` helper
+### Task 1: pure logic helpers (`relativeTime` + `snippet`)
 
 **Files:**
 - Create: `lib/logic/relative_time.dart`
+- Create: `lib/logic/snippet.dart`
 - Test: `test/relative_time_test.dart`
+- Test: `test/snippet_test.dart`
 
 - [ ] **Step 1: Write the failing test**
 
@@ -96,6 +99,62 @@ git add lib/logic/relative_time.dart test/relative_time_test.dart
 git commit -m "feat(notes): add relativeTime helper"
 ```
 
+- [ ] **Step 6: Write the failing snippet test**
+
+```dart
+// test/snippet_test.dart
+import 'package:flutter_test/flutter_test.dart';
+import 'package:lumen/logic/snippet.dart';
+
+void main() {
+  test('short text is returned unchanged', () {
+    expect(snippet('Maya flagged the slip.'), 'Maya flagged the slip.');
+  });
+
+  test('long text is truncated to max with an ellipsis, on a word boundary', () {
+    final long = 'word ' * 60; // 300 chars
+    final out = snippet(long, max: 140);
+    expect(out.length, lessThanOrEqualTo(141)); // 140 cap + the … char
+    expect(out.endsWith('…'), isTrue);
+    expect(out, isNot(contains('  '))); // trimmed before the ellipsis
+  });
+}
+```
+
+- [ ] **Step 7: Run test to verify it fails**
+
+Run: `flutter test test/snippet_test.dart`
+Expected: FAIL — `Target of URI doesn't exist: 'package:lumen/logic/snippet.dart'`.
+
+- [ ] **Step 8: Write the implementation**
+
+```dart
+// lib/logic/snippet.dart
+/// One-line preview of an entry's text, capped at [max] characters.
+/// Mirrors the web export's snippet(): cut on a word boundary near the cap
+/// and append an ellipsis. Returns the input unchanged when already short.
+String snippet(String text, {int max = 140}) {
+  final clean = text.replaceAll(RegExp(r'\s+'), ' ').trim();
+  if (clean.length <= max) return clean;
+  final cut = clean.substring(0, max);
+  final lastSpace = cut.lastIndexOf(' ');
+  final base = lastSpace > 0 ? cut.substring(0, lastSpace) : cut;
+  return '${base.trimRight()}…';
+}
+```
+
+- [ ] **Step 9: Run test to verify it passes**
+
+Run: `flutter test test/snippet_test.dart`
+Expected: PASS (2 tests).
+
+- [ ] **Step 10: Commit**
+
+```bash
+git add lib/logic/snippet.dart test/snippet_test.dart
+git commit -m "feat(notes): add snippet helper for entry previews"
+```
+
 ---
 
 ### Task 2: `WikiLink` widget
@@ -126,12 +185,15 @@ void main() {
     expect(tapped, 'atlas');
   });
 
-  testWidgets('null onTap renders plain, non-tappable text', (tester) async {
+  testWidgets('null onTap renders plain, non-tappable, un-underlined text',
+      (tester) async {
     await tester.pumpWidget(_host(
       const WikiLink(entityId: 'maya', label: 'Maya', onTap: null),
     ));
     expect(find.text('Maya'), findsOneWidget);
     expect(find.byType(GestureDetector), findsNothing);
+    final text = tester.widget<Text>(find.text('Maya'));
+    expect(text.style?.decoration, TextDecoration.none);
   });
 }
 ```
@@ -166,19 +228,34 @@ class WikiLink extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.lumenColors;
-    final text = Text(
-      label,
-      style: TextStyle(
-        fontSize: 14,
-        height: 1.4,
-        color: colors.ink,
-        decoration: TextDecoration.underline,
-        decorationColor: colors.amber,
-        decorationThickness: 1.5,
+    // Non-tappable (self-link): plain ink text, no underline — it must not
+    // look like a link the user can follow.
+    if (onTap == null) {
+      return Text(
+        label,
+        style: TextStyle(
+          fontSize: 14,
+          height: 1.4,
+          color: colors.ink,
+          decoration: TextDecoration.none,
+        ),
+      );
+    }
+    // Tappable: ink text with the amber underline that signals a wikilink.
+    return GestureDetector(
+      onTap: onTap,
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 14,
+          height: 1.4,
+          color: colors.ink,
+          decoration: TextDecoration.underline,
+          decorationColor: colors.amber,
+          decorationThickness: 1.5,
+        ),
       ),
     );
-    if (onTap == null) return text;
-    return GestureDetector(onTap: onTap, child: text);
   }
 }
 ```
@@ -324,6 +401,17 @@ void main() {
     expect(find.text('CONNECTIONS'), findsNothing);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('missing root entity shows unavailable: no chevron, close present',
+      (tester) async {
+    final seed = JournalState.empty(); // no entities at all
+    await tester.pumpWidget(_host(seed, entityId: 'gone'));
+    await tester.pumpAndSettle();
+    expect(find.text('Note unavailable'), findsOneWidget);
+    expect(find.byIcon(Icons.chevron_left), findsNothing); // root → no back
+    expect(find.byIcon(Icons.close), findsOneWidget); // close always available
+    expect(tester.takeException(), isNull);
+  });
 }
 ```
 
@@ -339,6 +427,7 @@ Expected: FAIL — `Target of URI doesn't exist: 'package:lumen/screens/journal/
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lumen/logic/relative_time.dart';
+import 'package:lumen/logic/snippet.dart';
 import 'package:lumen/models/entity.dart';
 import 'package:lumen/models/journal_entry.dart';
 import 'package:lumen/models/journal_state.dart';
@@ -554,7 +643,7 @@ class _EntityNoteSheetState extends ConsumerState<EntityNoteSheet> {
           Text(relativeTime(e.createdAt),
               style: TextStyle(fontSize: 12, color: colors.mutedForeground)),
           const SizedBox(height: 3),
-          Text(e.text,
+          Text(snippet(e.text),
               style: TextStyle(fontSize: 13, height: 1.4, color: colors.ink)),
         ],
       ),
@@ -566,7 +655,7 @@ class _EntityNoteSheetState extends ConsumerState<EntityNoteSheet> {
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `flutter test test/screens/journal/entity_note_sheet_test.dart`
-Expected: PASS (5 tests).
+Expected: PASS (6 tests).
 
 - [ ] **Step 5: Commit**
 
@@ -666,7 +755,7 @@ with:
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `flutter test test/screens/journal/entity_note_sheet_test.dart`
-Expected: PASS (7 tests).
+Expected: PASS (8 tests).
 
 - [ ] **Step 5: Commit**
 
@@ -714,7 +803,7 @@ Remove the entire `class _EntitySheet extends StatelessWidget { … }` block (st
 - [ ] **Step 3: Analyze + run the full suite**
 
 Run: `flutter analyze lib/ test/ && flutter test`
-Expected: `No issues found!` and all tests pass (existing suite + the 3 new test files). If the analyzer reports `unused_import` for `entity.dart` in `graph_canvas.dart`, leave it — `Entity`/`EntityType` are still referenced by the painter and node model.
+Expected: `No issues found!` and all tests pass (existing suite + the 4 new test files: relative_time, snippet, wikilink, entity_note_sheet). If the analyzer reports `unused_import` for `entity.dart` in `graph_canvas.dart`, leave it — `Entity`/`EntityType` are still referenced by the painter and node model.
 
 - [ ] **Step 4: Manual verification**
 
@@ -741,7 +830,9 @@ git commit -m "feat(notes): open EntityNoteSheet from graph node taps; drop dark
 - Description (omitted when empty) → Task 3 ✓
 - Connections (active outbound, self included, missing target skipped) → Tasks 3/4 ✓
 - Mentioned-by (active inbound, `source != entityId` guard) → Task 3 ✓
-- Recent mentions (entries containing id, newest first, cap 12, read-only) → Task 3 ✓
+- Recent mentions (entries containing id, newest first, cap 12, read-only, **word-boundary `snippet()` truncation**) → Task 1 (`snippet` + truncation test) + Task 3 (`_mentionRow` uses it) ✓
+- Self-link is visually plain (no amber underline) as well as non-tappable → Task 2 (`onTap == null` branch + decoration test) ✓
+- "Note unavailable" for a missing root entity (no chevron, close present) → Task 3 (dedicated test) ✓
 - Self-relation: once under Connections only, non-tappable → Task 4 (test + `isSelf` guard) ✓
 - Render-from-`JournalState`, read-only, no markdown → all tasks ✓
 - Token-based (LumenColors/LumenText, replaces dark `#191B20`) → Tasks 3/5 ✓
@@ -751,4 +842,4 @@ git commit -m "feat(notes): open EntityNoteSheet from graph node taps; drop dark
 
 **Placeholder scan:** none — every code step shows complete code; the one conditional ("if analyzer reports unused_import…") is a verified-safe note, not a TODO.
 
-**Type consistency:** `relativeTime(DateTime, {DateTime? now})` (Task 1) matches its calls in Task 3. `WikiLink({entityId, label, onTap})` (Task 2) matches usage in Tasks 3/4. `showEntityNoteSheet(BuildContext, String)` (Task 3) matches the call in Task 5. `EntityNoteSheet(entityId:)` consistent across tasks/tests. `_open`/`_back`/`_canGoBack`/`_currentId`/`_history` names consistent. Model fields (`Entity.lastSeen/mentions/type/description`, `Relation.source/target/label/isActive`, `JournalEntry.text/createdAt/entityIds`, `JournalState.entities/relations/entries` + `empty()`/`copyWith`) verified against `lib/models/`.
+**Type consistency:** `relativeTime(DateTime, {DateTime? now})` and `snippet(String, {int max})` (Task 1) match their calls in Task 3. `WikiLink({entityId, label, onTap})` (Task 2) matches usage in Tasks 3/4. `showEntityNoteSheet(BuildContext, String)` (Task 3) matches the call in Task 5. `EntityNoteSheet(entityId:)` consistent across tasks/tests. `_open`/`_back`/`_canGoBack`/`_currentId`/`_history` names consistent. Model fields (`Entity.lastSeen/mentions/type/description`, `Relation.source/target/label/isActive`, `JournalEntry.text/createdAt/entityIds`, `JournalState.entities/relations/entries` + `empty()`/`copyWith`) verified against `lib/models/`.
