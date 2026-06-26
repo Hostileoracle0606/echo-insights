@@ -458,28 +458,43 @@ revoke all on table public.retrieve_rate_limits from anon, authenticated;
 
 -- Atomically bump the caller's per-user AND per-notebook counters for the
 -- current window and report whether BOTH are within their limits.
+--
+-- SELF-CONTAINED & TAMPER-PROOF — the function takes ONLY p_notebook_id; the
+-- window and limits are hardcoded in the DB so a direct RPC caller (the RPC is
+-- granted to `authenticated`) cannot widen its own limits. Ownership is verified
+-- INSIDE the function, before any counter is touched, so a caller cannot inflate
+-- the notebook:<id> counter of a notebook they do not own (cross-notebook
+-- griefing). The user:<uid> scope derives from auth.uid(), never a parameter, so
+-- it can only ever bump the caller's own user counter.
+--
 -- SECURITY DEFINER (runs as owner, bypassing RLS) so the caller cannot mutate
 -- the counters directly. Fixed search_path is mandatory for DEFINER safety.
 -- auth.uid() reads the request JWT claim and works under DEFINER.
-create or replace function public.bump_retrieve_rate(
-  p_window_seconds int,
-  p_user_limit int,
-  p_notebook_id uuid,
-  p_notebook_limit int
-) returns boolean
+create or replace function public.bump_retrieve_rate(p_notebook_id uuid)
+returns boolean
 language plpgsql
 security definer
 set search_path = public, pg_temp
 as $$
 declare
   v_uid uuid := auth.uid();
+  v_window_seconds  constant int := 60;
+  v_user_limit      constant int := 30;
+  v_notebook_limit  constant int := 20;
   v_window timestamptz := to_timestamp(
-    floor(extract(epoch from now()) / p_window_seconds) * p_window_seconds
+    floor(extract(epoch from now()) / v_window_seconds) * v_window_seconds
   );
   v_user_count int;
   v_nb_count int;
 begin
   if v_uid is null then
+    return false;
+  end if;
+
+  -- Never bump a counter for a notebook the caller does not own.
+  if not exists (
+    select 1 from public.notebooks where id = p_notebook_id and user_id = v_uid
+  ) then
     return false;
   end if;
 
@@ -495,13 +510,13 @@ begin
     do update set count = retrieve_rate_limits.count + 1
   returning count into v_nb_count;
 
-  return v_user_count <= p_user_limit and v_nb_count <= p_notebook_limit;
+  return v_user_count <= v_user_limit and v_nb_count <= v_notebook_limit;
 end;
 $$;
 
 -- Execute granted ONLY to authenticated; revoke the default public grant.
-revoke all on function public.bump_retrieve_rate(int, int, uuid, int) from public, anon;
-grant execute on function public.bump_retrieve_rate(int, int, uuid, int) to authenticated;
+revoke all on function public.bump_retrieve_rate(uuid) from public, anon;
+grant execute on function public.bump_retrieve_rate(uuid) to authenticated;
 ```
 
 - [ ] **Step 2: Apply the migration locally and verify it succeeds**
@@ -516,14 +531,10 @@ In `supabase/functions/retrieve-memory/index.ts`, insert the rate check **after*
 ```ts
     // Durable, per-user AND per-notebook rate limit, enforced server-side so a
     // direct JWT caller cannot bypass it the way the Flutter guardrails allow.
-    const RATE_WINDOW_SECONDS = 60;
-    const RATE_USER_LIMIT = 30;
-    const RATE_NOTEBOOK_LIMIT = 20;
+    // Window + limits live in the DB function; the client controls nothing, and
+    // the function verifies notebook ownership itself.
     const { data: allowed, error: rateErr } = await supa.rpc("bump_retrieve_rate", {
-      p_window_seconds: RATE_WINDOW_SECONDS,
-      p_user_limit: RATE_USER_LIMIT,
       p_notebook_id: notebookId,
-      p_notebook_limit: RATE_NOTEBOOK_LIMIT,
     });
     if (rateErr) {
       logTelemetry({ ok: false, error: "rate_check_failed", latencyMs: Date.now() - startedAt });
@@ -580,7 +591,7 @@ Expected: `{"context":"## Entities\n- Atlas (project) [mentions: 2]"}`.
 
 - [ ] **Step 4: Verify the guards**
 
-Run the same curl with (a) no `notebookId` → expect `400`; (b) a notebook id the user doesn't own → expect `404`; (c) no `Authorization` header → expect `401`; (d) the same valid call (same `notebookId`) in a tight loop more than `RATE_NOTEBOOK_LIMIT` (20) times within a minute → calls past the per-notebook limit return `429`.
+Run the same curl with (a) no `notebookId` → expect `400`; (b) a notebook id the user doesn't own → expect `404`; (c) no `Authorization` header → expect `401`; (d) the same valid call (same `notebookId`) in a tight loop more than the per-notebook limit (20, hardcoded in the DB function) times within a minute → calls past the limit return `429`.
 
 Example for (d):
 ```bash
@@ -591,6 +602,17 @@ for i in $(seq 1 35); do
 done
 ```
 Expected: the first 20 print `200`, the remainder print `429` (the per-notebook limit of 20 trips before the per-user limit of 30).
+
+- [ ] **Step 4b: Security — direct-RPC griefing is blocked**
+
+Call the rate-limit RPC directly (bypassing the edge function) with a notebook UUID the JWT's user does NOT own:
+
+```bash
+curl -s -X POST "$SUPABASE_URL/rest/v1/rpc/bump_retrieve_rate" \
+  -H "Authorization: Bearer $JWT" -H "apikey: $ANON" -H "Content-Type: application/json" \
+  -d '{"p_notebook_id":"<a-notebook-uuid-NOT-owned-by-this-user>"}'
+```
+Expected: response body `false`, and **no** `notebook:<that-id>` row is created (verify with `select * from retrieve_rate_limits where scope = 'notebook:<that-id>';` → 0 rows). Confirms a caller cannot inflate another notebook's counter.
 
 - [ ] **Step 5: Commit (notes only, if any config changed)**
 
@@ -1022,6 +1044,6 @@ Verify that recall only surfaces entities from the current session's notebook (P
 
 ## Self-Review Notes (completed by plan author)
 
-- **Spec coverage:** §5.1 edge function → Tasks 2, 3, 3b; §5.2 service/serializer/guardrails/fail-closed → Tasks 5, 7; §5.3 prompt + wiring → Tasks 6, 7; §6 Deno resolution (4 specifiers, extensionless imports, embed stub) + pinned deploy import-map + committed lock → Tasks 1, 3 (Step 4b), 4 (Step 1); §7 no-sources egress + no body/context logging → Tasks 2, 3, 8; §8 input caps → Task 3, over-call guardrails (per-turn, reset on turn complete) → Task 7, **server-side rate limit** (per-user + per-notebook, tamper-proof SECURITY DEFINER RPC) → Task 3b, **fail-closed telemetry** (structured non-sensitive logs, edge + Dart) → Tasks 3, 5; §11 prerequisite → noted, out of scope; §12 tests → Tasks 2, 5, 8 + rate-limit/429 smoke → Task 4; §13 gate → covered across tasks.
+- **Spec coverage:** §5.1 edge function → Tasks 2, 3, 3b; §5.2 service/serializer/guardrails/fail-closed → Tasks 5, 7; §5.3 prompt + wiring → Tasks 6, 7; §6 Deno resolution (4 specifiers, extensionless imports, embed stub) + pinned deploy import-map + committed lock → Tasks 1, 3 (Step 4b), 4 (Step 1); §7 no-sources egress + no body/context logging → Tasks 2, 3, 8; §8 input caps → Task 3, over-call guardrails (per-turn, reset on turn complete) → Task 7, **server-side rate limit** (per-user + per-notebook; self-contained SECURITY DEFINER RPC with internal ownership check + DB-fixed window/limits, safe to call directly) → Task 3b, **fail-closed telemetry** (structured non-sensitive logs, edge + Dart) → Tasks 3, 5; §11 prerequisite → noted, out of scope; §12 tests → Tasks 2, 5, 8 + rate-limit/429 smoke → Task 4; §13 gate → covered across tasks.
 - **Type consistency:** `buildContext` (Tasks 2–3), `stateToGraphloop` + `RetrieveMemoryService.retrieve` (Tasks 5, 7), `_retrieveMemory` (Task 7) names are consistent across references. Wire key `notebookId` used uniformly. Function returns `{ context }`; Dart reads `data['context']`.
 - **No placeholders:** every code step shows complete code; every run step shows the command + expected output.
