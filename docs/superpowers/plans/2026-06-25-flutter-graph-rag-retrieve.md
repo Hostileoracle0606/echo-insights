@@ -308,6 +308,17 @@ const json = (status: number, body: unknown) =>
     status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
+
+// Non-sensitive SRE telemetry — counts, latency, empty-flag, a short query hash.
+// NEVER content (spec §7). Emitted to the function log for ops visibility.
+function logTelemetry(fields: Record<string, unknown>): void {
+  console.log(JSON.stringify({ fn: "retrieve-memory", ...fields }));
+}
+
+async function queryHash(q: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(q));
+  return [...new Uint8Array(digest)].slice(0, 4).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
 ```
 
 - [ ] **Step 2: Append the `serve` handler at the bottom of `index.ts`**
@@ -315,6 +326,7 @@ const json = (status: number, body: unknown) =>
 ```ts
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+  const startedAt = Date.now();
   try {
     const raw = await req.text();
     if (raw.length > MAX_BODY_BYTES) return json(413, { error: "body too large" });
@@ -359,10 +371,24 @@ serve(async (req) => {
     await index.sync(Object.values(g.entities));
     const communities = buildCommunities(g);
     const result = await retrieve(g, query, { mode: "lexical" }, { index, communities });
-    return json(200, { context: buildContext(result) });
+    const context = buildContext(result);
+    logTelemetry({
+      ok: true,
+      entityCount: result.entities.length,
+      relationCount: result.relations.length,
+      seedCount: result.seeds.length,
+      emptyContext: context.length === 0,
+      latencyMs: Date.now() - startedAt,
+      qHash: await queryHash(query),
+    });
+    return json(200, { context });
   } catch (e) {
-    // Never log the request body or context (spec §7). Generic, non-sensitive only.
-    console.error("retrieve-memory error:", e instanceof Error ? e.name : "unknown");
+    // Never log the request body or context (spec §7). Counts / error name only.
+    logTelemetry({
+      ok: false,
+      error: e instanceof Error ? e.name : "unknown",
+      latencyMs: Date.now() - startedAt,
+    });
     return json(500, { error: "retrieve failed" });
   }
 });
@@ -382,6 +408,11 @@ verify_jwt = true
 Run: `deno check --import-map supabase/functions/retrieve-memory/deno.json supabase/functions/retrieve-memory/index.ts`
 Expected: no type errors (downloads esm.sh deps on first run).
 
+- [ ] **Step 4b: Generate the dependency lock**
+
+Run: `deno cache --import-map supabase/functions/retrieve-memory/deno.json --lock supabase/functions/retrieve-memory/deno.lock supabase/functions/retrieve-memory/index.ts`
+Expected: writes `supabase/functions/retrieve-memory/deno.lock` pinning the full esm.sh dependency graph (Orama + graphology transitive deps). Commit it so the deployed bundle resolves deterministically, not against floating CDN versions (spec §6).
+
 - [ ] **Step 5: Re-run the context-builder tests (no regression)**
 
 Run: `deno test --import-map supabase/functions/retrieve-memory/deno.json supabase/functions/retrieve-memory/context.test.ts`
@@ -390,9 +421,105 @@ Expected: PASS (2 tests) — `context.ts` is unchanged; this confirms the split 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add supabase/functions/retrieve-memory/index.ts supabase/config.toml
-git commit -m "feat: retrieve-memory handler with auth, ownership, input caps"
+git add supabase/functions/retrieve-memory/index.ts supabase/config.toml supabase/functions/retrieve-memory/deno.lock
+git commit -m "feat: retrieve-memory handler with auth, ownership, input caps, telemetry"
 ```
+
+---
+
+## Task 3b: Server-side rate limiting (DB-backed fixed window)
+
+The Flutter over-call guardrails only constrain the honest app. A user with a valid JWT can call the function directly and bypass them, so the function must check a **durable, shared** counter before doing expensive retrieval. A fixed-window counter in Postgres (one row per user per window) is checked via an RPC right after auth, before ownership/retrieval.
+
+**Files:**
+- Create: `supabase/migrations/20260626000000_retrieve_rate_limits.sql`
+- Modify: `supabase/functions/retrieve-memory/index.ts`
+
+- [ ] **Step 1: Write the migration (table + RLS + bump RPC)**
+
+Create `supabase/migrations/20260626000000_retrieve_rate_limits.sql`:
+
+```sql
+-- Per-user fixed-window rate limiting for the retrieve-memory edge function.
+create table public.retrieve_rate_limits (
+  user_id      uuid not null references auth.users(id) on delete cascade,
+  window_start timestamptz not null,
+  count        int not null default 0,
+  primary key (user_id, window_start)
+);
+
+alter table public.retrieve_rate_limits enable row level security;
+
+create policy "owner all" on public.retrieve_rate_limits
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+-- Atomically bump the caller's counter for the current fixed window and report
+-- whether they are still within the limit. SECURITY INVOKER so auth.uid() is the
+-- caller and RLS applies (a user can only touch their own rows).
+create or replace function public.bump_retrieve_rate(p_window_seconds int, p_limit int)
+returns boolean
+language plpgsql
+security invoker
+as $$
+declare
+  v_window timestamptz := to_timestamp(
+    floor(extract(epoch from now()) / p_window_seconds) * p_window_seconds
+  );
+  v_count int;
+begin
+  insert into public.retrieve_rate_limits (user_id, window_start, count)
+    values (auth.uid(), v_window, 1)
+  on conflict (user_id, window_start)
+    do update set count = public.retrieve_rate_limits.count + 1
+  returning count into v_count;
+  return v_count <= p_limit;
+end;
+$$;
+
+grant execute on function public.bump_retrieve_rate(int, int) to authenticated;
+```
+
+- [ ] **Step 2: Apply the migration locally and verify it succeeds**
+
+Run: `supabase migration up` (or `supabase db reset` for a clean apply).
+Expected: applies without error; `\d public.retrieve_rate_limits` shows the table and the RLS policy.
+
+- [ ] **Step 3: Add the rate check to the handler**
+
+In `supabase/functions/retrieve-memory/index.ts`, insert immediately **after** the invalid-session check (`if (userErr || !user) return json(401, …)`) and **before** `const body = JSON.parse(raw)`:
+
+```ts
+    // Server-side rate limit BEFORE any expensive work. Durable + per-user, so a
+    // direct JWT caller cannot bypass it the way the Flutter guardrails allow.
+    const RATE_WINDOW_SECONDS = 60;
+    const RATE_LIMIT = 30;
+    const { data: allowed, error: rateErr } = await supa.rpc("bump_retrieve_rate", {
+      p_window_seconds: RATE_WINDOW_SECONDS,
+      p_limit: RATE_LIMIT,
+    });
+    if (rateErr) {
+      logTelemetry({ ok: false, error: "rate_check_failed", latencyMs: Date.now() - startedAt });
+      return json(500, { error: "rate check failed" });
+    }
+    if (allowed === false) {
+      logTelemetry({ ok: false, error: "rate_limited", latencyMs: Date.now() - startedAt });
+      return json(429, { error: "rate limit exceeded" });
+    }
+```
+
+- [ ] **Step 4: Typecheck**
+
+Run: `deno check --import-map supabase/functions/retrieve-memory/deno.json supabase/functions/retrieve-memory/index.ts`
+Expected: no type errors.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add supabase/migrations/20260626000000_retrieve_rate_limits.sql supabase/functions/retrieve-memory/index.ts
+git commit -m "feat: per-user server-side rate limit for retrieve-memory"
+```
+
+> **Cleanup note (minor follow-up, not blocking):** old window rows accumulate at one row per user per minute. A periodic `delete from retrieve_rate_limits where window_start < now() - interval '1 day'` (pg_cron or a scheduled function) keeps the table small. Out of scope for Phase 1.
 
 ---
 
@@ -404,8 +531,10 @@ No TDD — this validates the deployed bundle (esm.sh resolution + Orama/graphol
 
 - [ ] **Step 1: Deploy**
 
-Run: `supabase functions deploy retrieve-memory`
+Run: `supabase functions deploy retrieve-memory --import-map supabase/functions/retrieve-memory/deno.json`
 Expected: deploy succeeds; no "module not found" for `@orama/orama` / `graphology` / `graphology-communities-louvain`.
+
+> The `--import-map` flag is **required**. `supabase functions deploy` does not implicitly use the function-dir `deno.json` for resolution (verified against Supabase CLI 2.75.0 — `--import-map string  Path to import map file.`). Without it, local `deno check`/`deno test` pass but the deployed bundle fails to resolve the bare specifiers at cold-start. Alternatively, set `import_map` under `[functions.retrieve-memory]` in `config.toml`; the flag is the explicit, verifiable choice.
 
 - [ ] **Step 2: Capture a real JWT**
 
@@ -423,7 +552,17 @@ Expected: `{"context":"## Entities\n- Atlas (project) [mentions: 2]"}`.
 
 - [ ] **Step 4: Verify the guards**
 
-Run the same curl with (a) no `notebookId` → expect `400`; (b) a notebook id the user doesn't own → expect `404`; (c) no `Authorization` header → expect `401`.
+Run the same curl with (a) no `notebookId` → expect `400`; (b) a notebook id the user doesn't own → expect `404`; (c) no `Authorization` header → expect `401`; (d) the same valid call in a tight loop more than `RATE_LIMIT` (30) times within a minute → the calls past the limit return `429`.
+
+Example for (d):
+```bash
+for i in $(seq 1 35); do
+  curl -s -o /dev/null -w "%{http_code}\n" -X POST "$SUPABASE_URL/functions/v1/retrieve-memory" \
+    -H "Authorization: Bearer $JWT" -H "apikey: $ANON" -H "Content-Type: application/json" \
+    -d '{"query":"atlas","notebookId":"<owned-id>","state":{"entities":{},"relations":{},"entries":[]}}'
+done
+```
+Expected: the first 30 print `200`, the remainder print `429`.
 
 - [ ] **Step 5: Commit (notes only, if any config changed)**
 
@@ -528,6 +667,8 @@ Expected: FAIL — `stateToGraphloop` / `retrieve_memory_service.dart` not found
 Create `lib/services/retrieve_memory_service.dart`:
 
 ```dart
+import 'dart:developer' as developer;
+
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/entity.dart';
@@ -595,6 +736,15 @@ class RetrieveMemoryService {
   }) async {
     final q = query.trim();
     if (q.length < 2) return '';
+    final startedAt = DateTime.now();
+
+    // Non-sensitive telemetry: outcome + counts only, never query/context text.
+    void emit(String outcome, int contextLength) => developer.log(
+          'outcome=$outcome qLen=${q.length} contextLen=$contextLength '
+          'latencyMs=${DateTime.now().difference(startedAt).inMilliseconds}',
+          name: 'lumen.memory',
+        );
+
     try {
       final res = await _client.functions.invoke(
         'retrieve-memory',
@@ -606,10 +756,14 @@ class RetrieveMemoryService {
       );
       final data = res.data;
       if (data is Map && data['context'] is String) {
-        return data['context'] as String;
+        final context = data['context'] as String;
+        emit(context.isEmpty ? 'empty' : 'ok', context.length);
+        return context;
       }
+      emit('malformed', 0);
       return '';
     } catch (_) {
+      emit('error', 0);
       return '';
     }
   }
@@ -731,8 +885,11 @@ The client wires `..onTurnComplete = () {}`. Replace it with:
 ```dart
         ..onTurnComplete = () {
           _memoryCallsThisTurn = 0;
+          _lastMemoryQuery = null;
         }
 ```
+
+Resetting **both** is load-bearing: `_lastMemoryQuery` dedups only *immediate* repeat calls within a single planning turn. Without the reset, a legitimate later turn asking about the same entity/topic would be suppressed for the rest of the session (returning empty context despite a real recall need).
 
 - [ ] **Step 5: Route the tool call**
 
@@ -837,6 +994,6 @@ Verify that recall only surfaces entities from the current session's notebook (P
 
 ## Self-Review Notes (completed by plan author)
 
-- **Spec coverage:** §5.1 edge function → Tasks 2–4; §5.2 service/serializer/guardrails/fail-closed → Tasks 5, 7; §5.3 prompt + wiring → Tasks 6, 7; §6 Deno resolution (4 specifiers, extensionless imports, embed stub) → Task 1; §7 no-sources egress + no logging → Tasks 2, 3, 8; §8 input caps + over-call guardrails → Tasks 3, 7; §11 prerequisite → noted, out of scope; §12 tests → Tasks 2, 5, 8; §13 gate → covered across tasks.
+- **Spec coverage:** §5.1 edge function → Tasks 2, 3, 3b; §5.2 service/serializer/guardrails/fail-closed → Tasks 5, 7; §5.3 prompt + wiring → Tasks 6, 7; §6 Deno resolution (4 specifiers, extensionless imports, embed stub) + pinned deploy import-map + committed lock → Tasks 1, 3 (Step 4b), 4 (Step 1); §7 no-sources egress + no body/context logging → Tasks 2, 3, 8; §8 input caps → Task 3, over-call guardrails (per-turn, reset on turn complete) → Task 7, **server-side rate limit** → Task 3b, **fail-closed telemetry** (structured non-sensitive logs, edge + Dart) → Tasks 3, 5; §11 prerequisite → noted, out of scope; §12 tests → Tasks 2, 5, 8 + rate-limit/429 smoke → Task 4; §13 gate → covered across tasks.
 - **Type consistency:** `buildContext` (Tasks 2–3), `stateToGraphloop` + `RetrieveMemoryService.retrieve` (Tasks 5, 7), `_retrieveMemory` (Task 7) names are consistent across references. Wire key `notebookId` used uniformly. Function returns `{ context }`; Dart reads `data['context']`.
 - **No placeholders:** every code step shows complete code; every run step shows the command + expected output.
