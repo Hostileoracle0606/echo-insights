@@ -5,3 +5,6 @@ verify_jwt = true
 
 [functions.speak-agent]
 verify_jwt = true
+
+[functions.retrieve-memory]
+verify_jwt = true
