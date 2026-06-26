@@ -429,7 +429,7 @@ git commit -m "feat: retrieve-memory handler with auth, ownership, input caps, t
 
 ## Task 3b: Server-side rate limiting (DB-backed fixed window)
 
-The Flutter over-call guardrails only constrain the honest app. A user with a valid JWT can call the function directly and bypass them, so the function must check a **durable, shared** counter before doing expensive retrieval. A fixed-window counter in Postgres (one row per user per window) is checked via an RPC right after auth, before ownership/retrieval.
+The Flutter over-call guardrails only constrain the honest app. A user with a valid JWT can call the function directly and bypass them, so the function must check a **durable, shared** counter before the expensive retrieval. Two fixed-window counters in Postgres — one per **user**, one per **notebook/session** — are bumped via a single RPC after auth + ownership and before retrieval (ownership is a cheap indexed lookup; the graphloop work is what we gate). The counter table is **operational state, not user data**: clients get no direct access (RLS enabled with no policy + revoked grants), and only a `SECURITY DEFINER` RPC may touch it — so a user cannot reset or inflate their own counter.
 
 **Files:**
 - Create: `supabase/migrations/20260626000000_retrieve_rate_limits.sql`
@@ -440,62 +440,90 @@ The Flutter over-call guardrails only constrain the honest app. A user with a va
 Create `supabase/migrations/20260626000000_retrieve_rate_limits.sql`:
 
 ```sql
--- Per-user fixed-window rate limiting for the retrieve-memory edge function.
+-- Fixed-window rate limiting for the retrieve-memory edge function.
+-- Operational state, NOT user data: clients get zero direct access. Rows are
+-- keyed by an opaque scope string ('user:<uid>' or 'notebook:<id>') and may be
+-- touched only by the SECURITY DEFINER RPC below.
 create table public.retrieve_rate_limits (
-  user_id      uuid not null references auth.users(id) on delete cascade,
+  scope        text not null,
   window_start timestamptz not null,
   count        int not null default 0,
-  primary key (user_id, window_start)
+  primary key (scope, window_start)
 );
 
+-- RLS on + no policy = no direct row access for anon/authenticated. The revokes
+-- below are belt-and-suspenders against PostgREST exposure.
 alter table public.retrieve_rate_limits enable row level security;
+revoke all on table public.retrieve_rate_limits from anon, authenticated;
 
-create policy "owner all" on public.retrieve_rate_limits
-  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
-
--- Atomically bump the caller's counter for the current fixed window and report
--- whether they are still within the limit. SECURITY INVOKER so auth.uid() is the
--- caller and RLS applies (a user can only touch their own rows).
-create or replace function public.bump_retrieve_rate(p_window_seconds int, p_limit int)
-returns boolean
+-- Atomically bump the caller's per-user AND per-notebook counters for the
+-- current window and report whether BOTH are within their limits.
+-- SECURITY DEFINER (runs as owner, bypassing RLS) so the caller cannot mutate
+-- the counters directly. Fixed search_path is mandatory for DEFINER safety.
+-- auth.uid() reads the request JWT claim and works under DEFINER.
+create or replace function public.bump_retrieve_rate(
+  p_window_seconds int,
+  p_user_limit int,
+  p_notebook_id uuid,
+  p_notebook_limit int
+) returns boolean
 language plpgsql
-security invoker
+security definer
+set search_path = public, pg_temp
 as $$
 declare
+  v_uid uuid := auth.uid();
   v_window timestamptz := to_timestamp(
     floor(extract(epoch from now()) / p_window_seconds) * p_window_seconds
   );
-  v_count int;
+  v_user_count int;
+  v_nb_count int;
 begin
-  insert into public.retrieve_rate_limits (user_id, window_start, count)
-    values (auth.uid(), v_window, 1)
-  on conflict (user_id, window_start)
-    do update set count = public.retrieve_rate_limits.count + 1
-  returning count into v_count;
-  return v_count <= p_limit;
+  if v_uid is null then
+    return false;
+  end if;
+
+  insert into public.retrieve_rate_limits (scope, window_start, count)
+    values ('user:' || v_uid::text, v_window, 1)
+  on conflict (scope, window_start)
+    do update set count = retrieve_rate_limits.count + 1
+  returning count into v_user_count;
+
+  insert into public.retrieve_rate_limits (scope, window_start, count)
+    values ('notebook:' || p_notebook_id::text, v_window, 1)
+  on conflict (scope, window_start)
+    do update set count = retrieve_rate_limits.count + 1
+  returning count into v_nb_count;
+
+  return v_user_count <= p_user_limit and v_nb_count <= p_notebook_limit;
 end;
 $$;
 
-grant execute on function public.bump_retrieve_rate(int, int) to authenticated;
+-- Execute granted ONLY to authenticated; revoke the default public grant.
+revoke all on function public.bump_retrieve_rate(int, int, uuid, int) from public, anon;
+grant execute on function public.bump_retrieve_rate(int, int, uuid, int) to authenticated;
 ```
 
 - [ ] **Step 2: Apply the migration locally and verify it succeeds**
 
 Run: `supabase migration up` (or `supabase db reset` for a clean apply).
-Expected: applies without error; `\d public.retrieve_rate_limits` shows the table and the RLS policy.
+Expected: applies without error; `\d public.retrieve_rate_limits` shows the table with RLS enabled and **no** policies, and `\df public.bump_retrieve_rate` shows it as `security definer`.
 
 - [ ] **Step 3: Add the rate check to the handler**
 
-In `supabase/functions/retrieve-memory/index.ts`, insert immediately **after** the invalid-session check (`if (userErr || !user) return json(401, …)`) and **before** `const body = JSON.parse(raw)`:
+In `supabase/functions/retrieve-memory/index.ts`, insert the rate check **after** the notebook-ownership block (`if (nbErr || !nb) return json(404, …)`) and **before** `const query = (body.query ?? "").trim();`. Ownership is a cheap indexed lookup, so this still gates all expensive retrieval work, and `notebookId` is now in scope for the per-notebook counter:
 
 ```ts
-    // Server-side rate limit BEFORE any expensive work. Durable + per-user, so a
+    // Durable, per-user AND per-notebook rate limit, enforced server-side so a
     // direct JWT caller cannot bypass it the way the Flutter guardrails allow.
     const RATE_WINDOW_SECONDS = 60;
-    const RATE_LIMIT = 30;
+    const RATE_USER_LIMIT = 30;
+    const RATE_NOTEBOOK_LIMIT = 20;
     const { data: allowed, error: rateErr } = await supa.rpc("bump_retrieve_rate", {
       p_window_seconds: RATE_WINDOW_SECONDS,
-      p_limit: RATE_LIMIT,
+      p_user_limit: RATE_USER_LIMIT,
+      p_notebook_id: notebookId,
+      p_notebook_limit: RATE_NOTEBOOK_LIMIT,
     });
     if (rateErr) {
       logTelemetry({ ok: false, error: "rate_check_failed", latencyMs: Date.now() - startedAt });
@@ -519,7 +547,7 @@ git add supabase/migrations/20260626000000_retrieve_rate_limits.sql supabase/fun
 git commit -m "feat: per-user server-side rate limit for retrieve-memory"
 ```
 
-> **Cleanup note (minor follow-up, not blocking):** old window rows accumulate at one row per user per minute. A periodic `delete from retrieve_rate_limits where window_start < now() - interval '1 day'` (pg_cron or a scheduled function) keeps the table small. Out of scope for Phase 1.
+> **Cleanup note (minor follow-up, not blocking):** old window rows accumulate at roughly one row per active user and one per active notebook per minute. A periodic `delete from retrieve_rate_limits where window_start < now() - interval '1 day'` (pg_cron or a scheduled function) keeps the table small. Out of scope for Phase 1.
 
 ---
 
@@ -552,7 +580,7 @@ Expected: `{"context":"## Entities\n- Atlas (project) [mentions: 2]"}`.
 
 - [ ] **Step 4: Verify the guards**
 
-Run the same curl with (a) no `notebookId` → expect `400`; (b) a notebook id the user doesn't own → expect `404`; (c) no `Authorization` header → expect `401`; (d) the same valid call in a tight loop more than `RATE_LIMIT` (30) times within a minute → the calls past the limit return `429`.
+Run the same curl with (a) no `notebookId` → expect `400`; (b) a notebook id the user doesn't own → expect `404`; (c) no `Authorization` header → expect `401`; (d) the same valid call (same `notebookId`) in a tight loop more than `RATE_NOTEBOOK_LIMIT` (20) times within a minute → calls past the per-notebook limit return `429`.
 
 Example for (d):
 ```bash
@@ -562,7 +590,7 @@ for i in $(seq 1 35); do
     -d '{"query":"atlas","notebookId":"<owned-id>","state":{"entities":{},"relations":{},"entries":[]}}'
 done
 ```
-Expected: the first 30 print `200`, the remainder print `429`.
+Expected: the first 20 print `200`, the remainder print `429` (the per-notebook limit of 20 trips before the per-user limit of 30).
 
 - [ ] **Step 5: Commit (notes only, if any config changed)**
 
@@ -994,6 +1022,6 @@ Verify that recall only surfaces entities from the current session's notebook (P
 
 ## Self-Review Notes (completed by plan author)
 
-- **Spec coverage:** §5.1 edge function → Tasks 2, 3, 3b; §5.2 service/serializer/guardrails/fail-closed → Tasks 5, 7; §5.3 prompt + wiring → Tasks 6, 7; §6 Deno resolution (4 specifiers, extensionless imports, embed stub) + pinned deploy import-map + committed lock → Tasks 1, 3 (Step 4b), 4 (Step 1); §7 no-sources egress + no body/context logging → Tasks 2, 3, 8; §8 input caps → Task 3, over-call guardrails (per-turn, reset on turn complete) → Task 7, **server-side rate limit** → Task 3b, **fail-closed telemetry** (structured non-sensitive logs, edge + Dart) → Tasks 3, 5; §11 prerequisite → noted, out of scope; §12 tests → Tasks 2, 5, 8 + rate-limit/429 smoke → Task 4; §13 gate → covered across tasks.
+- **Spec coverage:** §5.1 edge function → Tasks 2, 3, 3b; §5.2 service/serializer/guardrails/fail-closed → Tasks 5, 7; §5.3 prompt + wiring → Tasks 6, 7; §6 Deno resolution (4 specifiers, extensionless imports, embed stub) + pinned deploy import-map + committed lock → Tasks 1, 3 (Step 4b), 4 (Step 1); §7 no-sources egress + no body/context logging → Tasks 2, 3, 8; §8 input caps → Task 3, over-call guardrails (per-turn, reset on turn complete) → Task 7, **server-side rate limit** (per-user + per-notebook, tamper-proof SECURITY DEFINER RPC) → Task 3b, **fail-closed telemetry** (structured non-sensitive logs, edge + Dart) → Tasks 3, 5; §11 prerequisite → noted, out of scope; §12 tests → Tasks 2, 5, 8 + rate-limit/429 smoke → Task 4; §13 gate → covered across tasks.
 - **Type consistency:** `buildContext` (Tasks 2–3), `stateToGraphloop` + `RetrieveMemoryService.retrieve` (Tasks 5, 7), `_retrieveMemory` (Task 7) names are consistent across references. Wire key `notebookId` used uniformly. Function returns `{ context }`; Dart reads `data['context']`.
 - **No placeholders:** every code step shows complete code; every run step shows the command + expected output.
