@@ -63,6 +63,22 @@ serve(async (req) => {
       .from("notebooks").select("id").eq("id", notebookId).single();
     if (nbErr || !nb) return json(404, { error: "notebook not found" });
 
+    // Durable, per-user AND per-notebook rate limit, enforced server-side so a
+    // direct JWT caller cannot bypass it the way the Flutter guardrails allow.
+    // Window + limits live in the DB function; the client controls nothing, and
+    // the function verifies notebook ownership itself.
+    const { data: allowed, error: rateErr } = await supa.rpc("bump_retrieve_rate", {
+      p_notebook_id: notebookId,
+    });
+    if (rateErr) {
+      logTelemetry({ ok: false, error: "rate_check_failed", latencyMs: Date.now() - startedAt });
+      return json(500, { error: "rate check failed" });
+    }
+    if (allowed === false) {
+      logTelemetry({ ok: false, error: "rate_limited", latencyMs: Date.now() - startedAt });
+      return json(429, { error: "rate limit exceeded" });
+    }
+
     const query = (body.query ?? "").trim();
     const entities = body.state?.entities ?? {};
     const relations = body.state?.relations ?? {};
