@@ -562,24 +562,64 @@ git commit -m "feat: per-user server-side rate limit for retrieve-memory"
 
 ---
 
-## Task 4: Deploy & smoke-test the edge function (manual)
+## Task 4: Deploy & smoke-test the edge function (manual — requires correct CLI account)
 
-No TDD — this validates the deployed bundle (esm.sh resolution + Orama/graphology in Deno surface only at cold-start, spec §6).
+No TDD — this validates the deployed bundle (esm.sh resolution + Orama/graphology in Deno surface only at cold-start, spec §6) and the live DB migration.
 
-**Files:** none.
+**Files:** none. **All steps mutate the LIVE backend — run only against the app's real project.**
 
-- [ ] **Step 1: Deploy**
+> ### ⛔ DEPLOY PREFLIGHT (MANDATORY — do not skip)
+> The deploy target **must** equal the app's project ref everywhere:
+> ```text
+> supabase/config.toml  project_id          = bjoevzvsdlhlcjywpyfx
+> .env  VITE_SUPABASE_PROJECT_ID / SUPABASE_URL  → bjoevzvsdlhlcjywpyfx
+> Flutter app SUPABASE_URL                  → bjoevzvsdlhlcjywpyfx
+> ```
+> **Do not run any migration/function deploy unless `supabase projects list` includes `bjoevzvsdlhlcjywpyfx`.** As of 2026-06-26 the logged-in CLI account only saw `giyjrvixpbfnourkpsen` ("AI-journal"); deploying from that session would update the WRONG project — the deploy would look "successful" but the app (still calling `bjoevzvsdlhlcjywpyfx`) would see no change, and Tasks 4/8 would fail in the real app. If the CLI only sees another project, **STOP** and treat Tasks 4/8 as BLOCKED, or treat `giyjrvixpbfnourkpsen` as explicit *staging* (separate staging env values, never called live/prod).
 
-Run: `supabase functions deploy retrieve-memory --import-map supabase/functions/retrieve-memory/deno.json`
+- [ ] **Step 0: Preflight — make CLI access match the app project**
+
+```bash
+supabase projects list   # must include bjoevzvsdlhlcjywpyfx
+# if it does not, switch to an account that has access:
+supabase logout && supabase login && supabase projects list
+supabase link --project-ref bjoevzvsdlhlcjywpyfx
+```
+Proceed only once `bjoevzvsdlhlcjywpyfx` is visible AND linked.
+
+- [ ] **Step 1: Apply the rate-limit migration to the live DB**
+
+```bash
+supabase db push --dry-run    # review the SQL that will run
+supabase db push              # applies 20260626000000_retrieve_rate_limits.sql
+```
+Expected: the `retrieve_rate_limits` table + `bump_retrieve_rate(uuid)` function are created. (This is the live-DB equivalent of Task 3b Step 2, which could not run locally without Docker.)
+
+- [ ] **Step 2: Deploy the function**
+
+Run: `supabase functions deploy retrieve-memory --project-ref bjoevzvsdlhlcjywpyfx --import-map supabase/functions/retrieve-memory/deno.json`
 Expected: deploy succeeds; no "module not found" for `@orama/orama` / `graphology` / `graphology-communities-louvain`.
 
-> The `--import-map` flag is **required**. `supabase functions deploy` does not implicitly use the function-dir `deno.json` for resolution (verified against Supabase CLI 2.75.0 — `--import-map string  Path to import map file.`). Without it, local `deno check`/`deno test` pass but the deployed bundle fails to resolve the bare specifiers at cold-start. Alternatively, set `import_map` under `[functions.retrieve-memory]` in `config.toml`; the flag is the explicit, verifiable choice.
+> `--project-ref` pins the target explicitly (defense against the account/project mismatch above). `--import-map` is **required**: `supabase functions deploy` does not implicitly use the function-dir `deno.json` for resolution (verified against Supabase CLI 2.75.0). Without it the deployed bundle fails to resolve the bare specifiers at cold-start.
 
-- [ ] **Step 2: Capture a real JWT**
+- [ ] **Step 3: Capture a real user JWT**
 
-In the running app (or via `supabase` auth), obtain a logged-in user's access token. Export it: `export JWT=<token>` and `export SUPABASE_URL=<project-url>` and `export ANON=<anon-key>`.
+Set the project values, then mint an access token. The anon key alone is NOT a user JWT — the function calls `auth.getUser()`. Either sign in an existing user (password grant) or sign up a throwaway test user:
 
-- [ ] **Step 3: Smoke-test a valid call**
+```bash
+export SUPABASE_URL="https://bjoevzvsdlhlcjywpyfx.supabase.co"
+export ANON="<anon/publishable key from .env>"
+# existing user (password grant):
+JWT=$(curl -s -X POST "$SUPABASE_URL/auth/v1/token?grant_type=password" \
+  -H "apikey: $ANON" -H "Content-Type: application/json" \
+  -d '{"email":"<user-email>","password":"<password>"}' | jq -r .access_token)
+# OR throwaway test user (writes to live auth.users — clean it up after):
+#   POST "$SUPABASE_URL/auth/v1/signup" with the same headers/body → returns access_token
+export JWT
+```
+You also need an **owned notebook id** for that user (query `notebooks` for `user_id = <that user>`, or create one).
+
+- [ ] **Step 4: Smoke-test a valid call**
 
 Run:
 ```bash
@@ -589,7 +629,7 @@ curl -s -X POST "$SUPABASE_URL/functions/v1/retrieve-memory" \
 ```
 Expected: `{"context":"## Entities\n- Atlas (project) [mentions: 2]"}`.
 
-- [ ] **Step 4: Verify the guards**
+- [ ] **Step 5: Verify the guards**
 
 Run the same curl with (a) no `notebookId` → expect `400`; (b) a notebook id the user doesn't own → expect `404`; (c) no `Authorization` header → expect `401`; (d) the same valid call (same `notebookId`) in a tight loop more than the per-notebook limit (20, hardcoded in the DB function) times within a minute → calls past the limit return `429`.
 
@@ -603,7 +643,7 @@ done
 ```
 Expected: the first 20 print `200`, the remainder print `429` (the per-notebook limit of 20 trips before the per-user limit of 30).
 
-- [ ] **Step 4b: Security — direct-RPC griefing is blocked**
+- [ ] **Step 5b: Security — direct-RPC griefing is blocked**
 
 Call the rate-limit RPC directly (bypassing the edge function) with a notebook UUID the JWT's user does NOT own:
 
