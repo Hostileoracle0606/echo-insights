@@ -572,6 +572,13 @@ returns void language sql security definer set search_path = public, pg_temp as 
     where e.notebook_id = ee.notebook_id and e.id = ee.entity_id);
 $$;
 
+-- Privileged helpers: Postgres grants EXECUTE to PUBLIC by default and Supabase
+-- can expose public functions as RPCs. Revoke so no user can trigger a
+-- system-wide sweep or a privileged delete. cron (function owner) still runs them.
+revoke all on function public.enqueue_embed_entities() from public, anon, authenticated;
+revoke all on function public.embed_reconcile_sweep() from public, anon, authenticated;
+revoke all on function public.embed_orphan_prune() from public, anon, authenticated;
+
 -- Reconcile is a full sweep now → every 15 min (trigger handles the hot path).
 select cron.schedule('embed-reconcile', '*/15 * * * *', 'select public.embed_reconcile_sweep()');
 select cron.schedule('embed-orphan-prune', '*/30 * * * *', 'select public.embed_orphan_prune()');
@@ -661,8 +668,8 @@ Replace it with (embed query → service-role match → `extraSeeds`; fail-close
 
 - [ ] **Step 3: Typecheck + no-regression on the context tests**
 
-Run: `~/.deno/bin/deno check supabase/functions/retrieve-memory/index.ts`
-Expected: no new errors in `index.ts` (the known graphology `communities.ts` type errors may remain).
+Run: `~/.deno/bin/deno check --import-map supabase/functions/retrieve-memory/deno.json supabase/functions/retrieve-memory/index.ts`
+Expected: **exit 0, clean.** With the import map, graphology resolves from esm.sh (clean types) instead of the shadowing `node_modules` copy — so this is a real pass/fail signal (verified: the no-import-map form exits nonzero, this form exits 0).
 Run: `~/.deno/bin/deno test supabase/functions/retrieve-memory/context.test.ts`
 Expected: 2 passed (context builder unchanged).
 
@@ -683,12 +690,21 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 
 - [ ] **Step 1: Set secrets + settings**
 
+Capture the secret **once** into a shell var and reuse it for both the function
+secret and the DB GUC — never re-generate it per command (that guarantees a
+mismatch). `$DB_URL` is the project's Postgres connection string.
+
 ```bash
-supabase secrets set EMBED_INTERNAL_SECRET="$(openssl rand -hex 32)" --project-ref bjoevzvsdlhlcjywpyfx
-# SUPABASE_SERVICE_ROLE_KEY is injected into functions by the platform.
-# Set the DB settings the trigger reads (psql to the project):
-#   alter database postgres set app.embed_entities_url = 'https://bjoevzvsdlhlcjywpyfx.supabase.co/functions/v1/embed-entities';
-#   alter database postgres set app.embed_internal_secret = '<same value as EMBED_INTERNAL_SECRET>';
+SECRET="$(openssl rand -hex 32)"
+
+# 1) Function secret (embed-entities reads EMBED_INTERNAL_SECRET):
+supabase secrets set EMBED_INTERNAL_SECRET="$SECRET" --project-ref bjoevzvsdlhlcjywpyfx
+# (SUPABASE_SERVICE_ROLE_KEY is injected into functions by the platform.)
+
+# 2) DB settings the trigger/cron read — SAME $SECRET, no manual copy:
+psql "$DB_URL" -c "alter database postgres set app.embed_entities_url = 'https://bjoevzvsdlhlcjywpyfx.supabase.co/functions/v1/embed-entities';"
+psql "$DB_URL" -c "alter database postgres set app.embed_internal_secret = '$SECRET';"
+# New settings apply to new sessions; cron/pg_net pick them up on next run.
 ```
 
 - [ ] **Step 2: Apply migrations**
