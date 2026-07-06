@@ -411,8 +411,17 @@ serve(async (req) => {
   );
   const embedder = new GteSmallEmbedder();
 
+  // Every DB op checks `error` — a failed cast/privilege/service-role issue must
+  // NOT be reported as success (embedded: N), or retries + live checks go blind.
+  // Log a non-sensitive stage + SQLSTATE only (never row content).
+  const fail = (stage: string, code: unknown) => {
+    console.error(`embed-entities stage=${stage} code=${code}`);
+    return Response.json({ ok: false, stage, code }, { status: 500 });
+  };
+
   // Authoritative owner from notebooks (NOT from entity rows).
-  const { data: nb } = await admin.from("notebooks").select("user_id").eq("id", notebookId).single();
+  const { data: nb, error: nbErr } = await admin.from("notebooks").select("user_id").eq("id", notebookId).single();
+  if (nbErr) return fail("notebook", nbErr.code);
   if (!nb) return Response.json({ ok: false, reason: "notebook gone" });
   const owner = nb.user_id as string;
 
@@ -421,18 +430,21 @@ serve(async (req) => {
   // notebook_id. Embedding only the owner's own rows neutralizes that here.
   // (Hardening the entities insert/update policy to also check notebook
   // ownership is the deeper pre-existing fix, tracked separately in the spec.)
-  const { data: entities } = await admin
+  const { data: entities, error: entErr } = await admin
     .from("entities").select("id,name,description").eq("notebook_id", notebookId).eq("user_id", owner);
+  if (entErr) return fail("entities", entErr.code);
   const rows = entities ?? [];
-  const { data: existing } = await admin
+  const { data: existing, error: exErr } = await admin
     .from("entity_embeddings").select("entity_id,content_hash,embedding_model").eq("notebook_id", notebookId);
+  if (exErr) return fail("existing", exErr.code);
   const have = new Map((existing ?? []).map((r) => [r.entity_id, r]));
 
   // Prune orphans for this notebook.
   const currentIds = new Set(rows.map((r) => r.id));
   const orphans = (existing ?? []).map((r) => r.entity_id).filter((id) => !currentIds.has(id));
   if (orphans.length) {
-    await admin.from("entity_embeddings").delete().eq("notebook_id", notebookId).in("entity_id", orphans);
+    const { error: delErr } = await admin.from("entity_embeddings").delete().eq("notebook_id", notebookId).in("entity_id", orphans);
+    if (delErr) return fail("prune", delErr.code);
   }
 
   // Stale = missing OR content changed OR model changed.
@@ -448,13 +460,14 @@ serve(async (req) => {
   const batch = stale.slice(0, CHUNK);
   if (batch.length) {
     const vecs = await embedder.embed(batch.map((s) => `${s.name}\n${s.description ?? ""}`));
-    await admin.from("entity_embeddings").upsert(
+    const { error: upErr } = await admin.from("entity_embeddings").upsert(
       batch.map((s, i) => ({
         notebook_id: notebookId, entity_id: s.id, user_id: owner,
         embedding: JSON.stringify(vecs[i]), embedding_model: embedder.modelId, content_hash: s.hash,
         updated_at: new Date().toISOString(),
       })),
     );
+    if (upErr) return fail("upsert", upErr.code);   // a vector-cast/privilege failure is NOT a success
   }
 
   // Continuation: more remain → re-enqueue self via fetch (NOT net.http_post,
@@ -523,7 +536,8 @@ declare
   v_secret text := current_setting('app.embed_internal_secret', true);
 begin
   -- Config not set yet → skip quietly (never break the save); cron reconcile covers it.
-  if v_url is null or v_url = '' then return null; end if;
+  -- Guard BOTH: an empty secret would POST a blank x-internal-secret → 403 storm.
+  if v_url is null or v_url = '' or v_secret is null or v_secret = '' then return null; end if;
   for r in select distinct notebook_id from new_rows loop
     perform net.http_post(
       url     := v_url,
@@ -553,7 +567,7 @@ declare
   v_url text := current_setting('app.embed_entities_url', true);
   v_secret text := current_setting('app.embed_internal_secret', true);
 begin
-  if v_url is null or v_url = '' then return; end if;
+  if v_url is null or v_url = '' or v_secret is null or v_secret = '' then return; end if;
   for r in select distinct notebook_id from public.entities loop
     perform net.http_post(
       url     := v_url,
