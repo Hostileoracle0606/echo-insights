@@ -101,12 +101,13 @@ create extension if not exists vector;
 create extension if not exists pg_net;
 
 create table public.entity_embeddings (
-  notebook_id  uuid not null references public.notebooks(id) on delete cascade,
-  entity_id    text not null,
-  user_id      uuid not null references auth.users(id) on delete cascade,
-  embedding    vector(384) not null,
-  content_hash text not null,
-  updated_at   timestamptz not null default now(),
+  notebook_id     uuid not null references public.notebooks(id) on delete cascade,
+  entity_id       text not null,
+  user_id         uuid not null references auth.users(id) on delete cascade,
+  embedding       vector(384) not null,
+  embedding_model text not null,        -- e.g. 'gte-small@1'; bump on any model/weight change
+  content_hash    text not null,        -- hash(name + "\n" + description)
+  updated_at      timestamptz not null default now(),
   primary key (notebook_id, entity_id)
 );
 
@@ -133,8 +134,8 @@ No client policy + revoked grants ⇒ a client **cannot** read or write embeddin
 - **Trigger:** `after insert on public.entities referencing new table as new_rows for each statement` → the trigger fn selects `distinct notebook_id from new_rows` and, per notebook, `net.http_post`s to `embed-entities` with `{ notebookId }` and an **internal secret header** (a Vault/DB-setting value). Fires **once per bulk save** on both apps, regardless of entity count — no per-row storm, no dependency on client-side notebook bumps. (It passes only `notebook_id` — `user_id` is resolved authoritatively below, not trusted from entity rows. A `clearState`/delete that empties a notebook does not fire this insert trigger; its orphan vectors are reclaimed by the `pg_cron` orphan sweep.)
 - **`embed-entities` edge function** (`verify_jwt = false`): validates the internal secret; uses the **service-role key** (RLS-bypassing) to reconcile the notebook. It resolves the authoritative owner from **`notebooks.user_id`** for `notebookId` — **not** from entity rows (entity RLS only checks `auth.uid() = user_id`, not that `notebook_id` is owned, so an entity row's `user_id` is not authoritative for the notebook):
   1. `select user_id from notebooks where id = notebookId` → `owner`. Read all current `entities` for `notebookId`.
-  2. Compute `content_hash = hash(name + "\n" + (description ?? ""))` per entity. Take up to **10** whose stored hash is missing or changed, embed (native `gte-small`), upsert `(notebook_id, entity_id, owner, embedding, content_hash)`.
-  3. **Continuation:** if a full batch of 10 was embedded **and** stale entities remain, **self-reenqueue** — `net.http_post` back to `embed-entities` for the same `notebookId` (internal secret). Converges in ⌈stale/10⌉ invocations, each safely under the measured ~2 s CPU limit; every invocation makes progress (≥1 embedded) so it terminates. (The `pg_cron` embed sweep is the safety net for a dropped reenqueue.)
+  2. Compute `content_hash = hash(name + "\n" + (description ?? ""))` per entity. Take up to **10** whose stored row is **missing**, whose **`content_hash` changed**, or whose **`embedding_model` ≠ the current model id**, embed (native `gte-small`), upsert `(notebook_id, entity_id, owner, embedding, embedding_model, content_hash)`. (A model or weight change ⇒ bump the model id constant ⇒ every row is stale ⇒ the backstop re-embeds the whole corpus into the new space — no silent cross-space vectors.)
+  3. **Continuation:** if a full batch of 10 was embedded **and** stale entities remain, **self-reenqueue** — the edge function `fetch()`es its own function URL for the same `notebookId` with the internal-secret header (**not** `net.http_post`, which is a Postgres/pg_net SQL function and is not callable from Deno). Converges in ⌈stale/10⌉ invocations, each safely under the measured ~2 s CPU limit; every invocation makes progress (≥1 embedded) so it terminates. (The `pg_cron` embed sweep is the safety net for a dropped reenqueue.)
   4. **Prune:** delete this notebook's `entity_embeddings` rows whose `entity_id` is no longer among its current entities.
 - **Backstop (`pg_cron`), two sweeps:** (a) **embed** — reconcile any notebook with an entity lacking a current-hash vector (covers dropped `pg_net` calls / reenqueues — fire-and-forget HTTP is best-effort); (b) **global orphan prune** — `delete from entity_embeddings ee where not exists (select 1 from entities e where e.notebook_id = ee.notebook_id and e.id = ee.entity_id)`. Sweep (b) is the only thing that reclaims orphans from a `clearState` or a save that leaves **zero** entities (those never fire the insert trigger, and an entity-driven sweep can't find them).
 - **Non-blocking:** embedding never blocks a write or read; an un-embedded entity falls back to lexical seeding until its vector lands.
@@ -146,24 +147,27 @@ The match is **server-only** — a function granted **only to `service_role`** (
 
 ```sql
 create or replace function public.match_entity_embeddings(
-  p_notebook_id uuid, p_query vector(384), p_limit int
+  p_notebook_id uuid, p_query vector(384), p_limit int, p_model text
 ) returns table (entity_id text, score float)
 language sql stable as $$
   select e.entity_id, 1 - (e.embedding <=> p_query) as score
   from public.entity_embeddings e
   where e.notebook_id = p_notebook_id
+    and e.embedding_model = p_model          -- never compare across vector spaces
   order by e.embedding <=> p_query
-  limit least(greatest(p_limit, 1), 50);   -- clamp caller-controlled limit
+  limit least(greatest(p_limit, 1), 50);     -- clamp caller-controlled limit
 $$;
-revoke all on function public.match_entity_embeddings(uuid, vector, int) from public, anon, authenticated;
-grant execute on function public.match_entity_embeddings(uuid, vector, int) to service_role;
+revoke all on function public.match_entity_embeddings(uuid, vector, int, text) from public, anon, authenticated;
+grant execute on function public.match_entity_embeddings(uuid, vector, int, text) to service_role;
 ```
+
+The `embedding_model` filter means that during a model migration, a not-yet-re-embedded entity simply contributes no semantic seed (lexical fallback) rather than a wrong-vector-space match — correct by construction.
 
 Ownership is **not** re-checked here — it's already enforced upstream by the edge fn (Phase 1's 404 ownership check + `bump_retrieve_rate`) before this runs; and the function is service-role-only so nothing else can reach it.
 
 `retrieve-memory`, after Phase 1 auth/ownership/**rate-limit** (unchanged, on the user-JWT client) and before graphloop:
 1. Embed the query via `gte-small` (1×).
-2. Using a **service-role client**, call `match_entity_embeddings(notebookId, queryVec, 12)` — `K=12` is **server-fixed**, not client-supplied.
+2. Using a **service-role client**, call `match_entity_embeddings(notebookId, queryVec, 12, currentModelId)` — `K=12` and `currentModelId` (the `Embedder`'s model id, e.g. `'gte-small@1'`) are **server-fixed**, not client-supplied.
 3. Keep hits with `score ≥ 0.7` (tunable) → build `extraSeeds: Map<entityId, score>`.
 4. Pass to `retrieve()`. On any failure (embed or query) → omit `extraSeeds` → Phase 1 lexical behavior (fail-closed, never errors).
 
@@ -175,9 +179,9 @@ Add optional `extraSeeds?: Map<string, number>` (entity-id → seed relevance in
 
 ### 5.5 `Embedder` interface (pluggable, for testability)
 
-`Embedder { embed(texts: string[]): Promise<number[][]> }`:
-- **Prod:** native `gte-small` (`Supabase.ai.Session`), used by `embed-entities` + `retrieve-memory`.
-- **Local/test:** deterministic stub (hashed token features → fixed 384-dim vector) so the eval harness + unit tests run under local `deno` (no `Supabase.ai`).
+`Embedder { readonly modelId: string; embed(texts: string[]): Promise<number[][]> }`:
+- **Prod:** native `gte-small` (`Supabase.ai.Session`), `modelId = 'gte-small@1'`, used by `embed-entities` + `retrieve-memory`. `modelId` is the single source of truth written to `embedding_model` and passed to the match — bump it on any model/weight swap.
+- **Local/test:** deterministic stub (hashed token features → fixed 384-dim vector), its own `modelId` so tests never mix spaces, so the eval harness + unit tests run under local `deno` (no `Supabase.ai`).
 
 ---
 
@@ -215,6 +219,7 @@ Measured `gte-small` ≈ 119 ms/embedding. Read path adds: 1 query embedding (~1
 - **Snapshot churn:** saves delete+insert all entities in one statement; the **statement-level** insert trigger fires once per save (client-agnostic) and the reconcile (hash-diff embed + orphan prune) keeps `entity_embeddings` consistent without a per-row storm. `pg_cron` backstops dropped `pg_net` calls and `clearState` deletes.
 - **CPU limit (measured):** `embed-entities` chunks ≤10; large notebooks reconcile across invocations.
 - **Exact scan scale ceiling:** exact per-notebook scan is 100% recall and fast at journal scale (tens of entities/notebook). If a notebook grows to thousands of entities the scan slows — the scale-up path is HNSW + `hnsw.iterative_scan` (deferred; not needed now).
+- **Model migration:** the vector space is versioned by `embedding_model`. Swapping the model (or a `gte-small` weight change) means bumping the `Embedder.modelId` constant → all rows become stale → the backstop re-embeds the corpus into the new space. The read-time `embedding_model` filter means a notebook degrades to lexical-only recall until its re-embed lands — never a cross-space match. Migrating a large corpus is bounded by the same ≤10/invocation chunking.
 - **Ranker dominance:** semantic seeds enter as seed *relevance*; the composite ranker (recency/importance/confidence) still governs final order, so a weak vector match can't dominate. Threshold + weight tunable.
 
 ---
