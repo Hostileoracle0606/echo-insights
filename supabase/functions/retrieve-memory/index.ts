@@ -5,6 +5,7 @@ import { SearchIndex } from "../_shared/graphloop/search-index.ts";
 import { buildCommunities } from "../_shared/graphloop/communities.ts";
 import type { GraphState } from "../_shared/graphloop/types.ts";
 import { buildContext } from "./context.ts";
+import { GteSmallEmbedder } from "../_shared/embedder.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -92,11 +93,38 @@ serve(async (req) => {
     }
     if (!query || Object.keys(entities).length === 0) return json(200, { context: "" });
 
+    // ── Semantic seeds (hybrid). Service-role, downstream of ownership + rate.
+    // Fail-closed: any failure → no extraSeeds → Phase 1 lexical behavior.
+    let extraSeeds: Map<string, number> | undefined;
+    try {
+      const embedder = new GteSmallEmbedder();
+      const [qvec] = await embedder.embed([query]);
+      const adminClient = createClient(
+        Deno.env.get("SUPABASE_URL")!,
+        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+      );
+      const { data: matches } = await adminClient.rpc("match_entity_embeddings", {
+        p_notebook_id: notebookId,
+        p_query: `[${qvec.join(",")}]`, // vector literal — reliable across PostgREST
+        p_limit: 12,
+        p_model: embedder.modelId,
+      });
+      if (Array.isArray(matches)) {
+        extraSeeds = new Map(
+          (matches as { entity_id: string; score: number }[])
+            .filter((m) => m.score >= 0.7)
+            .map((m) => [m.entity_id, m.score]),
+        );
+      }
+    } catch {
+      extraSeeds = undefined;
+    }
+
     const g = { entities, relations, entries } as unknown as GraphState;
     const index = new SearchIndex();
     await index.sync(Object.values(g.entities));
     const communities = buildCommunities(g);
-    const result = await retrieve(g, query, { mode: "lexical" }, { index, communities });
+    const result = await retrieve(g, query, { mode: "lexical" }, { index, communities, extraSeeds });
     const context = buildContext(result);
     logTelemetry({
       ok: true,
