@@ -130,13 +130,15 @@ No client policy + revoked grants ⇒ a client **cannot** read or write embeddin
 
 **Saves are snapshot delete+insert** ([journal-store.ts:164](../../../src/lib/journal-store.ts), [supabase_service.dart:120](../../../lib/services/supabase_service.dart)) — deleting and reinserting *all* entities in **one bulk `insert` statement**. Web `saveState` never updates `notebooks` (unlike Flutter), so a notebooks-update trigger would miss web entirely. So we trigger on the entity insert itself, at **statement** level (not per row).
 
-- **Trigger:** `after insert on public.entities referencing new table as new_rows for each statement` → the trigger fn selects `distinct notebook_id, user_id from new_rows` and, per notebook, `net.http_post`s to `embed-entities` with `{ notebookId }` and an **internal secret header** (a Vault/DB-setting value). Fires **once per bulk save** on both apps, regardless of entity count — no per-row storm, no dependency on client-side notebook bumps. (A `clearState`/delete that empties a notebook does not fire this insert trigger; its orphan vectors are pruned by the `pg_cron` backstop.)
-- **`embed-entities` edge function** (`verify_jwt = false`): validates the internal secret; uses the **service-role key** (RLS-bypassing) to reconcile the notebook — it has no end-user JWT and derives `user_id` from the entity rows themselves:
-  1. Read all current `entities` for `notebookId`.
-  2. For each, compute `content_hash = hash(name + "\n" + (description ?? ""))`. Embed (native `gte-small`) only those whose stored hash is missing or changed, **in chunks ≤ 10** (under the measured CPU limit; loop across invocations if the notebook is large). Upsert `(notebook_id, entity_id, user_id, embedding, content_hash)`.
-  3. **Prune:** delete `entity_embeddings` rows whose `entity_id` is no longer among the notebook's current entities (orphans from snapshot deletes / removed entities).
-- **Backstop:** a `pg_cron` job periodically reconciles notebooks with any entity lacking a current-hash vector (covers dropped `pg_net` calls — fire-and-forget HTTP from Postgres is best-effort).
+- **Trigger:** `after insert on public.entities referencing new table as new_rows for each statement` → the trigger fn selects `distinct notebook_id from new_rows` and, per notebook, `net.http_post`s to `embed-entities` with `{ notebookId }` and an **internal secret header** (a Vault/DB-setting value). Fires **once per bulk save** on both apps, regardless of entity count — no per-row storm, no dependency on client-side notebook bumps. (It passes only `notebook_id` — `user_id` is resolved authoritatively below, not trusted from entity rows. A `clearState`/delete that empties a notebook does not fire this insert trigger; its orphan vectors are reclaimed by the `pg_cron` orphan sweep.)
+- **`embed-entities` edge function** (`verify_jwt = false`): validates the internal secret; uses the **service-role key** (RLS-bypassing) to reconcile the notebook. It resolves the authoritative owner from **`notebooks.user_id`** for `notebookId` — **not** from entity rows (entity RLS only checks `auth.uid() = user_id`, not that `notebook_id` is owned, so an entity row's `user_id` is not authoritative for the notebook):
+  1. `select user_id from notebooks where id = notebookId` → `owner`. Read all current `entities` for `notebookId`.
+  2. Compute `content_hash = hash(name + "\n" + (description ?? ""))` per entity. Take up to **10** whose stored hash is missing or changed, embed (native `gte-small`), upsert `(notebook_id, entity_id, owner, embedding, content_hash)`.
+  3. **Continuation:** if a full batch of 10 was embedded **and** stale entities remain, **self-reenqueue** — `net.http_post` back to `embed-entities` for the same `notebookId` (internal secret). Converges in ⌈stale/10⌉ invocations, each safely under the measured ~2 s CPU limit; every invocation makes progress (≥1 embedded) so it terminates. (The `pg_cron` embed sweep is the safety net for a dropped reenqueue.)
+  4. **Prune:** delete this notebook's `entity_embeddings` rows whose `entity_id` is no longer among its current entities.
+- **Backstop (`pg_cron`), two sweeps:** (a) **embed** — reconcile any notebook with an entity lacking a current-hash vector (covers dropped `pg_net` calls / reenqueues — fire-and-forget HTTP is best-effort); (b) **global orphan prune** — `delete from entity_embeddings ee where not exists (select 1 from entities e where e.notebook_id = ee.notebook_id and e.id = ee.entity_id)`. Sweep (b) is the only thing that reclaims orphans from a `clearState` or a save that leaves **zero** entities (those never fire the insert trigger, and an entity-driven sweep can't find them).
 - **Non-blocking:** embedding never blocks a write or read; an un-embedded entity falls back to lexical seeding until its vector lands.
+- **Note (pre-existing, out of scope):** entity insert/update RLS does not verify `notebook_id` ownership. Resolving `user_id` from `notebooks` neutralizes this for the embedding path; hardening the `entities` policies to also check notebook ownership is a recommended separate fix.
 
 ### 5.3 Read-time semantic seeding — `retrieve-memory` + service-role match fn
 
@@ -189,7 +191,7 @@ Add optional `extraSeeds?: Map<string, number>` (entity-id → seed relevance in
 
 ## 7. Latency budget (read path)
 
-Measured `gte-small` ≈ 119 ms/embedding. Read path adds: 1 query embedding (~119 ms) + one HNSW-indexed RPC (~single-digit ms) ⇒ **~120–150 ms** on top of Phase 1's ~1.2 s (auth/DB-bound). Acceptable for a background tool call. Write-path embedding is async, off the user's turn.
+Measured `gte-small` ≈ 119 ms/embedding. Read path adds: 1 query embedding (~119 ms) + one exact per-notebook scan (notebook btree filter + exact cosine sort over tens of rows, ~single-digit ms) ⇒ **~120–150 ms** on top of Phase 1's ~1.2 s (auth/DB-bound). Acceptable for a background tool call. Write-path embedding is async, off the user's turn.
 
 ---
 
@@ -201,6 +203,8 @@ Measured `gte-small` ≈ 119 ms/embedding. Read path adds: 1 query embedding (~1
 - **`extraSeeds` merge test:** semantic ∪ lexical (max per id); k-hop expands from the merged set.
 - **Drift guard:** `check-graphloop-sync.mjs` green after the shared `retrieve.ts` change (re-sync vendored).
 - **Trigger + reconcile test (live DB):** a single bulk entity insert fires `embed-entities` **once** (statement-level) → vector rows appear; edit an entity's description → its vector updates (hash changed); remove an entity from the next save → its vector row is pruned; a **web-originated** save also embeds (client-agnostic trigger).
+- **Continuation test (live DB):** save/backfill a notebook with **>10 changed entities** (e.g., 25) → all get vectors via self-reenqueue, and no single invocation exceeds the CPU limit.
+- **Orphan-reclaim test (live DB):** `clearState` a notebook (0 entities left) → the `pg_cron` orphan sweep deletes its now-orphan `entity_embeddings` rows (the insert trigger never fires on a delete).
 - **Deployed parity + source-free** re-verified after deploy.
 
 ---
@@ -225,7 +229,7 @@ Measured `gte-small` ≈ 119 ms/embedding. Read path adds: 1 query embedding (~1
 
 ## 11. Implementation Gate
 
-Do not ship until: migration (`entity_embeddings` locked + notebook btree, service-role-only `match_entity_embeddings` with clamped limit, extensions) applied; `embed-entities` deployed (internal-secret-gated, service-role, chunked ≤10, reconcile + prune); **statement-level insert trigger on `entities`** + `pg_net` firing once per save (verified on both apps); `pg_cron` backstop; `retrieve-memory` semantic seeding via the service-role match, fail-closed; a user-JWT call to the match fn denied; `retrieve()` `extraSeeds` in **both** graphloop copies, drift guard green; `Embedder` stub; new zero-overlap semantic eval passing + existing 7 still passing; deployed parity + source-free re-verified.
+Do not ship until: migration (`entity_embeddings` locked + notebook btree, service-role-only `match_entity_embeddings` with clamped limit, extensions) applied; `embed-entities` deployed (internal-secret-gated, service-role, `user_id` from `notebooks`, chunked ≤10 with **self-reenqueue continuation**, reconcile + prune) and passing a **>10-entity** continuation test; **statement-level insert trigger on `entities`** + `pg_net` firing once per save (verified on both apps); `pg_cron` **two sweeps** (embed + **global orphan prune**) with an orphan-reclaim-after-clearState test; `retrieve-memory` semantic seeding via the service-role match, fail-closed; a user-JWT call to the match fn denied; `retrieve()` `extraSeeds` in **both** graphloop copies, drift guard green; `Embedder` stub; new zero-overlap semantic eval passing + existing 7 still passing; deployed parity + source-free re-verified.
 
 ---
 
@@ -234,7 +238,7 @@ Do not ship until: migration (`entity_embeddings` locked + notebook btree, servi
 1. **Migration** — `vector`/`pg_net` extensions; locked `entity_embeddings` (RLS on, no policy, revoked grants) + notebook btree; service-role-only `match_entity_embeddings` (clamped `p_limit`).
 2. **`Embedder` interface** + prod (`gte-small`) + local stub; unit-test stub determinism.
 3. **`retrieve()` `extraSeeds`** — both graphloop copies, re-sync vendored, drift guard green; merge unit test; 7-scenario harness still 7/7.
-4. **`embed-entities` edge fn** — internal-secret check, service-role reconcile (hash-diff embed ≤10 + orphan prune); deploy; live reconcile test.
-5. **Trigger + `pg_net` + `pg_cron`** — statement-level `after insert on entities` (transition table → distinct notebook_ids) → `embed-entities`; backfill existing entities; backstop job. Verify a **web** save embeds too.
+4. **`embed-entities` edge fn** — internal-secret check, service-role reconcile (`user_id` from `notebooks`; hash-diff embed ≤10 with **self-reenqueue continuation** + orphan prune); deploy; live reconcile + **>10-entity continuation** test.
+5. **Trigger + `pg_net` + `pg_cron`** — statement-level `after insert on entities` (transition table → distinct notebook_ids) → `embed-entities`; backfill existing entities; **two `pg_cron` sweeps** (embed reconcile + global orphan prune). Verify a **web** save embeds, and a `clearState` gets its orphans reclaimed.
 6. **`retrieve-memory` semantic seeding** — query embed → service-role `match_entity_embeddings` → `extraSeeds` → `retrieve()`, fail-closed; deploy.
 7. **Eval + verify** — zero-overlap semantic scenario (local stub + fixture vectors); re-run harness; live deployed parity + source-free smoke.
