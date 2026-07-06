@@ -19,6 +19,8 @@ export interface RetrieveDeps {
   embedModel?: EmbeddingModel;
   communities?: CommunitySummary[];
   now?: number;
+  /** Externally-computed semantic seeds (entity-id → relevance in [0,1]); unioned with lexical seeds. */
+  extraSeeds?: Map<string, number>;
 }
 
 const MAX_COMMUNITY_SUMMARIES = 5;
@@ -77,6 +79,14 @@ export async function retrieve(
     if (nn.length >= 2 && nq.includes(nn))
       seedScore.set(e.id, Math.max(seedScore.get(e.id) ?? 0, 1));
   }
+
+  // externally-supplied semantic seeds (hybrid) — union by max score
+  if (deps.extraSeeds) {
+    for (const [id, score] of deps.extraSeeds) {
+      if (state.entities[id]) seedScore.set(id, Math.max(seedScore.get(id) ?? 0, score));
+    }
+  }
+
   const seeds = [...seedScore.keys()].filter((id) => state.entities[id]);
 
   // normalize seed scores to [0,1]
