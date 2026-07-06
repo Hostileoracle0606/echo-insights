@@ -416,8 +416,13 @@ serve(async (req) => {
   if (!nb) return Response.json({ ok: false, reason: "notebook gone" });
   const owner = nb.user_id as string;
 
+  // Filter by user_id = owner: entity insert RLS only checks auth.uid() = user_id,
+  // NOT notebook ownership, so a foreign user could inject rows into this
+  // notebook_id. Embedding only the owner's own rows neutralizes that here.
+  // (Hardening the entities insert/update policy to also check notebook
+  // ownership is the deeper pre-existing fix, tracked separately in the spec.)
   const { data: entities } = await admin
-    .from("entities").select("id,name,description").eq("notebook_id", notebookId);
+    .from("entities").select("id,name,description").eq("notebook_id", notebookId).eq("user_id", owner);
   const rows = entities ?? [];
   const { data: existing } = await admin
     .from("entity_embeddings").select("entity_id,content_hash,embedding_model").eq("notebook_id", notebookId);
@@ -452,14 +457,19 @@ serve(async (req) => {
     );
   }
 
-  // Continuation: more remain → re-enqueue self via fetch (NOT net.http_post).
+  // Continuation: more remain → re-enqueue self via fetch (NOT net.http_post,
+  // which is Postgres-only). Wrap in EdgeRuntime.waitUntil so the runtime does
+  // not cancel the in-flight reenqueue when this invocation returns; the cron
+  // reconcile sweep remains the final backstop if it still drops.
   if (batch.length === CHUNK && stale.length > CHUNK) {
     const url = `${Deno.env.get("SUPABASE_URL")}/functions/v1/embed-entities`;
-    fetch(url, {
+    const reenqueue = fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-internal-secret": Deno.env.get("EMBED_INTERNAL_SECRET")! },
       body: JSON.stringify({ notebookId }),
-    }).catch(() => {}); // fire-and-forget; pg_cron backstops
+    }).catch(() => {});
+    // deno-lint-ignore no-explicit-any
+    (globalThis as any).EdgeRuntime?.waitUntil?.(reenqueue);
   }
 
   return Response.json({ ok: true, embedded: batch.length, remaining: Math.max(0, stale.length - batch.length), pruned: orphans.length });
@@ -529,7 +539,13 @@ create trigger entities_embed_enqueue
   referencing new table as new_rows
   for each statement execute function public.enqueue_embed_entities();
 
--- Backstop sweep A: reconcile notebooks with any entity missing a current vector.
+-- Backstop sweep A: poke EVERY notebook that has entities. embed-entities is
+-- idempotent and does the precise staleness check (missing OR content_hash OR
+-- embedding_model changed) as the single source of truth — so this one query
+-- catches dropped webhooks, description edits, AND model migrations without
+-- duplicating the SHA-256 / model-id logic in SQL. (Scale-up, if invocation
+-- volume ever matters: narrow to notebooks with a provably-stale row using
+-- pgcrypto digest + an app.embedding_model setting.)
 create or replace function public.embed_reconcile_sweep()
 returns void language plpgsql security definer set search_path = public, pg_temp as $$
 declare
@@ -538,13 +554,7 @@ declare
   v_secret text := current_setting('app.embed_internal_secret', true);
 begin
   if v_url is null or v_url = '' then return; end if;
-  for r in
-    select distinct e.notebook_id
-    from public.entities e
-    left join public.entity_embeddings ee
-      on ee.notebook_id = e.notebook_id and ee.entity_id = e.id
-    where ee.entity_id is null
-  loop
+  for r in select distinct notebook_id from public.entities loop
     perform net.http_post(
       url     := v_url,
       headers := jsonb_build_object('Content-Type', 'application/json', 'x-internal-secret', v_secret),
@@ -562,8 +572,9 @@ returns void language sql security definer set search_path = public, pg_temp as 
     where e.notebook_id = ee.notebook_id and e.id = ee.entity_id);
 $$;
 
-select cron.schedule('embed-reconcile', '*/5 * * * *', 'select public.embed_reconcile_sweep()');
-select cron.schedule('embed-orphan-prune', '*/15 * * * *', 'select public.embed_orphan_prune()');
+-- Reconcile is a full sweep now → every 15 min (trigger handles the hot path).
+select cron.schedule('embed-reconcile', '*/15 * * * *', 'select public.embed_reconcile_sweep()');
+select cron.schedule('embed-orphan-prune', '*/30 * * * *', 'select public.embed_orphan_prune()');
 ```
 
 - [ ] **Step 2: Sanity-check parse (local)**
@@ -694,7 +705,7 @@ Expected: both deploy ACTIVE.
 
 - [ ] **Step 4: Backfill existing entities**
 
-For each existing notebook, POST `embed-entities` with the internal secret (or wait for the 5-min reconcile sweep). Verify vector rows appear:
+For each existing notebook, POST `embed-entities` with the internal secret (or wait for the 15-min reconcile sweep). Verify vector rows appear:
 ```bash
 # with service-role or SQL: select count(*) from entity_embeddings;  → > 0
 ```
@@ -703,7 +714,7 @@ For each existing notebook, POST `embed-entities` with the internal secret (or w
 
 - **Trigger fires once/save:** save a notebook (web or Flutter) → within seconds `entity_embeddings` has rows for its entities (statement-level, one embed pass).
 - **>10 continuation:** a notebook with 25 entities ends up fully embedded (self-reenqueue).
-- **Orphan prune:** `clearState` a notebook → after the 15-min prune sweep (or manual `select public.embed_orphan_prune()`), its rows are gone.
+- **Orphan prune:** `clearState` a notebook → after the 30-min prune sweep (or manual `select public.embed_orphan_prune()`), its rows are gone.
 - **Semantic recall:** create an entity `Northwind` described "a venture-backed company"; after it embeds, a `retrieve-memory` call with query `"startup"` seeds Northwind (which lexical alone would miss). Confirm the response is still source-free.
 - **Match not user-callable:** `curl` the RPC directly with a user JWT → permission denied (granted only to `service_role`).
 
