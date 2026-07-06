@@ -58,12 +58,13 @@ Reuse **primitives, not frameworks**: our need is one pgvector query + one nativ
 | Vector source | **Persisted (pgvector)**, embed-once | Read-time embedding crashes at ~25 entities (measured) |
 | Read-time embedding | **Query only** (1× ~119 ms) | Cheap, bounded |
 | Model | **Native `gte-small`** (384-dim) | On-platform (privacy), zero external dep |
-| Similarity search | **SECURITY DEFINER RPC over pgvector** (HNSW cosine), ownership-checked | Table stays locked; RPC returns ids+scores only |
+| Similarity search | **Exact per-notebook scan** (notebook btree + exact cosine sort), via a **service-role-only** function called from the edge fn | Filtered HNSW silently misses notebook-local rows; per-notebook counts are small so exact = 100% recall + fast |
 | Seed merge | **`retrieve()` gains optional `extraSeeds`** | Semantic seeds join lexical seeds; ranker unchanged |
 | Code sharing (Decision A) | **Shared graphloop** (both copies) | Drift-guard green; web-ready |
-| Write trigger (Decision B) | **Trigger on `notebooks` update → `pg_net` → `embed-entities`**, once per save; reconcile | Saves are snapshot delete+insert; per-row triggers would storm |
+| Write trigger (Decision B) | **Statement-level `after insert on entities`** (transition table → distinct notebook_ids) → `pg_net` → `embed-entities` | Saves are one bulk entity insert on both apps; fires once/save, client-agnostic (web `saveState` never bumps `notebooks`) |
 | Write auth | **Internal secret + service-role** in `embed-entities` (no user JWT) | A DB trigger has no end-user JWT |
-| Table access | **Locked** — RLS on, no client policy, grants revoked; access only via RPC/service-role | "Vectors never returned to clients" must be enforced, not asserted |
+| Read access | **Service-role only** (function revoked from `authenticated`); `p_limit` clamped + server-fixed | A user-callable match RPC would bypass the edge fn's `bump_retrieve_rate`; keep it server-side, downstream of auth/ownership/rate |
+| Table access | **Locked** — RLS on, no client policy, grants revoked; service-role writes, service-role reads | "Vectors never returned to clients" enforced, not asserted |
 
 ---
 
@@ -72,22 +73,22 @@ Reuse **primitives, not frameworks**: our need is one pgvector query + one nativ
 ```
 WRITE TIME (async, any client, once per save)      READ TIME (per recall call)
 ────────────────────────────────────────────      ───────────────────────────────
-saveState: delete+insert snapshot, then            retrieve-memory (edge fn, user JWT):
-  UPDATE notebooks (entity_count, updated_at)         auth + ownership + rate-limit (Phase 1)
-   │                                                   embed QUERY (gte-small, 1× ~119ms)
-   └─ trigger AFTER UPDATE on notebooks                 │
-        → pg_net POST (internal secret) ──►            rpc match_entity_embeddings(nb, qvec, k, thr)
-             embed-entities (service-role):              (SECURITY DEFINER: ownership check +
-               reconcile notebook:                        pgvector cosine search) → [{entity_id, score}]
-                 hash each entity (name+desc)            │
-                 embed changed/missing (chunks ≤10)     extraSeeds = {entity_id → score}
-                 upsert entity_embeddings               │
-                 PRUNE orphan vector rows               retrieve(state, q, {extraSeeds, mode:lexical})
-   (+ pg_cron reconcile backstop)                        → lexical ∪ semantic seeds → k-hop → rank
-                                                          → source-free pack (unchanged)
+saveState: ONE bulk `insert into entities`         retrieve-memory (edge fn):
+  (both apps)                                         [user-JWT client] auth + ownership + rate-limit (Phase 1)
+   │                                                  embed QUERY (gte-small, 1× ~119ms)
+   └─ statement trigger AFTER INSERT on entities       │
+        (transition table → distinct notebook_ids)    [service-role client] match_entity_embeddings(nb, qvec, 12)
+        → pg_net POST (internal secret) ──►              exact per-notebook cosine scan → [{entity_id, score}]
+             embed-entities (service-role):            │
+               reconcile notebook:                     keep score ≥ 0.7 → extraSeeds = {entity_id → score}
+                 hash each entity (name+desc)          │
+                 embed changed/missing (chunks ≤10)    retrieve(state, q, {extraSeeds, mode:lexical})
+                 upsert entity_embeddings               → lexical ∪ semantic seeds → k-hop → rank
+                 PRUNE orphan vector rows               → source-free pack (unchanged)
+   (+ pg_cron reconcile backstop)
 ```
 
-The request body still carries the full graph (structure, ranking, freshness). The RPC supplies only **semantic seed entity-ids + scores**; ids stitch persisted vectors to the in-body graph. Raw vectors never leave the DB.
+The request body still carries the full graph (structure, ranking, freshness). The match supplies only **semantic seed entity-ids + scores**; ids stitch persisted vectors to the in-body graph. The match runs **server-side (service-role), downstream of the edge fn's auth/ownership/rate gates** — not user-callable. Raw vectors never leave the DB.
 
 ---
 
@@ -110,12 +111,16 @@ create table public.entity_embeddings (
 );
 
 -- Locked like retrieve_rate_limits: RLS on, NO client policy, grants revoked.
--- Only the SECURITY DEFINER RPC (read) and service-role (write) touch it.
+-- Only service-role (write) and the service-role-only match fn (read) touch it.
 alter table public.entity_embeddings enable row level security;
 revoke all on table public.entity_embeddings from anon, authenticated;
 
-create index entity_embeddings_hnsw
-  on public.entity_embeddings using hnsw (embedding vector_cosine_ops);
+-- Per-notebook btree only. NO HNSW at this scale: filtering an approximate
+-- HNSW index by a highly-selective notebook_id applies the filter AFTER the
+-- index scan and can silently return too few rows. Per-notebook entity counts
+-- are small (tens), so an exact scan over the notebook's rows is both 100%
+-- recall and fast. (Scale-up path if a notebook grows large: add HNSW +
+-- `SET LOCAL hnsw.iterative_scan`.)
 create index entity_embeddings_notebook on public.entity_embeddings (notebook_id);
 ```
 
@@ -123,9 +128,9 @@ No client policy + revoked grants ⇒ a client **cannot** read or write embeddin
 
 ### 5.2 Write-time embedder — trigger (once per save) + `embed-entities` + reconcile
 
-**Saves are snapshot delete+insert** ([journal-store.ts:164](../../../src/lib/journal-store.ts), [supabase_service.dart:120](../../../lib/services/supabase_service.dart)) — deleting and reinserting *all* entities. So we do **not** trigger per entity row.
+**Saves are snapshot delete+insert** ([journal-store.ts:164](../../../src/lib/journal-store.ts), [supabase_service.dart:120](../../../lib/services/supabase_service.dart)) — deleting and reinserting *all* entities in **one bulk `insert` statement**. Web `saveState` never updates `notebooks` (unlike Flutter), so a notebooks-update trigger would miss web entirely. So we trigger on the entity insert itself, at **statement** level (not per row).
 
-- **Trigger:** `after update on public.notebooks` (saveState bumps `notebooks.updated_at` once at the end of every save, on both apps) → `net.http_post` to `embed-entities` with `{ notebookId }` and an **internal secret header** (a Vault/DB-setting value). One call per save.
+- **Trigger:** `after insert on public.entities referencing new table as new_rows for each statement` → the trigger fn selects `distinct notebook_id, user_id from new_rows` and, per notebook, `net.http_post`s to `embed-entities` with `{ notebookId }` and an **internal secret header** (a Vault/DB-setting value). Fires **once per bulk save** on both apps, regardless of entity count — no per-row storm, no dependency on client-side notebook bumps. (A `clearState`/delete that empties a notebook does not fire this insert trigger; its orphan vectors are pruned by the `pg_cron` backstop.)
 - **`embed-entities` edge function** (`verify_jwt = false`): validates the internal secret; uses the **service-role key** (RLS-bypassing) to reconcile the notebook — it has no end-user JWT and derives `user_id` from the entity rows themselves:
   1. Read all current `entities` for `notebookId`.
   2. For each, compute `content_hash = hash(name + "\n" + (description ?? ""))`. Embed (native `gte-small`) only those whose stored hash is missing or changed, **in chunks ≤ 10** (under the measured CPU limit; loop across invocations if the notebook is large). Upsert `(notebook_id, entity_id, user_id, embedding, content_hash)`.
@@ -133,41 +138,34 @@ No client policy + revoked grants ⇒ a client **cannot** read or write embeddin
 - **Backstop:** a `pg_cron` job periodically reconciles notebooks with any entity lacking a current-hash vector (covers dropped `pg_net` calls — fire-and-forget HTTP from Postgres is best-effort).
 - **Non-blocking:** embedding never blocks a write or read; an un-embedded entity falls back to lexical seeding until its vector lands.
 
-### 5.3 Read-time semantic seeding — `retrieve-memory` + `match_entity_embeddings` RPC
+### 5.3 Read-time semantic seeding — `retrieve-memory` + service-role match fn
 
-New **SECURITY DEFINER** RPC (fixed `search_path`, execute granted to `authenticated`), mirroring `bump_retrieve_rate`:
+The match is **server-only** — a function granted **only to `service_role`** (revoked from `anon`/`authenticated`), so a user JWT cannot call it directly and thereby bypass the edge fn's `bump_retrieve_rate`. It does an **exact per-notebook scan** (not HNSW; §5.1) and **clamps `p_limit`**:
 
 ```sql
--- Returns the top-K nearest entity ids + cosine similarity for an owned
--- notebook. The caller (edge fn) applies the score threshold. Only ids+scores
--- leave the DB, never vectors.
 create or replace function public.match_entity_embeddings(
   p_notebook_id uuid, p_query vector(384), p_limit int
 ) returns table (entity_id text, score float)
-language plpgsql security definer set search_path = public, pg_temp as $$
-begin
-  if not exists (select 1 from public.notebooks
-                 where id = p_notebook_id and user_id = auth.uid()) then
-    return;  -- not owner → empty
-  end if;
-  return query
-    select e.entity_id, 1 - (e.embedding <=> p_query) as score
-    from public.entity_embeddings e
-    where e.notebook_id = p_notebook_id
-    order by e.embedding <=> p_query
-    limit p_limit;
-end $$;
-revoke all on function public.match_entity_embeddings(uuid, vector, int) from public, anon;
-grant execute on function public.match_entity_embeddings(uuid, vector, int) to authenticated;
+language sql stable as $$
+  select e.entity_id, 1 - (e.embedding <=> p_query) as score
+  from public.entity_embeddings e
+  where e.notebook_id = p_notebook_id
+  order by e.embedding <=> p_query
+  limit least(greatest(p_limit, 1), 50);   -- clamp caller-controlled limit
+$$;
+revoke all on function public.match_entity_embeddings(uuid, vector, int) from public, anon, authenticated;
+grant execute on function public.match_entity_embeddings(uuid, vector, int) to service_role;
 ```
 
-`retrieve-memory`, after Phase 1 auth/ownership/rate-limit and before graphloop:
-1. Embed the query via `gte-small` (1×).
-2. Call `match_entity_embeddings(notebookId, queryVec, K=12)`; keep hits with `score ≥ 0.7` (tunable).
-3. Build `extraSeeds: Map<entityId, score>` from survivors.
-4. Pass to `retrieve()`. On any failure (embed or RPC) → omit `extraSeeds` → Phase 1 lexical behavior (fail-closed, never errors).
+Ownership is **not** re-checked here — it's already enforced upstream by the edge fn (Phase 1's 404 ownership check + `bump_retrieve_rate`) before this runs; and the function is service-role-only so nothing else can reach it.
 
-The RPC verifies ownership internally (defense in depth beyond the edge function's own 404 check) and returns **only entity-ids + scores** — raw vectors never egress.
+`retrieve-memory`, after Phase 1 auth/ownership/**rate-limit** (unchanged, on the user-JWT client) and before graphloop:
+1. Embed the query via `gte-small` (1×).
+2. Using a **service-role client**, call `match_entity_embeddings(notebookId, queryVec, 12)` — `K=12` is **server-fixed**, not client-supplied.
+3. Keep hits with `score ≥ 0.7` (tunable) → build `extraSeeds: Map<entityId, score>`.
+4. Pass to `retrieve()`. On any failure (embed or query) → omit `extraSeeds` → Phase 1 lexical behavior (fail-closed, never errors).
+
+Only entity-ids + scores leave the DB — raw vectors never egress. The edge fn thus holds two clients: the user-JWT client (auth/ownership/rate, Phase 1) and a service-role client (the locked-table match).
 
 ### 5.4 graphloop `retrieve()` — `extraSeeds` (shared change, both copies)
 
@@ -184,7 +182,7 @@ Add optional `extraSeeds?: Map<string, number>` (entity-id → seed relevance in
 ## 6. Privacy
 
 - Embeddings derive from entity `name`/`description` — already stored. **Native `gte-small` keeps text on-platform** (no external embedding API), reinforcing no-egress.
-- `entity_embeddings` is **locked** (§5.1): no client read/write; writes via service-role, reads via the ownership-checked RPC that returns ids+scores only. Raw vectors never leave the DB — so "vectors are not returned to clients" is **enforced**, not asserted.
+- `entity_embeddings` is **locked** (§5.1): no client read/write; writes via service-role, reads via a **service-role-only** match function (revoked from `authenticated`) called server-side inside the edge fn, returning ids+scores only. Raw vectors never leave the DB — so "vectors are not returned to clients" is **enforced**, not asserted.
 - Retrieval **output contract unchanged**: entities + relations only, no source text. Hybrid changes which entities *seed*, never what *egresses*.
 
 ---
@@ -198,11 +196,11 @@ Measured `gte-small` ≈ 119 ms/embedding. Read path adds: 1 query embedding (~1
 ## 8. Testing
 
 - **Semantic-only eval scenario (new), zero lexical overlap:** query `"startup"`, entity name `"Northwind"` with description `"a venture-backed company"` — **no shared token** with the query, so BM25 (name+description) *cannot* match; only the vector path connects them. Assert it is seeded. (Uses the local `Embedder` stub + fixture vectors engineered so `startup`≈`venture-backed company`.) This is the case that fails without pgvector.
-- **pgvector RPC test:** given fixture vectors, `match_entity_embeddings` returns the correct top-K ids above threshold and **empty** for a non-owner.
+- **Match fn tests (live DB):** (a) given fixture vectors across **two** notebooks, `match_entity_embeddings` returns only the queried notebook's nearest ids (exact per-notebook, no cross-notebook leakage, 100% within-notebook recall); (b) `p_limit` is clamped (request 9999 → ≤50); (c) **a user-JWT call to the function is denied** (`authenticated` revoked) — proves the rate-limit bypass is closed.
 - **No lexical regression:** existing 7 scenarios (run with `extraSeeds = none`) stay 7/7.
 - **`extraSeeds` merge test:** semantic ∪ lexical (max per id); k-hop expands from the merged set.
 - **Drift guard:** `check-graphloop-sync.mjs` green after the shared `retrieve.ts` change (re-sync vendored).
-- **Reconcile test (live DB):** save a notebook → vector rows appear for its entities; change an entity's description → its vector updates (hash changed); remove an entity → its vector row is pruned.
+- **Trigger + reconcile test (live DB):** a single bulk entity insert fires `embed-entities` **once** (statement-level) → vector rows appear; edit an entity's description → its vector updates (hash changed); remove an entity from the next save → its vector row is pruned; a **web-originated** save also embeds (client-agnostic trigger).
 - **Deployed parity + source-free** re-verified after deploy.
 
 ---
@@ -210,9 +208,9 @@ Measured `gte-small` ≈ 119 ms/embedding. Read path adds: 1 query embedding (~1
 ## 9. Risks & Known Limitations
 
 - **Freshness lag:** a just-created entity has no vector until the async reconcile lands (~seconds); lexical/exact-name seeding covers it meanwhile. New entities are usually named explicitly.
-- **Snapshot churn:** saves delete+insert all entities; the `notebooks`-update trigger fires once per save and the reconcile (hash-diff embed + orphan prune) keeps `entity_embeddings` consistent without a per-row storm. `pg_cron` backstops dropped `pg_net` calls.
+- **Snapshot churn:** saves delete+insert all entities in one statement; the **statement-level** insert trigger fires once per save (client-agnostic) and the reconcile (hash-diff embed + orphan prune) keeps `entity_embeddings` consistent without a per-row storm. `pg_cron` backstops dropped `pg_net` calls and `clearState` deletes.
 - **CPU limit (measured):** `embed-entities` chunks ≤10; large notebooks reconcile across invocations.
-- **HNSW is approximate:** recall < 100% by construction; graphloop's k-hop + exact-name backstop compensate. Tune `ef_search` if needed.
+- **Exact scan scale ceiling:** exact per-notebook scan is 100% recall and fast at journal scale (tens of entities/notebook). If a notebook grows to thousands of entities the scan slows — the scale-up path is HNSW + `hnsw.iterative_scan` (deferred; not needed now).
 - **Ranker dominance:** semantic seeds enter as seed *relevance*; the composite ranker (recency/importance/confidence) still governs final order, so a weak vector match can't dominate. Threshold + weight tunable.
 
 ---
@@ -220,23 +218,23 @@ Measured `gte-small` ≈ 119 ms/embedding. Read path adds: 1 query embedding (~1
 ## 10. Prerequisites
 
 - `vector` + `pg_net` extensions (enabled in the migration); `pg_cron` for the backstop.
-- An internal secret (Vault/DB setting) for the trigger→function call; `SUPABASE_SERVICE_ROLE_KEY` available to `embed-entities`.
+- An internal secret (Vault/DB setting) for the trigger→function call; `SUPABASE_SERVICE_ROLE_KEY` available to **both** `embed-entities` (write) and `retrieve-memory` (the service-role match call).
 - Phase 1 deployed (done) + `saveState` `user_id` fix (done) so entities persist and the trigger can reconcile.
 
 ---
 
 ## 11. Implementation Gate
 
-Do not ship until: migration (`entity_embeddings` locked + HNSW, `match_entity_embeddings` RPC, extensions) applied; `embed-entities` deployed (internal-secret-gated, service-role, chunked ≤10, reconcile + prune); `notebooks` trigger + `pg_net` firing once per save; `pg_cron` backstop; `retrieve-memory` semantic seeding via RPC, fail-closed; `retrieve()` `extraSeeds` in **both** graphloop copies, drift guard green; `Embedder` stub; new zero-overlap semantic eval passing + existing 7 still passing; deployed parity + source-free re-verified.
+Do not ship until: migration (`entity_embeddings` locked + notebook btree, service-role-only `match_entity_embeddings` with clamped limit, extensions) applied; `embed-entities` deployed (internal-secret-gated, service-role, chunked ≤10, reconcile + prune); **statement-level insert trigger on `entities`** + `pg_net` firing once per save (verified on both apps); `pg_cron` backstop; `retrieve-memory` semantic seeding via the service-role match, fail-closed; a user-JWT call to the match fn denied; `retrieve()` `extraSeeds` in **both** graphloop copies, drift guard green; `Embedder` stub; new zero-overlap semantic eval passing + existing 7 still passing; deployed parity + source-free re-verified.
 
 ---
 
 ## 12. Sequential Build Steps
 
-1. **Migration** — `vector`/`pg_net` extensions; locked `entity_embeddings` (RLS on, no policy, revoked grants) + HNSW + notebook index; `match_entity_embeddings` SECURITY DEFINER RPC.
+1. **Migration** — `vector`/`pg_net` extensions; locked `entity_embeddings` (RLS on, no policy, revoked grants) + notebook btree; service-role-only `match_entity_embeddings` (clamped `p_limit`).
 2. **`Embedder` interface** + prod (`gte-small`) + local stub; unit-test stub determinism.
 3. **`retrieve()` `extraSeeds`** — both graphloop copies, re-sync vendored, drift guard green; merge unit test; 7-scenario harness still 7/7.
 4. **`embed-entities` edge fn** — internal-secret check, service-role reconcile (hash-diff embed ≤10 + orphan prune); deploy; live reconcile test.
-5. **Trigger + `pg_net` + `pg_cron`** — `after update on notebooks` → `embed-entities`; backfill existing entities; backstop job.
-6. **`retrieve-memory` semantic seeding** — query embed → `match_entity_embeddings` RPC → `extraSeeds` → `retrieve()`, fail-closed; deploy.
+5. **Trigger + `pg_net` + `pg_cron`** — statement-level `after insert on entities` (transition table → distinct notebook_ids) → `embed-entities`; backfill existing entities; backstop job. Verify a **web** save embeds too.
+6. **`retrieve-memory` semantic seeding** — query embed → service-role `match_entity_embeddings` → `extraSeeds` → `retrieve()`, fail-closed; deploy.
 7. **Eval + verify** — zero-overlap semantic scenario (local stub + fixture vectors); re-run harness; live deployed parity + source-free smoke.
