@@ -8,3 +8,6 @@ verify_jwt = true
 
 [functions.retrieve-memory]
 verify_jwt = true
+
+[functions.embed-entities]
+verify_jwt = false
