@@ -37,6 +37,7 @@ interface Scenario {
   expectTop?: string;       // entity NAME that should rank #1
   expectEmpty?: boolean;    // expect zero entities (global/empty fallback)
   sentinel?: string;        // string that must NEVER appear in the returned context
+  extraSeeds?: Record<string, number>;   // simulated semantic seeds (id → score)
 }
 
 const scenarios: Scenario[] = [
@@ -122,6 +123,29 @@ const scenarios: Scenario[] = [
     expectRelevant: ["Atlas", "Maya"],
     sentinel: "SENTINEL-078-05-1120",
   },
+  {
+    id: "S8 semantic-seed",
+    behavior: "A no-lexical-overlap entity IS recalled when a semantic seed supplies it",
+    query: "startup",
+    state: graph(
+      [ent("northwind", "Northwind", "project", { description: "a venture-backed company", mentions: 2 }),
+       ent("maya", "Maya", "person", { mentions: 1 })],
+      [rel("r1", "maya", "works_at", "northwind")],
+    ),
+    extraSeeds: { northwind: 0.82 },
+    expectRelevant: ["Northwind", "Maya"],
+  },
+  {
+    id: "S9 semantic-control",
+    behavior: "Same graph, NO semantic seed → lexical alone cannot find it (proves the vector path is load-bearing)",
+    query: "startup",
+    state: graph(
+      [ent("northwind", "Northwind", "project", { description: "a venture-backed company", mentions: 2 })],
+      [],
+    ),
+    expectRelevant: [],
+    expectEmpty: true,
+  },
 ];
 
 interface Row {
@@ -135,7 +159,11 @@ async function run(s: Scenario): Promise<Row> {
   await idx.sync(Object.values(s.state.entities));
   const communities = buildCommunities(s.state);
   const t0 = performance.now();
-  const result = await retrieve(s.state, s.query, { mode: "lexical" }, { index: idx, communities });
+  const result = await retrieve(s.state, s.query, { mode: "lexical" }, {
+    index: idx,
+    communities,
+    extraSeeds: s.extraSeeds ? new Map(Object.entries(s.extraSeeds)) : undefined,
+  });
   const latencyMs = performance.now() - t0;
   const ctx = buildContext(result);
 
