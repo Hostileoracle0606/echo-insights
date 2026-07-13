@@ -26,8 +26,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/dashboard', builder: (_, __) => const DashboardScreen()),
       GoRoute(
         path: '/notebook/:id',
-        builder: (_, state) =>
-            JournalScreen(notebookId: state.pathParameters['id']),
+        builder: (_, state) => JournalScreen(
+          notebookId: state.pathParameters['id'],
+          autoStart: state.uri.queryParameters['start'] == 'true',
+        ),
       ),
     ],
   );

@@ -12,8 +12,11 @@ import 'voice_dock.dart';
 
 class JournalScreen extends ConsumerStatefulWidget {
   final String? notebookId;
+  // When true, starts a live voice session as soon as the notebook (freshly
+  // created via the dashboard's "New notebook" button) has finished loading.
+  final bool autoStart;
 
-  const JournalScreen({super.key, this.notebookId});
+  const JournalScreen({super.key, this.notebookId, this.autoStart = false});
 
   @override
   ConsumerState<JournalScreen> createState() => _JournalScreenState();
@@ -33,9 +36,16 @@ class _JournalScreenState extends ConsumerState<JournalScreen> {
     final id = widget.notebookId;
     if (id != null) {
       // Load the opened notebook's saved graph after the first frame (mutating
-      // the provider during initState/build would throw).
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        ref.read(journalProvider.notifier).openNotebook(id);
+      // the provider during initState/build would throw). If this is a fresh
+      // notebook, kick off the voice session right after the load completes —
+      // openNotebook is async and initState can't await, so this closure runs
+      // inside the post-frame callback instead.
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        await ref.read(journalProvider.notifier).openNotebook(id);
+        if (!mounted) return;
+        if (widget.autoStart) {
+          await ref.read(journalProvider.notifier).startSession();
+        }
       });
     }
   }

@@ -23,12 +23,6 @@ const double _displayCornerRadius = 55;
 class DashboardScreen extends ConsumerWidget {
   const DashboardScreen({super.key});
 
-  Future<void> _createAndOpen(BuildContext context, WidgetRef ref) async {
-    final notebook = await ref.read(supabaseServiceProvider).createNotebook();
-    if (notebook == null || !context.mounted) return;
-    context.go('/notebook/${notebook.id}');
-  }
-
   // Today / This week / Earlier, by the session's start date.
   String _group(DateTime startedAt, DateTime now) {
     final today = DateTime(now.year, now.month, now.day);
@@ -227,35 +221,7 @@ class DashboardScreen extends ConsumerWidget {
   Widget _dock(BuildContext context, WidgetRef ref, LumenColors colors) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
-      child: Material(
-        color: colors.ink,
-        borderRadius: BorderRadius.circular(_displayCornerRadius),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(_displayCornerRadius),
-          onTap: () => _createAndOpen(context, ref),
-          child: Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(vertical: 19),
-            alignment: Alignment.center,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.add, size: 19, color: colors.paper),
-                const SizedBox(width: 6),
-                Text(
-                  'New notebook',
-                  style: TextStyle(
-                    fontFamily: LumenText.sansFontFamily,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w500,
-                    color: colors.paper,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
+      child: _NewNotebookButton(colors: colors),
     );
   }
 
@@ -272,6 +238,96 @@ class DashboardScreen extends ConsumerWidget {
             height: 1.5,
             color: colors.mutedForeground,
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The docked "New notebook" button. Owns its own creating/loading state so a
+/// double-tap can't fire two inserts: while [createNotebook] is in flight the
+/// button ignores taps and swaps its icon+label for a small spinner. On
+/// success it hands off straight into a live recording session; on failure
+/// (no signed-in user / RLS) it surfaces a snackbar instead of silently no-op.
+class _NewNotebookButton extends ConsumerStatefulWidget {
+  final LumenColors colors;
+
+  const _NewNotebookButton({required this.colors});
+
+  @override
+  ConsumerState<_NewNotebookButton> createState() =>
+      _NewNotebookButtonState();
+}
+
+class _NewNotebookButtonState extends ConsumerState<_NewNotebookButton> {
+  bool _creating = false;
+
+  Future<void> _createAndOpen() async {
+    if (_creating) return;
+    setState(() => _creating = true);
+
+    Notebook? notebook;
+    try {
+      notebook = await ref.read(supabaseServiceProvider).createNotebook();
+    } catch (_) {
+      notebook = null;
+    }
+    if (!mounted) return;
+
+    if (notebook == null) {
+      setState(() => _creating = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content:
+              Text("Couldn't create a notebook — check your connection."),
+        ),
+      );
+      return;
+    }
+
+    // Fresh notebook: hand off straight into a live recording session.
+    context.go('/notebook/${notebook.id}?start=true');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = widget.colors;
+    return Material(
+      color: colors.ink,
+      borderRadius: BorderRadius.circular(_displayCornerRadius),
+      child: InkWell(
+        key: const Key('newNotebookButton'),
+        borderRadius: BorderRadius.circular(_displayCornerRadius),
+        onTap: _creating ? null : _createAndOpen,
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(vertical: 19),
+          alignment: Alignment.center,
+          child: _creating
+              ? SizedBox(
+                  width: 19,
+                  height: 19,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: colors.paper,
+                  ),
+                )
+              : Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.add, size: 19, color: colors.paper),
+                    const SizedBox(width: 6),
+                    Text(
+                      'New notebook',
+                      style: TextStyle(
+                        fontFamily: LumenText.sansFontFamily,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w500,
+                        color: colors.paper,
+                      ),
+                    ),
+                  ],
+                ),
         ),
       ),
     );
