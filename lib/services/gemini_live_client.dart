@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 typedef OnTranscript = void Function(String text, bool isFinal);
@@ -23,6 +23,7 @@ class GeminiLiveClient {
   StreamSubscription<dynamic>? _sub;
 
   OnTranscript? onTranscript;
+  OnTranscript? onAgentTranscript;
   OnAudio? onAudio;
   OnToolCall? onToolCall;
   OnTurnComplete? onTurnComplete;
@@ -66,6 +67,11 @@ class GeminiLiveClient {
             },
           },
         },
+        // Return the agent's spoken words as text (outputTranscription) and
+        // explicitly enable the user speech-to-text (inputTranscription) that
+        // the message parser already consumes.
+        'output_audio_transcription': <String, dynamic>{},
+        'input_audio_transcription': <String, dynamic>{},
         'tools': tools,
       },
     };
@@ -119,6 +125,11 @@ class GeminiLiveClient {
     );
   }
 
+  /// Test seam: drive the message parser directly with a raw JSON string,
+  /// without a live WebSocket.
+  @visibleForTesting
+  void handleServerMessage(String raw) => _onMessage(raw);
+
   void _onMessage(dynamic raw) {
     final msg = jsonDecode(raw as String) as Map<String, dynamic>;
 
@@ -171,6 +182,16 @@ class GeminiLiveClient {
         final transcript =
             content['inputTranscription'] as Map<String, dynamic>;
         onTranscript?.call(transcript['text'] as String? ?? '', turnComplete);
+      }
+
+      // The agent's own spoken words, transcribed back to text.
+      if (content.containsKey('outputTranscription')) {
+        final transcript =
+            content['outputTranscription'] as Map<String, dynamic>;
+        onAgentTranscript?.call(
+          transcript['text'] as String? ?? '',
+          turnComplete,
+        );
       }
 
       if (turnComplete) onTurnComplete?.call();

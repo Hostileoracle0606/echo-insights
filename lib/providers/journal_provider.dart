@@ -23,6 +23,7 @@ class JournalNotifier extends Notifier<JournalState> {
   Timer? _sentenceIdleTimer;
   Timer? _saveDebounce;
   String _turnAccumulator = '';
+  String _agentTurnAccumulator = '';
   String _lastTranscript = '';
   final _conversation = <({String role, String text})>[];
   String? _activeNotebookId;
@@ -145,6 +146,27 @@ class JournalNotifier extends Notifier<JournalState> {
         _notifyUi();
       }
       _turnAccumulator = '';
+    }
+  }
+
+  // Accumulates Lumen's (the agent's) transcribed speech and, on turn end,
+  // commits it to the conversation log as an 'agent' turn — rendered as a
+  // left/grey bubble in the split transcript panel.
+  void _onAgentTranscriptChunk(String chunk, bool isFinal) {
+    if (chunk.isNotEmpty) {
+      _agentTurnAccumulator += chunk;
+    }
+
+    if (isFinal) {
+      final trimmed = _agentTurnAccumulator.trim();
+      if (trimmed.isNotEmpty) {
+        _conversation.add((role: 'agent', text: trimmed));
+        if (_conversation.length > 16) {
+          _conversation.removeRange(0, _conversation.length - 16);
+        }
+        _notifyUi();
+      }
+      _agentTurnAccumulator = '';
     }
   }
 
@@ -326,6 +348,7 @@ class JournalNotifier extends Notifier<JournalState> {
       );
       live
         ..onTranscript = _onTranscriptChunk
+        ..onAgentTranscript = _onAgentTranscriptChunk
         ..onAudio = (pcm) {
           if (!_muted) _player?.feed(pcm);
           _markAgentSpeaking();
@@ -382,6 +405,7 @@ class JournalNotifier extends Notifier<JournalState> {
     _player = null;
     _activeNotebookId = null;
     _turnAccumulator = '';
+    _agentTurnAccumulator = '';
   }
 }
 
