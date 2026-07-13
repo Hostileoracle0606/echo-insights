@@ -39,7 +39,13 @@ class SupabaseService {
 
     final created = await _client
         .from('notebooks')
-        .insert({'user_id': userId, 'title': 'Untitled'})
+        .insert({
+          'user_id': userId,
+          'title': 'Untitled',
+          // started_at is NOT NULL with no DB default (unlike created_at); the
+          // web client sets it explicitly too. Omitting it fails the insert.
+          'started_at': DateTime.now().toUtc().toIso8601String(),
+        })
         .select()
         .single();
     return Notebook.fromJson(created);
@@ -66,7 +72,13 @@ class SupabaseService {
 
     final created = await _client
         .from('notebooks')
-        .insert({'user_id': userId, 'title': 'Untitled'})
+        .insert({
+          'user_id': userId,
+          'title': 'Untitled',
+          // started_at is NOT NULL with no DB default (unlike created_at); the
+          // web client sets it explicitly too. Omitting it fails the insert.
+          'started_at': DateTime.now().toUtc().toIso8601String(),
+        })
         .select()
         .single();
     return Notebook.fromJson(created);

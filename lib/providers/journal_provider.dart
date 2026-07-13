@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../audio/pcm_capture.dart';
@@ -314,7 +315,9 @@ class JournalNotifier extends Notifier<JournalState> {
 
       final live = GeminiLiveClient(
         apiKey: Env.geminiApiKey,
-        model: 'gemini-live-2.5-flash-preview',
+        // Must match the working web client's Live model (same v1beta
+        // BidiGenerateContent endpoint); the old 2.5 preview string is stale.
+        model: 'gemini-3.1-flash-live-preview',
         systemInstruction: geminiLiveSystemInstruction,
         voice: 'Aoede',
         tools: [
@@ -366,7 +369,8 @@ class JournalNotifier extends Notifier<JournalState> {
         ..onSetupComplete = () {
           _setStatus(SessionStatus.live);
         }
-        ..onError = (_) {
+        ..onError = (error) {
+          debugPrint('[journal] Gemini Live error: $error');
           _setStatus(SessionStatus.error);
         };
       _live = live;
@@ -375,11 +379,13 @@ class JournalNotifier extends Notifier<JournalState> {
 
       _capture = PcmCapture();
       if (!await _capture!.hasPermission()) {
+        debugPrint('[journal] microphone permission not granted');
         _setStatus(SessionStatus.error);
         return;
       }
       await _capture!.start((pcm) => _live?.sendAudio(pcm));
-    } catch (_) {
+    } catch (error, stack) {
+      debugPrint('[journal] startSession failed: $error\n$stack');
       _setStatus(SessionStatus.error);
     }
   }
