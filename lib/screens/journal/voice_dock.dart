@@ -93,10 +93,14 @@ class _VoiceDockState extends State<VoiceDock> with TickerProviderStateMixin {
   bool get _voiceActive =>
       widget.mode == DockMode.listening || widget.mode == DockMode.speaking;
 
+  // Anything that should keep the shared _pulse clock ticking — voice-active
+  // (goo + mic ring) plus thinking (dim mic breathe, see _mic).
+  bool get _pulseActive => _voiceActive || widget.mode == DockMode.thinking;
+
   @override
   void initState() {
     super.initState();
-    if (_voiceActive) _pulse.repeat();
+    if (_pulseActive) _pulse.repeat();
     if (widget.expanded) {
       _expand.value = 1;
       _jumpToBottomSoon();
@@ -106,9 +110,9 @@ class _VoiceDockState extends State<VoiceDock> with TickerProviderStateMixin {
   @override
   void didUpdateWidget(covariant VoiceDock old) {
     super.didUpdateWidget(old);
-    if (_voiceActive && !_pulse.isAnimating) {
+    if (_pulseActive && !_pulse.isAnimating) {
       _pulse.repeat();
-    } else if (!_voiceActive && _pulse.isAnimating) {
+    } else if (!_pulseActive && _pulse.isAnimating) {
       _pulse
         ..stop()
         ..reset();
@@ -319,6 +323,11 @@ class _VoiceDockState extends State<VoiceDock> with TickerProviderStateMixin {
 
   Widget _mic(LumenColors colors) {
     final listening = widget.mode == DockMode.listening;
+    final thinking = widget.mode == DockMode.thinking;
+    // Thinking dims/brightens the mic's own fill in one slow, quiet breath per
+    // pulse cycle (never reaching full brightness) — "booting up," not
+    // "recording" (that's the amber ring, above) and not "talking" (the goo).
+    final thinkingBreath = 0.55 + 0.20 * (0.5 + 0.5 * math.sin(math.pi * _pulse.value));
     return SizedBox(
       width: 48,
       height: 48,
@@ -347,8 +356,12 @@ class _VoiceDockState extends State<VoiceDock> with TickerProviderStateMixin {
               width: 48,
               height: 48,
               alignment: Alignment.center,
-              decoration:
-                  BoxDecoration(color: colors.amber, shape: BoxShape.circle),
+              decoration: BoxDecoration(
+                color: thinking
+                    ? colors.amber.withValues(alpha: thinkingBreath)
+                    : colors.amber,
+                shape: BoxShape.circle,
+              ),
               child: const Icon(Icons.mic, size: 18, color: Colors.white),
             ),
           ),

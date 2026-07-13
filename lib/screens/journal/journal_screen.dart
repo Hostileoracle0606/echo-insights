@@ -66,11 +66,22 @@ class _JournalScreenState extends ConsumerState<JournalScreen> {
     }
   }
 
-  // Map the session lifecycle onto dock modes. A live session reads as
-  // "listening" (goo silhouette + mic pulse); the dedicated agent-speaking
-  // state is wired in a later pass when the provider exposes it.
-  DockMode _dockMode(SessionStatus status) =>
-      status == SessionStatus.live ? DockMode.listening : DockMode.idle;
+  // Map the session lifecycle onto dock modes. Connecting reads as "thinking"
+  // (booting up); a live session reads as "speaking" while Lumen's audio is
+  // playing and "listening" the rest of the time; everything else collapses
+  // to the static idle pill.
+  DockMode _dockMode(SessionStatus status, bool agentSpeaking) {
+    switch (status) {
+      case SessionStatus.connecting:
+        return DockMode.thinking;
+      case SessionStatus.live:
+        return agentSpeaking ? DockMode.speaking : DockMode.listening;
+      case SessionStatus.idle:
+      case SessionStatus.ending:
+      case SessionStatus.error:
+        return DockMode.idle;
+    }
+  }
 
   // The provider keeps a flat role/text log; the dock speaks in DockTurns.
   // Anything the user said is a "you" bubble, everything else is Lumen.
@@ -84,6 +95,8 @@ class _JournalScreenState extends ConsumerState<JournalScreen> {
     final state = ref.watch(journalProvider);
     final status = ref.watch(sessionStatusProvider);
     final transcript = ref.watch(lastTranscriptProvider);
+    final muted = ref.watch(mutedProvider);
+    final agentSpeaking = ref.watch(agentSpeakingProvider);
     final turns =
         ref.watch(conversationProvider).map(_toTurn).toList(growable: false);
     final relationCount =
@@ -122,13 +135,16 @@ class _JournalScreenState extends ConsumerState<JournalScreen> {
                 child: Align(
                   alignment: Alignment.bottomCenter,
                   child: VoiceDock(
-                    mode: _dockMode(status),
+                    mode: _dockMode(status, agentSpeaking),
                     transcript: transcript,
+                    muted: muted,
                     expanded: _splitOpen,
                     turns: turns,
                     onMicTap: () => _toggleMic(status),
                     onToggleSplit: () =>
                         setState(() => _splitOpen = !_splitOpen),
+                    onMuteTap: () =>
+                        ref.read(journalProvider.notifier).toggleMute(),
                   ),
                 ),
               ),

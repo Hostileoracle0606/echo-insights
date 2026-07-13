@@ -32,17 +32,24 @@ class JournalNotifier extends Notifier<JournalState> {
   String? _lastMemoryQuery;
   int _memoryCallsThisTurn = 0;
   static const _maxMemoryCallsPerTurn = 3;
+  bool _muted = false;
+  bool _agentSpeaking = false;
+  Timer? _agentSpeakingTimer;
+  static const _agentSpeakingIdleMs = 400;
 
   SessionStatus get status => _status;
   String get lastTranscript => _lastTranscript;
   List<({String role, String text})> get conversation =>
       List.unmodifiable(_conversation);
+  bool get muted => _muted;
+  bool get agentSpeaking => _agentSpeaking;
 
   @override
   JournalState build() {
     ref.onDispose(() {
       _sentenceIdleTimer?.cancel();
       _saveDebounce?.cancel();
+      _agentSpeakingTimer?.cancel();
       unawaited(_capture?.stop());
       unawaited(_live?.close());
       unawaited(_player?.dispose());
@@ -53,6 +60,41 @@ class JournalNotifier extends Notifier<JournalState> {
   void _setStatus(SessionStatus status) {
     _status = status;
     _notifyUi();
+  }
+
+  void toggleMute() {
+    _muted = !_muted;
+    _notifyUi();
+  }
+
+  // Marks Lumen as currently talking; cleared ~400ms after the last audio
+  // chunk (reset on every chunk) or immediately on turn-complete/session-end,
+  // whichever comes first.
+  void _markAgentSpeaking() {
+    if (!_agentSpeaking) {
+      _agentSpeaking = true;
+      _notifyUi();
+    }
+    _agentSpeakingTimer?.cancel();
+    _agentSpeakingTimer = Timer(
+      const Duration(milliseconds: _agentSpeakingIdleMs),
+      () {
+        _agentSpeakingTimer = null;
+        if (_agentSpeaking) {
+          _agentSpeaking = false;
+          _notifyUi();
+        }
+      },
+    );
+  }
+
+  void _clearAgentSpeaking() {
+    _agentSpeakingTimer?.cancel();
+    _agentSpeakingTimer = null;
+    if (_agentSpeaking) {
+      _agentSpeaking = false;
+      _notifyUi();
+    }
   }
 
   void _setTranscript(String text) {
@@ -285,11 +327,13 @@ class JournalNotifier extends Notifier<JournalState> {
       live
         ..onTranscript = _onTranscriptChunk
         ..onAudio = (pcm) {
-          _player?.feed(pcm);
+          if (!_muted) _player?.feed(pcm);
+          _markAgentSpeaking();
         }
         ..onTurnComplete = () {
           _memoryCallsThisTurn = 0;
           _lastMemoryQuery = null;
+          _clearAgentSpeaking();
         }
         ..onToolCall = (name, args) async {
           if (name == 'get_graph_summary') return _buildGraphSummary();
@@ -322,6 +366,7 @@ class JournalNotifier extends Notifier<JournalState> {
     _setStatus(SessionStatus.ending);
     _sentenceIdleTimer?.cancel();
     _saveDebounce?.cancel();
+    _clearAgentSpeaking();
     await _capture?.stop();
     await _live?.close();
     await _player?.dispose();
@@ -330,6 +375,7 @@ class JournalNotifier extends Notifier<JournalState> {
       await service.saveState(_activeNotebookId!, state);
       await service.endNotebook(_activeNotebookId!);
     }
+    _muted = false;
     _setStatus(SessionStatus.idle);
     _live = null;
     _capture = null;

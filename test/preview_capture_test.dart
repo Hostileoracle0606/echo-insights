@@ -285,6 +285,37 @@ void main() {
     );
   });
 
+  // Same goo silhouette as listening, but Lumen is talking rather than
+  // recording: the amber mic-pulse ring is absent (compare to "listening").
+  testWidgets('VoiceDock speaking', (tester) async {
+    await _capture(
+      tester,
+      name: 'voice-dock-speaking',
+      width: 320,
+      height: 130,
+      settle: false,
+      child: Center(
+        child: VoiceDock(mode: DockMode.speaking, onMicTap: () {}),
+      ),
+    );
+  });
+
+  // Connecting: static paper pill (like idle), but the mic fill breathes a
+  // slow, dim pulse — "booting up," distinct from both idle (static) and
+  // listening/speaking (living goo).
+  testWidgets('VoiceDock thinking', (tester) async {
+    await _capture(
+      tester,
+      name: 'voice-dock-thinking',
+      width: 320,
+      height: 130,
+      settle: false,
+      child: Center(
+        child: VoiceDock(mode: DockMode.thinking, onMicTap: () {}),
+      ),
+    );
+  });
+
   // The split-screen panel: the dock morphed open, ChatGPT-style transcript
   // above the pinned controls, the in-flight line riding at the bottom.
   testWidgets('VoiceDock expanded', (tester) async {

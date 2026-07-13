@@ -17,3 +17,13 @@ final conversationProvider =
   ref.watch(journalProvider);
   return ref.watch(journalProvider.notifier).conversation;
 });
+
+final mutedProvider = Provider<bool>((ref) {
+  ref.watch(journalProvider);
+  return ref.watch(journalProvider.notifier).muted;
+});
+
+final agentSpeakingProvider = Provider<bool>((ref) {
+  ref.watch(journalProvider);
+  return ref.watch(journalProvider.notifier).agentSpeaking;
+});
