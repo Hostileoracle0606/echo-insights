@@ -131,7 +131,18 @@ class GeminiLiveClient {
   void handleServerMessage(String raw) => _onMessage(raw);
 
   void _onMessage(dynamic raw) {
-    final msg = jsonDecode(raw as String) as Map<String, dynamic>;
+    // Gemini Live delivers frames as BINARY (Uint8List / List<int>), not text.
+    // Casting straight to String threw on every message, so setupComplete never
+    // fired and the whole session silently stalled — decode binary first.
+    final String text;
+    if (raw is String) {
+      text = raw;
+    } else if (raw is List<int>) {
+      text = utf8.decode(raw);
+    } else {
+      return;
+    }
+    final msg = jsonDecode(text) as Map<String, dynamic>;
 
     if (msg.containsKey('setupComplete')) {
       onSetupComplete?.call();
