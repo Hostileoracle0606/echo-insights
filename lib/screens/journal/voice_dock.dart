@@ -71,16 +71,28 @@ class _VoiceDockState extends State<VoiceDock> with TickerProviderStateMixin {
     duration: const Duration(milliseconds: 2200),
   );
 
-  // The split morph. easeOutCubic opening, easeInCubic closing — crisp, no
-  // overshoot (an overshoot on width could spill past the screen edge).
+  // The split morph, matching the web dock's spring: 500ms with
+  // cubic-bezier(.34, 1.56, .64, 1) both directions — a soft overshoot on
+  // open ("bounce"), a soft squish on close. Width clamps at its target so
+  // only height carries the overshoot (see _expandedDock).
+  static const Curve _spring = Cubic(0.34, 1.56, 0.64, 1);
   late final AnimationController _expand = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 520),
+    duration: const Duration(milliseconds: 500),
   );
   late final Animation<double> _e = CurvedAnimation(
     parent: _expand,
-    curve: Curves.easeOutCubic,
-    reverseCurve: Curves.easeInCubic,
+    curve: _spring,
+    reverseCurve: _spring,
+  );
+
+  // Panel-content opacity, on the web's transition timing: fade IN over the
+  // back 60% of the open (delay 200 / duration 300 of the 500ms morph), fade
+  // OUT within the first ~100ms of the close.
+  late final Animation<double> _fade = CurvedAnimation(
+    parent: _expand,
+    curve: const Interval(0.4, 1.0, curve: Curves.easeOut),
+    reverseCurve: const Interval(0.8, 1.0, curve: Curves.easeIn),
   );
 
   final ScrollController _scroll = ScrollController();
@@ -148,15 +160,32 @@ class _VoiceDockState extends State<VoiceDock> with TickerProviderStateMixin {
     final colors = context.lumenColors;
     final surface = Theme.of(context).extension<LumenSurface>()!;
 
-    return AnimatedBuilder(
-      animation: Listenable.merge([_expand, _pulse]),
-      builder: (context, _) {
-        final e = _e.value;
-        // Fully collapsed: the original pill / goo silhouette, intrinsic-sized.
-        if (e == 0) return _restDock(colors, surface);
-        // Morphing or open: the paper panel, sized by the curve.
-        return _expandedDock(context, colors, surface, e);
-      },
+    // Rebuild scoping (the web version is GPU-composited CSS; this is the
+    // Flutter equivalent): the morph AnimatedBuilder listens ONLY to _expand
+    // and animates just the frame — the panel content is prebuilt once per
+    // widget build and passed through as `child`. The _pulse clock rebuilds no
+    // widgets at all: the goo painter and the mic ring each listen to it
+    // directly. RepaintBoundary keeps the dock's 60fps repaints off the rest
+    // of the screen.
+    final screen = MediaQuery.sizeOf(context);
+    final expandedW = (screen.width - 32).clamp(280.0, 560.0);
+    final maxBubble = (expandedW - 36) * 0.82;
+
+    return RepaintBoundary(
+      child: AnimatedBuilder(
+        animation: _expand,
+        child: _expandedContent(colors, maxBubble),
+        builder: (context, child) {
+          // Value-based branch (not status-based): on the tap frame the
+          // controller is `forward` at value 0 — rendering the panel at its
+          // 60px start would overflow the pinned buttons for that one frame.
+          // At e ≤ 0 (rest, and the spring's squish tail on close) show the
+          // pill; the first real morph frame is already tall enough.
+          if (_e.value <= 0) return _restDock(colors, surface);
+          // Morphing or open: the paper panel, sized by the spring.
+          return _expandedDock(context, colors, surface, child!);
+        },
+      ),
     );
   }
 
@@ -175,10 +204,12 @@ class _VoiceDockState extends State<VoiceDock> with TickerProviderStateMixin {
         child: buttons,
       );
     }
-    // Living silhouette paints the capsule itself; controls ride on top.
+    // Living silhouette paints the capsule itself; controls ride on top. The
+    // painter listens to the pulse clock directly (repaint:), so its 60fps
+    // drift repaints without rebuilding any widgets.
     return CustomPaint(
       painter: _GooPainter(
-        t: _pulse.value,
+        pulse: _pulse,
         fill: colors.card,
         rim: colors.border,
         shadow: colors.ink.withValues(alpha: 0.10),
@@ -193,19 +224,21 @@ class _VoiceDockState extends State<VoiceDock> with TickerProviderStateMixin {
     BuildContext context,
     LumenColors colors,
     LumenSurface surface,
-    double e,
+    Widget child,
   ) {
     final screen = MediaQuery.sizeOf(context);
     final expandedW = (screen.width - 32).clamp(280.0, 560.0);
     final expandedH = (screen.height * 0.62).clamp(360.0, 720.0);
-    final w = lerpDouble(_collapsedW, expandedW, e)!;
-    final h = lerpDouble(_collapsedH, expandedH, e)!;
-    final radius = lerpDouble(32, 30, e)!;
-    // Bubbles size off the settled width so text doesn't reflow mid-morph.
-    final maxBubble = (expandedW - 36) * 0.82;
-    // Content fades in over the back half of the morph, after the frame is big
-    // enough to hold it.
-    final contentOpacity = ((e - 0.35) / 0.65).clamp(0.0, 1.0);
+    final e = _e.value;
+    // The spring overshoots past 1. Height carries the bounce (the island
+    // springs upward past its resting size, like the web); width and radius
+    // clamp at their targets so the panel never spills past the screen's side
+    // margins mid-bounce.
+    final eh = e < 0 ? 0.0 : e;
+    final ew = e.clamp(0.0, 1.0);
+    final w = lerpDouble(_collapsedW, expandedW, ew)!;
+    final h = lerpDouble(_collapsedH, expandedH, eh)!;
+    final radius = lerpDouble(32, 30, ew)!;
 
     return Container(
       width: w,
@@ -217,19 +250,26 @@ class _VoiceDockState extends State<VoiceDock> with TickerProviderStateMixin {
         border: Border.all(color: colors.border),
         boxShadow: surface.shadowPaper,
       ),
-      child: Column(
-        children: [
-          Expanded(
-            child: Opacity(
-              opacity: contentOpacity,
-              child: _conversation(colors, maxBubble),
-            ),
+      child: child,
+    );
+  }
+
+  // The expanded panel's content, prebuilt once per widget build so the
+  // per-frame morph never rebuilds it. Its fade rides [_fade] on the web's
+  // delayed-in / instant-out timing via a self-listening FadeTransition.
+  Widget _expandedContent(LumenColors colors, double maxBubble) {
+    return Column(
+      children: [
+        Expanded(
+          child: FadeTransition(
+            opacity: _fade,
+            child: _conversation(colors, maxBubble),
           ),
-          // Uniform padding sets the controls apart from the rolling
-          // conversation, on the one shared paper surface.
-          _buttons(colors, padding: const EdgeInsets.symmetric(vertical: 14)),
-        ],
-      ),
+        ),
+        // Uniform padding sets the controls apart from the rolling
+        // conversation, on the one shared paper surface.
+        _buttons(colors, padding: const EdgeInsets.symmetric(vertical: 14)),
+      ],
     );
   }
 
@@ -324,48 +364,57 @@ class _VoiceDockState extends State<VoiceDock> with TickerProviderStateMixin {
   Widget _mic(LumenColors colors) {
     final listening = widget.mode == DockMode.listening;
     final thinking = widget.mode == DockMode.thinking;
-    // Thinking dims/brightens the mic's own fill in one slow, quiet breath per
-    // pulse cycle (never reaching full brightness) — "booting up," not
-    // "recording" (that's the amber ring, above) and not "talking" (the goo).
-    final thinkingBreath = 0.55 + 0.20 * (0.5 + 0.5 * math.sin(math.pi * _pulse.value));
+    // Scoped to its own AnimatedBuilder: the pulse animates only this 48×48
+    // subtree (ring + fill), never the rest of the dock.
     return SizedBox(
       width: 48,
       height: 48,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          if (listening)
-            // Expanding amber pulse ring — the "recording" signal.
-            Opacity(
-              opacity: (1 - _pulse.value) * 0.5,
-              child: Transform.scale(
-                scale: 1 + _pulse.value * 0.5,
+      child: AnimatedBuilder(
+        animation: _pulse,
+        builder: (context, _) {
+          final t = _pulse.value;
+          // Thinking dims/brightens the mic's own fill in one slow, quiet
+          // breath per pulse cycle (never reaching full brightness) —
+          // "booting up," not "recording" (that's the amber ring) and not
+          // "talking" (the goo).
+          final thinkingBreath = 0.55 + 0.20 * (0.5 + 0.5 * math.sin(math.pi * t));
+          return Stack(
+            alignment: Alignment.center,
+            children: [
+              if (listening)
+                // Expanding amber pulse ring — the "recording" signal.
+                Opacity(
+                  opacity: (1 - t) * 0.5,
+                  child: Transform.scale(
+                    scale: 1 + t * 0.5,
+                    child: Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(color: colors.amber, width: 2),
+                      ),
+                    ),
+                  ),
+                ),
+              GestureDetector(
+                onTap: widget.onMicTap,
                 child: Container(
                   width: 48,
                   height: 48,
+                  alignment: Alignment.center,
                   decoration: BoxDecoration(
+                    color: thinking
+                        ? colors.amber.withValues(alpha: thinkingBreath)
+                        : colors.amber,
                     shape: BoxShape.circle,
-                    border: Border.all(color: colors.amber, width: 2),
                   ),
+                  child: const Icon(Icons.mic, size: 18, color: Colors.white),
                 ),
               ),
-            ),
-          GestureDetector(
-            onTap: widget.onMicTap,
-            child: Container(
-              width: 48,
-              height: 48,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: thinking
-                    ? colors.amber.withValues(alpha: thinkingBreath)
-                    : colors.amber,
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(Icons.mic, size: 18, color: Colors.white),
-            ),
-          ),
-        ],
+            ],
+          );
+        },
       ),
     );
   }
@@ -441,17 +490,21 @@ class _SplitControl extends StatelessWidget {
 /// in the border colour gives the fused edge definition on paper; a soft
 /// drop-shadow lifts it.
 class _GooPainter extends CustomPainter {
-  final double t;
+  // Listening directly to the pulse clock (super.repaint) lets the silhouette
+  // drift at 60fps with zero widget rebuilds.
+  final Animation<double> pulse;
   final Color fill;
   final Color rim;
   final Color shadow;
 
   _GooPainter({
-    required this.t,
+    required this.pulse,
     required this.fill,
     required this.rim,
     required this.shadow,
-  });
+  }) : super(repaint: pulse);
+
+  double get t => pulse.value;
 
   static const double _radius = 32;
   static const double _tau = 2 * math.pi;
@@ -513,5 +566,5 @@ class _GooPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _GooPainter old) =>
-      old.t != t || old.fill != fill || old.rim != rim;
+      old.pulse != pulse || old.fill != fill || old.rim != rim;
 }

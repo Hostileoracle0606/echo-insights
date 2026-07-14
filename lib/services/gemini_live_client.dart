@@ -4,6 +4,8 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
+import '../logic/voice_log.dart';
+
 typedef OnTranscript = void Function(String text, bool isFinal);
 typedef OnAudio = void Function(Uint8List pcm16);
 typedef OnToolCall = Future<Map<String, dynamic>> Function(
@@ -21,6 +23,15 @@ class GeminiLiveClient {
 
   WebSocketChannel? _channel;
   StreamSubscription<dynamic>? _sub;
+
+  // Protocol state. Gemini Live rejects realtime input sent before the server
+  // acks setup — [sendAudio] drops frames until [_setupComplete]. [_closing]
+  // marks a client-initiated close so [connect]'s onDone doesn't report it.
+  bool _setupComplete = false;
+  bool _closing = false;
+  int _framesDropped = 0;
+  int _framesSent = 0;
+  int _audioChunksIn = 0;
 
   OnTranscript? onTranscript;
   OnTranscript? onAgentTranscript;
@@ -42,10 +53,40 @@ class GeminiLiveClient {
     final uri = Uri.parse(
       'wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=$apiKey',
     );
+    _setupComplete = false;
+    _closing = false;
+    vlog('client', 'connecting (model=$model)…');
     _channel = WebSocketChannel.connect(uri);
+
+    // Await the actual WebSocket handshake (the web client awaits `open` the
+    // same way); otherwise a failed handshake surfaces later as silence.
+    try {
+      await _channel!.ready.timeout(const Duration(seconds: 8));
+    } catch (error) {
+      vlog('client', 'connect FAILED: $error');
+      onError?.call(error);
+      rethrow;
+    }
+    vlog('client', 'socket open — sending setup');
+
     _sub = _channel!.stream.listen(
       _onMessage,
-      onError: (Object error) => onError?.call(error),
+      onError: (Object error) {
+        vlog('client', 'socket error: $error');
+        onError?.call(error);
+      },
+      // A server-initiated close was previously invisible (no onDone handler):
+      // the session died silently and the dock sat "listening" forever.
+      onDone: () {
+        final code = _channel?.closeCode;
+        final reason = _channel?.closeReason;
+        vlog('client',
+            'socket closed (code=$code reason="$reason" byUs=$_closing)');
+        if (!_closing) {
+          onError?.call(
+              StateError('Gemini Live closed the connection ($code $reason)'));
+        }
+      },
     );
     _sendSetup();
   }
@@ -79,6 +120,20 @@ class GeminiLiveClient {
   }
 
   void sendAudio(Uint8List pcm16) {
+    // Realtime input before the setup ack is a protocol violation the server
+    // may answer by closing the socket — drop (and count) early frames.
+    if (!_setupComplete) {
+      _framesDropped++;
+      if (_framesDropped == 1 || _framesDropped % 25 == 0) {
+        vlog('client', 'dropping mic frame before setupComplete '
+            '(dropped=$_framesDropped)');
+      }
+      return;
+    }
+    _framesSent++;
+    if (_framesSent == 1 || _framesSent % 50 == 0) {
+      vlog('client', 'mic → gemini: frame #$_framesSent (${pcm16.length} B)');
+    }
     final b64 = base64.encode(pcm16);
     _channel?.sink.add(
       jsonEncode({
@@ -145,6 +200,9 @@ class GeminiLiveClient {
     final msg = jsonDecode(text) as Map<String, dynamic>;
 
     if (msg.containsKey('setupComplete')) {
+      _setupComplete = true;
+      vlog('client', 'setupComplete — session live '
+          '(dropped $_framesDropped early mic frames)');
       onSetupComplete?.call();
       return;
     }
@@ -154,6 +212,7 @@ class GeminiLiveClient {
       for (final call in calls) {
         final callMap = call as Map<String, dynamic>;
         final name = callMap['name'] as String? ?? '';
+        vlog('client', 'toolCall: $name');
         final id = callMap['id'] as String? ?? '';
         final args = (callMap['args'] as Map<String, dynamic>?) ?? {};
         final handler = onToolCall;
@@ -188,6 +247,10 @@ class GeminiLiveClient {
           final mimeType = (data['mimeType'] ?? data['mime_type']) as String?;
           final b64 = data['data'] as String?;
           if (b64 != null && (mimeType == null || mimeType.startsWith('audio/'))) {
+            _audioChunksIn++;
+            if (_audioChunksIn == 1 || _audioChunksIn % 25 == 0) {
+              vlog('client', 'gemini → audio chunk #$_audioChunksIn');
+            }
             onAudio?.call(base64.decode(b64));
           }
         }
@@ -196,26 +259,34 @@ class GeminiLiveClient {
       if (content.containsKey('inputTranscription')) {
         final transcript =
             content['inputTranscription'] as Map<String, dynamic>;
-        onTranscript?.call(transcript['text'] as String? ?? '', turnComplete);
+        final text = transcript['text'] as String? ?? '';
+        vlog('client', 'gemini → user transcript (+${text.length} chars)');
+        onTranscript?.call(text, turnComplete);
       }
 
       // The agent's own spoken words, transcribed back to text.
       if (content.containsKey('outputTranscription')) {
         final transcript =
             content['outputTranscription'] as Map<String, dynamic>;
-        onAgentTranscript?.call(
-          transcript['text'] as String? ?? '',
-          turnComplete,
-        );
+        final text = transcript['text'] as String? ?? '';
+        vlog('client', 'gemini → agent transcript (+${text.length} chars)');
+        onAgentTranscript?.call(text, turnComplete);
       }
 
-      if (turnComplete) onTurnComplete?.call();
+      if (turnComplete) {
+        vlog('client', 'gemini → turnComplete');
+        onTurnComplete?.call();
+      }
     }
   }
 
   Future<void> close() async {
+    _closing = true;
+    vlog('client', 'closing (sent=$_framesSent frames, '
+        'received=$_audioChunksIn audio chunks)');
     await _sub?.cancel();
     await _channel?.sink.close();
     _channel = null;
+    _setupComplete = false;
   }
 }

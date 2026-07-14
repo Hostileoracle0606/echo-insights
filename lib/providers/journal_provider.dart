@@ -10,6 +10,7 @@ import '../env.dart';
 import '../logic/agenda.dart' as agenda_logic;
 import '../logic/conversation_policy.dart';
 import '../logic/merge.dart' as merge_logic;
+import '../logic/voice_log.dart';
 import '../models/journal_state.dart';
 import '../services/extract_graph_service.dart';
 import '../services/gemini_live_client.dart';
@@ -61,6 +62,7 @@ class JournalNotifier extends Notifier<JournalState> {
   }
 
   void _setStatus(SessionStatus status) {
+    vlog('session', 'status → ${status.name}');
     _status = status;
     _notifyUi();
   }
@@ -162,6 +164,7 @@ class JournalNotifier extends Notifier<JournalState> {
     if (isFinal) {
       final trimmed = _agentTurnAccumulator.trim();
       if (trimmed.isNotEmpty) {
+        vlog('session', 'agent turn committed (${trimmed.length} chars)');
         _conversation.add((role: 'agent', text: trimmed));
         if (_conversation.length > 16) {
           _conversation.removeRange(0, _conversation.length - 16);
@@ -185,6 +188,8 @@ class JournalNotifier extends Notifier<JournalState> {
 
     final result = merge_logic.merge(state, text, patch);
     state = result.next;
+    vlog('session', 'extract merged: ${state.entities.length} entities, '
+        '${state.relations.length} relations');
     _saveStateDebounced();
   }
 
@@ -310,6 +315,8 @@ class JournalNotifier extends Notifier<JournalState> {
       if (_activeNotebookId != null) {
         state = await service.loadState(_activeNotebookId!);
       }
+      vlog('session', 'notebook=$_activeNotebookId '
+          '(${state.entities.length} entities loaded)');
 
       // Configure the shared iOS audio session for simultaneous playback AND
       // recording before any audio component starts. Without this, just_audio
@@ -400,6 +407,7 @@ class JournalNotifier extends Notifier<JournalState> {
         return;
       }
       await _capture!.start((pcm) => _live?.sendAudio(pcm));
+      vlog('session', 'mic capture started');
 
       // Agent-audio playback comes LAST: it's optional (the session still
       // captures voice and builds the graph without it), and its init can
@@ -409,6 +417,7 @@ class JournalNotifier extends Notifier<JournalState> {
       _player = PcmPlayer();
       try {
         await _player!.init().timeout(const Duration(seconds: 5));
+        vlog('playback', 'agent-audio playback ready');
       } catch (error) {
         debugPrint('[journal] agent-audio playback unavailable, continuing '
             'without it: $error');
