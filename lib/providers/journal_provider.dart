@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:audio_session/audio_session.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -310,18 +311,22 @@ class JournalNotifier extends Notifier<JournalState> {
         state = await service.loadState(_activeNotebookId!);
       }
 
-      // Agent-audio playback is optional. just_audio's stream source fails to
-      // load on the iOS simulator (AVFoundation -11800); don't let that abort
-      // the whole session — keep capturing the user's voice and building the
-      // graph, just without hearing Lumen back.
-      _player = PcmPlayer();
+      // Configure the shared iOS audio session for simultaneous playback AND
+      // recording before any audio component starts. Without this, just_audio
+      // sets a playback-only category and the record plugin (which doesn't
+      // manage the session by default) taps a mic the session can't record
+      // from — the classic "dock listens, hears nothing" failure on device.
       try {
-        await _player!.init();
+        final session = await AudioSession.instance;
+        await session.configure(AudioSessionConfiguration(
+          avAudioSessionCategory: AVAudioSessionCategory.playAndRecord,
+          avAudioSessionCategoryOptions:
+              AVAudioSessionCategoryOptions.defaultToSpeaker |
+                  AVAudioSessionCategoryOptions.allowBluetooth,
+          avAudioSessionMode: AVAudioSessionMode.spokenAudio,
+        ));
       } catch (error) {
-        debugPrint('[journal] agent-audio playback unavailable, continuing '
-            'without it: $error');
-        unawaited(_player?.dispose().catchError((_) {}));
-        _player = null;
+        debugPrint('[journal] audio session config unavailable: $error');
       }
 
       final live = GeminiLiveClient(
@@ -395,6 +400,21 @@ class JournalNotifier extends Notifier<JournalState> {
         return;
       }
       await _capture!.start((pcm) => _live?.sendAudio(pcm));
+
+      // Agent-audio playback comes LAST: it's optional (the session still
+      // captures voice and builds the graph without it), and its init can
+      // stall for minutes on the simulator (just_audio / AVFoundation -11800)
+      // and block other audio plugin calls — so it must never sit in front of
+      // the mic on the critical path. Timeout-capped and non-fatal.
+      _player = PcmPlayer();
+      try {
+        await _player!.init().timeout(const Duration(seconds: 5));
+      } catch (error) {
+        debugPrint('[journal] agent-audio playback unavailable, continuing '
+            'without it: $error');
+        unawaited(_player?.dispose().catchError((_) {}));
+        _player = null;
+      }
     } catch (error, stack) {
       debugPrint('[journal] startSession failed: $error\n$stack');
       _setStatus(SessionStatus.error);
