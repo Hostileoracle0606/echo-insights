@@ -310,8 +310,19 @@ class JournalNotifier extends Notifier<JournalState> {
         state = await service.loadState(_activeNotebookId!);
       }
 
+      // Agent-audio playback is optional. just_audio's stream source fails to
+      // load on the iOS simulator (AVFoundation -11800); don't let that abort
+      // the whole session — keep capturing the user's voice and building the
+      // graph, just without hearing Lumen back.
       _player = PcmPlayer();
-      await _player!.init();
+      try {
+        await _player!.init();
+      } catch (error) {
+        debugPrint('[journal] agent-audio playback unavailable, continuing '
+            'without it: $error');
+        unawaited(_player?.dispose().catchError((_) {}));
+        _player = null;
+      }
 
       final live = GeminiLiveClient(
         apiKey: Env.geminiApiKey,
