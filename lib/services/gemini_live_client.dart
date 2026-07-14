@@ -181,10 +181,14 @@ class GeminiLiveClient {
         }
         if (p.containsKey('inlineData')) {
           final data = p['inlineData'] as Map<String, dynamic>;
-          final mimeType = data['mime_type'] as String? ?? '';
-          if (mimeType.startsWith('audio/')) {
-            final bytes = base64.decode(data['data'] as String);
-            onAudio?.call(bytes);
+          // The server's JSON is camelCase (mimeType) — reading 'mime_type'
+          // returned null and silently dropped every agent-audio chunk. The
+          // web client treats any inlineData.data as audio; mirror that and
+          // only skip if a mime type IS present and clearly not audio.
+          final mimeType = (data['mimeType'] ?? data['mime_type']) as String?;
+          final b64 = data['data'] as String?;
+          if (b64 != null && (mimeType == null || mimeType.startsWith('audio/'))) {
+            onAudio?.call(base64.decode(b64));
           }
         }
       }
