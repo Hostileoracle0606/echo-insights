@@ -32,21 +32,26 @@ import { useGeminiLive } from "@/hooks/use-gemini-live";
 import type { GeminiFunctionDeclaration, GeminiToolCall } from "@/lib/gemini-live-client";
 import {
   answerFollowUp,
-  clearState,
   DEFAULT_EXTRACTION_MODE,
   ensureActiveNotebook,
   loadExtractionMode,
-  loadState,
   mergeExtraction,
   saveExtractionMode,
-  saveState,
   slugify,
   type ExtractedPayload,
 } from "@/lib/journal-store";
+import {
+  commitNotebook,
+  getNotebookSnapshot,
+  newRequestId,
+  type CommitOutcome,
+  type NotebookChange,
+} from "@/lib/notebook-commit";
 import type { Entity, ExtractionMode, JournalState } from "@/lib/journal-types";
 import { cn } from "@/lib/utils";
 import { downloadBlob, exportToObsidianZip } from "@/lib/obsidian-export";
 import { extractGraph } from "@/lib/extract-graph";
+import { resetMemoryIndex, retrieveMemory } from "@/lib/journal-memory";
 import {
   ENTITY_WORD_TARGET,
   FOCUS_BATCH_SIZE,
@@ -388,12 +393,6 @@ function formatRelative(iso: string): string {
   return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
-function isPageRefresh() {
-  if (typeof performance === "undefined") return false;
-  const [navigation] = performance.getEntriesByType("navigation") as PerformanceNavigationTiming[];
-  return navigation?.type === "reload";
-}
-
 function SpeakerLabel({ name, pulse }: { name: string; pulse: boolean }) {
   return (
     <span className="flex items-center gap-1.5 whitespace-nowrap text-[10px] font-medium uppercase tracking-[0.22em] text-muted-foreground">
@@ -410,7 +409,6 @@ function SpeakerLabel({ name, pulse }: { name: string; pulse: boolean }) {
 
 function Index() {
   const { user } = useSession();
-  const [notebookId, setNotebookId] = useState<string | null>(null);
   const notebookIdRef = useRef<string | null>(null);
   const [state, setState] = useState<JournalState>(EMPTY_STATE);
   const [extractionMode, setExtractionMode] = useState<ExtractionMode>(DEFAULT_EXTRACTION_MODE);
@@ -459,6 +457,23 @@ function Index() {
   stateRef.current = state;
   const conversationRef = useRef<ConversationTurn[]>(conversation);
   conversationRef.current = conversation;
+
+  // Optimistic-concurrency counter from the last-known server snapshot.
+  // Every commit reads this fresh (at the moment it actually runs, not when
+  // it was queued) and a committed response updates it — that's what keeps
+  // same-tab sequential commits from conflicting with themselves.
+  const notebookRevisionRef = useRef<number>(0);
+  // Serializes writes to this notebook: chaining onto this promise (instead
+  // of an explicit queue array) guarantees commits reach the server in
+  // submission order with exactly one in flight at a time, with no extra
+  // bookkeeping. A rejection anywhere in the chain must not wedge every
+  // commit queued after it, so the tail is normalized to never reject.
+  const commitQueueRef = useRef<Promise<unknown>>(Promise.resolve());
+  const enqueueCommit = useCallback(<T,>(task: () => Promise<T>): Promise<T> => {
+    const run = commitQueueRef.current.then(task, task);
+    commitQueueRef.current = run.catch(() => undefined);
+    return run;
+  }, []);
   // Mirrored in a ref so processGraphUpdate (a memoized callback) reads the
   // current mode without forcing the callback identity to change every toggle.
   const extractionModeRef = useRef<ExtractionMode>(extractionMode);
@@ -539,6 +554,104 @@ function Index() {
     activityTimerRef.current = setTimeout(() => setLiveActivity(null), 5200);
   }, []);
 
+  // Commits one applyTurn change, queued so writes to this notebook always
+  // reach the server in submission order. The optimistic state was already
+  // applied by the caller before this was queued; this only reconciles the
+  // server's response into it (real ids, revision) or recovers from a
+  // conflict/failure.
+  const commitApplyTurn = useCallback(
+    (
+      nbId: string,
+      text: string,
+      payload: ExtractedPayload,
+      entryId: string,
+      tempFollowUpId: string | undefined,
+      change: NotebookChange,
+    ) => {
+      enqueueCommit(async () => {
+        let currentEntryId = entryId;
+        let currentChange = change;
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+          const expectedRevision = notebookRevisionRef.current;
+          const requestId = newRequestId();
+          let outcome: CommitOutcome;
+          try {
+            outcome = await commitNotebook({
+              notebookId: nbId,
+              expectedRevision,
+              requestId,
+              change: currentChange,
+            });
+          } catch (e) {
+            // Unknown outcome (network/transport failure, not a domain
+            // rejection -- the RPC always resolves those as data). Leave the
+            // optimistic state as-is rather than guess; the next turn's
+            // commit (or a manual reload) will reconcile it.
+            console.error("commitApplyTurn: RPC threw", e);
+            return;
+          }
+
+          if (outcome.status === "committed") {
+            notebookRevisionRef.current = outcome.revision;
+            const realEntryId = outcome.ids.entryId;
+            const realFollowUpId = outcome.ids.followUpId;
+            if (
+              (realEntryId && realEntryId !== currentEntryId) ||
+              (realFollowUpId && tempFollowUpId)
+            ) {
+              const swapped: JournalState = {
+                ...stateRef.current,
+                entries: realEntryId
+                  ? stateRef.current.entries.map((entry) =>
+                      entry.id === currentEntryId ? { ...entry, id: realEntryId } : entry,
+                    )
+                  : stateRef.current.entries,
+                followUps:
+                  realFollowUpId && tempFollowUpId
+                    ? stateRef.current.followUps.map((followUp) =>
+                        followUp.id === tempFollowUpId
+                          ? { ...followUp, id: realFollowUpId }
+                          : followUp,
+                      )
+                    : stateRef.current.followUps,
+              };
+              stateRef.current = swapped;
+              setState(swapped);
+            }
+            return;
+          }
+
+          if (outcome.status === "rejected") {
+            console.error("commitApplyTurn rejected:", outcome.code);
+            toast.error("Couldn't save that update.");
+            return;
+          }
+
+          // Conflict: another session committed to this notebook first.
+          // Reload and re-run the SAME pure merge against the fresh server
+          // state, then retry once. Simplification: this replaces the
+          // optimistic base for THIS turn with the fresh snapshot rather
+          // than reconciling against any other not-yet-committed optimistic
+          // turns queued behind it -- re-merging against already-optimistic
+          // local state would double-count mentions. Cross-device conflicts
+          // on the same notebook are the rare case this guards against, not
+          // the common path, so losing one turn's optimism (it'll re-sync on
+          // the next sentence) beats risking corrupted counts.
+          const fresh = await getNotebookSnapshot(nbId);
+          if (!fresh) return;
+          notebookRevisionRef.current = fresh.revision;
+          const retried = mergeExtraction(fresh.state, text, payload);
+          stateRef.current = retried.next;
+          setState(retried.next);
+          currentEntryId = retried.entryId;
+          currentChange = retried.change;
+        }
+        console.error("commitApplyTurn: conflict persisted after one retry, giving up");
+      });
+    },
+    [enqueueCommit],
+  );
+
   // Silent graph update: feed the user's transcript (delivered by Gemini Live)
   // into the existing Groq-backed extractor. We strip payload.followUp because
   // Gemini owns dialogue now — no double-prompting from the cascade pipeline.
@@ -584,6 +697,12 @@ function Index() {
         stateRef.current = next;
         setState(next);
         showActivity(activity);
+        const nbId = notebookIdRef.current;
+        if (nbId) {
+          const tempFollowUpId =
+            next.followUps.length > prev.followUps.length ? next.followUps[0]?.id : undefined;
+          commitApplyTurn(nbId, trimmed, graphOnly, merged.entryId, tempFollowUpId, merged.change);
+        }
       } catch (error: unknown) {
         // Aborted by a newer sentence — silently drop, the newer call covers it.
         if (error instanceof DOMException && error.name === "AbortError") return;
@@ -600,7 +719,7 @@ function Index() {
         }
       }
     },
-    [showActivity],
+    [showActivity, commitApplyTurn],
   );
 
   // Snapshot of graph state shaped for the model's planner. Returned to the
@@ -771,6 +890,21 @@ function Index() {
           "Return the current state of the user's knowledge graph: which entities exist, which are thin (need probing), which were just mentioned, bridge candidates, and uncertainRelations (the top relations the host suspects might be wrong — phrase your next question as a presupposition over one of these per the PRESUPPOSITIONAL PROBES policy). Call this BEFORE deciding your next question.",
         parameters: { type: "OBJECT", properties: {} },
       },
+      {
+        name: "get_relevant_memory",
+        description:
+          "Retrieve past memory relevant to a query from the user's knowledge graph: a focused packet of related entities, relations, and the exact things the user said (sources). Use this when the user references something from earlier or the past, or when grounding your reply in prior context would help. Distinct from get_graph_summary, which tells you what to ask next. The result is for YOUR planning only — never read it aloud.",
+        parameters: {
+          type: "OBJECT",
+          properties: {
+            query: {
+              type: "STRING",
+              description: "What to recall, in a few words (a name, topic, or phrase).",
+            },
+          },
+          required: ["query"],
+        },
+      },
     ],
     [],
   );
@@ -779,8 +913,20 @@ function Index() {
   // toolResponse round-trip; we only need to return the payload (or throw,
   // which the hook converts into an error envelope).
   const handleToolCall = useCallback(
-    (call: GeminiToolCall) => {
+    async (call: GeminiToolCall) => {
       if (call.name === "get_graph_summary") return buildGraphSummary();
+      if (call.name === "get_relevant_memory") {
+        const query =
+          typeof (call.args as Record<string, unknown> | undefined)?.query === "string"
+            ? ((call.args as Record<string, unknown>).query as string)
+            : "";
+        const { context } = await retrieveMemory(
+          stateRef.current,
+          query,
+          notebookIdRef.current ?? "active",
+        );
+        return { context };
+      }
       return { error: `Unknown tool: ${call.name}` };
     },
     [buildGraphSummary],
@@ -823,12 +969,16 @@ function Index() {
       try {
         const notebook = await ensureActiveNotebook(user.id);
         if (cancelled) return;
-        setNotebookId(notebook.id);
         notebookIdRef.current = notebook.id;
-        const pageRefresh = isPageRefresh();
-        const initialState = pageRefresh ? EMPTY_STATE : await loadState(notebook.id);
-        if (pageRefresh) await clearState(notebook.id);
+        resetMemoryIndex();
+        // One consistent read: the domain-shaped state plus the revision the
+        // first commit this session must supply as expectedRevision. No more
+        // refresh-time clearState -- the commit module is now the only thing
+        // that clears a notebook, and only after the server confirms it.
+        const snapshot = await getNotebookSnapshot(notebook.id);
         if (cancelled) return;
+        const initialState = snapshot?.state ?? EMPTY_STATE;
+        notebookRevisionRef.current = snapshot?.revision ?? 0;
         setState(initialState);
         stateRef.current = initialState;
         setExtractionMode(loadExtractionMode());
@@ -839,14 +989,14 @@ function Index() {
         setHydrated(true);
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [user]);
 
-  useEffect(() => {
-    if (hydrated && notebookId && user) {
-      void saveState(notebookId, user.id, state);
-    }
-  }, [state, hydrated, notebookId, user]);
+  // No more "save on every state change": each mutation now commits itself
+  // explicitly at its own call site (processGraphUpdate, skipFollowUp,
+  // handleClear), each with its own requestId and revision check.
 
   useEffect(() => {
     const el = topPillRef.current;
@@ -974,6 +1124,35 @@ function Index() {
     const next = answerFollowUp(stateRef.current, followUpId);
     stateRef.current = next;
     setState(next);
+    const nbId = notebookIdRef.current;
+    if (!nbId) return;
+    enqueueCommit(async () => {
+      const attempt = async (expectedRevision: number): Promise<CommitOutcome | null> => {
+        try {
+          return await commitNotebook({
+            notebookId: nbId,
+            expectedRevision,
+            requestId: newRequestId(),
+            change: { kind: "answerFollowUp", followUpId },
+          });
+        } catch (e) {
+          console.error("skipFollowUp: RPC threw", e);
+          return null;
+        }
+      };
+      let outcome = await attempt(notebookRevisionRef.current);
+      if (outcome?.status === "conflict") {
+        // Fixed-target change (no re-merge needed) -- just retry once
+        // against the revision the conflict reported.
+        notebookRevisionRef.current = outcome.currentRevision;
+        outcome = await attempt(outcome.currentRevision);
+      }
+      if (outcome?.status === "committed") {
+        notebookRevisionRef.current = outcome.revision;
+      } else if (outcome?.status === "rejected") {
+        console.error("skipFollowUp rejected:", outcome.code);
+      }
+    });
   }
 
   async function handleExport() {
@@ -991,11 +1170,41 @@ function Index() {
     }
   }
 
-  function handleClear() {
+  async function handleClear() {
     if (!confirm("Erase your journal, graph, and follow-ups? This cannot be undone.")) return;
-    if (notebookId) void clearState(notebookId);
+    const nbId = notebookIdRef.current;
+    if (!nbId) return;
+    // Commit-first, not optimistic-first: a destructive change only ever
+    // shows as "cleared" once the server confirms it, and a conflict never
+    // auto-retries -- reload what's actually there and make the person
+    // confirm again rather than silently erase newer data from elsewhere.
+    const outcome = await enqueueCommit(() =>
+      commitNotebook({
+        notebookId: nbId,
+        expectedRevision: notebookRevisionRef.current,
+        requestId: newRequestId(),
+        change: { kind: "clearNotebook" },
+      }).catch((e) => {
+        console.error("handleClear: commit threw", e);
+        return null;
+      }),
+    );
+
+    if (outcome?.status !== "committed") {
+      const fresh = await getNotebookSnapshot(nbId).catch(() => null);
+      if (fresh) {
+        notebookRevisionRef.current = fresh.revision;
+        setState(fresh.state);
+        stateRef.current = fresh.state;
+      }
+      toast.error("Couldn't clear the journal -- please try again.");
+      return;
+    }
+
+    notebookRevisionRef.current = outcome.revision;
     setState(EMPTY_STATE);
     stateRef.current = EMPTY_STATE;
+    resetMemoryIndex();
     setConversation([]);
     setLiveActivity(null);
     setHighlight(null);

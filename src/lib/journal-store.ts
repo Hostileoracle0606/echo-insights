@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase/browser";
+import type { EntityChange, NotebookChange, RelationChange } from "./notebook-commit";
 import type {
   AskedQuestion,
   Entity,
@@ -38,13 +39,15 @@ export const ASKED_QUESTIONS_CAP = 30;
 
 // ─── Slug helper — unchanged ─────────────────────────────────────
 export function slugify(name: string): string {
-  return name
-    .toLowerCase()
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "")
-    .slice(0, 60) || `e-${Math.random().toString(36).slice(2, 8)}`;
+  return (
+    name
+      .toLowerCase()
+      .normalize("NFKD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "")
+      .slice(0, 60) || `e-${Math.random().toString(36).slice(2, 8)}`
+  );
 }
 
 // ─── Notebook lifecycle ──────────────────────────────────────────
@@ -89,143 +92,6 @@ export async function ensureActiveNotebook(userId: string): Promise<Notebook> {
     throw new Error(`Failed to create notebook: ${error?.message ?? "unknown"}`);
   }
   return rowToNotebook(created);
-}
-
-/**
- * Load the full JournalState for a given notebook. Identical shape
- * to the old localStorage version so consumers don't need changes.
- */
-export async function loadState(notebookId?: string): Promise<JournalState> {
-  if (!notebookId) return EMPTY_STATE;
-
-  const [entriesRes, entitiesRes, relationsRes, followUpsRes, askedRes] =
-    await Promise.all([
-      supabase
-        .from("journal_entries")
-        .select("*")
-        .eq("notebook_id", notebookId)
-        .order("created_at", { ascending: false }),
-      supabase.from("entities").select("*").eq("notebook_id", notebookId),
-      supabase.from("relations").select("*").eq("notebook_id", notebookId),
-      supabase
-        .from("follow_ups")
-        .select("*")
-        .eq("notebook_id", notebookId)
-        .order("created_at", { ascending: false }),
-      supabase
-        .from("asked_questions")
-        .select("*")
-        .eq("notebook_id", notebookId)
-        .order("asked_at", { ascending: false })
-        .limit(ASKED_QUESTIONS_CAP),
-    ]);
-
-  if (entriesRes.error || entitiesRes.error || relationsRes.error
-      || followUpsRes.error || askedRes.error) {
-    console.warn("journal-store loadState partial failure", {
-      entries: entriesRes.error, entities: entitiesRes.error,
-      relations: relationsRes.error, followUps: followUpsRes.error,
-      asked: askedRes.error,
-    });
-    return EMPTY_STATE;
-  }
-
-  return {
-    entries: (entriesRes.data ?? []).map(rowToEntry),
-    entities: Object.fromEntries(
-      (entitiesRes.data ?? []).map((r) => [r.id, rowToEntity(r)]),
-    ),
-    relations: Object.fromEntries(
-      (relationsRes.data ?? []).map((r) => [r.id, rowToRelation(r)]),
-    ),
-    followUps: (followUpsRes.data ?? []).map(rowToFollowUp),
-    askedQuestions: (askedRes.data ?? []).map(rowToAskedQuestion),
-  };
-}
-
-/**
- * Snapshot-style save: replaces all child rows of the notebook with
- * the supplied state. Used by `mergeExtraction`'s consumer pattern.
- * For high-frequency single-row updates, prefer the targeted helpers
- * (`answerFollowUp`, etc).
- */
-export async function saveState(
-  notebookId: string,
-  userId: string,
-  state: JournalState,
-): Promise<void> {
-  // Replace strategy: delete + insert. RLS guards against cross-tenant
-  // damage either way.
-  await supabase.from("journal_entries").delete().eq("notebook_id", notebookId);
-  await supabase.from("entities").delete().eq("notebook_id", notebookId);
-  await supabase.from("relations").delete().eq("notebook_id", notebookId);
-  await supabase.from("follow_ups").delete().eq("notebook_id", notebookId);
-  await supabase.from("asked_questions").delete().eq("notebook_id", notebookId);
-
-  if (state.entries.length) {
-    await supabase.from("journal_entries").insert(
-      state.entries.map((e) => ({
-        id: e.id, user_id: userId, notebook_id: notebookId,
-        text: e.text, created_at: e.createdAt,
-      })),
-    );
-  }
-  const entityRows = Object.values(state.entities);
-  if (entityRows.length) {
-    await supabase.from("entities").insert(
-      entityRows.map((e) => ({
-        id: e.id, user_id: userId, notebook_id: notebookId,
-        name: e.name, type: e.type, description: e.description ?? null,
-        metadata: e.metadata, mentions: e.mentions,
-        first_seen: e.firstSeen, last_seen: e.lastSeen,
-        questions: e.questions ?? null,
-      })),
-    );
-  }
-  const relationRows = Object.values(state.relations);
-  if (relationRows.length) {
-    await supabase.from("relations").insert(
-      relationRows.map((r) => ({
-        id: r.id, user_id: userId, notebook_id: notebookId,
-        source_id: r.source, target_id: r.target, label: r.label,
-        metadata: r.metadata, created_at: r.createdAt,
-        superseded_at: r.supersededAt ?? null,
-      })),
-    );
-  }
-  if (state.followUps.length) {
-    await supabase.from("follow_ups").insert(
-      state.followUps.map((f) => ({
-        id: f.id, user_id: userId, notebook_id: notebookId,
-        question: f.question, reason: f.reason,
-        target_entity_ids: f.targetEntityIds,
-        answered: f.answered, created_at: f.createdAt,
-      })),
-    );
-  }
-  const asked = state.askedQuestions ?? [];
-  if (asked.length) {
-    await supabase.from("asked_questions").insert(
-      asked.map((q) => ({
-        user_id: userId, notebook_id: notebookId,
-        question: q.question, target_entity_ids: q.targetEntityIds,
-        asked_at: q.askedAt,
-      })),
-    );
-  }
-}
-
-/**
- * Hard-clear all child rows of the notebook. Used by the "Clear journal"
- * action in /app. Does not delete the notebook row itself — only its
- * children — so the user keeps the empty notebook to continue speaking into.
- */
-export async function clearState(notebookId: string): Promise<void> {
-  await supabase.from("journal_entries").delete().eq("notebook_id", notebookId);
-  await supabase.from("entities").delete().eq("notebook_id", notebookId);
-  await supabase.from("relations").delete().eq("notebook_id", notebookId);
-  await supabase.from("follow_ups").delete().eq("notebook_id", notebookId);
-  await supabase.from("asked_questions").delete().eq("notebook_id", notebookId);
 }
 
 // ─── mergeExtraction — UNCHANGED LOGIC, but the result is now
@@ -292,7 +158,7 @@ export function mergeExtraction(
   prev: JournalState,
   text: string,
   payload: ExtractedPayload,
-): { next: JournalState; entryId: string } {
+): { next: JournalState; entryId: string; change: NotebookChange } {
   const now = new Date().toISOString();
   const entities = { ...prev.entities };
   const relations = { ...prev.relations };
@@ -300,6 +166,10 @@ export function mergeExtraction(
   const askedQuestions = [...(prev.askedQuestions ?? [])];
   const entryEntityIds: string[] = [];
   const entryRelationIds: string[] = [];
+  // Every relation id this merge created, re-asserted, OR superseded — the
+  // full set commit_notebook needs to upsert. entryRelationIds alone would
+  // miss a relation touched only via payload.supersedes.
+  const touchedRelationIds = new Set<string>();
 
   // entities
   const nameToId: Record<string, string> = {};
@@ -363,6 +233,7 @@ export function mergeExtraction(
       };
     }
     entryRelationIds.push(rid);
+    touchedRelationIds.add(rid);
   }
 
   // Backfill entry tagging for relation endpoints that resolve to existing
@@ -396,6 +267,7 @@ export function mergeExtraction(
     }
     if (target.supersededAt) continue;
     relations[id] = { ...target, supersededAt: now };
+    touchedRelationIds.add(id);
   }
 
   // follow-up
@@ -424,12 +296,14 @@ export function mergeExtraction(
   }
 
   const entryId = `je-${Date.now()}`;
+  const uniqueEntryEntityIds = Array.from(new Set(entryEntityIds));
+  const uniqueEntryRelationIds = Array.from(new Set(entryRelationIds));
   const entry: JournalEntry = {
     id: entryId,
     text,
     createdAt: now,
-    entityIds: Array.from(new Set(entryEntityIds)),
-    relationIds: Array.from(new Set(entryRelationIds)),
+    entityIds: uniqueEntryEntityIds,
+    relationIds: uniqueEntryRelationIds,
   };
 
   const next: JournalState = {
@@ -439,7 +313,40 @@ export function mergeExtraction(
     followUps,
     askedQuestions,
   };
-  return { next, entryId };
+
+  // The domain change commit_notebook needs: full current values for every
+  // entity/relation this merge touched (upserts are "changed rows, in full",
+  // not field-level diffs — the server doesn't recompute mention counts or
+  // question de-duplication, it trusts what mergeExtraction already worked
+  // out). followUp/askedQuestion carry content only; the server mints their
+  // durable UUIDs.
+  const latestFollowUp = followUps[0];
+  const latestAsked = askedQuestions[0];
+  const change: NotebookChange = {
+    kind: "applyTurn",
+    entry: { text, entityIds: uniqueEntryEntityIds, relationIds: uniqueEntryRelationIds },
+    entities: uniqueEntryEntityIds.map((id): EntityChange => entities[id]),
+    relations: Array.from(touchedRelationIds).map((id): RelationChange => relations[id]),
+    ...(latestFollowUp && latestFollowUp.createdAt === now
+      ? {
+          followUp: {
+            question: latestFollowUp.question,
+            reason: latestFollowUp.reason,
+            targetEntityIds: latestFollowUp.targetEntityIds,
+          },
+        }
+      : {}),
+    ...(latestAsked && latestAsked.askedAt === now
+      ? {
+          askedQuestion: {
+            question: latestAsked.question,
+            targetEntityIds: latestAsked.targetEntityIds,
+          },
+        }
+      : {}),
+  };
+
+  return { next, entryId, change };
 }
 
 export function answerFollowUp(state: JournalState, id: string): JournalState {
@@ -465,48 +372,5 @@ function rowToNotebook(r: any): Notebook {
     archivedAt: r.archived_at ?? undefined,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
-  };
-}
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function rowToEntry(r: any): JournalEntry {
-  return {
-    id: r.id, text: r.text, createdAt: r.created_at,
-    entityIds: [], relationIds: [],  // recomputed by mergeExtraction
-  };
-}
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function rowToEntity(r: any): Entity {
-  return {
-    id: r.id, name: r.name, type: r.type,
-    description: r.description ?? undefined,
-    metadata: r.metadata ?? {},
-    mentions: r.mentions,
-    firstSeen: r.first_seen, lastSeen: r.last_seen,
-    questions: r.questions ?? undefined,
-  };
-}
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function rowToRelation(r: any): Relation {
-  return {
-    id: r.id, source: r.source_id, target: r.target_id,
-    label: r.label, metadata: r.metadata ?? {},
-    createdAt: r.created_at,
-    supersededAt: r.superseded_at ?? undefined,
-  };
-}
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function rowToFollowUp(r: any): FollowUp {
-  return {
-    id: r.id, question: r.question, reason: r.reason,
-    targetEntityIds: r.target_entity_ids ?? [],
-    createdAt: r.created_at, answered: r.answered,
-  };
-}
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function rowToAskedQuestion(r: any): AskedQuestion {
-  return {
-    question: r.question,
-    targetEntityIds: r.target_entity_ids ?? [],
-    askedAt: r.asked_at,
   };
 }

@@ -7,10 +7,30 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
-  __InternalSupabase: {
-    PostgrestVersion: "14.5"
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
   }
   public: {
     Tables: {
@@ -99,6 +119,44 @@ export type Database = {
           },
         ]
       }
+      entity_embeddings: {
+        Row: {
+          content_hash: string
+          embedding: string
+          embedding_model: string
+          entity_id: string
+          notebook_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          content_hash: string
+          embedding: string
+          embedding_model: string
+          entity_id: string
+          notebook_id: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          content_hash?: string
+          embedding?: string
+          embedding_model?: string
+          entity_id?: string
+          notebook_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "entity_embeddings_notebook_id_fkey"
+            columns: ["notebook_id"]
+            isOneToOne: false
+            referencedRelation: "notebooks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       follow_ups: {
         Row: {
           answered: boolean
@@ -143,28 +201,66 @@ export type Database = {
       journal_entries: {
         Row: {
           created_at: string
+          entity_ids: string[]
           id: string
           notebook_id: string
+          relation_ids: string[]
           text: string
           user_id: string
         }
         Insert: {
           created_at: string
+          entity_ids?: string[]
           id?: string
           notebook_id: string
+          relation_ids?: string[]
           text: string
           user_id: string
         }
         Update: {
           created_at?: string
+          entity_ids?: string[]
           id?: string
           notebook_id?: string
+          relation_ids?: string[]
           text?: string
           user_id?: string
         }
         Relationships: [
           {
             foreignKeyName: "journal_entries_notebook_id_fkey"
+            columns: ["notebook_id"]
+            isOneToOne: false
+            referencedRelation: "notebooks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      notebook_commit_requests: {
+        Row: {
+          created_at: string
+          notebook_id: string
+          request_hash: string
+          request_id: string
+          result: Json
+        }
+        Insert: {
+          created_at?: string
+          notebook_id: string
+          request_hash: string
+          request_id: string
+          result: Json
+        }
+        Update: {
+          created_at?: string
+          notebook_id?: string
+          request_hash?: string
+          request_id?: string
+          result?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notebook_commit_requests_notebook_id_fkey"
             columns: ["notebook_id"]
             isOneToOne: false
             referencedRelation: "notebooks"
@@ -180,6 +276,7 @@ export type Database = {
           ended_at: string | null
           entity_count: number
           id: string
+          revision: number
           started_at: string
           summary: string | null
           title: string
@@ -194,6 +291,7 @@ export type Database = {
           ended_at?: string | null
           entity_count?: number
           id?: string
+          revision?: number
           started_at: string
           summary?: string | null
           title: string
@@ -208,6 +306,7 @@ export type Database = {
           ended_at?: string | null
           entity_count?: number
           id?: string
+          revision?: number
           started_at?: string
           summary?: string | null
           title?: string
@@ -279,12 +378,63 @@ export type Database = {
           },
         ]
       }
+      retrieve_rate_limits: {
+        Row: {
+          count: number
+          scope: string
+          window_start: string
+        }
+        Insert: {
+          count?: number
+          scope: string
+          window_start: string
+        }
+        Update: {
+          count?: number
+          scope?: string
+          window_start?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      _commit_answer_follow_up: {
+        Args: { p_change: Json; p_notebook_id: string }
+        Returns: Json
+      }
+      _commit_apply_turn: {
+        Args: { p_change: Json; p_notebook_id: string; p_uid: string }
+        Returns: Json
+      }
+      _commit_clear_notebook: { Args: { p_notebook_id: string }; Returns: Json }
+      bump_retrieve_rate: { Args: { p_notebook_id: string }; Returns: boolean }
+      commit_notebook: {
+        Args: {
+          p_change: Json
+          p_expected_revision: number
+          p_notebook_id: string
+          p_request_id: string
+        }
+        Returns: Json
+      }
+      embed_orphan_prune: { Args: never; Returns: undefined }
+      embed_reconcile_sweep: { Args: never; Returns: undefined }
+      get_notebook_snapshot: { Args: { p_notebook_id: string }; Returns: Json }
+      match_entity_embeddings: {
+        Args: {
+          p_limit: number
+          p_model: string
+          p_notebook_id: string
+          p_query: string
+        }
+        Returns: {
+          entity_id: string
+          score: number
+        }[]
+      }
     }
     Enums: {
       [_ in never]: never
@@ -413,7 +563,11 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {},
   },
 } as const
+
