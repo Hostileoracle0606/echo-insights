@@ -11,3 +11,23 @@ verify_jwt = true
 
 [functions.embed-entities]
 verify_jwt = false
+
+# Local-dev-only port overrides: this machine already runs another Supabase
+# project's local stack on the CLI defaults (54321-54327). Shifted by +1000 to
+# avoid colliding with it — has no effect on the linked remote project.
+[api]
+port = 55321
+
+[db]
+port = 55322
+shadow_port = 55320
+
+[studio]
+port = 55323
+api_url = "http://127.0.0.1:55321"
+
+[inbucket]
+port = 55324
+
+[analytics]
+port = 55327
