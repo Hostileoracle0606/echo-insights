@@ -11,9 +11,12 @@ import '../logic/agenda.dart' as agenda_logic;
 import '../logic/conversation_policy.dart';
 import '../logic/merge.dart' as merge_logic;
 import '../logic/voice_log.dart';
+import '../models/graph_patch.dart';
+import '../models/journal_entry.dart';
 import '../models/journal_state.dart';
 import '../services/extract_graph_service.dart';
 import '../services/gemini_live_client.dart';
+import '../services/notebook_commit_service.dart';
 import '../services/retrieve_memory_service.dart';
 import 'supabase_provider.dart';
 
@@ -24,7 +27,6 @@ class JournalNotifier extends Notifier<JournalState> {
   PcmCapture? _capture;
   PcmPlayer? _player;
   Timer? _sentenceIdleTimer;
-  Timer? _saveDebounce;
   String _turnAccumulator = '';
   String _agentTurnAccumulator = '';
   String _lastTranscript = '';
@@ -41,18 +43,29 @@ class JournalNotifier extends Notifier<JournalState> {
   Timer? _agentSpeakingTimer;
   static const _agentSpeakingIdleMs = 400;
 
+  // Optimistic-concurrency counter from the last-known server snapshot.
+  // Every commit reads this fresh (at the moment it actually runs, not when
+  // it was queued) and a committed response updates it — see
+  // _enqueueCommit / _commitApplyTurn.
+  int _revision = 0;
+  // Serializes writes to the active notebook: chaining onto this future
+  // guarantees commits reach the server in submission order with exactly
+  // one in flight at a time. Normalized to never reject so one failed
+  // commit can't wedge every commit queued after it.
+  Future<void> _commitQueueTail = Future.value();
+
   SessionStatus get status => _status;
   String get lastTranscript => _lastTranscript;
   List<({String role, String text})> get conversation =>
       List.unmodifiable(_conversation);
   bool get muted => _muted;
   bool get agentSpeaking => _agentSpeaking;
+  int get revision => _revision;
 
   @override
   JournalState build() {
     ref.onDispose(() {
       _sentenceIdleTimer?.cancel();
-      _saveDebounce?.cancel();
       _agentSpeakingTimer?.cancel();
       unawaited(_capture?.stop());
       unawaited(_live?.close());
@@ -190,16 +203,109 @@ class JournalNotifier extends Notifier<JournalState> {
     state = result.next;
     vlog('session', 'extract merged: ${state.entities.length} entities, '
         '${state.relations.length} relations');
-    _saveStateDebounced();
+
+    final notebookId = _activeNotebookId;
+    if (notebookId != null) {
+      _commitApplyTurn(
+        notebookId: notebookId,
+        text: text,
+        patch: patch,
+        entryId: result.entryId,
+        change: result.change,
+      );
+    }
   }
 
-  void _saveStateDebounced() {
-    _saveDebounce?.cancel();
-    _saveDebounce = Timer(const Duration(seconds: 2), () {
-      final notebookId = _activeNotebookId;
-      if (notebookId == null) return;
-      final service = ref.read(supabaseServiceProvider);
-      unawaited(service.saveState(notebookId, state));
+  // Chains [task] onto the shared commit queue so writes to the active
+  // notebook always reach the server in submission order, one at a time.
+  Future<T> _enqueueCommit<T>(Future<T> Function() task) {
+    final run = _commitQueueTail.then((_) => task()).catchError((_) => task());
+    _commitQueueTail = run.then((_) {}).catchError((_) {});
+    return run;
+  }
+
+  // Commits one applyTurn change. The optimistic state was already applied
+  // by the caller before this was queued; this only reconciles the server's
+  // response into it (real entry id, revision) or recovers from a
+  // conflict/failure.
+  void _commitApplyTurn({
+    required String notebookId,
+    required String text,
+    required GraphPatch patch,
+    required String entryId,
+    required ApplyTurnChange change,
+  }) {
+    _enqueueCommit(() async {
+      final commitService = ref.read(notebookCommitServiceProvider);
+      var currentEntryId = entryId;
+      var currentChange = change;
+
+      for (var attempt = 0; attempt < 2; attempt += 1) {
+        final expectedRevision = _revision;
+        final requestId = NotebookCommitService.newRequestId();
+        CommitOutcome outcome;
+        try {
+          outcome = await commitService.commitNotebook(
+            notebookId: notebookId,
+            expectedRevision: expectedRevision,
+            requestId: requestId,
+            change: currentChange,
+          );
+        } catch (error) {
+          // Unknown outcome (network/transport failure, not a domain
+          // rejection — the RPC always resolves those as data). Leave the
+          // optimistic state as-is rather than guess; the next turn's
+          // commit (or a manual reload) will reconcile it.
+          vlog('session', 'commitApplyTurn RPC threw: $error');
+          return;
+        }
+
+        if (outcome is CommitCommitted) {
+          _revision = outcome.revision;
+          final realEntryId = outcome.entryId;
+          if (realEntryId != null && realEntryId != currentEntryId) {
+            final entries = state.entries
+                .map((entry) => entry.id == currentEntryId
+                    ? JournalEntry(
+                        id: realEntryId,
+                        text: entry.text,
+                        createdAt: entry.createdAt,
+                        entityIds: entry.entityIds,
+                        relationIds: entry.relationIds,
+                      )
+                    : entry)
+                .toList();
+            state = state.copyWith(entries: entries);
+          }
+          return;
+        }
+
+        if (outcome is CommitRejected) {
+          vlog('session', 'commitApplyTurn rejected: ${outcome.code}');
+          return;
+        }
+
+        // Conflict: another session committed to this notebook first.
+        // Reload and re-run the SAME pure merge against the fresh server
+        // state, then retry once. Simplification: this replaces the
+        // optimistic base for THIS turn with the fresh snapshot rather than
+        // reconciling against any other not-yet-committed optimistic turns
+        // queued behind it — re-merging against already-optimistic local
+        // state would double-count mentions. Cross-device conflicts on the
+        // same notebook are the rare case this guards against, not the
+        // common path, so losing one turn's optimism (it resyncs on the
+        // next sentence) beats risking corrupted counts.
+        outcome as CommitConflict;
+        final fresh = await commitService.getNotebookSnapshot(notebookId);
+        if (fresh == null) return;
+        _revision = fresh.revision;
+        final retried = merge_logic.merge(fresh.state, text, patch);
+        state = retried.next;
+        currentEntryId = retried.entryId;
+        currentChange = retried.change;
+      }
+      vlog('session',
+          'commitApplyTurn: conflict persisted after one retry, giving up');
     });
   }
 
@@ -293,8 +399,10 @@ class JournalNotifier extends Notifier<JournalState> {
   /// [startSession] reuses this notebook instead of finding the active one.
   Future<void> openNotebook(String notebookId) async {
     _activeNotebookId = notebookId;
-    final service = ref.read(supabaseServiceProvider);
-    state = await service.loadState(notebookId);
+    final commitService = ref.read(notebookCommitServiceProvider);
+    final snapshot = await commitService.getNotebookSnapshot(notebookId);
+    _revision = snapshot?.revision ?? 0;
+    state = snapshot?.state ?? JournalState.empty();
   }
 
   Future<void> startSession() async {
@@ -313,7 +421,11 @@ class JournalNotifier extends Notifier<JournalState> {
         _activeNotebookId = notebook?.id;
       }
       if (_activeNotebookId != null) {
-        state = await service.loadState(_activeNotebookId!);
+        final commitService = ref.read(notebookCommitServiceProvider);
+        final snapshot =
+            await commitService.getNotebookSnapshot(_activeNotebookId!);
+        _revision = snapshot?.revision ?? 0;
+        state = snapshot?.state ?? JournalState.empty();
       }
       vlog('session', 'notebook=$_activeNotebookId '
           '(${state.entities.length} entities loaded)');
@@ -434,14 +546,15 @@ class JournalNotifier extends Notifier<JournalState> {
     if (_status == SessionStatus.idle) return;
     _setStatus(SessionStatus.ending);
     _sentenceIdleTimer?.cancel();
-    _saveDebounce?.cancel();
     _clearAgentSpeaking();
     await _capture?.stop();
     await _live?.close();
     await _player?.dispose();
     if (_activeNotebookId != null) {
+      // Every turn already committed itself as it happened; just let any
+      // still-in-flight commit finish before marking the notebook ended.
+      await _commitQueueTail;
       final service = ref.read(supabaseServiceProvider);
-      await service.saveState(_activeNotebookId!, state);
       await service.endNotebook(_activeNotebookId!);
     }
     _muted = false;

@@ -14,7 +14,7 @@ enum EntityType {
   other,
 }
 
-@JsonSerializable(fieldRename: FieldRename.snake)
+@JsonSerializable()
 class Entity {
   final String id;
   final String name;

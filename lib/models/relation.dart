@@ -2,7 +2,7 @@ import 'package:json_annotation/json_annotation.dart';
 
 part 'relation.g.dart';
 
-@JsonSerializable(fieldRename: FieldRename.snake)
+@JsonSerializable()
 class Relation {
   final String id;
   final String source;

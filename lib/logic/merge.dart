@@ -3,6 +3,7 @@ import '../models/graph_patch.dart';
 import '../models/journal_entry.dart';
 import '../models/journal_state.dart';
 import '../models/relation.dart';
+import '../services/notebook_commit_service.dart';
 import 'slugify.dart';
 
 const _maxQuestionsPerEntity = 8;
@@ -24,7 +25,7 @@ List<String>? _mergeQuestions(List<String>? existing, List<String>? incoming) {
   return merged.isEmpty ? null : merged;
 }
 
-({JournalState next, String entryId}) merge(
+({JournalState next, String entryId, ApplyTurnChange change}) merge(
   JournalState prev,
   String text,
   GraphPatch patch,
@@ -35,6 +36,10 @@ List<String>? _mergeQuestions(List<String>? existing, List<String>? incoming) {
   final entryEntityIds = <String>[];
   final entryRelationIds = <String>[];
   final nameToId = <String, String>{};
+  // Every relation id this merge created, re-asserted, OR superseded — the
+  // full set commit_notebook needs to upsert. entryRelationIds alone would
+  // miss a relation touched only via patch.supersedes.
+  final touchedRelationIds = <String>{};
 
   for (final e in patch.entities) {
     if (e.name.isEmpty) continue;
@@ -97,6 +102,7 @@ List<String>? _mergeQuestions(List<String>? existing, List<String>? incoming) {
       );
     }
     entryRelationIds.add(rid);
+    touchedRelationIds.add(rid);
 
     for (final id in [src, tgt]) {
       if (explicitIds.contains(id) || !entities.containsKey(id)) continue;
@@ -118,15 +124,32 @@ List<String>? _mergeQuestions(List<String>? existing, List<String>? incoming) {
       createdAt: r.createdAt,
       supersededAt: now,
     );
+    touchedRelationIds.add(id);
   }
 
   final entryId = 'e-${now.millisecondsSinceEpoch}';
+  final uniqueEntryEntityIds = entryEntityIds.toSet().toList();
+  final uniqueEntryRelationIds = entryRelationIds.toSet().toList();
   final entry = JournalEntry(
     id: entryId,
     text: text,
     createdAt: now,
-    entityIds: entryEntityIds.toSet().toList(),
-    relationIds: entryRelationIds.toSet().toList(),
+    entityIds: uniqueEntryEntityIds,
+    relationIds: uniqueEntryRelationIds,
+  );
+
+  // The domain change commit_notebook needs: full current values for every
+  // entity/relation this merge touched (upserts are "changed rows, in
+  // full," not field-level diffs — the server doesn't recompute mention
+  // counts or question de-duplication, it trusts what this merge already
+  // worked out). GraphPatch carries no followUp/askedQuestion today, so
+  // those stay null — nothing in the Flutter app creates them yet.
+  final change = ApplyTurnChange(
+    entryText: text,
+    entryEntityIds: uniqueEntryEntityIds,
+    entryRelationIds: uniqueEntryRelationIds,
+    entities: uniqueEntryEntityIds.map((id) => entities[id]!).toList(),
+    relations: touchedRelationIds.map((id) => relations[id]!).toList(),
   );
 
   return (
@@ -136,5 +159,6 @@ List<String>? _mergeQuestions(List<String>? existing, List<String>? incoming) {
       relations: relations,
     ),
     entryId: entryId,
+    change: change,
   );
 }

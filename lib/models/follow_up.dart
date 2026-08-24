@@ -2,7 +2,7 @@ import 'package:json_annotation/json_annotation.dart';
 
 part 'follow_up.g.dart';
 
-@JsonSerializable(fieldRename: FieldRename.snake)
+@JsonSerializable()
 class FollowUp {
   final String id;
   final String question;

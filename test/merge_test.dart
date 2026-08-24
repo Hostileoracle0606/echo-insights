@@ -188,4 +188,74 @@ void main() {
     expect(next.entities['maya']?.mentions, 2);
     expect(next.entities['atlas']?.mentions, 2);
   });
+
+  test('change carries the full touched entities/relations for a fresh turn',
+      () {
+    final result = merge(
+      JournalState.empty(),
+      'Maya works on Atlas.',
+      const GraphPatch(
+        entities: [
+          EntityPatch(name: 'Maya', type: EntityType.person),
+          EntityPatch(name: 'Atlas', type: EntityType.project),
+        ],
+        relations: [
+          RelationPatch(source: 'Maya', target: 'Atlas', label: 'works_on'),
+        ],
+        supersedes: [],
+      ),
+    );
+
+    expect(result.change.entryText, 'Maya works on Atlas.');
+    expect(result.change.entryEntityIds, unorderedEquals(['maya', 'atlas']));
+    expect(result.change.entryRelationIds, ['maya__works_on__atlas']);
+    expect(
+      result.change.entities.map((e) => e.id),
+      unorderedEquals(['maya', 'atlas']),
+    );
+    expect(result.change.relations.single.id, 'maya__works_on__atlas');
+    expect(result.change.relations.single.source, 'maya');
+    expect(result.change.relations.single.target, 'atlas');
+    expect(result.change.followUp, isNull);
+    expect(result.change.askedQuestion, isNull);
+  });
+
+  test(
+      'change.relations includes a relation touched ONLY via supersedes '
+      '(not referenced by entry.relationIds)', () {
+    final withRelation = merge(
+      JournalState.empty(),
+      'Maya works on Atlas.',
+      const GraphPatch(
+        entities: [
+          EntityPatch(name: 'Maya', type: EntityType.person),
+          EntityPatch(name: 'Atlas', type: EntityType.project),
+        ],
+        relations: [
+          RelationPatch(source: 'Maya', target: 'Atlas', label: 'works_on'),
+        ],
+        supersedes: [],
+      ),
+    ).next;
+
+    final result = merge(
+      withRelation,
+      'Maya is not on Atlas.',
+      const GraphPatch(
+        entities: [],
+        relations: [],
+        supersedes: ['maya__works_on__atlas'],
+      ),
+    );
+
+    // The turn itself named no entities/relations directly...
+    expect(result.change.entryEntityIds, isEmpty);
+    expect(result.change.entryRelationIds, isEmpty);
+    // ...but the superseded relation must still be in the upsert list, with
+    // its supersededAt set, or commit_notebook would never persist the
+    // supersede at all.
+    expect(result.change.relations, hasLength(1));
+    expect(result.change.relations.single.id, 'maya__works_on__atlas');
+    expect(result.change.relations.single.supersededAt, isNotNull);
+  });
 }

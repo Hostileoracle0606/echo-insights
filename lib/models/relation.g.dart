@@ -12,10 +12,10 @@ Relation _$RelationFromJson(Map<String, dynamic> json) => Relation(
       target: json['target'] as String,
       label: json['label'] as String,
       metadata: json['metadata'] as Map<String, dynamic>,
-      createdAt: DateTime.parse(json['created_at'] as String),
-      supersededAt: json['superseded_at'] == null
+      createdAt: DateTime.parse(json['createdAt'] as String),
+      supersededAt: json['supersededAt'] == null
           ? null
-          : DateTime.parse(json['superseded_at'] as String),
+          : DateTime.parse(json['supersededAt'] as String),
     );
 
 Map<String, dynamic> _$RelationToJson(Relation instance) => <String, dynamic>{
@@ -24,6 +24,6 @@ Map<String, dynamic> _$RelationToJson(Relation instance) => <String, dynamic>{
       'target': instance.target,
       'label': instance.label,
       'metadata': instance.metadata,
-      'created_at': instance.createdAt.toIso8601String(),
-      'superseded_at': instance.supersededAt?.toIso8601String(),
+      'createdAt': instance.createdAt.toIso8601String(),
+      'supersededAt': instance.supersededAt?.toIso8601String(),
     };

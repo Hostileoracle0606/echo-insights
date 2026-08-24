@@ -13,8 +13,8 @@ Entity _$EntityFromJson(Map<String, dynamic> json) => Entity(
       description: json['description'] as String?,
       metadata: json['metadata'] as Map<String, dynamic>,
       mentions: (json['mentions'] as num).toInt(),
-      firstSeen: DateTime.parse(json['first_seen'] as String),
-      lastSeen: DateTime.parse(json['last_seen'] as String),
+      firstSeen: DateTime.parse(json['firstSeen'] as String),
+      lastSeen: DateTime.parse(json['lastSeen'] as String),
       questions: (json['questions'] as List<dynamic>?)
           ?.map((e) => e as String)
           .toList(),
@@ -27,8 +27,8 @@ Map<String, dynamic> _$EntityToJson(Entity instance) => <String, dynamic>{
       'description': instance.description,
       'metadata': instance.metadata,
       'mentions': instance.mentions,
-      'first_seen': instance.firstSeen.toIso8601String(),
-      'last_seen': instance.lastSeen.toIso8601String(),
+      'firstSeen': instance.firstSeen.toIso8601String(),
+      'lastSeen': instance.lastSeen.toIso8601String(),
       'questions': instance.questions,
     };
 
