@@ -15,7 +15,7 @@ typedef OnToolCall = Future<Map<String, dynamic>> Function(
 typedef OnTurnComplete = void Function();
 
 class GeminiLiveClient {
-  final String apiKey;
+  final String sessionToken;
   final String model;
   final String systemInstruction;
   final String voice;
@@ -38,21 +38,35 @@ class GeminiLiveClient {
   OnAudio? onAudio;
   OnToolCall? onToolCall;
   OnTurnComplete? onTurnComplete;
+
+  /// The user started speaking over the agent. Any agent audio still queued
+  /// for playback was never heard and must not be treated as spoken.
+  /// Gemini's documented sequence is `interrupted` then `turnComplete`; an
+  /// interrupted response never emits `generationComplete`.
+  void Function()? onInterrupted;
+
+  /// Generation finished normally (as opposed to being cut off).
+  void Function()? onGenerationComplete;
   void Function()? onSetupComplete;
   void Function(Object)? onError;
 
   GeminiLiveClient({
-    required this.apiKey,
+    required this.sessionToken,
     required this.model,
     required this.systemInstruction,
     required this.voice,
     required this.tools,
   });
 
+  @visibleForTesting
+  Uri get connectionUri => Uri.parse(
+        'wss://generativelanguage.googleapis.com/ws/'
+        'google.ai.generativelanguage.v1beta.GenerativeService.'
+        'BidiGenerateContentConstrained',
+      ).replace(queryParameters: {'access_token': sessionToken});
+
   Future<void> connect() async {
-    final uri = Uri.parse(
-      'wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=$apiKey',
-    );
+    final uri = connectionUri;
     _setupComplete = false;
     _closing = false;
     vlog('client', 'connecting (model=$model)…');
@@ -125,8 +139,10 @@ class GeminiLiveClient {
     if (!_setupComplete) {
       _framesDropped++;
       if (_framesDropped == 1 || _framesDropped % 25 == 0) {
-        vlog('client', 'dropping mic frame before setupComplete '
-            '(dropped=$_framesDropped)');
+        vlog(
+            'client',
+            'dropping mic frame before setupComplete '
+                '(dropped=$_framesDropped)');
       }
       return;
     }
@@ -201,8 +217,10 @@ class GeminiLiveClient {
 
     if (msg.containsKey('setupComplete')) {
       _setupComplete = true;
-      vlog('client', 'setupComplete — session live '
-          '(dropped $_framesDropped early mic frames)');
+      vlog(
+          'client',
+          'setupComplete — session live '
+              '(dropped $_framesDropped early mic frames)');
       onSetupComplete?.call();
       return;
     }
@@ -246,7 +264,8 @@ class GeminiLiveClient {
           // only skip if a mime type IS present and clearly not audio.
           final mimeType = (data['mimeType'] ?? data['mime_type']) as String?;
           final b64 = data['data'] as String?;
-          if (b64 != null && (mimeType == null || mimeType.startsWith('audio/'))) {
+          if (b64 != null &&
+              (mimeType == null || mimeType.startsWith('audio/'))) {
             _audioChunksIn++;
             if (_audioChunksIn == 1 || _audioChunksIn % 25 == 0) {
               vlog('client', 'gemini → audio chunk #$_audioChunksIn');
@@ -260,8 +279,13 @@ class GeminiLiveClient {
         final transcript =
             content['inputTranscription'] as Map<String, dynamic>;
         final text = transcript['text'] as String? ?? '';
+        // Prefer the transcription's own `finished` flag. Input transcription
+        // is delivered independently of turn completion with no ordering
+        // guarantee, so inferring finality from turnComplete alone conflates
+        // "this text is authoritative" with "the model stopped talking".
+        final finished = transcript['finished'] as bool? ?? turnComplete;
         vlog('client', 'gemini → user transcript (+${text.length} chars)');
-        onTranscript?.call(text, turnComplete);
+        onTranscript?.call(text, finished);
       }
 
       // The agent's own spoken words, transcribed back to text.
@@ -269,8 +293,21 @@ class GeminiLiveClient {
         final transcript =
             content['outputTranscription'] as Map<String, dynamic>;
         final text = transcript['text'] as String? ?? '';
+        final finished = transcript['finished'] as bool? ?? turnComplete;
         vlog('client', 'gemini → agent transcript (+${text.length} chars)');
-        onAgentTranscript?.call(text, turnComplete);
+        onAgentTranscript?.call(text, finished);
+      }
+
+      if (content['generationComplete'] == true) {
+        vlog('client', 'gemini → generationComplete');
+        onGenerationComplete?.call();
+      }
+
+      // Order matters: interrupted always precedes turnComplete, and consumers
+      // use the pair to tell a completed answer from a cut-off one.
+      if (content['interrupted'] == true) {
+        vlog('client', 'gemini → interrupted');
+        onInterrupted?.call();
       }
 
       if (turnComplete) {
@@ -282,8 +319,10 @@ class GeminiLiveClient {
 
   Future<void> close() async {
     _closing = true;
-    vlog('client', 'closing (sent=$_framesSent frames, '
-        'received=$_audioChunksIn audio chunks)');
+    vlog(
+        'client',
+        'closing (sent=$_framesSent frames, '
+            'received=$_audioChunksIn audio chunks)');
     await _sub?.cancel();
     await _channel?.sink.close();
     _channel = null;

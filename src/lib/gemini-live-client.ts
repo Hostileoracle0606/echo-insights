@@ -19,7 +19,7 @@
  */
 
 const ENDPOINT_BASE =
-  "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent";
+  "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContentConstrained";
 
 export type GeminiVoice = "Aoede" | "Charon" | "Fenrir" | "Kore" | "Puck";
 
@@ -42,7 +42,8 @@ export interface GeminiToolCall {
 }
 
 export interface GeminiLiveConfig {
-  apiKey: string;
+  /** One-use, short-lived credential issued by the Notebook Runtime. */
+  sessionToken: string;
   /** Model ID, e.g. "gemini-3.1-flash-live-preview". */
   model: string;
   /** System instruction text — the agent's persona/policy. */
@@ -79,10 +80,30 @@ export interface GeminiLiveEvents {
   onSetupComplete?: () => void;
   /** Raw 24kHz PCM audio chunk from the agent. Base64-decoded ArrayBuffer. */
   onAgentAudio?: (chunk: ArrayBuffer) => void;
-  /** Partial or final user-side transcript. */
-  onUserTranscript?: (text: string) => void;
-  /** Partial or final agent-side transcript. */
-  onAgentTranscript?: (text: string) => void;
+  /**
+   * Low-latency interim user transcription. Each call REPLACES the previous
+   * interim text for the turn — it is not an append. Gemini documents this as
+   * "frequently updated" text, distinct from the authoritative transcription
+   * below, so consumers must treat it as disposable display state.
+   */
+  onInterimUserTranscript?: (text: string) => void;
+  /** Incremental user-transcription chunk. Append to the turn buffer. */
+  onUserTranscript?: (chunk: string) => void;
+  /**
+   * Authoritative final user transcription for the turn. Carries no ordering
+   * guarantee relative to `onTurnComplete` — it may arrive before or after.
+   */
+  onFinalUserTranscript?: (text: string) => void;
+  /** Incremental agent-transcription chunk. Append to the turn buffer. */
+  onAgentTranscript?: (chunk: string) => void;
+  /** Authoritative final agent transcription for the turn. */
+  onFinalAgentTranscript?: (text: string) => void;
+  /**
+   * Generation finished normally. An INTERRUPTED response never emits this —
+   * it goes straight from `onInterrupted` to `onTurnComplete`, which is how a
+   * consumer tells a completed answer from a cut-off one.
+   */
+  onGenerationComplete?: () => void;
   /** Server signals the model finished speaking this turn. */
   onTurnComplete?: () => void;
   /**
@@ -133,20 +154,28 @@ export class GeminiLiveClient {
 
   async connect(): Promise<void> {
     if (this.ws) return;
-    const url = `${ENDPOINT_BASE}?key=${encodeURIComponent(this.config.apiKey)}`;
+    const url = `${ENDPOINT_BASE}?access_token=${encodeURIComponent(this.config.sessionToken)}`;
     const ws = new WebSocket(url);
     this.ws = ws;
 
     const opened = new Promise<void>((resolve, reject) => {
       const failTimer = setTimeout(() => reject(new Error("Gemini Live connect timeout")), 8000);
-      ws.addEventListener("open", () => {
-        clearTimeout(failTimer);
-        resolve();
-      }, { once: true });
-      ws.addEventListener("error", () => {
-        clearTimeout(failTimer);
-        reject(new Error("Gemini Live WebSocket error during connect"));
-      }, { once: true });
+      ws.addEventListener(
+        "open",
+        () => {
+          clearTimeout(failTimer);
+          resolve();
+        },
+        { once: true },
+      );
+      ws.addEventListener(
+        "error",
+        () => {
+          clearTimeout(failTimer);
+          reject(new Error("Gemini Live WebSocket error during connect"));
+        },
+        { once: true },
+      );
     });
 
     ws.addEventListener("message", (event) => this.handleMessage(event));
@@ -184,8 +213,7 @@ export class GeminiLiveClient {
       outputAudioTranscription: {},
       realtimeInputConfig: {
         automaticActivityDetection: {
-          startOfSpeechSensitivity:
-            this.config.startOfSpeechSensitivity ?? "START_SENSITIVITY_LOW",
+          startOfSpeechSensitivity: this.config.startOfSpeechSensitivity ?? "START_SENSITIVITY_LOW",
           endOfSpeechSensitivity: this.config.endOfSpeechSensitivity ?? "END_SENSITIVITY_LOW",
           silenceDurationMs: this.config.silenceDurationMs ?? 1200,
           prefixPaddingMs: 200,
@@ -218,9 +246,7 @@ export class GeminiLiveClient {
     this.ws!.send(
       JSON.stringify({
         toolResponse: {
-          functionResponses: [
-            { id, name, response: { result: response } },
-          ],
+          functionResponses: [{ id, name, response: { result: response } }],
         },
       }),
     );
@@ -294,7 +320,26 @@ export class GeminiLiveClient {
 
   private dispatchMessage(msg: unknown) {
     if (!msg || typeof msg !== "object") return;
-    const m = msg as Record<string, any>;
+    const m = msg as {
+      setupComplete?: unknown;
+      serverContent?: {
+        modelTurn?: { parts?: Array<{ inlineData?: { data?: string } }> };
+        interimInputTranscription?: { text?: string };
+        inputTranscription?: { text?: string; finished?: boolean };
+        outputTranscription?: { text?: string; finished?: boolean };
+        generationComplete?: boolean;
+        interrupted?: boolean;
+        turnComplete?: boolean;
+      };
+      toolCall?: {
+        functionCalls?: Array<{
+          id: string;
+          name: string;
+          args?: Record<string, unknown>;
+        }>;
+      };
+      error?: unknown;
+    };
 
     if (m.setupComplete) {
       this.events.onSetupComplete?.();
@@ -315,21 +360,33 @@ export class GeminiLiveClient {
           }
         }
       }
+      // Interim transcription is replaceable display text, delivered
+      // independently of everything else in the frame.
+      const interimText: string | undefined = sc.interimInputTranscription?.text;
+      if (interimText) this.events.onInterimUserTranscript?.(interimText);
+
       const inputText: string | undefined = sc.inputTranscription?.text;
-      if (inputText) this.events.onUserTranscript?.(inputText);
+      if (inputText) {
+        if (sc.inputTranscription?.finished) this.events.onFinalUserTranscript?.(inputText);
+        else this.events.onUserTranscript?.(inputText);
+      }
+
       const outputText: string | undefined = sc.outputTranscription?.text;
-      if (outputText) this.events.onAgentTranscript?.(outputText);
+      if (outputText) {
+        if (sc.outputTranscription?.finished) this.events.onFinalAgentTranscript?.(outputText);
+        else this.events.onAgentTranscript?.(outputText);
+      }
+
+      if (sc.generationComplete) this.events.onGenerationComplete?.();
+      // Documented order: interrupted, then turnComplete. Preserve it —
+      // consumers use the pair to decide whether a turn was heard in full.
       if (sc.interrupted) this.events.onInterrupted?.();
       if (sc.turnComplete) this.events.onTurnComplete?.();
       return;
     }
 
     if (m.toolCall) {
-      const calls = (m.toolCall.functionCalls ?? []) as Array<{
-        id: string;
-        name: string;
-        args?: Record<string, unknown>;
-      }>;
+      const calls = m.toolCall.functionCalls ?? [];
       for (const call of calls) {
         if (!call?.id || !call?.name) continue;
         this.events.onToolCall?.({
