@@ -8,6 +8,16 @@ import 'package:lumen/services/retrieve_memory_service.dart';
 void main() {
   final now = DateTime.utc(2026, 6, 13, 9);
 
+  test('parses ranked entity ids from the retrieval response', () {
+    final result = MemoryRetrieval.fromData({
+      'context': 'focused context',
+      'entityIds': ['maya', 4, 'atlas'],
+    });
+
+    expect(result.context, 'focused context');
+    expect(result.entityIds, ['maya', 'atlas']);
+  });
+
   test('stateToGraphloop emits graphloop camelCase keys, not snake_case', () {
     final state = JournalState(
       entries: [

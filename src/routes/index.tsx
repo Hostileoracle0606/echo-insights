@@ -50,13 +50,25 @@ import {
 import type { Entity, ExtractionMode, JournalState } from "@/lib/journal-types";
 import { cn } from "@/lib/utils";
 import { downloadBlob, exportToObsidianZip } from "@/lib/obsidian-export";
-import { extractGraph } from "@/lib/extract-graph";
+import type { ExtractGraphResult } from "@/lib/extract-graph";
+import { createTurnMachine } from "@/lib/turn-state/reducer";
+import { createTurnPipeline, type TurnPipeline } from "@/lib/turn-state/pipeline";
+import { createLocalTurnJournal, createWebTurnPorts } from "@/lib/turn-state/web-adapter";
+import type { TurnEvent, TurnMachine } from "@/lib/turn-state/types";
+
+/**
+ * Bumped whenever the extractor prompt, schema, or model changes. Recorded on
+ * every finalized turn so a replayed checkpoint is never silently reinterpreted
+ * by a different extractor than the one that produced it.
+ */
+const EXTRACTOR_VERSION = "gemini-2.5-flash/extract_graph/v2";
 import { resetMemoryIndex, retrieveMemory } from "@/lib/journal-memory";
 import {
   ENTITY_WORD_TARGET,
   FOCUS_BATCH_SIZE,
   GEMINI_LIVE_SYSTEM_INSTRUCTION,
 } from "@/lib/conversation-policy";
+import { createLiveSessionRuntime } from "@/lib/notebook-runtime-http";
 import { toast, Toaster } from "sonner";
 import { useSession } from "@/lib/auth/session";
 import { requireAuthOrRedirect } from "@/lib/auth/require-auth";
@@ -245,90 +257,17 @@ function buildBridgingCandidates(state: JournalState) {
     }));
 }
 
-function buildExtractionContext(
-  state: JournalState,
-  conversation: ConversationTurn[],
-  followUpId?: string,
-) {
-  const byId = state.entities;
-  const relationCounts = new Map<string, number>();
-  Object.values(state.relations).forEach((relation) => {
-    relationCounts.set(relation.source, (relationCounts.get(relation.source) ?? 0) + 1);
-    relationCounts.set(relation.target, (relationCounts.get(relation.target) ?? 0) + 1);
-  });
-
-  const answeredFollowUp = followUpId
-    ? state.followUps.find((followUp) => followUp.id === followUpId)
-    : undefined;
-
-  return {
-    graphStats: {
-      recentEntryCount: state.entries.length,
-      entityCount: Object.keys(state.entities).length,
-      relationCount: Object.keys(state.relations).length,
-      thinEntityCount: buildGraphGaps(state).length,
-      openFollowUpCount: state.followUps.filter((followUp) => !followUp.answered).length,
-      topEntityNames: Object.values(state.entities)
-        .sort((a, b) => b.mentions - a.mentions)
-        .slice(0, 8)
-        .map((entity) => entity.name),
-    },
-    existingEntities: Object.values(state.entities)
-      .sort((a, b) => b.mentions - a.mentions)
-      .slice(0, 30)
-      .map((entity) => ({
-        name: entity.name,
-        type: entity.type,
-        description: entity.description,
-        mentionCount: entity.mentions,
-        relationCount: relationCounts.get(entity.id) ?? 0,
-      })),
-    existingRelations: Object.values(state.relations)
-      .filter((relation) => !relation.supersededAt)
-      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-      .slice(0, 30)
-      .map((relation) => ({
-        id: relation.id,
-        source: byId[relation.source]?.name ?? relation.source,
-        target: byId[relation.target]?.name ?? relation.target,
-        label: relation.label,
-        metadata: relation.metadata,
-      })),
-    recentEntries: state.entries.slice(0, 12).map((entry) => ({
-      text: entry.text,
-      createdAt: entry.createdAt,
-      entities: entry.entityIds.map((id) => byId[id]?.name).filter(Boolean),
-    })),
-    recentConversation: conversation.slice(-8).map((turn) => ({
-      role: turn.role,
-      text: turn.text,
-    })),
-    graphGaps: buildGraphGaps(state),
-    thinEntities: buildGraphGaps(state),
-    openFollowUps: state.followUps.slice(0, 8).map((followUp) => ({
-      question: followUp.question,
-      reason: followUp.reason,
-      status: followUp.answered ? "answered" : "open",
-      targetEntityNames: followUp.targetEntityIds.map((id) => byId[id]?.name).filter(Boolean),
-    })),
-    answeringFollowUp: answeredFollowUp
-      ? {
-          question: answeredFollowUp.question,
-          reason: answeredFollowUp.reason,
-          targetEntityNames: answeredFollowUp.targetEntityIds
-            .map((id) => byId[id]?.name)
-            .filter(Boolean),
-        }
-      : undefined,
-    focusEntities: buildFocusBatch(state),
-    previouslyAsked: (state.askedQuestions ?? []).slice(0, 12).map((asked) => ({
-      question: asked.question,
-      targetEntityNames: asked.targetEntityIds.map((id) => byId[id]?.name).filter(Boolean),
-      askedAt: asked.askedAt,
-    })),
-    bridgingCandidates: buildBridgingCandidates(state),
-  };
-}
+/*
+ * buildExtractionContext lived here. It constructed graph statistics, gaps,
+ * focus entities, bridging candidates, previously-asked questions, recent
+ * entries and follow-ups on every turn — and the extractor prompt read none of
+ * them. What it did use was bounded by item counts ("top 20 entities"), which
+ * is unbounded in tokens and blind to an older but highly relevant fact.
+ *
+ * Replaced by compileExtractionContext (src/lib/extraction-context.ts): the
+ * finalized transcript drives semantic retrieval, and the result is packed
+ * under a measured token budget.
+ */
 
 function buildUpsertActivity(
   prev: JournalState,
@@ -408,7 +347,7 @@ function SpeakerLabel({ name, pulse }: { name: string; pulse: boolean }) {
 }
 
 function Index() {
-  const { user } = useSession();
+  const { user, supabase } = useSession();
   const notebookIdRef = useRef<string | null>(null);
   const [state, setState] = useState<JournalState>(EMPTY_STATE);
   const [extractionMode, setExtractionMode] = useState<ExtractionMode>(DEFAULT_EXTRACTION_MODE);
@@ -474,7 +413,7 @@ function Index() {
     commitQueueRef.current = run.catch(() => undefined);
     return run;
   }, []);
-  // Mirrored in a ref so processGraphUpdate (a memoized callback) reads the
+  // Mirrored in a ref so the turn adapter (built once) reads the
   // current mode without forcing the callback identity to change every toggle.
   const extractionModeRef = useRef<ExtractionMode>(extractionMode);
   extractionModeRef.current = extractionMode;
@@ -484,9 +423,11 @@ function Index() {
   // get_graph_summary tool to compute elapsed minutes and to scope the
   // "probed this session" set so the model doesn't re-ask within a session.
   const sessionStartRef = useRef<number | null>(null);
-  // Cancel the in-flight extractor when a new sentence arrives; the new call
-  // carries the cumulative turn-so-far and supersedes the older one.
-  const extractAbortRef = useRef<AbortController | null>(null);
+  // Turn processing: an explicit state machine owns finalization, identity
+  // checks, durable checkpoints and commit ordering. See
+  // src/lib/turn-state/ and docs/finalized-turn-extraction.md.
+  const turnMachineRef = useRef<TurnMachine | null>(null);
+  const turnPipelineRef = useRef<TurnPipeline | null>(null);
   // Imperative handle into the main GraphView so the sidebar minimap can pan
   // the canvas to a node when that node is clicked in the overview.
   const graphViewRef = useRef<GraphViewHandle | null>(null);
@@ -532,19 +473,9 @@ function Index() {
     [state.entries, highlight],
   );
 
-  const appendTurn = useCallback((role: ConversationTurn["role"], text: string, id?: string) => {
-    const trimmed = text.trim();
-    if (!trimmed) return;
-    setConversation((prev) => [
-      ...prev.slice(-10),
-      {
-        id: id ?? `${role}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-        role,
-        text: trimmed,
-        createdAt: new Date().toISOString(),
-      },
-    ]);
-  }, []);
+  // appendTurn was removed with the cumulative-sentence path. Conversation
+  // history is no longer appended ad hoc from three call sites: the turn
+  // machine owns it, and only finalized, actually-heard text ever lands there.
 
   const showActivity = useCallback((activity: UpsertActivity | null) => {
     if (!activity) return;
@@ -554,173 +485,111 @@ function Index() {
     activityTimerRef.current = setTimeout(() => setLiveActivity(null), 5200);
   }, []);
 
-  // Commits one applyTurn change, queued so writes to this notebook always
-  // reach the server in submission order. The optimistic state was already
-  // applied by the caller before this was queued; this only reconciles the
-  // server's response into it (real ids, revision) or recovers from a
-  // conflict/failure.
-  const commitApplyTurn = useCallback(
-    (
-      nbId: string,
-      text: string,
-      payload: ExtractedPayload,
-      entryId: string,
-      tempFollowUpId: string | undefined,
-      change: NotebookChange,
-    ) => {
-      enqueueCommit(async () => {
-        let currentEntryId = entryId;
-        let currentChange = change;
-        for (let attempt = 0; attempt < 2; attempt += 1) {
-          const expectedRevision = notebookRevisionRef.current;
-          const requestId = newRequestId();
-          let outcome: CommitOutcome;
-          try {
-            outcome = await commitNotebook({
-              notebookId: nbId,
-              expectedRevision,
-              requestId,
-              change: currentChange,
-            });
-          } catch (e) {
-            // Unknown outcome (network/transport failure, not a domain
-            // rejection -- the RPC always resolves those as data). Leave the
-            // optimistic state as-is rather than guess; the next turn's
-            // commit (or a manual reload) will reconcile it.
-            console.error("commitApplyTurn: RPC threw", e);
-            return;
-          }
+  // ── Turn processing ──────────────────────────────────────────────────────
+  //
+  // Authority lives in the turn machine, not here. This block only supplies
+  // I/O: merge-and-commit, snapshot reload, and the UI reconciliation that
+  // follows a confirmed write. Everything about *when* those run — one durable
+  // turn per finalized transcript, identity-checked async results, ordered
+  // replay after a conflict, one reused request id per turn — is decided by
+  // src/lib/turn-state/reducer.ts and carried out by its pipeline.
+  const lastMergeRef = useRef<{ entryId: string; tempFollowUpId?: string } | null>(null);
 
-          if (outcome.status === "committed") {
-            notebookRevisionRef.current = outcome.revision;
-            const realEntryId = outcome.ids.entryId;
-            const realFollowUpId = outcome.ids.followUpId;
-            if (
-              (realEntryId && realEntryId !== currentEntryId) ||
-              (realFollowUpId && tempFollowUpId)
-            ) {
-              const swapped: JournalState = {
-                ...stateRef.current,
-                entries: realEntryId
-                  ? stateRef.current.entries.map((entry) =>
-                      entry.id === currentEntryId ? { ...entry, id: realEntryId } : entry,
-                    )
-                  : stateRef.current.entries,
-                followUps:
-                  realFollowUpId && tempFollowUpId
-                    ? stateRef.current.followUps.map((followUp) =>
-                        followUp.id === tempFollowUpId
-                          ? { ...followUp, id: realFollowUpId }
-                          : followUp,
-                      )
-                    : stateRef.current.followUps,
-              };
-              stateRef.current = swapped;
-              setState(swapped);
-            }
-            return;
-          }
-
-          if (outcome.status === "rejected") {
-            console.error("commitApplyTurn rejected:", outcome.code);
-            toast.error("Couldn't save that update.");
-            return;
-          }
-
-          // Conflict: another session committed to this notebook first.
-          // Reload and re-run the SAME pure merge against the fresh server
-          // state, then retry once. Simplification: this replaces the
-          // optimistic base for THIS turn with the fresh snapshot rather
-          // than reconciling against any other not-yet-committed optimistic
-          // turns queued behind it -- re-merging against already-optimistic
-          // local state would double-count mentions. Cross-device conflicts
-          // on the same notebook are the rare case this guards against, not
-          // the common path, so losing one turn's optimism (it'll re-sync on
-          // the next sentence) beats risking corrupted counts.
-          const fresh = await getNotebookSnapshot(nbId);
-          if (!fresh) return;
-          notebookRevisionRef.current = fresh.revision;
-          const retried = mergeExtraction(fresh.state, text, payload);
-          stateRef.current = retried.next;
-          setState(retried.next);
-          currentEntryId = retried.entryId;
-          currentChange = retried.change;
-        }
-        console.error("commitApplyTurn: conflict persisted after one retry, giving up");
-      });
+  const mergeForCommit = useCallback(
+    (transcript: string, payload: ExtractGraphResult) => {
+      const prev = stateRef.current;
+      // Branch B: Gemini owns dialogue, so the extractor's follow-up is
+      // suppressed. Entities, relations AND supersedes still reach the merge —
+      // contradiction detection depends on it. The cast narrows the extractor's
+      // open `type: string` to the app's EntityType union, as before.
+      const graphOnly = { ...payload, followUp: undefined } as ExtractedPayload;
+      const merged = mergeExtraction(prev, transcript, graphOnly);
+      const next = merged.next;
+      stateRef.current = next;
+      setState(next);
+      showActivity(buildUpsertActivity(prev, next, graphOnly));
+      const tempFollowUpId =
+        next.followUps.length > prev.followUps.length ? next.followUps[0]?.id : undefined;
+      lastMergeRef.current = { entryId: merged.entryId, tempFollowUpId };
+      return { change: merged.change, entryId: merged.entryId, tempFollowUpId };
     },
-    [enqueueCommit],
+    [showActivity],
   );
 
-  // Silent graph update: feed the user's transcript (delivered by Gemini Live)
-  // into the existing Groq-backed extractor. We strip payload.followUp because
-  // Gemini owns dialogue now — no double-prompting from the cascade pipeline.
-  const processGraphUpdate = useCallback(
-    async (text: string) => {
-      const trimmed = text.trim();
-      if (!trimmed) return;
-      // Supersede any in-flight extraction — the new call carries strictly
-      // more context (cumulative turn-so-far), so the older one is wasted.
-      extractAbortRef.current?.abort();
-      const controller = new AbortController();
-      extractAbortRef.current = controller;
-      setThinking(true);
-      try {
-        const currentState = stateRef.current;
-        const existing = Object.values(currentState.entities)
-          .slice(0, 30)
-          .map((entity) => ({
-            name: entity.name,
-            type: entity.type,
-            description: entity.description,
-          }));
-        const payload = (await extractGraph(
-          {
-            text: trimmed,
-            existingEntities: existing,
-            context: buildExtractionContext(currentState, conversationRef.current),
-          },
-          controller.signal,
-          extractionModeRef.current,
-        )) as ExtractedPayload;
-        // Branch B: Gemini owns dialogue, so suppress any follow-up the
-        // extractor produced. Keep entities, relations, AND supersedes —
-        // the contradiction-detection patch must reach mergeExtraction.
-        const graphOnly: ExtractedPayload = {
-          ...payload,
-          followUp: undefined,
-        };
-        const prev = stateRef.current;
-        const merged = mergeExtraction(prev, trimmed, graphOnly);
-        const next = merged.next;
-        const activity = buildUpsertActivity(prev, next, graphOnly);
+  if (!turnPipelineRef.current) {
+    const machine = createTurnMachine({
+      now: () => new Date().toISOString(),
+      newTurnId: () => newRequestId(),
+      newRequestId,
+      extractorVersion: EXTRACTOR_VERSION,
+    });
+    const ports = createWebTurnPorts({
+      // Every read goes through a ref so a result that resolves late sees the
+      // state as it is now, not as it was when the request was issued.
+      getState: () => stateRef.current,
+      getConversation: () => conversationRef.current.map((t) => ({ role: t.role, text: t.text })),
+      getExtractionMode: () => extractionModeRef.current,
+      getRevision: () => notebookRevisionRef.current,
+      setRevision: (revision) => {
+        notebookRevisionRef.current = revision;
+      },
+      replaceState: (next) => {
         stateRef.current = next;
         setState(next);
-        showActivity(activity);
-        const nbId = notebookIdRef.current;
-        if (nbId) {
-          const tempFollowUpId =
-            next.followUps.length > prev.followUps.length ? next.followUps[0]?.id : undefined;
-          commitApplyTurn(nbId, trimmed, graphOnly, merged.entryId, tempFollowUpId, merged.change);
-        }
-      } catch (error: unknown) {
-        // Aborted by a newer sentence — silently drop, the newer call covers it.
-        if (error instanceof DOMException && error.name === "AbortError") return;
-        if (error instanceof Error && error.message.includes("aborted")) return;
-        console.error(error);
-        const message = errorMessage(error, "Couldn't update the graph.");
-        toast.error(message, { duration: 4000 });
-      } finally {
-        // Only clear "thinking" if THIS call is the one that's still current.
-        // A superseding call has already set thinking=true; we shouldn't unset it.
-        if (extractAbortRef.current === controller) {
-          extractAbortRef.current = null;
-          setThinking(false);
-        }
-      }
-    },
-    [showActivity, commitApplyTurn],
-  );
+      },
+      getAnsweringFollowUp: () => stateRef.current.followUps.find((followUp) => !followUp.answered),
+      mergeForCommit,
+      onCommitted: ({ entryId, tempFollowUpId, ids }) => {
+        const realEntryId = ids.entryId;
+        const realFollowUpId = ids.followUpId;
+        if (!realEntryId && !(realFollowUpId && tempFollowUpId)) return;
+        const swapped: JournalState = {
+          ...stateRef.current,
+          entries: realEntryId
+            ? stateRef.current.entries.map((entry) =>
+                entry.id === entryId ? { ...entry, id: realEntryId } : entry,
+              )
+            : stateRef.current.entries,
+          followUps:
+            realFollowUpId && tempFollowUpId
+              ? stateRef.current.followUps.map((followUp) =>
+                  followUp.id === tempFollowUpId ? { ...followUp, id: realFollowUpId } : followUp,
+                )
+              : stateRef.current.followUps,
+        };
+        stateRef.current = swapped;
+        setState(swapped);
+      },
+      onError: (message) => {
+        console.error("[turn-state]", message);
+      },
+    });
+    turnMachineRef.current = machine;
+    turnPipelineRef.current = createTurnPipeline(machine, ports);
+  }
+
+  /** Feeds one adapter event into the machine and runs whatever it asks for. */
+  const dispatchTurnEvent = useCallback((event: TurnEvent) => {
+    const pipeline = turnPipelineRef.current;
+    if (!pipeline) return;
+    void pipeline.dispatch(event).then(() => {
+      const machine = turnMachineRef.current;
+      if (!machine) return;
+      // "Thinking" now means "a finalized turn is still being processed",
+      // not "some sentence-boundary request is in flight".
+      setThinking(machine.state.pending.length > 0);
+      // The machine owns canonical conversation history: it contains finalized,
+      // actually-heard text only, so interrupted speech never appears.
+      setConversation(
+        machine.state.conversation.map((turn) => ({
+          id: turn.turnId,
+          role: turn.role === "assistant" ? "agent" : "user",
+          text: turn.text,
+          createdAt: turn.createdAt,
+        })),
+      );
+    });
+  }, []);
 
   // Snapshot of graph state shaped for the model's planner. Returned to the
   // model when it calls get_graph_summary. Keeping it minimal+structured
@@ -932,31 +801,41 @@ function Index() {
     [buildGraphSummary],
   );
 
+  const liveSessionRuntime = useMemo(() => {
+    const baseUrl = import.meta.env.VITE_NOTEBOOK_RUNTIME_URL?.trim();
+    if (!baseUrl) return null;
+    return createLiveSessionRuntime({
+      baseUrl,
+      getAccessToken: async () => {
+        const { data, error } = await supabase.auth.getSession();
+        if (error) throw error;
+        return data.session?.access_token ?? null;
+      },
+    });
+  }, [supabase]);
+
+  const requestLiveSession = useCallback(async () => {
+    const notebookId = notebookIdRef.current;
+    if (!notebookId) throw new Error("No active notebook is available");
+    if (!liveSessionRuntime) {
+      throw new Error("VITE_NOTEBOOK_RUNTIME_URL is missing");
+    }
+    return liveSessionRuntime.startLiveSession({ notebookId });
+  }, [liveSessionRuntime]);
+
   const live = useGeminiLive({
+    startLiveSession: requestLiveSession,
     systemInstruction: GEMINI_LIVE_SYSTEM_INSTRUCTION,
     voice: "Aoede",
     silenceDurationMs: 1200,
     tools: liveTools,
     onToolCall: handleToolCall,
-    // Live graph extraction: fires per sentence boundary during the turn so
-    // entities pop in while the user is still speaking. The cumulative
-    // turn-so-far is passed each time; AbortController in processGraphUpdate
-    // cancels stale calls so only the latest one writes to state.
-    onUserSentence: (turnSoFar) => {
-      void processGraphUpdate(turnSoFar);
-    },
-    onUserTurnComplete: (text) => {
-      // Conversation log records whole turns; graph extraction has already
-      // fired once per sentence (and a final time on turnComplete inside the hook).
-      appendTurn("user", text);
-    },
-    onAgentTurnComplete: (text) => {
-      appendTurn("agent", text);
-      // Also extract from agent words: catches facts the user confirmed via
-      // "yeah/right" or that the agent surfaced cleanly from prior context.
-      // The user-side abort policy still treats user sentences as ground truth.
-      void processGraphUpdate(text);
-    },
+    // Meaningful transcript events, not cumulative sentence callbacks. The
+    // machine decides which of these may become a durable turn: interim text
+    // is replaceable display state, and only a finalized, immutable transcript
+    // can reach the graph. Assistant turns are extracted too — they carry facts
+    // the user confirmed with "yeah" — but only the portion actually heard.
+    onTurnEvent: dispatchTurnEvent,
     onError: (message) => {
       toast.error(message);
     },
@@ -983,6 +862,29 @@ function Index() {
         stateRef.current = initialState;
         setExtractionMode(loadExtractionMode());
         setHydrated(true);
+
+        // Crash recovery. Anything still in the turn journal is a finalized
+        // transcript whose durable processing did not finish: the process
+        // stopped after recording it, after extracting from it, or after
+        // sending a commit whose response never arrived. Each resumes from its
+        // own last completed stage — a stored extraction is reused instead of
+        // paying the model again, and a pending commit is retried with the
+        // request id it already used, which the server ledger deduplicates.
+        const machine = turnMachineRef.current;
+        const pipeline = turnPipelineRef.current;
+        if (machine && pipeline) {
+          await pipeline.dispatch({
+            type: "sessionStarted",
+            sessionId: `restore-${notebook.id}`,
+            notebookId: notebook.id,
+          });
+          await pipeline.dispatch({ type: "snapshotReloaded", revision: snapshot?.revision ?? 0 });
+          const unfinished = await createLocalTurnJournal().load(notebook.id);
+          if (!cancelled && unfinished.length > 0) {
+            console.info(`[turn-state] resuming ${unfinished.length} unfinished turn(s)`);
+            await pipeline.dispatch({ type: "restored", turns: unfinished });
+          }
+        }
       } catch (e) {
         console.error("Failed to initialize notebook:", e);
         // Fallback to empty state so the UI still renders
@@ -995,7 +897,7 @@ function Index() {
   }, [user]);
 
   // No more "save on every state change": each mutation now commits itself
-  // explicitly at its own call site (processGraphUpdate, skipFollowUp,
+  // explicitly at its own call site (the turn pipeline, skipFollowUp,
   // handleClear), each with its own requestId and revision check.
 
   useEffect(() => {
@@ -1063,10 +965,21 @@ function Index() {
     if (!hydrated || !live.ready || greetedRef.current) return;
     greetedRef.current = true;
     sessionStartRef.current = Date.now();
+    // A new socket gets a new session identity. On the SAME notebook this only
+    // clears in-progress, replaceable turns — finalized turns still waiting to
+    // commit are notebook-scoped and survive the reconnect.
+    const notebookId = notebookIdRef.current;
+    if (notebookId) {
+      dispatchTurnEvent({
+        type: "sessionStarted",
+        sessionId: `live-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        notebookId,
+      });
+    }
     live.sendText(
       "(Session started. Follow your SESSION OPENING instructions and greet the user.)",
     );
-  }, [hydrated, live]);
+  }, [hydrated, live, dispatchTurnEvent]);
 
   useEffect(() => {
     return () => {
@@ -1109,15 +1022,11 @@ function Index() {
     if (!text) return;
     setDraft("");
     setDockTyping(false);
-    if (live.ready) {
-      live.sendText(text);
-      appendTurn("user", text);
-      void processGraphUpdate(text);
-    } else {
-      // Fall back to silent graph update if the live session hasn't connected yet.
-      appendTurn("user", text);
-      void processGraphUpdate(text);
-    }
+    if (live.ready) live.sendText(text);
+    // A typed turn is already final and immutable — it goes straight to the
+    // finalized path with no interim stage.
+    dispatchTurnEvent({ type: "finalTranscript", speaker: "user", text });
+    dispatchTurnEvent({ type: "turnCompleted", speaker: "user" });
   }
 
   function skipFollowUp(followUpId: string) {

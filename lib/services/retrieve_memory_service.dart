@@ -55,6 +55,30 @@ Map<String, dynamic> stateToGraphloop(JournalState state) => {
     };
 
 /// Calls the retrieve-memory edge function. Fail-closed: any error returns "".
+class MemoryRetrieval {
+  final String context;
+  final List<String> entityIds;
+
+  const MemoryRetrieval({
+    required this.context,
+    required this.entityIds,
+  });
+
+  static const empty = MemoryRetrieval(context: '', entityIds: []);
+
+  factory MemoryRetrieval.fromData(dynamic data) {
+    if (data is! Map) return empty;
+    final context = data['context'];
+    final ids = data['entityIds'];
+    return MemoryRetrieval(
+      context: context is String ? context : '',
+      entityIds: ids is List
+          ? ids.whereType<String>().toList(growable: false)
+          : const [],
+    );
+  }
+}
+
 class RetrieveMemoryService {
   final SupabaseClient _client;
 
@@ -64,9 +88,21 @@ class RetrieveMemoryService {
     required String query,
     required String notebookId,
     required JournalState state,
+  }) async =>
+      (await retrieveResult(
+        query: query,
+        notebookId: notebookId,
+        state: state,
+      ))
+          .context;
+
+  Future<MemoryRetrieval> retrieveResult({
+    required String query,
+    required String notebookId,
+    required JournalState state,
   }) async {
     final q = query.trim();
-    if (q.length < 2) return '';
+    if (q.length < 2) return MemoryRetrieval.empty;
     final startedAt = DateTime.now();
 
     // Non-sensitive telemetry: outcome + counts only, never query/context text.
@@ -85,17 +121,12 @@ class RetrieveMemoryService {
           'state': stateToGraphloop(state),
         },
       );
-      final data = res.data;
-      if (data is Map && data['context'] is String) {
-        final context = data['context'] as String;
-        emit(context.isEmpty ? 'empty' : 'ok', context.length);
-        return context;
-      }
-      emit('malformed', 0);
-      return '';
+      final result = MemoryRetrieval.fromData(res.data);
+      emit(result.context.isEmpty ? 'empty' : 'ok', result.context.length);
+      return result;
     } catch (_) {
       emit('error', 0);
-      return '';
+      return MemoryRetrieval.empty;
     }
   }
 }

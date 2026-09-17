@@ -161,7 +161,7 @@ Reference relations by their [bracketed] id from the EXISTING RELATIONS list abo
 Return empty arrays only when the utterance has no extractable entities — small talk, hesitations, yes/no answers, filler tokens.
 Never speak to the user. You are not the conversational agent.`;
 
-interface GraphEntity {
+export interface GraphEntity {
   name: string;
   type: string;
   description?: string;
@@ -171,7 +171,7 @@ interface GraphEntity {
   lastMentionedAt?: string;
 }
 
-interface GraphRelation {
+export interface GraphRelation {
   /** Optional stable id. Required for `supersedes` to be referenceable; absent for legacy callers. */
   id?: string;
   source: string;
@@ -202,7 +202,7 @@ interface RecentEntry {
       };
 }
 
-interface ConversationTurn {
+export interface ConversationTurn {
   role: string;
   text: string;
 }
@@ -272,36 +272,32 @@ export interface SessionState {
   turnsThisSession?: number;
 }
 
+/**
+ * Everything the extraction prompt actually consumes — and nothing else.
+ *
+ * This used to carry graph statistics, gaps, focus entities, bridging
+ * candidates, previously-asked questions and recent entries. None of them
+ * reached the model: `buildUserMessage` never read them. They are removed
+ * rather than left to cost serialization on every turn. The dialogue-planning
+ * fields that genuinely need that data live on the Gemini Live tool surface
+ * (`get_graph_summary`), not here.
+ */
 export interface ClientContext {
   existingEntities?: GraphEntity[];
   existingRelations?: GraphRelation[];
-  recentEntries?: RecentEntry[];
   recentConversation?: ConversationTurn[];
-  openFollowUps?: OpenFollowUp[];
-  graphGaps?: GraphGap[];
-  thinEntities?: GraphGap[];
-  graphStats?: GraphStats;
+  /** The open question this utterance is answering, when there is one. */
   answeringFollowUp?: OpenFollowUp;
-  focusEntities?: FocusEntity[];
-  previouslyAsked?: PreviouslyAsked[];
-  bridgingCandidates?: BridgingCandidate[];
   sessionState?: SessionState;
 }
 
 export interface ExtractGraphBody {
+  /** The new utterance. The ONLY source from which new facts may be extracted. */
   text: string;
   existingEntities?: GraphEntity[];
   existingRelations?: GraphRelation[];
-  recentEntries?: RecentEntry[];
   recentConversation?: ConversationTurn[];
-  openFollowUps?: OpenFollowUp[];
-  graphGaps?: GraphGap[];
-  thinEntities?: GraphGap[];
-  graphStats?: GraphStats;
   answeringFollowUp?: OpenFollowUp;
-  focusEntities?: FocusEntity[];
-  previouslyAsked?: PreviouslyAsked[];
-  bridgingCandidates?: BridgingCandidate[];
   sessionState?: SessionState;
   context?: ClientContext;
 }
@@ -462,6 +458,15 @@ const formatBridgingCandidate = (c: BridgingCandidate): string => {
 };
 
 /**
+ * Safety limits, not the budget. compileExtractionContext bounds the prompt in
+ * measured model tokens; these caps only stop a pathological caller from
+ * handing the formatter an unbounded list.
+ */
+export const MAX_PROMPT_ENTITIES = 40;
+export const MAX_PROMPT_RELATIONS = 60;
+export const MAX_PROMPT_TURNS = 8;
+
+/**
  * Slim user message: only what an NER pass actually needs.
  *
  * - top 20 existing entities so the model can reuse spellings + skip dupes
@@ -471,20 +476,26 @@ const formatBridgingCandidate = (c: BridgingCandidate): string => {
  * DIALOGUE_POLICY) was useful when this same call also drove dialogue. In
  * Branch B it's dead weight.
  */
-const buildUserMessage = (body: ExtractGraphBody): string => {
+export const buildUserMessage = (body: ExtractGraphBody): string => {
   const context = body.context ?? {};
   const existingEntities = context.existingEntities ?? body.existingEntities ?? [];
   const existingRelations = context.existingRelations ?? body.existingRelations ?? [];
   const recentConversation = context.recentConversation ?? body.recentConversation ?? [];
+  const answering = context.answeringFollowUp ?? body.answeringFollowUp;
+  // Item counts below are safety limits only. The real bound is the token
+  // budget applied by compileExtractionContext before this is called.
+  const answeringSection = answering
+    ? `\n\nANSWERING THIS OPEN QUESTION (the new utterance is its answer):\n${formatOpenFollowUp(answering)}`
+    : "";
 
   return `EXISTING ENTITIES (use these spellings when the user refers to the same thing):
-${formatList(existingEntities, 20, formatEntity)}
+${formatList(existingEntities, MAX_PROMPT_ENTITIES, formatEntity)}
 
 EXISTING RELATIONS (each prefixed with its [id] — use these IDs verbatim in supersedes when the user contradicts the relation):
-${formatList(existingRelations, 30, formatRelation)}
+${formatList(existingRelations, MAX_PROMPT_RELATIONS, formatRelation)}
 
 RECENT CONVERSATION (for pronoun resolution only — do NOT extract from these turns):
-${formatList(recentConversation, 4, formatConversationTurn)}
+${formatList(recentConversation, MAX_PROMPT_TURNS, formatConversationTurn)}${answeringSection}
 
 NEW UTTERANCE:
 """${body.text}"""`;

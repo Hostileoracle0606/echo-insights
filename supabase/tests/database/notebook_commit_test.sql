@@ -6,7 +6,7 @@
 create extension if not exists pgtap;
 
 begin;
-select plan(31);
+select plan(40);
 
 -- ── fixtures: two users, one notebook owned by user A ──────────────────────
 insert into auth.users (id) values
@@ -150,6 +150,90 @@ select is((select count(*)::int from public.journal_entries where notebook_id = 
 select is((select count(*)::int from public.entities where notebook_id = '33333333-3333-3333-3333-333333333333'), 0, 'clearNotebook: entities gone');
 select is((select count(*)::int from public.relations where notebook_id = '33333333-3333-3333-3333-333333333333'), 0, 'clearNotebook: relations gone');
 select is((select count(*)::int from public.entity_embeddings where notebook_id = '33333333-3333-3333-3333-333333333333'), 0, 'clearNotebook: derived embeddings gone too');
+
+
+-- ── 9. finalized-turn replay: one request id survives a conflict rebase ─────
+--
+-- The client mints ONE commit request id per finalized transcript and reuses
+-- it for every attempt at that turn — including the attempt made after a
+-- revision conflict forced a rebase onto a fresh snapshot. That is only safe
+-- because a conflict performs no write and therefore records no ledger row.
+-- These assertions pin that property down, since the whole client-side
+-- recovery design depends on it.
+
+select revision from public.notebooks where id = '33333333-3333-3333-3333-333333333333' \gset replay_
+
+-- 9a. a conflicting attempt with a fresh request id leaves no ledger trace
+select public.commit_notebook(
+  '33333333-3333-3333-3333-333333333333'::uuid,
+  (:replay_revision::bigint + 99),
+  'ffffffff-0000-0000-0000-000000000001'::uuid,
+  '{"kind":"applyTurn","entry":{"text":"Rebased turn one.","entityIds":["nina"],"relationIds":[]},
+    "entities":[{"id":"nina","name":"Nina","type":"person","metadata":{},"mentions":1,"firstSeen":"2026-09-10T00:00:00Z","lastSeen":"2026-09-10T00:00:00Z"}],
+    "relations":[]}'::jsonb
+) as result_9a \gset
+
+select is(:'result_9a'::jsonb ->> 'status', 'conflict', 'conflict rebase: stale revision conflicts');
+select is(
+  (select count(*)::int from public.notebook_commit_requests
+     where request_id = 'ffffffff-0000-0000-0000-000000000001'),
+  0,
+  'conflict rebase: a conflict records NO idempotency row'
+);
+
+-- 9b. the SAME request id now commits against the reloaded revision
+select public.commit_notebook(
+  '33333333-3333-3333-3333-333333333333'::uuid,
+  :replay_revision::bigint,
+  'ffffffff-0000-0000-0000-000000000001'::uuid,
+  '{"kind":"applyTurn","entry":{"text":"Rebased turn one.","entityIds":["nina"],"relationIds":[]},
+    "entities":[{"id":"nina","name":"Nina","type":"person","metadata":{},"mentions":1,"firstSeen":"2026-09-10T00:00:00Z","lastSeen":"2026-09-10T00:00:00Z"}],
+    "relations":[]}'::jsonb
+) as result_9b \gset
+
+select is(:'result_9b'::jsonb ->> 'status', 'committed', 'conflict rebase: the ORIGINAL request id commits after reload');
+select is((:'result_9b'::jsonb ->> 'revision')::int, (:replay_revision::int + 1), 'conflict rebase: revision advances by exactly one');
+
+-- 9c. a second pending turn commits next, in order, with its own id
+select public.commit_notebook(
+  '33333333-3333-3333-3333-333333333333'::uuid,
+  (:replay_revision::bigint + 1),
+  'ffffffff-0000-0000-0000-000000000002'::uuid,
+  '{"kind":"applyTurn","entry":{"text":"Rebased turn two.","entityIds":["omar"],"relationIds":[]},
+    "entities":[{"id":"omar","name":"Omar","type":"person","metadata":{},"mentions":1,"firstSeen":"2026-09-10T00:00:01Z","lastSeen":"2026-09-10T00:00:01Z"}],
+    "relations":[]}'::jsonb
+) as result_9c \gset
+
+select is(:'result_9c'::jsonb ->> 'status', 'committed', 'conflict rebase: the second pending turn commits after the first');
+select is(
+  (select count(*)::int from public.entities
+     where notebook_id = '33333333-3333-3333-3333-333333333333' and id in ('nina','omar')),
+  2,
+  'conflict rebase: both replayed turns applied exactly once'
+);
+
+-- ── 10. lost response: the identical retry replays, it does not re-apply ────
+--
+-- The server committed but the response never reached the client. The client
+-- retries the byte-identical request with the same id; the ledger must hand
+-- back the stored outcome without touching the graph again.
+select public.commit_notebook(
+  '33333333-3333-3333-3333-333333333333'::uuid,
+  :replay_revision::bigint,
+  'ffffffff-0000-0000-0000-000000000001'::uuid,
+  '{"kind":"applyTurn","entry":{"text":"Rebased turn one.","entityIds":["nina"],"relationIds":[]},
+    "entities":[{"id":"nina","name":"Nina","type":"person","metadata":{},"mentions":1,"firstSeen":"2026-09-10T00:00:00Z","lastSeen":"2026-09-10T00:00:00Z"}],
+    "relations":[]}'::jsonb
+) as result_10 \gset
+
+select is(:'result_10'::jsonb ->> 'status', 'committed', 'lost response: identical retry replays the committed outcome');
+select is((:'result_10'::jsonb ->> 'revision')::int, (:replay_revision::int + 1), 'lost response: replay returns the ORIGINAL revision, not a new one');
+select is(
+  (select mentions from public.entities
+     where notebook_id = '33333333-3333-3333-3333-333333333333' and id = 'nina'),
+  1,
+  'lost response: mention count not double-applied by the retry'
+);
 
 select * from finish();
 rollback;

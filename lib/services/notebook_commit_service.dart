@@ -63,15 +63,31 @@ class FollowUpContent {
     required this.reason,
     required this.targetEntityIds,
   });
-  Map<String, dynamic> toJson() =>
-      {'question': question, 'reason': reason, 'targetEntityIds': targetEntityIds};
+  factory FollowUpContent.fromJson(Map<String, dynamic> json) =>
+      FollowUpContent(
+        question: json['question'] as String,
+        reason: json['reason'] as String,
+        targetEntityIds: (json['targetEntityIds'] as List).cast<String>(),
+      );
+  Map<String, dynamic> toJson() => {
+        'question': question,
+        'reason': reason,
+        'targetEntityIds': targetEntityIds
+      };
 }
 
 class AskedQuestionContent {
   final String question;
   final List<String> targetEntityIds;
-  const AskedQuestionContent({required this.question, required this.targetEntityIds});
-  Map<String, dynamic> toJson() => {'question': question, 'targetEntityIds': targetEntityIds};
+  const AskedQuestionContent(
+      {required this.question, required this.targetEntityIds});
+  factory AskedQuestionContent.fromJson(Map<String, dynamic> json) =>
+      AskedQuestionContent(
+        question: json['question'] as String,
+        targetEntityIds: (json['targetEntityIds'] as List).cast<String>(),
+      );
+  Map<String, dynamic> toJson() =>
+      {'question': question, 'targetEntityIds': targetEntityIds};
 }
 
 class ApplyTurnChange extends NotebookChange {
@@ -93,6 +109,36 @@ class ApplyTurnChange extends NotebookChange {
     this.askedQuestion,
   });
 
+  factory ApplyTurnChange.fromJson(Map<String, dynamic> json) {
+    if (json['kind'] != 'applyTurn') {
+      throw const FormatException('Invalid apply-turn change');
+    }
+    final entry = (json['entry'] as Map).cast<String, dynamic>();
+    return ApplyTurnChange(
+      entryText: entry['text'] as String,
+      entryEntityIds: (entry['entityIds'] as List).cast<String>(),
+      entryRelationIds: (entry['relationIds'] as List).cast<String>(),
+      entities: (json['entities'] as List)
+          .map((value) =>
+              Entity.fromJson((value as Map).cast<String, dynamic>()))
+          .toList(growable: false),
+      relations: (json['relations'] as List)
+          .map((value) =>
+              Relation.fromJson((value as Map).cast<String, dynamic>()))
+          .toList(growable: false),
+      followUp: json['followUp'] is Map
+          ? FollowUpContent.fromJson(
+              (json['followUp'] as Map).cast<String, dynamic>(),
+            )
+          : null,
+      askedQuestion: json['askedQuestion'] is Map
+          ? AskedQuestionContent.fromJson(
+              (json['askedQuestion'] as Map).cast<String, dynamic>(),
+            )
+          : null,
+    );
+  }
+
   @override
   Map<String, dynamic> toJson() => {
         'kind': 'applyTurn',
@@ -113,7 +159,8 @@ class AnswerFollowUpChange extends NotebookChange {
   const AnswerFollowUpChange(this.followUpId);
 
   @override
-  Map<String, dynamic> toJson() => {'kind': 'answerFollowUp', 'followUpId': followUpId};
+  Map<String, dynamic> toJson() =>
+      {'kind': 'answerFollowUp', 'followUpId': followUpId};
 }
 
 class ClearNotebookChange extends NotebookChange {
@@ -141,7 +188,8 @@ sealed class CommitOutcome {
           followUpId: ids['followUpId'] as String?,
         );
       case 'conflict':
-        return CommitConflict(currentRevision: (json['currentRevision'] as num).toInt());
+        return CommitConflict(
+            currentRevision: (json['currentRevision'] as num).toInt());
       case 'rejected':
         return CommitRejected(code: json['code'] as String);
       default:
@@ -187,9 +235,12 @@ class NotebookSnapshot {
   factory NotebookSnapshot.fromJson(Map<String, dynamic> json) {
     final stateJson = json['state'] as Map<String, dynamic>;
     final entriesJson = (stateJson['entries'] as List<dynamic>?) ?? const [];
-    final entitiesJson = (stateJson['entities'] as Map<String, dynamic>?) ?? const {};
-    final relationsJson = (stateJson['relations'] as Map<String, dynamic>?) ?? const {};
-    final followUpsJson = (stateJson['followUps'] as List<dynamic>?) ?? const [];
+    final entitiesJson =
+        (stateJson['entities'] as Map<String, dynamic>?) ?? const {};
+    final relationsJson =
+        (stateJson['relations'] as Map<String, dynamic>?) ?? const {};
+    final followUpsJson =
+        (stateJson['followUps'] as List<dynamic>?) ?? const [];
     return NotebookSnapshot(
       notebookId: json['notebookId'] as String,
       revision: (json['revision'] as num).toInt(),

@@ -7,33 +7,37 @@ import {
   type GeminiToolCall,
   type GeminiVoice,
 } from "@/lib/gemini-live-client";
+import type { StartLiveSessionOutcome } from "@/lib/notebook-runtime-contract";
 import { PcmPlayer } from "@/lib/audio/pcm-player";
+
+import { createTranscriptAssembler } from "@/lib/turn-state/transcript-assembler";
+import type { TurnEvent } from "@/lib/turn-state/types";
 
 import captureWorkletUrl from "@/audio/pcm-capture-worklet.js?url";
 
 type MicPermissionState = PermissionState | "unknown" | "unsupported";
 
 interface Options {
+  /** Requests a one-use live credential for the active notebook. */
+  startLiveSession?: () => Promise<StartLiveSessionOutcome>;
   systemInstruction?: string;
   voice?: GeminiVoice;
   /** Server-side VAD silence threshold. Higher = more patience for thoughtful pauses. */
   silenceDurationMs?: number;
   /** Fired with every incremental user transcript chunk Gemini emits. */
   onUserTranscript?: (chunk: string) => void;
-  /**
-   * Fired DURING a turn whenever a stable sentence boundary is detected
-   * (punctuation in the chunk OR ~700ms idle on the partial-transcript stream).
-   * Receives the cumulative turn-so-far — pronoun resolution stays correct
-   * because each call sees all the prior sentences in the same turn.
-   *
-   * Use this for live graph extraction; use onUserTurnComplete for things
-   * that must run exactly once per turn (e.g. appending to conversation log).
-   */
-  onUserSentence?: (turnSoFar: string) => void;
-  /** Fired with the FULL aggregated user utterance once the agent's turn ends. */
-  onUserTurnComplete?: (fullText: string) => void;
   onAgentTranscript?: (chunk: string) => void;
-  onAgentTurnComplete?: (fullText: string) => void;
+  /**
+   * The turn-state event stream. This replaced the old `onUserSentence`
+   * callback, which fired per sentence boundary with the cumulative
+   * turn-so-far and let each fire drive a full extract → merge → commit —
+   * so sentence one could commit, and then sentence one *plus* two could
+   * commit again over the top of it.
+   *
+   * Events here carry meaning instead: interim text is replaceable, and only
+   * an explicit finalization authorizes a durable write.
+   */
+  onTurnEvent?: (event: TurnEvent) => void;
   /** User barge-in detected by Gemini's VAD; pending agent audio was flushed. */
   onInterrupted?: () => void;
   /**
@@ -103,20 +107,21 @@ export function useGeminiLive(opts: Options = {}): UseGeminiLive {
   // True once Gemini's setup-complete frame has arrived. Used by onClose to
   // distinguish a server-side rejection (closed BEFORE setup) from a normal
   // disconnect (closed AFTER setup). The first case usually means the API
-  // key, quota, or model name is wrong and deserves a louder error.
+  // temporary credential, quota, or model name is wrong and deserves a louder error.
   const setupCompletedRef = useRef(false);
 
-  // Aggregating buffers so onUserTurnComplete / onAgentTurnComplete fire with
-  // the whole utterance, not the trailing chunk. Reset on turnComplete.
-  const userBufferRef = useRef("");
+  // Turn assembly lives in a pure, platform-free module so web and Flutter
+  // apply the same rules; the hook only owns audio and React state.
+  const assemblerRef = useRef(createTranscriptAssembler());
   const agentBufferRef = useRef("");
-  // Sentence-boundary scheduling for onUserSentence. We fire immediately on
-  // punctuation, otherwise after ~700ms of transcript silence. lastFiredLen
-  // suppresses duplicate fires for the same buffer state.
-  const userIdleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const userLastFiredLenRef = useRef(0);
-  const SENTENCE_IDLE_MS = 700;
-  const SENTENCE_MIN_CHARS = 6;
+  /**
+   * Playback watermark: characters of agent text whose audio has actually
+   * been played. Driven by the same audio-clock reveal that lip-syncs the
+   * transcript, so it is a measurement rather than an estimate.
+   */
+  const agentHeardCharsRef = useRef(0);
+  /** True when no audio clock was available, so "heard" cannot be determined. */
+  const agentHeardUnknownRef = useRef(false);
 
   // Lip-sync the visible agent transcript to the audio playback clock. Each
   // text chunk arrives over the same WebSocket as audio, but text lands in
@@ -147,7 +152,15 @@ export function useGeminiLive(opts: Options = {}): UseGeminiLive {
     while (queue.length > 0 && queue[0].revealAt <= now) {
       revealed = queue.shift()!.snapshot;
     }
-    if (revealed !== null) setAgentTranscript(revealed);
+    if (revealed !== null) {
+      setAgentTranscript(revealed);
+      // This text's audio has now been played: advance the heard watermark.
+      agentHeardCharsRef.current = revealed.length;
+      optsRef.current.onTurnEvent?.({
+        type: "playbackAdvanced",
+        heardChars: revealed.length,
+      });
+    }
     if (queue.length > 0) {
       agentRevealRafRef.current = requestAnimationFrame(tickAgentReveal);
     }
@@ -159,15 +172,14 @@ export function useGeminiLive(opts: Options = {}): UseGeminiLive {
   }, [tickAgentReveal]);
 
   useEffect(() => {
-    const apiKey = import.meta.env.VITE_GEMINI_API_KEY?.trim();
     const ok =
       typeof window !== "undefined" &&
       typeof WebSocket !== "undefined" &&
       typeof AudioContext !== "undefined" &&
       Boolean(navigator.mediaDevices?.getUserMedia) &&
-      Boolean(apiKey);
+      Boolean(opts.startLiveSession);
     setSupported(ok);
-  }, []);
+  }, [opts.startLiveSession]);
 
   useEffect(() => {
     if (typeof navigator === "undefined" || !navigator.permissions?.query) return;
@@ -226,13 +238,12 @@ export function useGeminiLive(opts: Options = {}): UseGeminiLive {
     setListening(false);
     setReady(false);
     setSpeaking(false);
-    userBufferRef.current = "";
     agentBufferRef.current = "";
-    if (userIdleTimerRef.current) {
-      clearTimeout(userIdleTimerRef.current);
-      userIdleTimerRef.current = null;
-    }
-    userLastFiredLenRef.current = 0;
+    agentHeardCharsRef.current = 0;
+    agentHeardUnknownRef.current = false;
+    assemblerRef.current.reset();
+    // A torn-down session can no longer publish into a new one.
+    optsRef.current.onTurnEvent?.({ type: "sessionEnded" });
     cancelAgentReveal();
   }, [cancelAgentReveal]);
 
@@ -246,9 +257,9 @@ export function useGeminiLive(opts: Options = {}): UseGeminiLive {
     setError(null);
     if (clientRef.current) return true;
 
-    const apiKey = import.meta.env.VITE_GEMINI_API_KEY?.trim();
-    if (!apiKey) {
-      setError("VITE_GEMINI_API_KEY is missing.");
+    const requestLiveSession = optsRef.current.startLiveSession;
+    if (!requestLiveSession) {
+      setError("The secure live-session route is not configured.");
       return false;
     }
 
@@ -299,9 +310,30 @@ export function useGeminiLive(opts: Options = {}): UseGeminiLive {
     player.onSpeakingChange(setSpeaking);
     if (muted) player.setVolume(0);
 
+    let liveSession: StartLiveSessionOutcome;
+    try {
+      liveSession = await requestLiveSession();
+    } catch (err) {
+      console.error("[gemini-live] temporary credential request failed", err);
+      setError("Could not start a secure live session. Please sign in again and retry.");
+      await teardown();
+      return false;
+    }
+    if (liveSession.status === "rejected") {
+      const message =
+        liveSession.code === "notFound"
+          ? "The active notebook is no longer available."
+          : liveSession.code === "rateLimited"
+            ? "Too many live sessions were started. Wait a moment and retry."
+            : "The live voice provider is temporarily unavailable.";
+      setError(message);
+      await teardown();
+      return false;
+    }
+
     const config: GeminiLiveConfig = {
-      apiKey,
-      model: "gemini-3.1-flash-live-preview",
+      sessionToken: liveSession.sessionToken,
+      model: liveSession.model,
       systemInstruction: optsRef.current.systemInstruction,
       voice: optsRef.current.voice ?? "Aoede",
       silenceDurationMs: optsRef.current.silenceDurationMs ?? 1200,
@@ -309,6 +341,15 @@ export function useGeminiLive(opts: Options = {}): UseGeminiLive {
     };
 
     setupCompletedRef.current = false;
+    assemblerRef.current = createTranscriptAssembler();
+    const emit = (events: TurnEvent[]) => {
+      for (const event of events) {
+        if (event.type === "interimTranscript" && event.speaker === "user") {
+          setUserTranscript(event.text);
+        }
+        optsRef.current.onTurnEvent?.(event);
+      }
+    };
     const client = new GeminiLiveClient(config, {
       onSetupComplete: () => {
         setupCompletedRef.current = true;
@@ -318,33 +359,16 @@ export function useGeminiLive(opts: Options = {}): UseGeminiLive {
         playerRef.current?.enqueue(chunk);
       },
       onUserTranscript: (chunk) => {
-        userBufferRef.current += chunk;
-        setUserTranscript(userBufferRef.current);
         optsRef.current.onUserTranscript?.(chunk);
-
-        // Sentence-boundary detection for live graph extraction.
-        const fireSentence = () => {
-          if (userIdleTimerRef.current) {
-            clearTimeout(userIdleTimerRef.current);
-            userIdleTimerRef.current = null;
-          }
-          const buf = userBufferRef.current.trim();
-          if (buf.length < SENTENCE_MIN_CHARS) return;
-          if (buf.length === userLastFiredLenRef.current) return;
-          userLastFiredLenRef.current = buf.length;
-          optsRef.current.onUserSentence?.(buf);
-        };
-
-        // Hard boundary: chunk ends with sentence-terminating punctuation,
-        // or contains a terminator followed by likely sentence-start whitespace.
-        if (/[.!?]["')\]]?\s*$/.test(chunk) || /[.!?]\s+\S/.test(chunk)) {
-          fireSentence();
-          return;
-        }
-
-        // Soft boundary: reset an idle timer; fires if no chunk arrives soon.
-        if (userIdleTimerRef.current) clearTimeout(userIdleTimerRef.current);
-        userIdleTimerRef.current = setTimeout(fireSentence, SENTENCE_IDLE_MS);
+        emit(assemblerRef.current.userChunk(chunk));
+      },
+      onInterimUserTranscript: (text) => {
+        // Provider revised its own guess: replace, never append.
+        emit(assemblerRef.current.userInterim(text));
+      },
+      onFinalUserTranscript: (text) => {
+        emit(assemblerRef.current.userFinal(text));
+        setUserTranscript("");
       },
       onAgentTranscript: (chunk) => {
         agentBufferRef.current += chunk;
@@ -357,46 +381,42 @@ export function useGeminiLive(opts: Options = {}): UseGeminiLive {
         // to audio that lands at or just before that timestamp.
         if (!player) {
           setAgentTranscript(snapshot);
+          // With no audio clock we cannot prove what was heard.
+          agentHeardUnknownRef.current = true;
         } else {
           const now = player.getCurrentTime();
           const tail = player.getScheduledTail();
           const revealAt = Math.max(now, tail);
           if (revealAt <= now) {
             setAgentTranscript(snapshot);
+            agentHeardCharsRef.current = snapshot.length;
           } else {
             agentRevealQueueRef.current.push({ snapshot, revealAt });
             scheduleAgentReveal();
           }
         }
         optsRef.current.onAgentTranscript?.(chunk);
+        emit(assemblerRef.current.assistantChunk(chunk));
+      },
+      onFinalAgentTranscript: (text) => {
+        emit(assemblerRef.current.assistantFinal(text));
       },
       onTurnComplete: () => {
-        // Cancel any pending idle fire; the turn-end final extraction below
-        // covers anything the soft timer hasn't picked up yet.
-        if (userIdleTimerRef.current) {
-          clearTimeout(userIdleTimerRef.current);
-          userIdleTimerRef.current = null;
-        }
-        const userFull = userBufferRef.current.trim();
-        const agentFull = agentBufferRef.current.trim();
-        // One last sentence fire if the tail is new — guarantees the final
-        // entities in the turn make it into the graph even if there was no
-        // trailing punctuation and the idle timer didn't trip.
-        if (userFull && userFull.length !== userLastFiredLenRef.current) {
-          userLastFiredLenRef.current = userFull.length;
-          optsRef.current.onUserSentence?.(userFull);
-        }
-        if (userFull) optsRef.current.onUserTurnComplete?.(userFull);
-        if (agentFull) optsRef.current.onAgentTurnComplete?.(agentFull);
-        userBufferRef.current = "";
+        emit(assemblerRef.current.turnComplete());
         agentBufferRef.current = "";
-        userLastFiredLenRef.current = 0;
+        agentHeardCharsRef.current = 0;
+        agentHeardUnknownRef.current = false;
         cancelAgentReveal();
         setUserTranscript("");
         setAgentTranscript("");
       },
       onInterrupted: () => {
         playerRef.current?.flush();
+        // Only the words whose audio actually played may be finalized. When
+        // no audio clock was available the boundary is reported as unknown,
+        // and the turn is skipped for durable extraction entirely.
+        const heardChars = agentHeardUnknownRef.current ? null : agentHeardCharsRef.current;
+        emit(assemblerRef.current.interrupted(heardChars));
         agentBufferRef.current = "";
         cancelAgentReveal();
         setAgentTranscript("");
@@ -445,7 +465,7 @@ export function useGeminiLive(opts: Options = {}): UseGeminiLive {
           const reason = info.reason?.trim();
           const message = reason
             ? `Gemini Live closed before setup completed (code ${info.code}): ${reason}`
-            : `Gemini Live closed before setup completed (code ${info.code}). Likely a rate limit, quota, or invalid API key.`;
+            : `Gemini Live closed before setup completed (code ${info.code}). Likely a rate limit, quota, or expired temporary credential.`;
           setError(message);
           optsRef.current.onError?.(message);
         }

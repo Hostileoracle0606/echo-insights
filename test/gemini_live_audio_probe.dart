@@ -18,6 +18,8 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lumen/services/gemini_live_client.dart';
 
+import 'live_token_probe_helper.dart';
+
 String _env(String key) {
   final f = File('.env');
   if (!f.existsSync()) return '';
@@ -38,8 +40,8 @@ Uint8List _wavPcm(String path) {
   final bytes = File(path).readAsBytesSync();
   for (var i = 12; i < bytes.length - 8;) {
     final id = String.fromCharCodes(bytes.sublist(i, i + 4));
-    final size = ByteData.sublistView(bytes, i + 4, i + 8)
-        .getUint32(0, Endian.little);
+    final size =
+        ByteData.sublistView(bytes, i + 4, i + 8).getUint32(0, Endian.little);
     if (id == 'data') return bytes.sublist(i + 8, i + 8 + size);
     i += 8 + size + (size.isOdd ? 1 : 0);
   }
@@ -56,9 +58,11 @@ void main() {
     print('speech fixture: ${pcm.length} bytes '
         '(~${(pcm.length / 32000).toStringAsFixed(1)}s @16kHz mono int16)');
 
+    const model = 'gemini-3.1-flash-live-preview';
+    final sessionToken = await requestLiveProbeToken(apiKey: key, model: model);
     final client = GeminiLiveClient(
-      apiKey: key,
-      model: 'gemini-3.1-flash-live-preview',
+      sessionToken: sessionToken,
+      model: model,
       systemInstruction:
           'You are a concise journaling assistant. Reply in one short sentence.',
       voice: 'Aoede',

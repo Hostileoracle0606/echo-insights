@@ -91,7 +91,9 @@ serve(async (req) => {
     ) {
       return json(413, { error: "graph too large" });
     }
-    if (!query || Object.keys(entities).length === 0) return json(200, { context: "" });
+    if (!query || Object.keys(entities).length === 0) {
+      return json(200, { context: "", entityIds: [] });
+    }
 
     // ── Semantic seeds (hybrid). Service-role, downstream of ownership + rate.
     // Fail-closed: any failure → no extraSeeds → Phase 1 lexical behavior.
@@ -135,7 +137,10 @@ serve(async (req) => {
       latencyMs: Date.now() - startedAt,
       qHash: await queryHash(query),
     });
-    return json(200, { context });
+    return json(200, {
+      context,
+      entityIds: result.entities.map((entity) => entity.id),
+    });
   } catch (e) {
     // Never log the request body or context. Counts / error name only.
     logTelemetry({

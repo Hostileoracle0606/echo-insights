@@ -4,7 +4,9 @@ import 'package:http/http.dart' as http;
 
 import '../logic/noise_filter.dart';
 import '../models/graph_patch.dart';
+import '../models/follow_up.dart';
 import '../models/journal_state.dart';
+import 'extraction_context.dart';
 
 const _extractionUrl =
     'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
@@ -205,50 +207,6 @@ const _functionDeclaration = {
   },
 };
 
-String _buildUserMessage(
-  String text,
-  JournalState state, {
-  int maxContextEntities = 20,
-  List<({String role, String text})> recentConversation = const [],
-}) {
-  final existing = state.entities.values.take(maxContextEntities).toList();
-  final existingList = existing.isEmpty
-      ? '(none yet)'
-      : existing
-          .map(
-            (entity) =>
-                '- ${entity.name} (${entity.type.name})${entity.description != null ? " - ${entity.description}" : ""}',
-          )
-          .join('\n');
-
-  final relations = state.relations.values.take(30).toList();
-  final relationList = relations.isEmpty
-      ? '(none yet)'
-      : relations
-          .map(
-            (relation) =>
-                '- [${relation.id}] ${relation.source} --${relation.label}--> ${relation.target}',
-          )
-          .join('\n');
-
-  final recent = recentConversation.take(4).toList();
-  final recentList = recent.isEmpty
-      ? '(none)'
-      : recent.map((turn) => '- ${turn.role}: ${turn.text}').join('\n');
-
-  return '''EXISTING ENTITIES (reuse these spellings for the same thing):
-$existingList
-
-EXISTING RELATIONS (each prefixed with its [id] — use these IDs verbatim in supersedes when contradicted):
-$relationList
-
-RECENT CONVERSATION (for pronoun resolution only — do NOT extract from these):
-$recentList
-
-NEW UTTERANCE:
-"""$text"""''';
-}
-
 class ExtractGraphService {
   final String apiKey;
 
@@ -259,17 +217,24 @@ class ExtractGraphService {
     required JournalState state,
     required String mode,
     List<({String role, String text})> recentConversation = const [],
+    List<String> retrievedEntityIds = const [],
+    FollowUp? answeringFollowUp,
+    int tokenBudget = defaultExtractionTokenBudget,
     int maxRetries = 2,
   }) async {
     final trimmed = text.trim();
     if (trimmed.length < 6 || apiKey.isEmpty) return GraphPatch.empty();
 
     final systemPrompt = mode == 'wiki' ? _wikiPrompt : _granularPrompt;
-    final userMessage = _buildUserMessage(
-      trimmed,
-      state,
-      recentConversation: recentConversation,
+    final context = compileExtractionContext(
+      transcript: trimmed,
+      state: state,
+      retrievedEntityIds: retrievedEntityIds,
+      recentTurns: recentConversation,
+      answeringFollowUp: answeringFollowUp,
+      budget: tokenBudget,
     );
+    final userMessage = buildExtractionUserMessage(trimmed, context);
 
     final body = jsonEncode({
       'system_instruction': {

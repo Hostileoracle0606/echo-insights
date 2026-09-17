@@ -27,6 +27,14 @@ class EntityPatch {
         ),
         questions: (json['questions'] as List<dynamic>?)?.cast<String>(),
       );
+
+  Map<String, dynamic> toJson() => {
+        'name': name,
+        'type': type.name,
+        if (description != null) 'description': description,
+        if (metadata != null) 'metadata': metadata,
+        if (questions != null) 'questions': questions,
+      };
 }
 
 class RelationPatch {
@@ -50,6 +58,13 @@ class RelationPatch {
           (key, value) => MapEntry(key, value.toString()),
         ),
       );
+
+  Map<String, dynamic> toJson() => {
+        'source': source,
+        'target': target,
+        'label': label,
+        if (metadata != null) 'metadata': metadata,
+      };
 }
 
 class GraphPatch {
@@ -75,4 +90,14 @@ class GraphPatch {
             .toList(),
         supersedes: (json['supersedes'] as List<dynamic>? ?? []).cast<String>(),
       );
+
+  /// Round-trips through [GraphPatch.fromJson] without loss. This is what lets
+  /// a finalized turn checkpoint its extraction result durably, so a restart
+  /// after extraction reuses the exact result the model returned instead of
+  /// paying for the call again and possibly receiving a different answer.
+  Map<String, dynamic> toJson() => {
+        'entities': entities.map((e) => e.toJson()).toList(),
+        'relations': relations.map((r) => r.toJson()).toList(),
+        'supersedes': supersedes,
+      };
 }
