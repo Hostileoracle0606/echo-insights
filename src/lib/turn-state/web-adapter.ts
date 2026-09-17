@@ -18,7 +18,7 @@ import type { ExtractionMode, FollowUp, JournalState } from "@/lib/journal-types
 import { commitNotebook, getNotebookSnapshot, type NotebookChange } from "@/lib/notebook-commit";
 
 import type { PipelineCommitOutcome, TurnJournalStore, TurnPorts } from "./pipeline";
-import type { FinalizedTurn } from "./types";
+import type { FinalizedTurn, PreparedCommit } from "./types";
 
 const JOURNAL_KEY = "lumen:turn-journal:v1";
 
@@ -91,11 +91,14 @@ export interface WebTurnAdapterDeps {
   getExtractionMode: () => ExtractionMode;
   getRevision: () => number;
   setRevision: (revision: number) => void;
+  /** Replaces optimistic state with an authoritative server snapshot. */
+  replaceState: (state: JournalState) => void;
   /** The open follow-up this turn answers, if any. */
   getAnsweringFollowUp?: () => FollowUp | undefined;
   /**
    * Merges an extraction into local state and returns the change to commit.
-   * Recomputed at commit time so a post-conflict retry rebases correctly.
+   * Called once per commit attempt. Unknown-outcome retries reuse its durable
+   * result; a confirmed conflict calls it again after the snapshot reload.
    */
   mergeForCommit: (
     transcript: string,
@@ -145,26 +148,34 @@ export function createWebTurnPorts(deps: WebTurnAdapterDeps): TurnPorts {
       return { ...result, followUp: undefined as unknown as ExtractGraphResult["followUp"] };
     },
 
-    async commit(turn): Promise<PipelineCommitOutcome> {
-      if (!turn.extraction) return { status: "rejected", code: "invalidRequest" };
-      // Re-merge at commit time against whatever state is current. After a
-      // conflict this is what rebases the turn onto the fresh snapshot.
+    async prepareCommit(turn): Promise<PreparedCommit> {
+      if (!turn.extraction) throw new Error("cannot prepare a commit without an extraction");
+      // This runs once for an attempt. Unknown-outcome retries reuse the
+      // checkpointed result; a confirmed conflict invalidates it so this can
+      // rebase once against the freshly loaded snapshot.
       const merged = deps.mergeForCommit(turn.transcript, turn.extraction);
+      return {
+        expectedRevision: turn.baseRevision ?? deps.getRevision(),
+        change: merged.change,
+        entryId: merged.entryId,
+        tempFollowUpId: merged.tempFollowUpId,
+      };
+    },
+
+    async commit(turn, prepared): Promise<PipelineCommitOutcome> {
       const outcome = await commitNotebook({
         notebookId: turn.notebookId,
-        expectedRevision: turn.baseRevision ?? deps.getRevision(),
-        // Reused verbatim on every attempt for this turn, including retries
-        // after an unknown outcome and replays after a conflict.
+        expectedRevision: prepared.expectedRevision,
         requestId: turn.commitRequestId,
-        change: merged.change,
+        change: prepared.change as NotebookChange,
       });
       if (outcome.status === "committed") {
         deps.setRevision(outcome.revision);
         deps.onCommitted?.({
           turn,
           revision: outcome.revision,
-          entryId: merged.entryId,
-          tempFollowUpId: merged.tempFollowUpId,
+          entryId: prepared.entryId,
+          tempFollowUpId: prepared.tempFollowUpId,
           ids: outcome.ids,
         });
         return { status: "committed", requestId: turn.commitRequestId, revision: outcome.revision };
@@ -178,6 +189,7 @@ export function createWebTurnPorts(deps: WebTurnAdapterDeps): TurnPorts {
     async reloadSnapshot(notebookId) {
       const snapshot = await getNotebookSnapshot(notebookId);
       if (!snapshot) return null;
+      deps.replaceState(snapshot.state);
       deps.setRevision(snapshot.revision);
       return { revision: snapshot.revision };
     },

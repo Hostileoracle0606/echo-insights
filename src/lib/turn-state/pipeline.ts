@@ -13,6 +13,7 @@ import type { ExtractGraphResult } from "@/lib/extract-graph";
 import type {
   ExtractionPreview,
   FinalizedTurn,
+  PreparedCommit,
   Speaker,
   TurnEffect,
   TurnEvent,
@@ -40,8 +41,10 @@ export interface TurnPorts {
     key: TurnIdentity,
     signal: AbortSignal,
   ) => Promise<ExtractGraphResult>;
-  /** Performs one Notebook Commit. Rejects only on transport failure. */
-  commit: (turn: FinalizedTurn) => Promise<PipelineCommitOutcome>;
+  /** Merges once and captures the exact RPC input plus local reconciliation ids. */
+  prepareCommit: (turn: FinalizedTurn) => Promise<PreparedCommit>;
+  /** Performs one Notebook Commit using an already-checkpointed immutable input. */
+  commit: (turn: FinalizedTurn, prepared: PreparedCommit) => Promise<PipelineCommitOutcome>;
   reloadSnapshot: (notebookId: string) => Promise<{ revision: number } | null>;
   journal: TurnJournalStore;
   scheduleDeadline: (speaker: Speaker, turnId: string, fire: () => void) => void;
@@ -66,6 +69,11 @@ export interface TurnPipeline {
 export function createTurnPipeline(machine: TurnMachine, ports: TurnPorts): TurnPipeline {
   /** One controller per in-flight extraction, keyed by turn id. */
   const controllers = new Map<string, { generation: number; controller: AbortController }>();
+  // `null` is an intentional invalidation after a confirmed conflict. It
+  // prevents a restored turn's stale checkpoint from being selected again.
+  const preparedCommits = new Map<string, PreparedCommit | null>();
+  /** Turns whose prepared payload came from a previous browser process. */
+  const recoveredPreparedCommits = new Set<string>();
 
   function abortFor(turnId: string): void {
     const entry = controllers.get(turnId);
@@ -166,9 +174,31 @@ export function createTurnPipeline(machine: TurnMachine, ports: TurnPorts): Turn
       case "startCommit": {
         const turn = machine.state.pending.find((t) => t.turnId === effect.turnId);
         if (!turn) return;
+        let prepared = preparedCommits.has(turn.turnId)
+          ? preparedCommits.get(turn.turnId)
+          : turn.preparedCommit ?? null;
+
+        if (!preparedCommits.has(turn.turnId) && prepared) {
+          recoveredPreparedCommits.add(turn.turnId);
+        }
+
+        if (!prepared) {
+          try {
+            prepared = await ports.prepareCommit(turn);
+          } catch (error) {
+            ports.onError?.(messageOf(error));
+            await run({ type: "commitRejected", turnId: effect.turnId, code: "invalidRequest" });
+            return;
+          }
+          preparedCommits.set(turn.turnId, prepared);
+          recoveredPreparedCommits.delete(turn.turnId);
+          // The exact payload must be durable before the request can leave.
+          await ports.journal.save({ ...turn, preparedCommit: prepared });
+        }
+
         let outcome: PipelineCommitOutcome;
         try {
-          outcome = await ports.commit(turn);
+          outcome = await ports.commit(turn, prepared);
         } catch {
           // Transport failure: the outcome is genuinely unknown. Retry the
           // identical request with the SAME request id — the server ledger
@@ -177,6 +207,18 @@ export function createTurnPipeline(machine: TurnMachine, ports: TurnPorts): Turn
           return;
         }
         if (outcome.status === "committed") {
+          // A restored payload was prepared in a previous process, so its
+          // optimistic state is not present in this process. Refresh once to
+          // make the confirmed server result authoritative locally as well.
+          if (recoveredPreparedCommits.has(turn.turnId)) {
+            try {
+              await ports.reloadSnapshot(turn.notebookId);
+            } catch (error) {
+              ports.onError?.(messageOf(error));
+            }
+          }
+          preparedCommits.delete(turn.turnId);
+          recoveredPreparedCommits.delete(turn.turnId);
           ports.onCommitted?.({ ...turn, stage: "committed", revision: outcome.revision });
           await run({
             type: "commitCommitted",
@@ -187,6 +229,10 @@ export function createTurnPipeline(machine: TurnMachine, ports: TurnPorts): Turn
           return;
         }
         if (outcome.status === "conflict") {
+          // A confirmed conflict made no write and created no ledger row. The
+          // snapshot reload may therefore prepare a new payload for this id.
+          preparedCommits.set(turn.turnId, null);
+          recoveredPreparedCommits.delete(turn.turnId);
           await run({
             type: "commitConflict",
             turnId: effect.turnId,
@@ -194,6 +240,8 @@ export function createTurnPipeline(machine: TurnMachine, ports: TurnPorts): Turn
           });
           return;
         }
+        preparedCommits.delete(turn.turnId);
+        recoveredPreparedCommits.delete(turn.turnId);
         ports.onError?.(`commit rejected: ${outcome.code}`);
         await run({ type: "commitRejected", turnId: effect.turnId, code: outcome.code });
         return;

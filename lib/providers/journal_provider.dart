@@ -11,6 +11,7 @@ import '../logic/agenda.dart' as agenda_logic;
 import '../logic/conversation_policy.dart';
 import '../logic/merge.dart' as merge_logic;
 import '../logic/transcript_assembler.dart';
+import '../logic/turn_effect_queue.dart';
 import '../logic/turn_state.dart';
 import '../logic/voice_log.dart';
 import '../models/graph_patch.dart';
@@ -21,6 +22,7 @@ import '../services/gemini_live_client.dart';
 import '../services/notebook_commit_service.dart' as commit_service;
 import '../services/notebook_runtime_service.dart';
 import '../services/retrieve_memory_service.dart';
+import '../services/turn_journal_service.dart';
 import 'supabase_provider.dart';
 
 enum SessionStatus { idle, connecting, live, ending, error }
@@ -40,9 +42,11 @@ class JournalNotifier extends Notifier<JournalState> {
   GeminiLiveClient? _live;
   PcmCapture? _capture;
   PcmPlayer? _player;
+
   /// Fires when a completed turn never received an authoritative transcript.
   Timer? _finalizationTimer;
   String _lastTranscript = '';
+
   /// Shared, platform-free turn rules. Identical to the web app's reducer.
   late final TurnMachine _turnMachine = TurnMachine(
     now: () => DateTime.now().toUtc().toIso8601String(),
@@ -51,11 +55,24 @@ class JournalNotifier extends Notifier<JournalState> {
     extractorVersion: extractorVersion,
   );
   final TranscriptAssembler _assembler = TranscriptAssembler();
+
   /// Extraction results held against their turn id until the commit succeeds.
   final Map<String, GraphPatch> _lastPatches = {};
-  /// Characters of agent text whose audio has actually been played.
-  int _agentHeardChars = 0;
-  bool _agentHeardUnknown = false;
+  final Map<String, String> _checkpointNotebookByTurnId = {};
+
+  /// Exact merge outputs held across unknown-outcome retries. Reusing the
+  /// request id is safe only when the expected revision and change are also
+  /// reused byte-for-byte/logically unchanged.
+  final Map<String, PreparedTurnCommit> _preparedCommits = {};
+  final Set<String> _restoredPreparedCommitIds = {};
+  late final TurnEffectQueue _effectQueue = TurnEffectQueue(
+    onFailure: (error, stackTrace) {
+      vlog('session', 'turn effect failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    },
+  );
+  String? _restoredNotebookId;
+
   final _conversation = <({String role, String text})>[];
   String? _activeNotebookId;
   SessionStatus _status = SessionStatus.idle;
@@ -73,12 +90,6 @@ class JournalNotifier extends Notifier<JournalState> {
   // it was queued) and a committed response updates it — see
   // _enqueueCommit / _commitApplyTurn.
   int _revision = 0;
-  // Serializes writes to the active notebook: chaining onto this future
-  // guarantees commits reach the server in submission order with exactly
-  // one in flight at a time. Normalized to never reject so one failed
-  // commit can't wedge every commit queued after it.
-  final Future<void> _commitQueueTail = Future.value();
-
   SessionStatus get status => _status;
   String get lastTranscript => _lastTranscript;
   List<({String role, String text})> get conversation =>
@@ -155,25 +166,50 @@ class JournalNotifier extends Notifier<JournalState> {
   /// conflict, one reused request id per turn — live in lib/logic/turn_state.dart
   /// and are the same rules the web app runs.
   void _dispatchTurn(TurnEvent event) {
-    for (final effect in _turnMachine.dispatch(event)) {
-      _performEffect(effect);
+    final effects = _turnMachine.dispatch(event);
+    final durableEffects = <TurnEffect>[];
+    for (final effect in effects) {
+      if (effect is FlushPlayback) {
+        // Interruption is latency-sensitive. Invalidate the current playback
+        // source immediately instead of waiting behind extraction or commits.
+        unawaited(_flushPlayback());
+      } else {
+        durableEffects.add(effect);
+      }
+    }
+    if (durableEffects.isNotEmpty) {
+      _effectQueue.enqueue(() => _performEffects(durableEffects));
     }
     final latest = _turnMachine.state;
     _conversation
       ..clear()
-      ..addAll(latest.conversation.map((t) => (role: t.role.name, text: t.text)));
+      ..addAll(
+          latest.conversation.map((t) => (role: t.role.name, text: t.text)));
     _notifyUi();
   }
 
-  void _performEffect(TurnEffect effect) {
+  Future<void> _performEffects(List<TurnEffect> effects) async {
+    for (final effect in effects) {
+      switch (effect) {
+        case PersistTurn():
+          await _persistTurn(effect.turn);
+        case ForgetTurn():
+          await _forgetTurn(effect.turnId);
+        default:
+          await _performEffect(effect);
+      }
+    }
+  }
+
+  Future<void> _performEffect(TurnEffect effect) async {
     switch (effect) {
       case StartDurableExtraction():
-        unawaited(_runDurableExtraction(effect));
+        await _runDurableExtraction(effect);
       case StartCommit():
         final turn = _turnMachine.state.pending
             .where((t) => t.turnId == effect.turnId)
             .firstOrNull;
-        if (turn != null) unawaited(_runCommit(turn));
+        if (turn != null) await _runCommit(turn);
       case ScheduleFinalizationDeadline():
         _finalizationTimer?.cancel();
         _finalizationTimer = Timer(
@@ -184,22 +220,84 @@ class JournalNotifier extends Notifier<JournalState> {
           )),
         );
       case ReloadSnapshot():
-        unawaited(_reloadSnapshot());
+        await _reloadSnapshot();
       case FlushPlayback():
-        // PcmPlayer has no flush yet, so queued agent audio finishes playing
-        // after a barge-in. The heard watermark is snapshotted at the moment
-        // of interruption, so the durable transcript stays a PREFIX of what
-        // was heard — conservative, never over-inclusive. See the limitation
-        // noted in docs/finalized-turn-extraction.md.
-        break;
+        throw StateError('Playback flushes must run on the realtime path');
       case CancelExtraction():
         // Cancellation is a resource optimisation only; the machine's identity
         // check is what decides whether a late result may change anything.
         break;
       case PersistTurn():
       case ForgetTurn():
+        throw StateError(
+            'Durable journal effects must run through the effect queue');
       case StartProvisionalExtraction():
         break;
+    }
+  }
+
+  Future<void> _persistTurn(FinalizedTurn turn) async {
+    await ref.read(turnJournalServiceProvider).persistTurn(turn);
+    _checkpointNotebookByTurnId[turn.turnId] = turn.notebookId;
+  }
+
+  Future<void> _forgetTurn(String turnId) async {
+    final notebookId =
+        _checkpointNotebookByTurnId.remove(turnId) ?? _activeNotebookId;
+    if (notebookId == null) return;
+    await ref.read(turnJournalServiceProvider).forgetTurn(
+          notebookId: notebookId,
+          turnId: turnId,
+        );
+  }
+
+  Future<void> _flushPlayback() async {
+    try {
+      await _player?.flush();
+    } catch (error, stack) {
+      vlog('playback', 'flush failed: $error');
+      debugPrintStack(stackTrace: stack);
+    } finally {
+      _clearAgentSpeaking();
+    }
+  }
+
+  Future<void> _restoreTurnsForNotebook(String notebookId) async {
+    if (_restoredNotebookId == notebookId) return;
+
+    try {
+      final checkpoints = await ref
+          .read(turnJournalServiceProvider)
+          .loadCheckpoints(notebookId);
+      final turns = checkpoints
+          .map((checkpoint) => checkpoint.turn)
+          .toList(growable: false);
+      _restoredNotebookId = notebookId;
+      for (final checkpoint in checkpoints) {
+        final turn = checkpoint.turn;
+        _checkpointNotebookByTurnId[turn.turnId] = turn.notebookId;
+        final prepared = checkpoint.preparedCommit;
+        if (prepared != null) {
+          _preparedCommits[turn.turnId] = prepared;
+          _restoredPreparedCommitIds.add(turn.turnId);
+        }
+      }
+
+      // Establish notebook identity before Restored drives extraction or
+      // commit effects. A later live socket replaces only the session id.
+      _dispatchTurn(SessionStarted(
+        sessionId:
+            'recovery-${commit_service.NotebookCommitService.newRequestId()}',
+        notebookId: notebookId,
+        revision: _revision,
+      ));
+      if (turns.isNotEmpty) {
+        _dispatchTurn(Restored(turns: turns));
+      }
+    } catch (error, stack) {
+      _restoredNotebookId = null;
+      vlog('session', 'turn journal restore failed: $error');
+      debugPrintStack(stackTrace: stack);
     }
   }
 
@@ -221,39 +319,63 @@ class JournalNotifier extends Notifier<JournalState> {
       ));
     } catch (error) {
       vlog('session', 'durable extraction failed: $error');
-      _dispatchTurn(DurableExtractionFailed(key: effect.key, message: '$error'));
+      _dispatchTurn(
+          DurableExtractionFailed(key: effect.key, message: '$error'));
     }
   }
 
   Future<void> _runCommit(FinalizedTurn turn) async {
-    // Prefer the in-memory typed patch; fall back to the durable checkpoint so
-    // a turn restored from the journal commits without re-extracting.
-    final stored = turn.extraction;
-    final patch = _lastPatches[turn.turnId] ??
-        (stored == null ? null : GraphPatch.fromJson(stored));
-    if (patch == null) {
-      _dispatchTurn(CommitRejected(turnId: turn.turnId, code: 'invalidRequest'));
-      return;
+    var prepared = _preparedCommits[turn.turnId];
+    if (prepared == null) {
+      try {
+        // Prefer the in-memory typed patch; fall back to the durable checkpoint
+        // so a restored turn commits without re-extracting.
+        final stored = turn.extraction;
+        final patch = _lastPatches[turn.turnId] ??
+            (stored == null ? null : GraphPatch.fromJson(stored));
+        if (patch == null) {
+          _dispatchTurn(
+              CommitRejected(turnId: turn.turnId, code: 'invalidRequest'));
+          return;
+        }
+
+        // Prepare once. An unknown-outcome retry must reuse this exact envelope
+        // instead of merging again against the already-optimistic local state.
+        final result = merge_logic.merge(state, turn.transcript, patch);
+        prepared = PreparedTurnCommit(
+          expectedRevision: turn.baseRevision ?? _revision,
+          change: result.change,
+          entryId: result.entryId,
+        );
+        // Persist the exact network envelope before sending it. If the process
+        // dies after the request leaves, recovery must retry identical input
+        // with the same request id so the server ledger can replay it safely.
+        await ref.read(turnJournalServiceProvider).persistPreparedCommit(
+              turn: turn,
+              preparedCommit: prepared,
+            );
+        state = result.next;
+        _preparedCommits[turn.turnId] = prepared;
+        vlog(
+            'session',
+            'extract merged: ${state.entities.length} entities, '
+                '${state.relations.length} relations');
+      } catch (error, stack) {
+        // Do not send a commit that cannot be reproduced after a crash.
+        vlog('session', 'commit checkpoint failed: $error');
+        debugPrintStack(stackTrace: stack);
+        return;
+      }
     }
-    // Re-merge at commit time against whatever state is current. After a
-    // conflict this is what rebases the turn onto the fresh snapshot.
-    final result = merge_logic.merge(state, turn.transcript, patch);
-    state = result.next;
-    vlog(
-        'session',
-        'extract merged: ${state.entities.length} entities, '
-            '${state.relations.length} relations');
 
     final commitService = ref.read(notebookCommitServiceProvider);
     commit_service.CommitOutcome outcome;
     try {
       outcome = await commitService.commitNotebook(
         notebookId: turn.notebookId,
-        expectedRevision: turn.baseRevision ?? _revision,
-        // Reused verbatim on every attempt for this turn, including retries
-        // after an unknown outcome and replays after a conflict.
+        expectedRevision: prepared.expectedRevision,
         requestId: turn.commitRequestId,
-        change: result.change,
+        change: prepared.change,
       );
     } catch (error) {
       // Unknown outcome: retry the identical request with the same id. The
@@ -265,12 +387,30 @@ class JournalNotifier extends Notifier<JournalState> {
 
     if (outcome is commit_service.CommitCommitted) {
       _revision = outcome.revision;
-      _reconcileEntryId(result.entryId, outcome.entryId);
+      if (_restoredPreparedCommitIds.remove(turn.turnId)) {
+        // A restored envelope has no corresponding optimistic state in this
+        // process. Reload the committed server snapshot instead of attempting
+        // to reconcile an entry id that exists only in the previous process.
+        final snapshot =
+            await commitService.getNotebookSnapshot(turn.notebookId);
+        if (snapshot != null) {
+          _revision = snapshot.revision;
+          state = snapshot.state;
+        }
+      } else {
+        _reconcileEntryId(prepared.entryId, outcome.entryId);
+      }
+      _preparedCommits.remove(turn.turnId);
       _lastPatches.remove(turn.turnId);
-      _dispatchTurn(CommitCommitted(turnId: turn.turnId, revision: outcome.revision));
+      _dispatchTurn(
+          CommitCommitted(turnId: turn.turnId, revision: outcome.revision));
       return;
     }
     if (outcome is commit_service.CommitConflict) {
+      // A confirmed conflict did not write or create a ledger row. Discard the
+      // old envelope; after the snapshot reload, one fresh merge will rebase.
+      _preparedCommits.remove(turn.turnId);
+      _restoredPreparedCommitIds.remove(turn.turnId);
       _dispatchTurn(CommitConflict(
         turnId: turn.turnId,
         currentRevision: outcome.currentRevision,
@@ -279,6 +419,8 @@ class JournalNotifier extends Notifier<JournalState> {
     }
     if (outcome is commit_service.CommitRejected) {
       vlog('session', 'commit rejected: ${outcome.code}');
+      _preparedCommits.remove(turn.turnId);
+      _restoredPreparedCommitIds.remove(turn.turnId);
       _lastPatches.remove(turn.turnId);
       _dispatchTurn(CommitRejected(turnId: turn.turnId, code: outcome.code));
     }
@@ -320,8 +462,8 @@ class JournalNotifier extends Notifier<JournalState> {
   // _enqueueCommit's promise-chaining queue is gone. Ordering is no longer an
   // adapter concern: the turn machine processes one pending turn at a time, in
   // the order the turns were spoken, and does not start the next durable step
-  // until the current one resolves. _commitQueueTail survives only so
-  // endSession can await whatever commit is still in flight.
+  // until the current one resolves. The effect queue tracks every durable
+  // adapter operation so shutdown can drain the whole chain to a fixed point.
 
   // _commitApplyTurn lived here. Commits are now driven by the shared turn
   // machine: it decides when a turn may be written, in what order, and with
@@ -424,6 +566,7 @@ class JournalNotifier extends Notifier<JournalState> {
     final snapshot = await commitService.getNotebookSnapshot(notebookId);
     _revision = snapshot?.revision ?? 0;
     state = snapshot?.state ?? JournalState.empty();
+    await _restoreTurnsForNotebook(notebookId);
   }
 
   Future<void> startSession() async {
@@ -447,6 +590,7 @@ class JournalNotifier extends Notifier<JournalState> {
             await commitService.getNotebookSnapshot(_activeNotebookId!);
         _revision = snapshot?.revision ?? 0;
         state = snapshot?.state ?? JournalState.empty();
+        await _restoreTurnsForNotebook(_activeNotebookId!);
       }
       vlog(
           'session',
@@ -528,8 +672,9 @@ class JournalNotifier extends Notifier<JournalState> {
         // transcript may reach the graph.
         ..onTranscript = (chunk, isFinal) {
           if (chunk.isEmpty && !isFinal) return;
-          final events =
-              isFinal ? _assembler.userFinal(chunk) : _assembler.userChunk(chunk);
+          final events = isFinal
+              ? _assembler.userFinal(chunk)
+              : _assembler.userChunk(chunk);
           for (final event in events) {
             if (event is InterimTranscript) _setTranscript(event.text);
             _dispatchTurn(event);
@@ -546,27 +691,18 @@ class JournalNotifier extends Notifier<JournalState> {
         ..onAudio = (pcm) {
           if (!_muted) _player?.feed(pcm);
           _markAgentSpeaking();
-          // Audio actually queued for playback: everything transcribed so far
-          // is now considered heard. Without a player we cannot know.
-          if (_player == null) {
-            _agentHeardUnknown = true;
-          } else {
-            _agentHeardChars = _assembler.assistantText.length;
-            _dispatchTurn(PlaybackAdvanced(heardChars: _agentHeardChars));
-          }
         }
         ..onInterrupted = () {
-          // Only words whose audio played may be finalized; an undeterminable
-          // boundary skips durable extraction for this turn entirely.
-          _dispatchTurn(AssistantInterrupted(
-            heardChars: _agentHeardUnknown ? null : _agentHeardChars,
-          ));
+          // Gemini supplies audio and transcription without a trustworthy
+          // word-level alignment. Queuing PCM therefore cannot prove any text
+          // was physically heard. The null boundary safely skips durable
+          // extraction for this interrupted assistant turn, while the emitted
+          // FlushPlayback effect discards the queued audio.
+          _dispatchTurn(const AssistantInterrupted(heardChars: null));
         }
         ..onTurnComplete = () {
           _memoryCallsThisTurn = 0;
           _lastMemoryQuery = null;
-          _agentHeardChars = 0;
-          _agentHeardUnknown = false;
           for (final event in _assembler.turnComplete()) {
             _dispatchTurn(event);
           }
@@ -627,6 +763,18 @@ class JournalNotifier extends Notifier<JournalState> {
     }
   }
 
+  /// Waits until the tracked effect tail stops growing and the turn machine
+  /// has no durable work left. Completing one effect may dispatch the next,
+  /// so a single await of the current tail is not sufficient.
+  Future<TurnEffectDrainOutcome> drain({
+    Duration timeout = const Duration(seconds: 15),
+  }) {
+    return _effectQueue.drain(
+      hasPendingWork: () => _turnMachine.state.pending.isNotEmpty,
+      timeout: timeout,
+    );
+  }
+
   Future<void> endSession() async {
     if (_status == SessionStatus.idle) return;
     _setStatus(SessionStatus.ending);
@@ -635,28 +783,39 @@ class JournalNotifier extends Notifier<JournalState> {
     await _capture?.stop();
     await _live?.close();
     await _player?.dispose();
+    _live = null;
+    _capture = null;
+    _player = null;
+    _assembler.reset();
+    _dispatchTurn(const SessionEnded());
+
     if (_activeNotebookId != null) {
-      // Every turn already committed itself as it happened; just let any
-      // still-in-flight commit finish before marking the notebook ended.
-      await _commitQueueTail;
-      // Durable turns still queued would be lost by ending here; surface it.
-      if (_turnMachine.state.pending.isNotEmpty) {
-        vlog('session',
-            'ending with ${_turnMachine.state.pending.length} unfinished turn(s)');
+      final outcome = await drain();
+      if (!outcome.isCompleted) {
+        // The live input is closed, but the notebook identity and durable
+        // checkpoints stay intact. A later retry can finish the same work;
+        // marking the notebook ended here would strand pending turns.
+        vlog(
+          'session',
+          'notebook end deferred: ${outcome.status.name}'
+              '${outcome.error == null ? '' : ' (${outcome.error})'}',
+        );
+        _muted = false;
+        _setStatus(SessionStatus.error);
+        return;
       }
       final service = ref.read(supabaseServiceProvider);
       await service.endNotebook(_activeNotebookId!);
     }
     _muted = false;
     _setStatus(SessionStatus.idle);
-    _live = null;
-    _capture = null;
-    _player = null;
     _activeNotebookId = null;
-    _assembler.reset();
-    _dispatchTurn(const SessionEnded());
   }
 }
+
+final turnJournalServiceProvider = Provider<TurnJournalService>((ref) {
+  return TurnJournalService();
+});
 
 final journalProvider = NotifierProvider<JournalNotifier, JournalState>(
   JournalNotifier.new,

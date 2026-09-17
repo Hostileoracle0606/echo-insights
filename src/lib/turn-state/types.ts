@@ -57,6 +57,20 @@ export interface ExtractionPreview {
   relationLabels: string[];
 }
 
+/**
+ * The exact Notebook Commit input produced by one merge.
+ *
+ * It is checkpointed before the request is sent. An unknown-outcome retry must
+ * reuse this value verbatim; only a confirmed revision conflict may discard it
+ * and prepare a new attempt against the reloaded snapshot.
+ */
+export interface PreparedCommit {
+  expectedRevision: number;
+  change: unknown;
+  entryId: string;
+  tempFollowUpId?: string;
+}
+
 export interface ActiveTurn {
   turnId: string;
   speaker: Speaker;
@@ -101,6 +115,8 @@ export interface FinalizedTurn {
   commitRequestId: string;
   stage: DurableStage;
   extraction: ExtractGraphResult | null;
+  /** Present once the client has merged and checkpointed the exact RPC input. */
+  preparedCommit?: PreparedCommit | null;
   baseRevision: number | null;
   revision: number | null;
   finalizedAt: string;

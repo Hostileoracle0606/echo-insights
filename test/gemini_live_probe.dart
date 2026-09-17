@@ -13,6 +13,8 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lumen/services/gemini_live_client.dart';
 
+import 'live_token_probe_helper.dart';
+
 String _env(String key) {
   final f = File('.env');
   if (!f.existsSync()) return '';
@@ -31,17 +33,15 @@ String _env(String key) {
 void main() {
   test('Gemini Live backend responds to a text turn', () async {
     final key = _env('GEMINI_API_KEY');
-    // ignore: avoid_print
-    print('GEMINI_API_KEY: len=${key.length} '
-        'valid=${key.startsWith('AIza')}');
     expect(key, isNotEmpty, reason: 'GEMINI_API_KEY missing from .env');
 
     const model = 'gemini-3.1-flash-live-preview';
+    final sessionToken = await requestLiveProbeToken(apiKey: key, model: model);
     // ignore: avoid_print
     print('Connecting to Gemini Live (model=$model)…');
 
     final client = GeminiLiveClient(
-      apiKey: key,
+      sessionToken: sessionToken,
       model: model,
       systemInstruction:
           'You are a concise journaling assistant. Reply in one short sentence.',

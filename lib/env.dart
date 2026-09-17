@@ -36,6 +36,8 @@ class Env {
 
   static String get geminiApiKey =>
       _first(const ['GEMINI_API_KEY', 'VITE_GEMINI_API_KEY']);
+  static String get notebookRuntimeUrl =>
+      _first(const ['NOTEBOOK_RUNTIME_URL', 'VITE_NOTEBOOK_RUNTIME_URL']);
   static String get supabaseUrl =>
       _first(const ['SUPABASE_URL', 'VITE_SUPABASE_URL']);
   static String get supabaseAnonKey => _first(

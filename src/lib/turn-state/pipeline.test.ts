@@ -4,7 +4,7 @@ import type { ExtractGraphResult } from "@/lib/extract-graph";
 
 import { createTurnPipeline, type TurnPorts } from "./pipeline";
 import { createTurnMachine } from "./reducer";
-import type { FinalizedTurn } from "./types";
+import type { FinalizedTurn, PreparedCommit } from "./types";
 
 const payload = (name: string): ExtractGraphResult => ({
   entities: [{ name, type: "organization" }],
@@ -34,17 +34,17 @@ function fakeNotebookServer() {
     commitElsewhere() {
       revision += 1;
     },
-    commit(turn: FinalizedTurn) {
+    commit(turn: FinalizedTurn, prepared: PreparedCommit) {
       const hash = JSON.stringify({
-        change: turn.extraction,
-        expectedRevision: turn.baseRevision,
+        change: prepared.change,
+        expectedRevision: prepared.expectedRevision,
       });
       const prior = ledger.get(turn.commitRequestId);
       if (prior) {
         if (prior.hash === hash) return prior.result as never;
         return { status: "rejected", code: "requestIdReused" } as never;
       }
-      if (turn.baseRevision !== revision) {
+      if (prepared.expectedRevision !== revision) {
         return { status: "conflict", currentRevision: revision } as never;
       }
       revision += 1;
@@ -86,16 +86,22 @@ function harness(over: Partial<TurnPorts> = {}) {
   const server = fakeNotebookServer();
   const journal = journalStore();
   const extract = vi.fn(async (transcript: string) => payload(transcript.slice(0, 8)));
+  const prepareCommit = vi.fn(async (turn: FinalizedTurn): Promise<PreparedCommit> => ({
+    expectedRevision: turn.baseRevision ?? 0,
+    change: turn.extraction,
+    entryId: `local-${turn.turnId}`,
+  }));
   const ports: TurnPorts = {
     extract,
-    commit: async (turn) => server.commit(turn),
+    prepareCommit,
+    commit: async (turn, prepared) => server.commit(turn, prepared),
     reloadSnapshot: async () => ({ revision: server.revision }),
     journal,
     scheduleDeadline: () => {},
     ...over,
   };
   const pipeline = createTurnPipeline(machine, ports);
-  return { machine, pipeline, server, journal, extract, ports };
+  return { machine, pipeline, server, journal, extract, prepareCommit, ports };
 }
 
 /** Lets every pending microtask and timer-zero callback settle. */
@@ -142,6 +148,9 @@ describe("durable turn pipeline", () => {
     const checkpoint = [...first.journal.rows.values()];
     expect(checkpoint).toHaveLength(1);
     expect(checkpoint[0].extraction).not.toBeNull();
+    expect(checkpoint[0].preparedCommit).toEqual(
+      expect.objectContaining({ expectedRevision: 0, change: checkpoint[0].extraction }),
+    );
 
     // Restart: a fresh machine and pipeline, handed the journal contents.
     const second = harness();
@@ -156,9 +165,9 @@ describe("durable turn pipeline", () => {
     const server = fakeNotebookServer();
     let attempts = 0;
     const h = harness({
-      commit: async (turn) => {
+      commit: async (turn, prepared) => {
         attempts += 1;
-        const outcome = server.commit(turn);
+        const outcome = server.commit(turn, prepared);
         // The server committed; the response never made it back.
         if (attempts === 1) throw new Error("network dropped");
         return outcome;
@@ -170,6 +179,7 @@ describe("durable turn pipeline", () => {
     await speak(h.pipeline, "I work at Acme.");
 
     expect(attempts).toBe(2);
+    expect(h.prepareCommit).toHaveBeenCalledTimes(1);
     // Applied exactly once despite two attempts: the ledger replayed the second.
     expect(server.applied).toEqual(["I work at Acme."]);
     expect(h.machine.state.pending).toHaveLength(0);

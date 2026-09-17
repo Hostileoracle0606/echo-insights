@@ -533,6 +533,10 @@ function Index() {
       setRevision: (revision) => {
         notebookRevisionRef.current = revision;
       },
+      replaceState: (next) => {
+        stateRef.current = next;
+        setState(next);
+      },
       getAnsweringFollowUp: () => stateRef.current.followUps.find((followUp) => !followUp.answered),
       mergeForCommit,
       onCommitted: ({ entryId, tempFollowUpId, ids }) => {
