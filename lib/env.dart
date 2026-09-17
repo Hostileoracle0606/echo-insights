@@ -4,21 +4,36 @@ class Env {
   const Env._();
 
   static Future<void> load() async {
-    for (final fileName in const ['.env', 'assets/.env']) {
-      try {
-        await dotenv.load(fileName: fileName);
-        return;
-      } catch (_) {
-        // Try the next local env location.
-      }
+    // Production configuration is supplied with --dart-define or
+    // --dart-define-from-file. Private .env files must never be bundled as app
+    // assets. Keep dotenv initialized so tests and local tooling can still
+    // inject non-production values with dotenv.testLoad.
+    if (!dotenv.isInitialized) {
+      dotenv.testLoad(fileInput: '');
     }
-    // Local tests and fresh checkouts can run without private credentials.
   }
+
+  static const _defined = <String, String>{
+    'GEMINI_API_KEY': String.fromEnvironment('GEMINI_API_KEY'),
+    'VITE_GEMINI_API_KEY': String.fromEnvironment('VITE_GEMINI_API_KEY'),
+    'NOTEBOOK_RUNTIME_URL': String.fromEnvironment('NOTEBOOK_RUNTIME_URL'),
+    'VITE_NOTEBOOK_RUNTIME_URL':
+        String.fromEnvironment('VITE_NOTEBOOK_RUNTIME_URL'),
+    'SUPABASE_URL': String.fromEnvironment('SUPABASE_URL'),
+    'VITE_SUPABASE_URL': String.fromEnvironment('VITE_SUPABASE_URL'),
+    'SUPABASE_ANON_KEY': String.fromEnvironment('SUPABASE_ANON_KEY'),
+    'SUPABASE_PUBLISHABLE_KEY':
+        String.fromEnvironment('SUPABASE_PUBLISHABLE_KEY'),
+    'VITE_SUPABASE_PUBLISHABLE_KEY':
+        String.fromEnvironment('VITE_SUPABASE_PUBLISHABLE_KEY'),
+  };
 
   static String _first(List<String> keys) {
     for (final key in keys) {
-      final value = _clean(dotenv.env[key]);
+      final value = _clean(_defined[key]);
       if (value != null && value.isNotEmpty) return value;
+      final dotenvValue = _clean(dotenv.env[key]);
+      if (dotenvValue != null && dotenvValue.isNotEmpty) return dotenvValue;
     }
     return '';
   }

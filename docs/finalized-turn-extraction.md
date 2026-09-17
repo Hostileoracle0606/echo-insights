@@ -178,7 +178,8 @@ tail.
 
 ## Economical extraction context
 
-`compileExtractionContext` replaces the old `buildExtractionContext`, which
+Web `compileExtractionContext` and Flutter `compileExtractionContext` replace
+the old count-sliced context builders, which
 constructed graph statistics, gaps, focus entities, bridging candidates,
 previously-asked questions and recent entries that the prompt never read, and
 bounded what it *did* read by item counts.
@@ -209,11 +210,6 @@ section contains only the current transcript.
 
 ## Known limitations
 
-- **Flutter barge-in does not flush queued audio.** `PcmPlayer` has no `flush`,
-  so agent audio already queued keeps playing after an interruption. The heard
-  watermark is snapshotted at the moment of interruption, so the durable
-  transcript remains a *prefix* of what was heard — conservative, never
-  over-inclusive — but the user hears more than the graph records.
 - **The token estimator is an estimator.** `estimateTokens` approximates a
   SentencePiece vocabulary at roughly one token per four characters of word
   body. It is deterministic and injectable, but it is not the provider's
@@ -221,11 +217,9 @@ section contains only the current transcript.
 - **The web turn journal is `localStorage`.** It survives reload and crash, but
   not a cleared profile, a different browser, or private-mode storage denial.
   Recovery degrades to "the turn is lost"; live behaviour is unaffected.
-- **Flutter has no turn journal yet.** The Dart machine emits `PersistTurn` and
-  `ForgetTurn` effects and accepts `Restored`; `FinalizedTurn` and `GraphPatch`
-  both round-trip through JSON, and `_runCommit` already falls back to the
-  stored checkpoint when the in-memory patch is gone. What is missing is only
-  the storage behind those effects, so crash recovery is web-only for now.
+- **Flutter semantic retrieval is fail-closed.** If the authenticated retrieval
+  edge function is unavailable, extraction still includes literal exact-name
+  matches but omits semantic candidates for that turn; live capture continues.
 - **A failed durable extraction drops its turn.** `extractGraph` already retries
   429s internally, but a hard failure removes the turn from the queue rather
   than scheduling a later retry.

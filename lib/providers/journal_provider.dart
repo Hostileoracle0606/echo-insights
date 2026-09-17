@@ -304,11 +304,21 @@ class JournalNotifier extends Notifier<JournalState> {
   Future<void> _runDurableExtraction(StartDurableExtraction effect) async {
     final extractService = ExtractGraphService(apiKey: Env.geminiApiKey);
     try {
+      final retrieval = await RetrieveMemoryService(
+        ref.read(supabaseClientProvider),
+      ).retrieveResult(
+        query: effect.transcript,
+        notebookId: effect.key.notebookId,
+        state: state,
+      );
+      final openFollowUps = state.followUps.where((item) => !item.answered);
       final patch = await extractService.extract(
         text: effect.transcript,
         state: state,
         mode: 'granular',
         recentConversation: _conversation,
+        retrievedEntityIds: retrieval.entityIds,
+        answeringFollowUp: openFollowUps.isEmpty ? null : openFollowUps.last,
       );
       _lastPatches[effect.key.turnId] = patch;
       // The checkpoint carries the real result, not a marker: a restart must be
