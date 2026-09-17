@@ -23,6 +23,47 @@ const _payload = {
 };
 
 void main() {
+  group('session lifecycle', () {
+    test('activation records the session, notebook, and loaded revision', () {
+      final m = machine();
+
+      m.dispatch(const SessionStarted(
+        sessionId: 's1',
+        notebookId: 'nb1',
+        revision: 7,
+      ));
+
+      expect(m.state.sessionId, 's1');
+      expect(m.state.notebookId, 'nb1');
+      expect(m.state.revision, 7);
+    });
+
+    test('transcripts remain inert until the session is activated', () {
+      final m = machine();
+
+      final beforeActivation = m.dispatch(
+        const FinalTranscript(speaker: Speaker.user, text: 'I work at Acme.'),
+      );
+      expect(beforeActivation, isEmpty);
+      expect(m.state.activeUser, isNull);
+
+      m.dispatch(const SessionStarted(
+        sessionId: 's1',
+        notebookId: 'nb1',
+        revision: 7,
+      ));
+      m.dispatch(
+        const FinalTranscript(speaker: Speaker.user, text: 'I work at Acme.'),
+      );
+      final afterActivation = m.dispatch(
+        const TurnCompleted(speaker: Speaker.user),
+      );
+
+      expect(afterActivation.whereType<StartDurableExtraction>(), isNotEmpty);
+      expect(m.state.conversation.single.text, 'I work at Acme.');
+    });
+  });
+
   group('interim transcripts', () {
     test('interim text is replaceable display state and bumps the version', () {
       final m = machine();

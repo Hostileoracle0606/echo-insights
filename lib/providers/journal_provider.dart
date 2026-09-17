@@ -482,6 +482,11 @@ class JournalNotifier extends Notifier<JournalState> {
         throw StateError('Live session rejected: ${liveSession.code}');
       }
       final readySession = liveSession as LiveSessionReady;
+      // The temporary Gemini credential authenticates the socket; it is not a
+      // stable application identity. Mint a separate id for turn ownership and
+      // stale-result checks within this live conversation.
+      final conversationSessionId =
+          commit_service.NotebookCommitService.newRequestId();
 
       final live = GeminiLiveClient(
         sessionToken: readySession.sessionToken,
@@ -573,6 +578,15 @@ class JournalNotifier extends Notifier<JournalState> {
           return const {};
         }
         ..onSetupComplete = () {
+          // A live Gemini socket and an active turn-processing session are two
+          // separate states. Establish the turn-machine identity before the UI
+          // advertises the session as live so transcripts can be finalized,
+          // extracted, and committed against the loaded notebook revision.
+          _dispatchTurn(SessionStarted(
+            sessionId: conversationSessionId,
+            notebookId: notebookId,
+            revision: _revision,
+          ));
           _setStatus(SessionStatus.live);
         }
         ..onError = (error) {

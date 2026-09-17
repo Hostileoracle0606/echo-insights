@@ -223,9 +223,14 @@ sealed class TurnEvent {
 }
 
 class SessionStarted extends TurnEvent {
-  const SessionStarted({required this.sessionId, required this.notebookId});
+  const SessionStarted({
+    required this.sessionId,
+    required this.notebookId,
+    this.revision = 0,
+  });
   final String sessionId;
   final String notebookId;
+  final int revision;
 }
 
 class SessionEnded extends TurnEvent {
@@ -543,8 +548,12 @@ class TurnMachine {
   /// path by which spoken text becomes eligible to change the canonical graph.
   List<TurnEffect> _finalize(ActiveTurn turn, String transcript, bool truncated) {
     final text = transcript.trim();
-    if (_active(turn.speaker)?.turnId == turn.turnId) _setActive(turn.speaker, null);
-    if (_awaiting(turn.speaker)?.turnId == turn.turnId) _setAwaiting(turn.speaker, null);
+    if (_active(turn.speaker)?.turnId == turn.turnId) {
+      _setActive(turn.speaker, null);
+    }
+    if (_awaiting(turn.speaker)?.turnId == turn.turnId) {
+      _setAwaiting(turn.speaker, null);
+    }
     if (text.isEmpty) return const [];
 
     final finalized = FinalizedTurn(
@@ -596,6 +605,7 @@ class TurnMachine {
           // Reconnecting to the SAME notebook. A live socket is session-scoped;
           // a finalized turn's durable work is notebook-scoped and stays valid.
           state.sessionId = event.sessionId;
+          state.revision = event.revision;
           state.activeUser = null;
           state.activeAssistant = null;
           state.awaitingUser = null;
@@ -615,7 +625,7 @@ class TurnMachine {
         state.previewEntityNames = null;
         state.previewTurnId = null;
         state.staleRejections = 0;
-        state.revision = 0;
+        state.revision = event.revision;
         _inFlight = null;
         return const [];
 
@@ -663,7 +673,9 @@ class TurnMachine {
       case FinalTranscript():
         if (state.sessionId == null) return const [];
         // Unheard text for an interrupted assistant turn never becomes durable.
-        if (event.speaker == Speaker.assistant && _assistantGate != null) return const [];
+        if (event.speaker == Speaker.assistant && _assistantGate != null) {
+          return const [];
+        }
 
         final waiting = _awaiting(event.speaker);
         if (waiting != null) {
