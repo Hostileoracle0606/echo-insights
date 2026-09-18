@@ -86,7 +86,7 @@ function validContext(context) {
   }
   for (const turn of context.recentConversation) {
     if (!turn || typeof turn !== "object") return false;
-    if ((turn.role !== "user" && turn.role !== "agent") || !boundedString(turn.text, 4000)) {
+    if ((turn.role !== "user" && turn.role !== "assistant") || !boundedString(turn.text, 4000)) {
       return false;
     }
   }

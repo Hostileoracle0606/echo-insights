@@ -1,10 +1,11 @@
 import '../logic/noise_filter.dart';
+import '../logic/turn_state.dart' show Speaker;
 import '../models/entity.dart';
 import '../models/follow_up.dart';
 import '../models/journal_state.dart';
 import '../models/relation.dart';
 
-typedef ConversationTurn = ({String role, String text});
+typedef ExtractionConversationTurn = ({Speaker role, String text});
 
 const defaultExtractionTokenBudget = 1800;
 const _maxEntities = 20;
@@ -14,7 +15,7 @@ const _maxTurns = 4;
 class ExtractionContext {
   final List<Entity> entities;
   final List<Relation> relations;
-  final List<ConversationTurn> recentConversation;
+  final List<ExtractionConversationTurn> recentConversation;
   final FollowUp? answeringFollowUp;
   final int tokensUsed;
   final int budget;
@@ -66,7 +67,7 @@ String buildExtractionUserMessage(
   final recentList = context.recentConversation.isEmpty
       ? '(none)'
       : context.recentConversation
-          .map((turn) => '- ${turn.role}: ${turn.text}')
+          .map((turn) => '- ${turn.role.name}: ${turn.text}')
           .join('\n');
   final followUp = context.answeringFollowUp;
   final followUpSection = followUp == null
@@ -93,7 +94,7 @@ ExtractionContext compileExtractionContext({
   required String transcript,
   required JournalState state,
   required List<String> retrievedEntityIds,
-  required List<ConversationTurn> recentTurns,
+  required List<ExtractionConversationTurn> recentTurns,
   FollowUp? answeringFollowUp,
   int budget = defaultExtractionTokenBudget,
   int Function(String text) countTokens = estimateExtractionTokens,
@@ -113,7 +114,7 @@ ExtractionContext compileExtractionContext({
   ];
   final entities = <Entity>[];
   final relations = <Relation>[];
-  final turns = <ConversationTurn>[];
+  final turns = <ExtractionConversationTurn>[];
   FollowUp? includedFollowUp;
 
   ExtractionContext snapshot() {

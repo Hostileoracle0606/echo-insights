@@ -8,7 +8,7 @@
  * the I/O those decisions drive.
  */
 
-import { extractGraph, type ExtractGraphResult } from "@/lib/extract-graph";
+import { extractGraph, type ConversationTurn, type ExtractGraphResult } from "@/lib/extract-graph";
 import {
   compileExtractionContext,
   DEFAULT_EXTRACTION_TOKEN_BUDGET,
@@ -87,7 +87,7 @@ export interface WebTurnAdapterDeps {
   /** Current local journal state, read fresh at each awaited boundary. */
   getState: () => JournalState;
   /** Canonical, finalized conversation turns for grounding. */
-  getConversation: () => Array<{ role: string; text: string }>;
+  getConversation: () => ConversationTurn[];
   getExtractionMode: () => ExtractionMode;
   getRevision: () => number;
   setRevision: (revision: number) => void;

@@ -86,7 +86,7 @@ interface RecentEntry {
 }
 
 interface ConversationTurn {
-  role: string;
+  role: "user" | "assistant";
   text: string;
 }
 

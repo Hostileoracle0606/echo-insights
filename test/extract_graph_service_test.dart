@@ -1,13 +1,28 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:lumen/logic/turn_state.dart' show Speaker;
 import 'package:lumen/models/journal_state.dart';
 import 'package:lumen/services/extract_graph_service.dart';
 
 void main() {
   const notebookId = '8e03b8f4-4f20-4df3-8398-d854adc32b14';
+  final conversationFixture = jsonDecode(
+    File('contracts/fixtures/extract-graph-v1.conversation.json')
+        .readAsStringSync(),
+  ) as Map<String, dynamic>;
+  final fixtureTurns = (conversationFixture['recentConversation'] as List)
+      .cast<Map<String, dynamic>>()
+      .map(
+        (turn) => (
+          role: Speaker.values.byName(turn['role'] as String),
+          text: turn['text'] as String,
+        ),
+      )
+      .toList(growable: false);
 
   test('sends authenticated extraction context to the Notebook Runtime',
       () async {
@@ -41,6 +56,7 @@ void main() {
       text: 'I met Maya for coffee.',
       state: JournalState.empty(),
       mode: 'granular',
+      recentConversation: fixtureTurns,
       maxRetries: 0,
     );
 
@@ -56,8 +72,41 @@ void main() {
     expect(body['extractorVersion'], 'gemini/extract_graph/v2');
     expect(body['text'], 'I met Maya for coffee.');
     expect(body['mode'], 'granular');
-    expect(body['context'], isA<Map<String, dynamic>>());
+    final context = body['context'] as Map<String, dynamic>;
+    expect(context['recentConversation'],
+        conversationFixture['recentConversation']);
     expect(patch.entities.map((entity) => entity.name), ['Maya']);
+  });
+
+  test('surfaces a rejected extraction request instead of returning empty',
+      () async {
+    final service = ExtractGraphService(
+      baseUrl: 'https://runtime.example.com',
+      accessTokenProvider: () async => 'signed-user-token',
+      client: MockClient(
+        (request) async => http.Response(
+          jsonEncode({'error': 'invalidRequest'}),
+          400,
+        ),
+      ),
+    );
+
+    await expectLater(
+      service.extract(
+        notebookId: notebookId,
+        turnId: 'turn-123',
+        extractorVersion: 'gemini/extract_graph/v2',
+        text: 'I met Maya for coffee.',
+        state: JournalState.empty(),
+        mode: 'granular',
+        recentConversation: fixtureTurns,
+        maxRetries: 0,
+      ),
+      throwsA(
+        isA<GraphExtractionException>()
+            .having((error) => error.statusCode, 'statusCode', 400),
+      ),
+    );
   });
 
   test('does not call the runtime without a signed-in session', () async {

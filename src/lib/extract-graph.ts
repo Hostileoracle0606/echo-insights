@@ -203,7 +203,7 @@ interface RecentEntry {
 }
 
 export interface ConversationTurn {
-  role: string;
+  role: "user" | "assistant";
   text: string;
 }
 

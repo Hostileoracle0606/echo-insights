@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lumen/logic/turn_state.dart' show Speaker;
 import 'package:lumen/models/entity.dart';
 import 'package:lumen/models/journal_state.dart';
 import 'package:lumen/models/relation.dart';
@@ -74,7 +75,7 @@ void main() {
   test('packs the most recent turns under one prompt budget', () {
     final turns = List.generate(
       8,
-      (index) => (role: 'user', text: 'conversation turn $index'),
+      (index) => (role: Speaker.user, text: 'conversation turn $index'),
     );
     final context = compileExtractionContext(
       transcript: 'A sufficiently long finalized utterance.',

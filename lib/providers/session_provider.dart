@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../logic/turn_state.dart' show ConversationTurn;
 import 'journal_provider.dart';
 
 final sessionStatusProvider = Provider<SessionStatus>((ref) {
@@ -12,8 +13,7 @@ final lastTranscriptProvider = Provider<String>((ref) {
   return ref.watch(journalProvider.notifier).lastTranscript;
 });
 
-final conversationProvider =
-    Provider<List<({String role, String text})>>((ref) {
+final conversationProvider = Provider<List<ConversationTurn>>((ref) {
   ref.watch(journalProvider);
   return ref.watch(journalProvider.notifier).conversation;
 });

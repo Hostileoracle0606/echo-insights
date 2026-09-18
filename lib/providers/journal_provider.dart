@@ -71,7 +71,7 @@ class JournalNotifier extends Notifier<JournalState> {
   );
   String? _restoredNotebookId;
 
-  final _conversation = <({String role, String text})>[];
+  final _conversation = <ConversationTurn>[];
   String? _activeNotebookId;
   SessionStatus _status = SessionStatus.idle;
   DateTime? _sessionStartedAt;
@@ -90,8 +90,7 @@ class JournalNotifier extends Notifier<JournalState> {
   int _revision = 0;
   SessionStatus get status => _status;
   String get lastTranscript => _lastTranscript;
-  List<({String role, String text})> get conversation =>
-      List.unmodifiable(_conversation);
+  List<ConversationTurn> get conversation => List.unmodifiable(_conversation);
   bool get muted => _muted;
   bool get agentSpeaking => _agentSpeaking;
   int get revision => _revision;
@@ -181,8 +180,7 @@ class JournalNotifier extends Notifier<JournalState> {
     final latest = _turnMachine.state;
     _conversation
       ..clear()
-      ..addAll(
-          latest.conversation.map((t) => (role: t.role.name, text: t.text)));
+      ..addAll(latest.conversation);
     _notifyUi();
   }
 
@@ -317,7 +315,9 @@ class JournalNotifier extends Notifier<JournalState> {
         text: effect.transcript,
         state: state,
         mode: 'granular',
-        recentConversation: _conversation,
+        recentConversation: _conversation
+            .map((turn) => (role: turn.role, text: turn.text))
+            .toList(growable: false),
         retrievedEntityIds: retrieval.entityIds,
         answeringFollowUp: openFollowUps.isEmpty ? null : openFollowUps.last,
       );
@@ -537,7 +537,7 @@ class JournalNotifier extends Notifier<JournalState> {
           )
           .toList(),
       'recentAgentQuestions': _conversation
-          .where((turn) => turn.role == 'agent')
+          .where((turn) => turn.role == Speaker.assistant)
           .map((turn) => turn.text)
           .where((text) => text.isNotEmpty)
           .take(8)

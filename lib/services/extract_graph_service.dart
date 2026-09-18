@@ -3,10 +3,23 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../logic/noise_filter.dart';
+import '../logic/turn_state.dart' show Speaker;
 import '../models/follow_up.dart';
 import '../models/graph_patch.dart';
 import '../models/journal_state.dart';
 import 'extraction_context.dart';
+
+class GraphExtractionException implements Exception {
+  final String message;
+  final int? statusCode;
+
+  const GraphExtractionException(this.message, {this.statusCode});
+
+  @override
+  String toString() => statusCode == null
+      ? 'GraphExtractionException: $message'
+      : 'GraphExtractionException ($statusCode): $message';
+}
 
 class ExtractGraphService {
   final String _baseUrl;
@@ -28,7 +41,7 @@ class ExtractGraphService {
     required String text,
     required JournalState state,
     required String mode,
-    List<({String role, String text})> recentConversation = const [],
+    List<({Speaker role, String text})> recentConversation = const [],
     List<String> retrievedEntityIds = const [],
     FollowUp? answeringFollowUp,
     int tokenBudget = defaultExtractionTokenBudget,
@@ -86,7 +99,12 @@ class ExtractGraphService {
           );
           continue;
         }
-        if (response.statusCode != 200) return GraphPatch.empty();
+        if (response.statusCode != 200) {
+          throw GraphExtractionException(
+            'The graph-extraction runtime rejected the request',
+            statusCode: response.statusCode,
+          );
+        }
 
         final decoded = jsonDecode(response.body);
         if (decoded is! Map<String, dynamic> ||
@@ -98,8 +116,12 @@ class ExtractGraphService {
         );
         return filterNoise(patch, extra: {'lumen'});
       } catch (error) {
-        if (error is StateError || error is FormatException) rethrow;
-        if (attempt == maxRetries) return GraphPatch.empty();
+        if (error is StateError ||
+            error is FormatException ||
+            error is GraphExtractionException) {
+          rethrow;
+        }
+        if (attempt == maxRetries) rethrow;
       }
     }
     return GraphPatch.empty();
@@ -128,7 +150,7 @@ class ExtractGraphService {
             )
             .toList(),
         'recentConversation': context.recentConversation
-            .map((turn) => {'role': turn.role, 'text': turn.text})
+            .map((turn) => {'role': turn.role.name, 'text': turn.text})
             .toList(),
         'answeringFollowUp': context.answeringFollowUp == null
             ? null

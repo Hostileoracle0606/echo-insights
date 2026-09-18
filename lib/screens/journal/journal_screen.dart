@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../logic/turn_state.dart' show ConversationTurn, Speaker;
 import '../../providers/journal_provider.dart';
 import '../../providers/session_provider.dart';
 import 'entity_note_sheet.dart';
@@ -85,8 +86,8 @@ class _JournalScreenState extends ConsumerState<JournalScreen> {
 
   // The provider keeps a flat role/text log; the dock speaks in DockTurns.
   // Anything the user said is a "you" bubble, everything else is Lumen.
-  DockTurn _toTurn(({String role, String text}) turn) => DockTurn(
-        turn.role == 'user' ? DockSpeaker.you : DockSpeaker.lumen,
+  DockTurn _toTurn(ConversationTurn turn) => DockTurn(
+        turn.role == Speaker.user ? DockSpeaker.you : DockSpeaker.lumen,
         turn.text,
       );
 

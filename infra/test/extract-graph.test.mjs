@@ -1,9 +1,16 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import { createExtractGraphHandler } from "../lambda/extract-graph/core.mjs";
 
 const notebookId = "8e03b8f4-4f20-4df3-8398-d854adc32b14";
+const conversationFixture = JSON.parse(
+  await readFile(
+    new URL("../../contracts/fixtures/extract-graph-v1.conversation.json", import.meta.url),
+    "utf8",
+  ),
+);
 
 function requestEvent(overrides = {}) {
   return {
@@ -21,7 +28,7 @@ function requestEvent(overrides = {}) {
           { id: "project-atlas", name: "Project Atlas", type: "project" },
         ],
         relations: [],
-        recentConversation: [],
+        recentConversation: conversationFixture.recentConversation,
         answeringFollowUp: null,
       },
       ...overrides,
@@ -218,6 +225,29 @@ test("rejects malformed extraction requests before checking notebook ownership",
   );
 
   const response = await handle(requestEvent({ text: " " }));
+
+  assert.equal(response.statusCode, 400);
+  assert.deepEqual(JSON.parse(response.body), { error: "invalidRequest" });
+  assert.equal(requested, false);
+});
+
+test("rejects the legacy agent role at the canonical extraction seam", async () => {
+  let requested = false;
+  const handle = createExtractGraphHandler(
+    dependencies({
+      fetchImpl: async () => {
+        requested = true;
+        throw new Error("should not be called");
+      },
+    }),
+  );
+
+  const event = requestEvent();
+  const body = JSON.parse(event.body);
+  body.context.recentConversation = [{ role: "agent", text: "Legacy label" }];
+  event.body = JSON.stringify(body);
+
+  const response = await handle(event);
 
   assert.equal(response.statusCode, 400);
   assert.deepEqual(JSON.parse(response.body), { error: "invalidRequest" });
