@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lumen/models/entity.dart';
 import 'package:lumen/models/journal_entry.dart';
@@ -8,14 +11,52 @@ import 'package:lumen/services/retrieve_memory_service.dart';
 void main() {
   final now = DateTime.utc(2026, 6, 13, 9);
 
-  test('parses ranked entity ids from the retrieval response', () {
-    final result = MemoryRetrieval.fromData({
-      'context': 'focused context',
-      'entityIds': ['maya', 4, 'atlas'],
-    });
+  Map<String, dynamic> fixture(String name) => jsonDecode(
+        File('contracts/fixtures/$name').readAsStringSync(),
+      ) as Map<String, dynamic>;
 
-    expect(result.context, 'focused context');
-    expect(result.entityIds, ['maya', 'atlas']);
+  test('parses the shared retrieve-memory v1 success fixture', () {
+    final result = MemoryRetrieval.fromData(
+      fixture('retrieve-memory-v1.success.json'),
+    );
+
+    expect(result.context, 'Maya works on Project Atlas.');
+    expect(result.entityIds, ['maya', 'project-atlas']);
+  });
+
+  test('parses the shared retrieve-memory v1 empty fixture', () {
+    final result = MemoryRetrieval.fromData(
+      fixture('retrieve-memory-v1.empty.json'),
+    );
+
+    expect(result.context, isEmpty);
+    expect(result.entityIds, isEmpty);
+  });
+
+  test('rejects legacy, future, and malformed retrieval responses', () {
+    expect(
+      () => MemoryRetrieval.fromData({
+        'context': 'legacy',
+        'entityIds': <String>[],
+      }),
+      throwsFormatException,
+    );
+    expect(
+      () => MemoryRetrieval.fromData({
+        'version': 2,
+        'context': 'future',
+        'entityIds': <String>[],
+      }),
+      throwsFormatException,
+    );
+    expect(
+      () => MemoryRetrieval.fromData({
+        'version': 1,
+        'context': 'bad',
+        'entityIds': ['maya', 4],
+      }),
+      throwsFormatException,
+    );
   });
 
   test('stateToGraphloop emits graphloop camelCase keys, not snake_case', () {

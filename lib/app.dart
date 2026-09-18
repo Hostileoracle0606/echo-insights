@@ -9,17 +9,24 @@ import 'screens/dashboard/dashboard_screen.dart';
 import 'screens/journal/journal_screen.dart';
 import 'theme/lumen_theme.dart';
 
+String? authRedirect({
+  required bool isLoggedIn,
+  required String location,
+}) {
+  final isAuthRoute = location.startsWith('/auth');
+  if (!isLoggedIn && !isAuthRoute) return '/auth/login';
+  if (isLoggedIn && isAuthRoute) return '/dashboard';
+  return null;
+}
+
 final routerProvider = Provider<GoRouter>((ref) {
   final auth = ref.watch(authProvider);
   return GoRouter(
     initialLocation: '/dashboard',
-    redirect: (context, state) {
-      final isLoggedIn = auth.valueOrNull != null;
-      final isAuthRoute = state.matchedLocation.startsWith('/auth');
-      if (!isLoggedIn && !isAuthRoute) return '/auth/login';
-      if (isLoggedIn && isAuthRoute) return '/dashboard';
-      return null;
-    },
+    redirect: (context, state) => authRedirect(
+      isLoggedIn: auth.valueOrNull != null,
+      location: state.matchedLocation,
+    ),
     routes: [
       GoRoute(path: '/auth/login', builder: (_, __) => const LoginScreen()),
       GoRoute(path: '/auth/signup', builder: (_, __) => const SignupScreen()),

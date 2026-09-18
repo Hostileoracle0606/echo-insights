@@ -10,12 +10,17 @@ Segment 1 creates:
   sign-in token;
 - an Amazon Lambda credential broker that checks notebook access and requests a
   one-use Gemini Live credential;
-- one protected Amazon API Gateway route; and
+- an Amazon Lambda graph extractor that calls Gemini without exposing the
+  permanent credential;
+- a retained DynamoDB cache for idempotent extraction retries;
+- two protected Amazon API Gateway routes; and
 - a default gateway stage limited to 10 requests per second with bursts of 20.
 
 The route is:
 
 `POST /v1/notebooks/{notebookId}/live-sessions`
+
+`POST /v1/notebooks/{notebookId}/extractions`
 
 ## Local checks
 
@@ -44,5 +49,6 @@ The deployment output named `NotebookRuntimeUrl` becomes:
 - `NOTEBOOK_RUNTIME_URL` for the Flutter build.
 
 Do not deploy until the owner is ready to enter the permanent credential and
-update both client build configurations. The credential broker returns a
-temporary token only; it never returns the permanent Gemini value.
+update both client build configurations. The live-session broker returns a
+temporary token, while the extraction route returns only a validated graph
+patch. Neither route returns the permanent Gemini value.

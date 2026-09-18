@@ -6,6 +6,7 @@ import { buildCommunities } from "../_shared/graphloop/communities.ts";
 import type { GraphState } from "../_shared/graphloop/types.ts";
 import { buildContext } from "./context.ts";
 import { GteSmallEmbedder } from "../_shared/embedder.ts";
+import { retrieveMemoryResponseV1 } from "../_shared/retrieve-memory-contract.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -92,7 +93,7 @@ serve(async (req) => {
       return json(413, { error: "graph too large" });
     }
     if (!query || Object.keys(entities).length === 0) {
-      return json(200, { context: "", entityIds: [] });
+      return json(200, retrieveMemoryResponseV1("", []));
     }
 
     // ── Semantic seeds (hybrid). Service-role, downstream of ownership + rate.
@@ -137,10 +138,10 @@ serve(async (req) => {
       latencyMs: Date.now() - startedAt,
       qHash: await queryHash(query),
     });
-    return json(200, {
+    return json(200, retrieveMemoryResponseV1(
       context,
-      entityIds: result.entities.map((entity) => entity.id),
-    });
+      result.entities.map((entity) => entity.id),
+    ));
   } catch (e) {
     // Never log the request body or context. Counts / error name only.
     logTelemetry({

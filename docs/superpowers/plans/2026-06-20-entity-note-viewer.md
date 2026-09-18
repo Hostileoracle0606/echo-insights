@@ -112,7 +112,7 @@ void main() {
   });
 
   test('long text is truncated to max with an ellipsis, on a word boundary', () {
-    final long = 'word ' * 60; // 300 chars
+    final long = List.filled(60, 'word').join(' '); // 299 chars
     final out = snippet(long, max: 140);
     expect(out.length, lessThanOrEqualTo(141)); // 140 cap + the … char
     expect(out.endsWith('…'), isTrue);

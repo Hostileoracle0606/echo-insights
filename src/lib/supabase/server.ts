@@ -5,9 +5,7 @@ const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
 if (!SUPABASE_URL || !SUPABASE_KEY) {
-  throw new Error(
-    "Missing VITE_SUPABASE_URL or VITE_SUPABASE_PUBLISHABLE_KEY in .env",
-  );
+  throw new Error("Missing VITE_SUPABASE_URL or VITE_SUPABASE_PUBLISHABLE_KEY in .env");
 }
 
 /**
@@ -35,18 +33,17 @@ export function getServerSupabase(request: Request, response: Response) {
           if (!trimmed) return [];
           const eq = trimmed.indexOf("=");
           if (eq === -1) return [];
-          return [{
-            name: trimmed.slice(0, eq).trim(),
-            value: decodeURIComponent(trimmed.slice(eq + 1).trim()),
-          }];
+          return [
+            {
+              name: trimmed.slice(0, eq).trim(),
+              value: decodeURIComponent(trimmed.slice(eq + 1).trim()),
+            },
+          ];
         });
       },
       setAll(cookiesToSet) {
         for (const { name, value, options } of cookiesToSet) {
-          response.headers.append(
-            "set-cookie",
-            serializeCookie(name, value, options),
-          );
+          response.headers.append("set-cookie", serializeCookie(name, value, options));
         }
       },
     },

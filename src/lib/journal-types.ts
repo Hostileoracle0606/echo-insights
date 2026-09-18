@@ -10,14 +10,14 @@ export type EntityType =
   | "other";
 
 export interface Entity {
-  id: string;          // slug
+  id: string; // slug
   name: string;
   type: EntityType;
   description?: string;
   metadata: Record<string, string | number | boolean>;
   mentions: number;
-  firstSeen: string;   // ISO
-  lastSeen: string;    // ISO
+  firstSeen: string; // ISO
+  lastSeen: string; // ISO
   /**
    * Wiki-mode question backlog: lines of questioning Lumen could pursue
    * to deepen this node. Populated by the wiki extractor; left empty by
@@ -30,9 +30,9 @@ export interface Entity {
 
 export interface Relation {
   id: string;
-  source: string;      // entity id
-  target: string;      // entity id
-  label: string;       // e.g. "works_with", "lives_in", "feels"
+  source: string; // entity id
+  target: string; // entity id
+  label: string; // e.g. "works_with", "lives_in", "feels"
   metadata: Record<string, string | number | boolean>;
   createdAt: string;
   /**
@@ -57,7 +57,7 @@ export interface JournalEntry {
 export interface FollowUp {
   id: string;
   question: string;
-  reason: string;        // why the AI asked this
+  reason: string; // why the AI asked this
   targetEntityIds: string[];
   createdAt: string;
   answered: boolean;
@@ -89,16 +89,16 @@ export interface JournalState {
 export type ExtractionMode = "wiki" | "granular";
 
 export interface Notebook {
-  id: string;             // uuid
-  userId: string;         // auth.users.id
+  id: string; // uuid
+  userId: string; // auth.users.id
   title: string;
   titleSource: "ai" | "user" | "auto";
-  startedAt: string;      // ISO
-  endedAt?: string;       // ISO
+  startedAt: string; // ISO
+  endedAt?: string; // ISO
   durationSeconds?: number;
   entityCount: number;
   summary?: string;
-  archivedAt?: string;    // ISO
+  archivedAt?: string; // ISO
   createdAt: string;
   updatedAt: string;
 }

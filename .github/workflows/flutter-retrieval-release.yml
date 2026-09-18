@@ -1,0 +1,95 @@
+name: Flutter retrieval release gate
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Keep staging deployment and its validation together for this workflow.
+concurrency:
+  group: flutter-retrieval-staging
+  cancel-in-progress: false
+
+jobs:
+  retrieval-gate:
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 30
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+      SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+      SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      EMBED_INTERNAL_SECRET: ${{ secrets.EMBED_INTERNAL_SECRET }}
+      RETRIEVAL_GATE_TARGET: staging
+      RETRIEVAL_GATE_REPORT: build/release-gates/retrieval.json
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - name: Require staging configuration
+        shell: bash
+        run: |
+          for name in SUPABASE_ACCESS_TOKEN SUPABASE_DB_PASSWORD SUPABASE_PROJECT_REF SUPABASE_URL SUPABASE_ANON_KEY SUPABASE_SERVICE_ROLE_KEY EMBED_INTERNAL_SECRET; do
+            if [ -z "${!name}" ]; then echo "Missing configuration: $name"; exit 1; fi
+          done
+          test "$SUPABASE_URL" = "https://$SUPABASE_PROJECT_REF.supabase.co"
+      - name: Apply staging migrations
+        id: migrations
+        run: |
+          supabase link --project-ref "$SUPABASE_PROJECT_REF"
+          supabase db push --linked --yes
+      - name: Deploy retrieval and embedding functions
+        id: functions
+        run: |
+          supabase functions deploy retrieve-memory --project-ref "$SUPABASE_PROJECT_REF"
+          supabase functions deploy embed-entities --project-ref "$SUPABASE_PROJECT_REF"
+      - run: flutter pub get
+      - name: Verify release gate rejects partial success
+        run: npm run test:retrieval-gate
+      - name: Verify authenticated Flutter retrieval
+        if: ${{ !cancelled() }}
+        env:
+          RETRIEVAL_MIGRATIONS_OUTCOME: ${{ steps.migrations.outcome }}
+          RETRIEVAL_FUNCTIONS_OUTCOME: ${{ steps.functions.outcome }}
+        run: npm run release:retrieval-gate
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: retrieval-release-gate
+          path: build/release-gates/retrieval.json
+          if-no-files-found: warn
+
+  ios-release-build:
+    needs: retrieval-gate
+    runs-on: macos-latest
+    timeout-minutes: 30
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - name: Build unsigned iOS release after retrieval passes
+        env:
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          NOTEBOOK_RUNTIME_URL: ${{ vars.NOTEBOOK_RUNTIME_URL }}
+        run: |
+          test -n "$NOTEBOOK_RUNTIME_URL"
+          flutter build ios --release --no-codesign \
+            --dart-define="SUPABASE_URL=$SUPABASE_URL" \
+            --dart-define="SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY" \
+            --dart-define="NOTEBOOK_RUNTIME_URL=$NOTEBOOK_RUNTIME_URL"
+      - name: Check build for bundled credentials
+        run: node scripts/production-secrets.mjs build/ios/iphoneos/Runner.app

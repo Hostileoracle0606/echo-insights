@@ -14,15 +14,15 @@
 
 ## File Map
 
-| File | Change |
-|---|---|
-| `src/lib/journal-types.ts` | Add `supersededAt?: string` to `Relation`. |
-| `src/components/graph-view.tsx` | Filter `!r.supersededAt` from rendered links. |
-| `src/lib/obsidian-export.ts` | Filter `!r.supersededAt` from `allRelations`. |
-| `src/routes/index.tsx` | (a) `buildExtractionContext` includes relation `id`, sorts by recency, excludes superseded, caps at 30. (b) `processGraphUpdate` propagates `supersedes` through the payload. (c) `buildGraphSummary` adds `uncertainRelations`. (d) Tool description mentions `uncertainRelations`. |
-| `src/lib/extract-graph.ts` | (a) `extractGraphFunction.parameters` adds `supersedes`. (b) `graphPatchSchema` adds `supersedes`. (c) `buildUserMessage` renders `EXISTING RELATIONS [id]` block. (d) Both extractor prompts gain a `SUPERSEDES — when the user contradicts the existing graph` section. (e) `ExtractGraphResult` + `patchToResult` + `filterNoise` thread `supersedes` through. (f) `GraphRelation` interface optionally includes `id`. |
-| `src/lib/journal-store.ts` | (a) `ExtractedPayload` adds `supersedes?: string[]`. (b) `mergeExtraction` applies supersedes and un-supersedes a relation if it's re-asserted in the same patch. |
-| `src/lib/conversation-policy.ts` | Append `PRESUPPOSITIONAL PROBES` block to `GEMINI_LIVE_SYSTEM_INSTRUCTION`. |
+| File                             | Change                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/lib/journal-types.ts`       | Add `supersededAt?: string` to `Relation`.                                                                                                                                                                                                                                                                                                                                                                                |
+| `src/components/graph-view.tsx`  | Filter `!r.supersededAt` from rendered links.                                                                                                                                                                                                                                                                                                                                                                             |
+| `src/lib/obsidian-export.ts`     | Filter `!r.supersededAt` from `allRelations`.                                                                                                                                                                                                                                                                                                                                                                             |
+| `src/routes/index.tsx`           | (a) `buildExtractionContext` includes relation `id`, sorts by recency, excludes superseded, caps at 30. (b) `processGraphUpdate` propagates `supersedes` through the payload. (c) `buildGraphSummary` adds `uncertainRelations`. (d) Tool description mentions `uncertainRelations`.                                                                                                                                      |
+| `src/lib/extract-graph.ts`       | (a) `extractGraphFunction.parameters` adds `supersedes`. (b) `graphPatchSchema` adds `supersedes`. (c) `buildUserMessage` renders `EXISTING RELATIONS [id]` block. (d) Both extractor prompts gain a `SUPERSEDES — when the user contradicts the existing graph` section. (e) `ExtractGraphResult` + `patchToResult` + `filterNoise` thread `supersedes` through. (f) `GraphRelation` interface optionally includes `id`. |
+| `src/lib/journal-store.ts`       | (a) `ExtractedPayload` adds `supersedes?: string[]`. (b) `mergeExtraction` applies supersedes and un-supersedes a relation if it's re-asserted in the same patch.                                                                                                                                                                                                                                                         |
+| `src/lib/conversation-policy.ts` | Append `PRESUPPOSITIONAL PROBES` block to `GEMINI_LIVE_SYSTEM_INSTRUCTION`.                                                                                                                                                                                                                                                                                                                                               |
 
 ## Verification commands
 
@@ -41,6 +41,7 @@ after each task to confirm types still align. Vite dev server (`npm run dev`) is
 ## Task 1: Add `supersededAt` field to the Relation type
 
 **Files:**
+
 - Modify: `src/lib/journal-types.ts:31-38`
 
 This is the foundational change — every subsequent task depends on the field existing. Optional, no migration needed: existing relations in localStorage load with `supersededAt: undefined`, which falsy-evaluates as "active" everywhere we filter.
@@ -52,9 +53,9 @@ In `src/lib/journal-types.ts`, replace the `Relation` interface (lines 31-38) wi
 ```ts
 export interface Relation {
   id: string;
-  source: string;      // entity id
-  target: string;      // entity id
-  label: string;       // e.g. "works_with", "lives_in", "feels"
+  source: string; // entity id
+  target: string; // entity id
+  label: string; // e.g. "works_with", "lives_in", "feels"
   metadata: Record<string, string | number | boolean>;
   createdAt: string;
   /**
@@ -96,6 +97,7 @@ EOF
 ## Task 2: Hide superseded relations from the graph view
 
 **Files:**
+
 - Modify: `src/components/graph-view.tsx:89-93`
 
 Safe to ship before any superseder exists — no relation has `supersededAt` set yet, so this filter is a no-op until Task 8 lands. Shipping it early means the rendering side is in place by the time supersedes start landing.
@@ -142,6 +144,7 @@ EOF
 ## Task 3: Hide superseded relations from the Obsidian export
 
 **Files:**
+
 - Modify: `src/lib/obsidian-export.ts:203`
 
 The Obsidian vault is the user's clean reference. Disputed history doesn't belong there. One-liner filter on the source array used everywhere downstream in the export.
@@ -151,7 +154,7 @@ The Obsidian vault is the user's clean reference. Disputed history doesn't belon
 In `src/lib/obsidian-export.ts`, locate line 203 (`const allRelations = ...`). Replace the line with:
 
 ```ts
-  const allRelations = Object.values(state.relations).filter((r) => !r.supersededAt);
+const allRelations = Object.values(state.relations).filter((r) => !r.supersededAt);
 ```
 
 The `outgoing` / `incoming` filters at lines 235-236 already operate on `allRelations`, so they inherit the filter automatically.
@@ -183,6 +186,7 @@ EOF
 ## Task 4: Pass relation `id` and recency-cap to the extractor context
 
 **Files:**
+
 - Modify: `src/lib/extract-graph.ts:99-104` (the `GraphRelation` interface)
 - Modify: `src/routes/index.tsx:271-278` (the `existingRelations` builder)
 
@@ -250,6 +254,7 @@ EOF
 ## Task 5: Add `supersedes` to the extractor schema and result
 
 **Files:**
+
 - Modify: `src/lib/extract-graph.ts:232-258` (`ExtractGraphResult`, `emptyResult`)
 - Modify: `src/lib/extract-graph.ts:423-426` (`graphPatchSchema`)
 - Modify: `src/lib/extract-graph.ts:450-473` (`filterNoise`)
@@ -338,9 +343,7 @@ const filterNoise = (patch: GraphPatch): GraphPatch => {
   // patch). We can't validate those here, so trust the model on cross-patch
   // edges and only drop edges that point at noise we just removed.
   const droppedKeys = new Set(
-    patch.entities
-      .map((e) => normalizeName(e.name))
-      .filter((k) => !keptKeys.has(k)),
+    patch.entities.map((e) => normalizeName(e.name)).filter((k) => !keptKeys.has(k)),
   );
   const relations = patch.relations.filter(
     (r) => !droppedKeys.has(normalizeName(r.source)) && !droppedKeys.has(normalizeName(r.target)),
@@ -460,6 +463,7 @@ EOF
 ## Task 6: Render `EXISTING RELATIONS [id]` block in the extractor user message
 
 **Files:**
+
 - Modify: `src/lib/extract-graph.ts:310-313` (the `formatRelation` helper)
 - Modify: `src/lib/extract-graph.ts:388-401` (the `buildUserMessage` function)
 
@@ -531,6 +535,7 @@ EOF
 ## Task 7: Teach the extractor when to emit supersedes (system prompts)
 
 **Files:**
+
 - Modify: `src/lib/extract-graph.ts:29-62` (`WIKI_EXTRACTOR_PROMPT`)
 - Modify: `src/lib/extract-graph.ts:64-87` (`GRANULAR_EXTRACTOR_PROMPT`)
 
@@ -614,11 +619,13 @@ EOF
 ## Task 8: Apply supersedes in the host (and un-supersede on re-assertion)
 
 **Files:**
+
 - Modify: `src/lib/journal-store.ts:80-99` (`ExtractedPayload`)
 - Modify: `src/lib/journal-store.ts:129-239` (`mergeExtraction`)
 - Modify: `src/routes/index.tsx:500-505` (the `graphOnly` patch in `processGraphUpdate`)
 
 Two changes in `mergeExtraction`:
+
 1. **Apply supersedes:** for each id in `payload.supersedes ?? []`, set `relations[id].supersededAt = now` (silent skip if missing or already superseded).
 2. **Un-supersede on re-assertion:** when an incoming relation patch hits the existing-id branch (the relation already exists with the same `${src}__${label}__${tgt}` key), clear `supersededAt`. Re-assertion is the user's signal that the prior contradiction was wrong — self-healing the spec's "false positive" failure mode.
 
@@ -801,13 +808,13 @@ export function mergeExtraction(
 In `src/routes/index.tsx`, locate the `graphOnly` patch inside `processGraphUpdate` (lines 500-505). It currently spreads `payload` and explicitly nulls `followUp`. Because spread keeps `supersedes`, no change is strictly required — but make the intent explicit. Replace lines 500-505 with:
 
 ```ts
-        // Branch B: Gemini owns dialogue, so suppress any follow-up the
-        // extractor produced. Keep entities, relations, AND supersedes —
-        // the contradiction-detection patch must reach mergeExtraction.
-        const graphOnly: ExtractedPayload = {
-          ...payload,
-          followUp: undefined,
-        };
+// Branch B: Gemini owns dialogue, so suppress any follow-up the
+// extractor produced. Keep entities, relations, AND supersedes —
+// the contradiction-detection patch must reach mergeExtraction.
+const graphOnly: ExtractedPayload = {
+  ...payload,
+  followUp: undefined,
+};
 ```
 
 (Comment-only change — behavior is unchanged. The clarity matters: the next reader sees that `supersedes` is intentionally retained.)
@@ -842,6 +849,7 @@ EOF
 ## Task 9: Compute `uncertainRelations` in `buildGraphSummary`
 
 **Files:**
+
 - Modify: `src/routes/index.tsx:537-623` (`buildGraphSummary`)
 
 The live agent reads `uncertainRelations` to pick a probe target. Each active relation is scored 0–3 across three signals; top 3 with score ≥ 2 are surfaced. The cross-turn signal uses entry membership (NOT `entity.firstSeen` — those are millisecond-precision timestamps that always differ even within a single utterance, which would fire the signal for nearly every relation).
@@ -853,149 +861,145 @@ In `src/routes/index.tsx`, locate `buildGraphSummary` (starts at line 537). Just
 Replace `buildGraphSummary` (lines 537-623) with:
 
 ```ts
-  // Snapshot of graph state shaped for the model's planner. Returned to the
-  // model when it calls get_graph_summary. Keeping it minimal+structured
-  // (rather than dumping raw entities/relations) is intentional: the model
-  // uses these labels (thin / probed / justMentioned / bridgeCandidates /
-  // uncertainRelations) to decide its next question without us hardcoding
-  // a state machine.
-  const buildGraphSummary = useCallback(() => {
-    const s = stateRef.current;
-    const conv = conversationRef.current;
-    const sessionStartedAt = sessionStartRef.current ?? Date.now();
-    const sessionElapsedMin = Math.round(((Date.now() - sessionStartedAt) / 60000) * 10) / 10;
+// Snapshot of graph state shaped for the model's planner. Returned to the
+// model when it calls get_graph_summary. Keeping it minimal+structured
+// (rather than dumping raw entities/relations) is intentional: the model
+// uses these labels (thin / probed / justMentioned / bridgeCandidates /
+// uncertainRelations) to decide its next question without us hardcoding
+// a state machine.
+const buildGraphSummary = useCallback(() => {
+  const s = stateRef.current;
+  const conv = conversationRef.current;
+  const sessionStartedAt = sessionStartRef.current ?? Date.now();
+  const sessionElapsedMin = Math.round(((Date.now() - sessionStartedAt) / 60000) * 10) / 10;
 
-    const relationCounts = new Map<string, number>();
-    Object.values(s.relations).forEach((relation) => {
-      relationCounts.set(relation.source, (relationCounts.get(relation.source) ?? 0) + 1);
-      relationCounts.set(relation.target, (relationCounts.get(relation.target) ?? 0) + 1);
-    });
+  const relationCounts = new Map<string, number>();
+  Object.values(s.relations).forEach((relation) => {
+    relationCounts.set(relation.source, (relationCounts.get(relation.source) ?? 0) + 1);
+    relationCounts.set(relation.target, (relationCounts.get(relation.target) ?? 0) + 1);
+  });
 
-    const allEntities = Object.values(s.entities);
-    const entitiesWithCoverage = allEntities.map((entity) => {
-      const words = entityWordCount(s, entity.id);
-      return {
-        name: entity.name,
-        type: entity.type,
-        coverage: coverageLabel(words),
-        mentions: entity.mentions,
-        relationCount: relationCounts.get(entity.id) ?? 0,
-        openQuestions: entity.questions ?? [],
-      };
-    });
-
-    const thinEntities = entitiesWithCoverage
-      .filter((e) => e.coverage === "thin")
-      .sort((a, b) => b.mentions - a.mentions)
-      .map((e) => e.name);
-
-    // Substring match against entity names is good enough here — the model
-    // uses this as a soft signal ("don't re-ask Maya, just covered her") not
-    // as ground truth. Cheaper than re-running NER on the conversation log.
-    const sinceSession = conv.filter(
-      (turn) => new Date(turn.createdAt).getTime() >= sessionStartedAt,
-    );
-    const probedNames = new Set<string>();
-    for (const turn of sinceSession) {
-      const lower = turn.text.toLowerCase();
-      for (const entity of allEntities) {
-        if (lower.includes(entity.name.toLowerCase())) probedNames.add(entity.name);
-      }
-    }
-
-    const lastUserTurn = [...conv].reverse().find((turn) => turn.role === "user");
-    const justMentioned: string[] = [];
-    if (lastUserTurn) {
-      const lower = lastUserTurn.text.toLowerCase();
-      for (const entity of allEntities) {
-        if (lower.includes(entity.name.toLowerCase())) justMentioned.push(entity.name);
-      }
-    }
-
-    const bridgeCandidates = buildBridgingCandidates(s)
-      .slice(0, 6)
-      .map((bridge) => [bridge.a.name, bridge.b.name] as [string, string]);
-
-    const recentAgentQuestions = conv
-      .filter((turn) => turn.role === "agent")
-      .slice(-5)
-      .map((turn) => turn.text);
-
-    // Aggregated question backlog across the wiki — flat (entity, question)
-    // pairs the model can sample from. Empty in granular mode (entities have
-    // no questions field) so the model falls back to its default probing.
-    const openQuestionsTop = allEntities
-      .flatMap((entity) =>
-        (entity.questions ?? []).map((question) => ({ entity: entity.name, question })),
-      )
-      .slice(0, 12);
-
-    // uncertainRelations — three additive signals (each +1 if true), 0–3
-    // total. Top 3 active relations with score ≥ 2 are surfaced. Used by
-    // the live agent's PRESUPPOSITIONAL PROBES policy.
-    //
-    // Cross-turn uses ENTRY MEMBERSHIP (not entity.firstSeen) because
-    // firstSeen is an ms-precision ISO timestamp that almost always
-    // differs even between entities first seen in the same utterance —
-    // so the inequality check would fire for nearly every relation.
-    const firstEntryOf = (entityId: string): string | undefined =>
-      s.entries.find((entry) => entry.entityIds.includes(entityId))?.id;
-
-    const uncertainRelations = Object.values(s.relations)
-      .filter((r) => !r.supersededAt)
-      .map((r) => {
-        let score = 0;
-
-        // Single-mention: relation appears in exactly one journal entry.
-        const mentionCount = s.entries.filter((e) => e.relationIds.includes(r.id)).length;
-        if (mentionCount <= 1) score += 1;
-
-        // Cross-turn resolution: source and target first surfaced in
-        // different entries.
-        const sourceEntry = firstEntryOf(r.source);
-        const targetEntry = firstEntryOf(r.target);
-        if (sourceEntry && targetEntry && sourceEntry !== targetEntry) score += 1;
-
-        // First-time pair: this is the only active relation between
-        // these two entities.
-        const pairCount = Object.values(s.relations).filter(
-          (other) =>
-            !other.supersededAt &&
-            other.source === r.source &&
-            other.target === r.target,
-        ).length;
-        if (pairCount <= 1) score += 1;
-
-        return {
-          source: s.entities[r.source]?.name,
-          label: r.label,
-          target: s.entities[r.target]?.name,
-          score,
-        };
-      })
-      .filter((r): r is { source: string; label: string; target: string; score: number } =>
-        r.score >= 2 && Boolean(r.source) && Boolean(r.target),
-      )
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 3);
-
+  const allEntities = Object.values(s.entities);
+  const entitiesWithCoverage = allEntities.map((entity) => {
+    const words = entityWordCount(s, entity.id);
     return {
-      sessionElapsedMin,
-      mode: extractionModeRef.current,
-      entityCount: allEntities.length,
-      relationCount: Object.keys(s.relations).length,
-      entities: entitiesWithCoverage
-        .sort((a, b) => b.mentions - a.mentions)
-        .slice(0, 30),
-      thinEntities: thinEntities.slice(0, 10),
-      probedThisSession: Array.from(probedNames).slice(0, 12),
-      justMentioned,
-      bridgeCandidates,
-      recentAgentQuestions,
-      openQuestionsTop,
-      uncertainRelations,
+      name: entity.name,
+      type: entity.type,
+      coverage: coverageLabel(words),
+      mentions: entity.mentions,
+      relationCount: relationCounts.get(entity.id) ?? 0,
+      openQuestions: entity.questions ?? [],
     };
-  }, []);
+  });
+
+  const thinEntities = entitiesWithCoverage
+    .filter((e) => e.coverage === "thin")
+    .sort((a, b) => b.mentions - a.mentions)
+    .map((e) => e.name);
+
+  // Substring match against entity names is good enough here — the model
+  // uses this as a soft signal ("don't re-ask Maya, just covered her") not
+  // as ground truth. Cheaper than re-running NER on the conversation log.
+  const sinceSession = conv.filter(
+    (turn) => new Date(turn.createdAt).getTime() >= sessionStartedAt,
+  );
+  const probedNames = new Set<string>();
+  for (const turn of sinceSession) {
+    const lower = turn.text.toLowerCase();
+    for (const entity of allEntities) {
+      if (lower.includes(entity.name.toLowerCase())) probedNames.add(entity.name);
+    }
+  }
+
+  const lastUserTurn = [...conv].reverse().find((turn) => turn.role === "user");
+  const justMentioned: string[] = [];
+  if (lastUserTurn) {
+    const lower = lastUserTurn.text.toLowerCase();
+    for (const entity of allEntities) {
+      if (lower.includes(entity.name.toLowerCase())) justMentioned.push(entity.name);
+    }
+  }
+
+  const bridgeCandidates = buildBridgingCandidates(s)
+    .slice(0, 6)
+    .map((bridge) => [bridge.a.name, bridge.b.name] as [string, string]);
+
+  const recentAgentQuestions = conv
+    .filter((turn) => turn.role === "agent")
+    .slice(-5)
+    .map((turn) => turn.text);
+
+  // Aggregated question backlog across the wiki — flat (entity, question)
+  // pairs the model can sample from. Empty in granular mode (entities have
+  // no questions field) so the model falls back to its default probing.
+  const openQuestionsTop = allEntities
+    .flatMap((entity) =>
+      (entity.questions ?? []).map((question) => ({ entity: entity.name, question })),
+    )
+    .slice(0, 12);
+
+  // uncertainRelations — three additive signals (each +1 if true), 0–3
+  // total. Top 3 active relations with score ≥ 2 are surfaced. Used by
+  // the live agent's PRESUPPOSITIONAL PROBES policy.
+  //
+  // Cross-turn uses ENTRY MEMBERSHIP (not entity.firstSeen) because
+  // firstSeen is an ms-precision ISO timestamp that almost always
+  // differs even between entities first seen in the same utterance —
+  // so the inequality check would fire for nearly every relation.
+  const firstEntryOf = (entityId: string): string | undefined =>
+    s.entries.find((entry) => entry.entityIds.includes(entityId))?.id;
+
+  const uncertainRelations = Object.values(s.relations)
+    .filter((r) => !r.supersededAt)
+    .map((r) => {
+      let score = 0;
+
+      // Single-mention: relation appears in exactly one journal entry.
+      const mentionCount = s.entries.filter((e) => e.relationIds.includes(r.id)).length;
+      if (mentionCount <= 1) score += 1;
+
+      // Cross-turn resolution: source and target first surfaced in
+      // different entries.
+      const sourceEntry = firstEntryOf(r.source);
+      const targetEntry = firstEntryOf(r.target);
+      if (sourceEntry && targetEntry && sourceEntry !== targetEntry) score += 1;
+
+      // First-time pair: this is the only active relation between
+      // these two entities.
+      const pairCount = Object.values(s.relations).filter(
+        (other) => !other.supersededAt && other.source === r.source && other.target === r.target,
+      ).length;
+      if (pairCount <= 1) score += 1;
+
+      return {
+        source: s.entities[r.source]?.name,
+        label: r.label,
+        target: s.entities[r.target]?.name,
+        score,
+      };
+    })
+    .filter(
+      (r): r is { source: string; label: string; target: string; score: number } =>
+        r.score >= 2 && Boolean(r.source) && Boolean(r.target),
+    )
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 3);
+
+  return {
+    sessionElapsedMin,
+    mode: extractionModeRef.current,
+    entityCount: allEntities.length,
+    relationCount: Object.keys(s.relations).length,
+    entities: entitiesWithCoverage.sort((a, b) => b.mentions - a.mentions).slice(0, 30),
+    thinEntities: thinEntities.slice(0, 10),
+    probedThisSession: Array.from(probedNames).slice(0, 12),
+    justMentioned,
+    bridgeCandidates,
+    recentAgentQuestions,
+    openQuestionsTop,
+    uncertainRelations,
+  };
+}, []);
 ```
 
 - [ ] **Step 2: Type-check**
@@ -1031,6 +1035,7 @@ EOF
 ## Task 10: Update `get_graph_summary` tool description
 
 **Files:**
+
 - Modify: `src/routes/index.tsx:628-638` (the `liveTools` memo)
 
 The live agent reads the tool's description to decide when to call it. The new `uncertainRelations` field needs to show up there too so the model expects it.
@@ -1040,20 +1045,20 @@ The live agent reads the tool's description to decide when to call it. The new `
 In `src/routes/index.tsx`, locate the `liveTools` memo (lines 628-638). Replace it with:
 
 ```ts
-  // Function declarations registered with Gemini Live at setup. Memoized so
-  // the underlying client doesn't see a new array on every render (which
-  // would imply a session restart was needed).
-  const liveTools = useMemo<GeminiFunctionDeclaration[]>(
-    () => [
-      {
-        name: "get_graph_summary",
-        description:
-          "Return the current state of the user's knowledge graph: which entities exist, which are thin (need probing), which were just mentioned, bridge candidates, and uncertainRelations (the top relations the host suspects might be wrong — phrase your next question as a presupposition over one of these per the PRESUPPOSITIONAL PROBES policy). Call this BEFORE deciding your next question.",
-        parameters: { type: "OBJECT", properties: {} },
-      },
-    ],
-    [],
-  );
+// Function declarations registered with Gemini Live at setup. Memoized so
+// the underlying client doesn't see a new array on every render (which
+// would imply a session restart was needed).
+const liveTools = useMemo<GeminiFunctionDeclaration[]>(
+  () => [
+    {
+      name: "get_graph_summary",
+      description:
+        "Return the current state of the user's knowledge graph: which entities exist, which are thin (need probing), which were just mentioned, bridge candidates, and uncertainRelations (the top relations the host suspects might be wrong — phrase your next question as a presupposition over one of these per the PRESUPPOSITIONAL PROBES policy). Call this BEFORE deciding your next question.",
+      parameters: { type: "OBJECT", properties: {} },
+    },
+  ],
+  [],
+);
 ```
 
 - [ ] **Step 2: Type-check**
@@ -1083,6 +1088,7 @@ EOF
 ## Task 11: Add `PRESUPPOSITIONAL PROBES` to the live-agent system prompt
 
 **Files:**
+
 - Modify: `src/lib/conversation-policy.ts:284-342` (`GEMINI_LIVE_SYSTEM_INSTRUCTION`)
 
 This is the final piece. The block goes after `HOW TO PICK YOUR NEXT QUESTION (...)` and before `ACTIVE LISTENING — the heart of how you talk:`. The cadence is self-regulated — the model reads its own recent turns to decide whether it has probed lately.
@@ -1172,6 +1178,7 @@ EOF
 ## Task 12: Manual smoke testing
 
 **Files:**
+
 - None (validation only)
 
 The spec calls out four scenarios. The project has no automated test harness for the LLM loop, so we exercise each one by hand with the dev server and confirm observable behavior.
@@ -1187,6 +1194,7 @@ Open the URL it prints (typically `http://localhost:5173`). Reload to ensure a c
 - [ ] **Step 2: Scenario A — Probe phrasing check**
 
 Mention 4–5 entities with relations across a few turns:
+
 - "Maya works on Project Atlas at Stripe."
 - "Sam has been collaborating with Maya."
 - "Brooklyn's been treating me well lately."
@@ -1196,6 +1204,7 @@ Then deliberately stall — give the agent two or three turns where you say very
 **Expected:** Within the next 5–8 turns, the agent's question should feel like a normal warm follow-up but presuppose one of the relations you mentioned (e.g. "How's Maya's piece of Atlas been going?").
 
 **Failure modes:**
+
 - The agent says "Did you say…?" or "Is it right that…?" → the prompt's STYLE section needs more anti-pattern examples.
 - The agent never probes → the CADENCE section's wording isn't strong enough; consider strengthening "your next question should be a probe".
 
@@ -1204,6 +1213,7 @@ Then deliberately stall — give the agent two or three turns where you say very
 Continuing the same session, contradict a relation directly: "Actually Maya's at Anthropic, not Stripe."
 
 **Expected:** Within one turn:
+
 1. The `Maya --works_at--> Stripe` relation drops from the graph view.
 2. A new `Maya --works_at--> Anthropic` relation appears.
 3. Open devtools → Application → localStorage → `lumen.journal.v1`. Find the relations dict; the old relation's id (e.g. `maya__works_at__stripe`) should have a `supersededAt` ISO timestamp set.
@@ -1211,6 +1221,7 @@ Continuing the same session, contradict a relation directly: "Actually Maya's at
 Then trigger an Obsidian export (download icon in the top-right pill). Unzip the result and check Maya's note — it should NOT list the Stripe relation under outgoing edges.
 
 **Failure modes:**
+
 - Old relation still shows on graph → check Task 2 filter; check `supersededAt` is actually set in localStorage.
 - Old relation appears in export → check Task 3 filter.
 - `supersededAt` not set → confirm the extractor returned `supersedes` in the function call (devtools → Network → the `generateContent` POST → response → look for `"supersedes": [...]` in the function call). If empty, the prompt's SUPERSEDES section needs strengthening.
@@ -1218,6 +1229,7 @@ Then trigger an Obsidian export (download icon in the top-right pill). Unzip the
 - [ ] **Step 4: Scenario C — False-positive watch (run for ~20 minutes)**
 
 Have a longer free-form session — at least 20 minutes, mention many entities, vary topics. After:
+
 1. Open localStorage and grep for `supersededAt` entries.
 2. For each, ask: did the user actually contradict that relation, or is this a false positive?
 
@@ -1228,6 +1240,7 @@ Each false positive is a case to fold into the extractor prompt's `Do NOT trigge
 Across the same 20-minute session, count how many of the agent's turns presupposed an uncertain relation (count by ear or scroll the conversation log). Aim for one probe roughly every 5–8 agent turns.
 
 **Failure modes:**
+
 - Probes too frequent (>1 every 4 turns): strengthen the EXCEPTIONS section ("defer otherwise").
 - Probes never fire (0 across 20 min): check that `uncertainRelations` is non-empty in the `get_graph_summary` response (devtools → Network → look at the `toolResponse` payload). If non-empty but no probes, strengthen "your next question should be a probe" in CADENCE.
 

@@ -2,6 +2,7 @@ import * as cdk from "aws-cdk-lib/core";
 import * as apigatewayv2 from "aws-cdk-lib/aws-apigatewayv2";
 import * as authorizers from "aws-cdk-lib/aws-apigatewayv2-authorizers";
 import * as integrations from "aws-cdk-lib/aws-apigatewayv2-integrations";
+import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
 import { Construct } from "constructs";
@@ -69,6 +70,31 @@ export class InfraStack extends cdk.Stack {
     });
     geminiApiKey.grantRead(liveSessionBroker);
 
+    const extractionCache = new dynamodb.Table(this, "GraphExtractionCache", {
+      partitionKey: { name: "id", type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      encryption: dynamodb.TableEncryption.AWS_MANAGED,
+      timeToLiveAttribute: "expiresAt",
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
+
+    const graphExtractor = new lambda.Function(this, "GraphExtractorFunction", {
+      ...commonFunctionProperties,
+      description: "Extracts validated graph patches without exposing Gemini credentials",
+      handler: "index.handler",
+      code: lambda.Code.fromAsset(path.join(lambdaDirectory, "extract-graph")),
+      timeout: cdk.Duration.seconds(30),
+      environment: {
+        ...sharedEnvironment,
+        GEMINI_SECRET_ARN: geminiApiKey.secretArn,
+        GEMINI_EXTRACTION_MODEL: "gemini-2.5-flash",
+        EXTRACTION_CACHE_TABLE_NAME: extractionCache.tableName,
+      },
+      reservedConcurrentExecutions: 20,
+    });
+    geminiApiKey.grantRead(graphExtractor);
+    extractionCache.grantReadWriteData(graphExtractor);
+
     const api = new apigatewayv2.HttpApi(this, "NotebookRuntimeApi", {
       apiName: "echo-insights-notebook-runtime",
       description: "Authenticated runtime routes for Echo Insights",
@@ -97,6 +123,16 @@ export class InfraStack extends cdk.Stack {
       integration: new integrations.HttpLambdaIntegration(
         "LiveSessionIntegration",
         liveSessionBroker,
+      ),
+    });
+
+    api.addRoutes({
+      path: "/v1/notebooks/{notebookId}/extractions",
+      methods: [apigatewayv2.HttpMethod.POST],
+      authorizer,
+      integration: new integrations.HttpLambdaIntegration(
+        "GraphExtractionIntegration",
+        graphExtractor,
       ),
     });
 

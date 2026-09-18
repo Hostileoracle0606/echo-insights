@@ -14,7 +14,7 @@ The feature is delivered through three coordinated changes: a system-prompt exte
 
 The extractor produces relations from each utterance under uncertainty. Some are wrong (model misheard, inferred too aggressively across pronouns, fabricated a connection). Today there is no path for the user to correct these — the graph only grows.
 
-We want a way to verify uncertain relations *during the natural conversation*, not as an explicit review step. The verification must be invisible: the user should never feel quizzed or audited.
+We want a way to verify uncertain relations _during the natural conversation_, not as an explicit review step. The verification must be invisible: the user should never feel quizzed or audited.
 
 ## Goals
 
@@ -34,16 +34,16 @@ We want a way to verify uncertain relations *during the natural conversation*, n
 
 ## Design decisions (from brainstorming)
 
-| Decision | Choice | Rationale |
-|---|---|---|
-| Verification trigger | Hybrid: uncertainty-weighted with a 5-to-8-turn soft floor | Pure cadence feels mechanical; pure uncertainty may silence probes for long stretches. |
-| Probe phrasing | Socratic presupposition (never "is X right?") | The user must never feel quizzed; presupposition forces either flow-with or contradict. |
-| Update on contradiction | Soft supersede via `supersededAt` timestamp | Hides from view + export; preserves data; reversible if extractor misfires. |
-| Vault export | Superseded relations excluded | Vault is the user's clean reference — disputed history doesn't belong there. |
-| Architecture | Approach 1 — pure system-prompt influence; no host scheduler | Smallest code change; leans on the live model's natural conversational ability; the model decides cadence. |
-| Cadence enforcement | Soft, prompt-driven; model reads its own recent turns | No host-side counter to synchronize; one fewer disagreement surface. |
-| Candidate signals | Single-mention OR cross-turn-resolved OR new-pair-connection | Targets the three most plausible extraction-error modes. |
-| Contradiction detection | LLM-judged in the extractor, not host-structural | Avoids brittle source/target/label string matching; uses semantic judgment. |
+| Decision                | Choice                                                       | Rationale                                                                                                  |
+| ----------------------- | ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------- |
+| Verification trigger    | Hybrid: uncertainty-weighted with a 5-to-8-turn soft floor   | Pure cadence feels mechanical; pure uncertainty may silence probes for long stretches.                     |
+| Probe phrasing          | Socratic presupposition (never "is X right?")                | The user must never feel quizzed; presupposition forces either flow-with or contradict.                    |
+| Update on contradiction | Soft supersede via `supersededAt` timestamp                  | Hides from view + export; preserves data; reversible if extractor misfires.                                |
+| Vault export            | Superseded relations excluded                                | Vault is the user's clean reference — disputed history doesn't belong there.                               |
+| Architecture            | Approach 1 — pure system-prompt influence; no host scheduler | Smallest code change; leans on the live model's natural conversational ability; the model decides cadence. |
+| Cadence enforcement     | Soft, prompt-driven; model reads its own recent turns        | No host-side counter to synchronize; one fewer disagreement surface.                                       |
+| Candidate signals       | Single-mention OR cross-turn-resolved OR new-pair-connection | Targets the three most plausible extraction-error modes.                                                   |
+| Contradiction detection | LLM-judged in the extractor, not host-structural             | Avoids brittle source/target/label string matching; uses semantic judgment.                                |
 
 ## Architecture
 
@@ -113,11 +113,11 @@ Zero schema migration. Existing relations in localStorage load with `supersededA
 
 `uncertainRelations` is derived inside `buildGraphSummary` on every call. Each active relation gets a 0–3 integer score from three signals:
 
-| Signal | +score | Reasoning |
-|---|---|---|
-| Single-mention (relation appears in only one journal entry) | +1 | Could be transcription artifact or one-off paraphrase. |
-| Cross-turn resolution (source and target first appeared in different entries) | +1 | Inherently more error-prone than within-sentence extraction. |
-| First-time pair (only one active relation between this source+target) | +1 | Could be model over-connecting. |
+| Signal                                                                        | +score | Reasoning                                                    |
+| ----------------------------------------------------------------------------- | ------ | ------------------------------------------------------------ |
+| Single-mention (relation appears in only one journal entry)                   | +1     | Could be transcription artifact or one-off paraphrase.       |
+| Cross-turn resolution (source and target first appeared in different entries) | +1     | Inherently more error-prone than within-sentence extraction. |
+| First-time pair (only one active relation between this source+target)         | +1     | Could be model over-connecting.                              |
 
 Top 3 candidates with score ≥ 2 are exposed; lower-score relations aren't worth a probe slot.
 
@@ -157,7 +157,7 @@ Turn N+1 (user responds):
 
 **(a) Confirmation has no acknowledgment.** When the user flows with the probe, nothing happens. The relation isn't marked "verified." This is intentional — if a future utterance contradicts the same relation, the more recent extractor pass should still be able to retract it. Marking-as-verified would be a confidence model, which we deliberately deferred.
 
-**(b) Self-supersede chains can't loop.** When a new relation supersedes an old one, the *new* relation is what's on the graph going forward. If the model later probes the new relation and the user contradicts again, the new one gets superseded — not the old one. Direction always points forward in time.
+**(b) Self-supersede chains can't loop.** When a new relation supersedes an old one, the _new_ relation is what's on the graph going forward. If the model later probes the new relation and the user contradicts again, the new one gets superseded — not the old one. Direction always points forward in time.
 
 **(c) The extractor decides what counts as a contradiction, not the host.** The host doesn't try to detect "Sam works on Atlas" contradicts "Maya works on Atlas" structurally. The extractor sees the existing graph in its prompt context and judges semantically.
 
@@ -172,8 +172,12 @@ const extractGraphFunction = {
   parameters: {
     type: "object",
     properties: {
-      entities: { /* unchanged */ },
-      relations: { /* unchanged */ },
+      entities: {
+        /* unchanged */
+      },
+      relations: {
+        /* unchanged */
+      },
       // NEW
       supersedes: {
         type: "array",
@@ -247,11 +251,11 @@ Two-line application. No structural matching, no `slugify` alignment.
 
 ### Failure modes
 
-| Mode | Outcome | Recovery |
-|---|---|---|
-| Hallucinated id (model returns id we don't have) | Silent skip via `if (!relation)` | None needed — worst case is a contradiction goes unmarked, not corrupted state. Logged in dev. |
-| Missed contradiction (false negative) | New relation gets added alongside old; both stay active | Resolved by future utterance or future probe. |
-| False positive (model marks a correct relation superseded) | Relation hidden from view + export | A later utterance re-mentioning the relation will create a new active relation (existing dedup checks active relations only). Self-healing. |
+| Mode                                                       | Outcome                                                 | Recovery                                                                                                                                    |
+| ---------------------------------------------------------- | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| Hallucinated id (model returns id we don't have)           | Silent skip via `if (!relation)`                        | None needed — worst case is a contradiction goes unmarked, not corrupted state. Logged in dev.                                              |
+| Missed contradiction (false negative)                      | New relation gets added alongside old; both stay active | Resolved by future utterance or future probe.                                                                                               |
+| False positive (model marks a correct relation superseded) | Relation hidden from view + export                      | A later utterance re-mentioning the relation will create a new active relation (existing dedup checks active relations only). Self-healing. |
 
 The prompt's tight definition of "trigger ONLY when..." is the main lever for keeping false positives rare. False positives are the most user-visible failure mode (a relation the user cares about silently disappears).
 
@@ -335,10 +339,7 @@ const uncertainRelations = Object.values(s.relations)
     // First-time pair: this is the only active relation between
     // these two entities.
     const pairCount = Object.values(s.relations).filter(
-      (other) =>
-        !other.supersededAt &&
-        other.source === r.source &&
-        other.target === r.target,
+      (other) => !other.supersededAt && other.source === r.source && other.target === r.target,
     ).length;
     if (pairCount <= 1) score += 1;
 

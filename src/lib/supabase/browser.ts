@@ -5,9 +5,7 @@ const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
 if (!SUPABASE_URL || !SUPABASE_KEY) {
-  throw new Error(
-    "Missing VITE_SUPABASE_URL or VITE_SUPABASE_PUBLISHABLE_KEY in .env",
-  );
+  throw new Error("Missing VITE_SUPABASE_URL or VITE_SUPABASE_PUBLISHABLE_KEY in .env");
 }
 
 /**
@@ -15,7 +13,4 @@ if (!SUPABASE_URL || !SUPABASE_KEY) {
  * by @supabase/ssr's default browser adapter. Safe to import from any
  * "use client"-style component or hook.
  */
-export const supabase = createBrowserClient<Database>(
-  SUPABASE_URL,
-  SUPABASE_KEY,
-);
+export const supabase = createBrowserClient<Database>(SUPABASE_URL, SUPABASE_KEY);

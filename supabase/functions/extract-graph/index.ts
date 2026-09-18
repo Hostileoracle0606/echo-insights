@@ -348,7 +348,8 @@ serve(async (req) => {
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
       return new Response(JSON.stringify({ error: "missing authorization" }), {
-        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
     const supabaseUserClient = createClient(
@@ -356,19 +357,22 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_ANON_KEY")!,
       { global: { headers: { Authorization: authHeader } } },
     );
-    const { data: { user }, error: userError } =
-      await supabaseUserClient.auth.getUser();
+    const {
+      data: { user },
+      error: userError,
+    } = await supabaseUserClient.auth.getUser();
     if (userError || !user) {
       return new Response(JSON.stringify({ error: "invalid session" }), {
-        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
     // Optional notebook_id ownership check — if provided, verify the
     // user owns it. The client will pass this once Task 10 lands.
     const notebookId: string | undefined =
-      (body as Record<string, unknown>).notebook_id as string | undefined ??
-      (body as Record<string, unknown>).notebookId as string | undefined;
+      ((body as Record<string, unknown>).notebook_id as string | undefined) ??
+      ((body as Record<string, unknown>).notebookId as string | undefined);
     if (notebookId) {
       const { data: notebook, error: nbErr } = await supabaseUserClient
         .from("notebooks")
@@ -377,7 +381,8 @@ serve(async (req) => {
         .single();
       if (nbErr || !notebook) {
         return new Response(JSON.stringify({ error: "notebook not found" }), {
-          status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 404,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
     }

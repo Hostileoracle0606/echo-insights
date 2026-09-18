@@ -105,8 +105,10 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_ANON_KEY")!,
       { global: { headers: { Authorization: authHeader } } },
     );
-    const { data: { user }, error: userError } =
-      await supabaseUserClient.auth.getUser();
+    const {
+      data: { user },
+      error: userError,
+    } = await supabaseUserClient.auth.getUser();
     if (userError || !user) {
       return jsonResponse({ error: "invalid session" }, { status: 401 });
     }

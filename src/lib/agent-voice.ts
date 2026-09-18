@@ -175,8 +175,18 @@ const DIRECT_VOICE_SETTINGS: Record<
   AgentVoiceIntent,
   { stability: number; similarity_boost: number; style: number; use_speaker_boost: boolean }
 > = {
-  "curious-follow-up": { stability: 0.32, similarity_boost: 0.85, style: 0.55, use_speaker_boost: true },
-  "supportive-error": { stability: 0.45, similarity_boost: 0.85, style: 0.4, use_speaker_boost: true },
+  "curious-follow-up": {
+    stability: 0.32,
+    similarity_boost: 0.85,
+    style: 0.55,
+    use_speaker_boost: true,
+  },
+  "supportive-error": {
+    stability: 0.45,
+    similarity_boost: 0.85,
+    style: 0.4,
+    use_speaker_boost: true,
+  },
   neutral: { stability: 0.35, similarity_boost: 0.85, style: 0.5, use_speaker_boost: true },
 };
 
@@ -210,7 +220,10 @@ async function requestElevenLabsDirect(
   for (let i = 0; i < bytes.length; i += chunkSize) {
     binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
   }
-  return { audioBase64: btoa(binary), mimeType: response.headers.get("Content-Type") ?? "audio/mpeg" };
+  return {
+    audioBase64: btoa(binary),
+    mimeType: response.headers.get("Content-Type") ?? "audio/mpeg",
+  };
 }
 
 function getAgentTtsEndpoint() {

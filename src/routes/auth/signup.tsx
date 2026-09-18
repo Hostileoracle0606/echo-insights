@@ -1,7 +1,18 @@
 import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
 import { useState } from "react";
 import { useSupabase } from "@/lib/auth/session";
-import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Mail, Lock, User, ArrowRight, Loader2, CheckCircle2 } from "lucide-react";
 
 export const Route = createFileRoute("/auth/signup")({ component: Signup });
 
@@ -30,10 +41,8 @@ function Signup() {
       });
       if (error) throw error;
       if (data.session) {
-        // No email confirmation required — proceed to app.
         router.navigate({ to: "/" });
       } else {
-        // Email confirmation required — show inbox prompt.
         setNeedsConfirmation(true);
       }
     } catch (e) {
@@ -44,94 +53,128 @@ function Signup() {
   };
 
   return (
-    <div className="relative min-h-screen bg-[#faf9f6] font-['Inter'] text-[#1a1c1a]">
+    <div className="relative flex min-h-screen items-center justify-center px-4">
+      {/* Wordmark */}
       <Link
         to="/"
-        className="fixed left-8 top-8 z-50 font-['Noto_Serif'] text-2xl font-medium tracking-[0.18em] text-[#1a1c1a] md:left-12 md:top-10"
+        className="fixed left-6 top-6 z-50 font-display text-xl font-medium tracking-wide text-foreground md:left-10 md:top-8"
       >
-        Lumen<span className="text-[#D4AF37]">.</span>
+        Lumen<span className="text-accent">.</span>
       </Link>
 
-      <main className="relative z-10 flex min-h-screen items-center justify-center px-6 pt-28 pb-12">
-        <div className="mx-auto w-full max-w-md text-center">
-          <p className="mb-6 text-[10px] uppercase tracking-[0.32em] text-[#D4AF37]">
-            · Create account ·
-          </p>
-          <h1 className="mb-8 font-['Noto_Serif'] text-[36px] font-medium leading-[1.15] tracking-[-0.02em] text-[#1a1c1a] md:text-[44px]">
-            Make a place to think.
-          </h1>
+      <div className="w-full max-w-sm">
+        <Card className="border-border/60 shadow-[var(--shadow-paper)]">
+          <CardHeader className="space-y-1 pb-4">
+            <CardTitle className="font-display text-2xl tracking-tight">
+              Create your account
+            </CardTitle>
+            <CardDescription>Start building your personal knowledge graph</CardDescription>
+          </CardHeader>
 
-          {needsConfirmation ? (
-            <p className="font-['Noto_Serif'] italic text-base leading-[1.6] text-[#4d4635]">
-              Check your inbox — we sent a confirmation link to <strong>{email}</strong>.
-            </p>
-          ) : (
-            <form onSubmit={handleSubmit} className="space-y-5">
-              <input
-                type="text"
-                value={displayName}
-                onChange={(e) => setDisplayName(e.target.value)}
-                placeholder="Your name"
-                autoComplete="name"
-                autoFocus
-                required
-                minLength={1}
-                className="w-full border bg-transparent px-6 py-4 font-['Noto_Serif'] text-base text-[#1a1c1a] border-[#1a1c1a]/30 transition-colors duration-300 placeholder:text-[#7f7663]/70 placeholder:font-['Inter'] placeholder:text-sm placeholder:tracking-wider focus:border-[#1a1c1a]/70 focus:outline-none"
-              />
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@example.com"
-                autoComplete="email"
-                required
-                className="w-full border bg-transparent px-6 py-4 font-['Noto_Serif'] text-base text-[#1a1c1a] border-[#1a1c1a]/30 transition-colors duration-300 placeholder:text-[#7f7663]/70 placeholder:font-['Inter'] placeholder:text-sm placeholder:tracking-wider focus:border-[#1a1c1a]/70 focus:outline-none"
-              />
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Password — at least 8 characters"
-                autoComplete="new-password"
-                required
-                minLength={8}
-                className="w-full border bg-transparent px-6 py-4 font-['Noto_Serif'] text-base text-[#1a1c1a] border-[#1a1c1a]/30 transition-colors duration-300 placeholder:text-[#7f7663]/70 placeholder:font-['Inter'] placeholder:text-sm placeholder:tracking-wider focus:border-[#1a1c1a]/70 focus:outline-none"
-              />
+          <CardContent>
+            {needsConfirmation ? (
+              <div className="space-y-3 text-center py-4">
+                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-accent/10">
+                  <CheckCircle2 className="h-5 w-5 text-accent" />
+                </div>
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  We sent a confirmation link to{" "}
+                  <span className="font-medium text-foreground">{email}</span>.
+                  <br />
+                  Check your inbox to activate your account.
+                </p>
+              </div>
+            ) : (
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="signup-name">Name</Label>
+                  <div className="relative">
+                    <User className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      id="signup-name"
+                      type="text"
+                      value={displayName}
+                      onChange={(e) => setDisplayName(e.target.value)}
+                      placeholder="Your name"
+                      autoComplete="name"
+                      autoFocus
+                      required
+                      minLength={1}
+                      className="pl-9"
+                    />
+                  </div>
+                </div>
 
-              {error && (
-                <p className="font-['Inter'] text-sm text-red-700">{error}</p>
-              )}
+                <div className="space-y-2">
+                  <Label htmlFor="signup-email">Email</Label>
+                  <div className="relative">
+                    <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      id="signup-email"
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="you@example.com"
+                      autoComplete="email"
+                      required
+                      className="pl-9"
+                    />
+                  </div>
+                </div>
 
-              <button
-                type="submit"
-                disabled={submitting}
-                className={cn(
-                  "group relative inline-flex items-center justify-center",
-                  "border border-[#1a1c1a]/60 bg-transparent",
-                  "px-10 py-3.5 text-[11px] uppercase tracking-[0.32em] text-[#1a1c1a]",
-                  "transition-all duration-500 ease-[cubic-bezier(0.4,0,0.2,1)]",
-                  "hover:border-[#1a1c1a] hover:bg-[#1a1c1a] hover:text-[#faf9f6]",
-                  "disabled:opacity-40 disabled:cursor-not-allowed",
-                )}
+                <div className="space-y-2">
+                  <Label htmlFor="signup-password">Password</Label>
+                  <div className="relative">
+                    <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      id="signup-password"
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="At least 8 characters"
+                      autoComplete="new-password"
+                      required
+                      minLength={8}
+                      className="pl-9"
+                    />
+                  </div>
+                </div>
+
+                {error && <p className="text-sm text-destructive">{error}</p>}
+
+                <Button type="submit" disabled={submitting} className="w-full" size="lg">
+                  {submitting ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <>
+                      Create Account
+                      <ArrowRight className="h-4 w-4" />
+                    </>
+                  )}
+                </Button>
+              </form>
+            )}
+          </CardContent>
+
+          <CardFooter className="justify-center border-t border-border/50 pt-6">
+            <p className="text-sm text-muted-foreground">
+              Already have an account?{" "}
+              <Link
+                to="/auth/login"
+                className="font-medium text-foreground transition-colors hover:text-accent"
               >
-                {submitting ? "…" : "Create Account"}
-              </button>
-            </form>
-          )}
+                Sign in
+                <ArrowRight className="ml-0.5 inline h-3 w-3" />
+              </Link>
+            </p>
+          </CardFooter>
+        </Card>
 
-          <div className="mx-auto mt-12 h-px w-1/3 bg-gradient-to-r from-transparent via-[#D4AF37]/40 to-transparent" />
-
-          <p className="mt-8 text-[10px] uppercase tracking-[0.22em] text-[#7f7663]">
-            Already have an account?{" "}
-            <Link
-              to="/auth/login"
-              className="transition-colors duration-300 hover:text-[#D4AF37]"
-            >
-              Sign in →
-            </Link>
-          </p>
-        </div>
-      </main>
+        {/* Footer legal line */}
+        <p className="mt-6 text-center text-[11px] text-muted-foreground/70">
+          By creating an account you agree to our Terms of Service.
+        </p>
+      </div>
     </div>
   );
 }
