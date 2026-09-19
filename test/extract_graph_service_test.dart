@@ -109,6 +109,54 @@ void main() {
     );
   });
 
+  test(
+      'waits for an in-progress canonical extraction without spending the error retry budget',
+      () async {
+    var calls = 0;
+    final service = ExtractGraphService(
+      baseUrl: 'https://runtime.example.com',
+      accessTokenProvider: () async => 'signed-user-token',
+      client: MockClient((request) async {
+        calls += 1;
+        if (calls == 1) {
+          return http.Response(
+            jsonEncode({
+              'status': 'rejected',
+              'code': 'inProgress',
+              'retryAfterMs': 0,
+            }),
+            409,
+          );
+        }
+        return http.Response(
+          jsonEncode({
+            'patch': {
+              'entities': [
+                {'name': 'Maya', 'type': 'person'},
+              ],
+              'relations': <dynamic>[],
+              'supersedes': <dynamic>[],
+            },
+          }),
+          200,
+        );
+      }),
+    );
+
+    final patch = await service.extract(
+      notebookId: notebookId,
+      turnId: 'turn-123',
+      extractorVersion: 'gemini/extract_graph/v2',
+      text: 'I met Maya for coffee.',
+      state: JournalState.empty(),
+      mode: 'granular',
+      maxRetries: 0,
+    );
+
+    expect(calls, 2);
+    expect(patch.entities.map((entity) => entity.name), ['Maya']);
+  });
+
   test('does not call the runtime without a signed-in session', () async {
     var called = false;
     final service = ExtractGraphService(

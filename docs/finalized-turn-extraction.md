@@ -225,3 +225,36 @@ section contains only the current transcript.
   than scheduling a later retry.
 - **Provisional extraction is off by default.** The reducer and pipeline support
   it and it is proven display-only by test, but no adapter enables it.
+
+## Potential future addition: bounded extraction recovery
+
+The current short retry window protects against brief transient failures, but a
+mobile-network handoff, longer provider outage, expired session, or malformed
+response can still permanently remove a finalized turn from semantic memory.
+This normally does not stop the live conversation, so the user may discover the
+loss only later when Lumen fails to recall something they already said.
+
+The repository does not yet collect the production metric needed to state the
+real failure probability. If the probability that one extraction remains
+failed after inline retries is `q`, the probability of at least one lost job in
+`n` jobs is `1 - (1 - q)^n`. For example, a 0.5% post-retry failure rate becomes
+about a 9.5% chance of at least one loss over 20 jobs and 18.2% over 40 jobs.
+Retries during the same outage are correlated, so treating the three attempts
+as independent would understate this risk.
+
+A future recovery path should:
+
+- preserve finalized user turns in the durable journal after retryable failure;
+- retry later with exponential backoff, jitter, a maximum attempt count and
+  explicit terminal-failure state;
+- bound the queue by count and age while retaining the original transcript and
+  request identity;
+- keep extraction and commits ordered within one notebook, while allowing the
+  backend to process different notebooks concurrently;
+- expose pending count, oldest-job age and terminal failure to both telemetry
+  and a small user-facing “memory syncing” status; and
+- measure extraction result, latency, retry count and dropped-turn count before
+  setting a production reliability target.
+
+This is a reliability improvement, not part of the currently implemented
+finalized-turn state model.

@@ -12,7 +12,8 @@ Segment 1 creates:
   one-use Gemini Live credential;
 - an Amazon Lambda graph extractor that calls Gemini without exposing the
   permanent credential;
-- a retained DynamoDB cache for idempotent extraction retries;
+- a retained DynamoDB claim store with leases and canonical results for
+  idempotent extraction retries;
 - two protected Amazon API Gateway routes; and
 - a default gateway stage limited to 10 requests per second with bursts of 20.
 

@@ -1,3 +1,5 @@
+import { createHash, randomUUID } from "node:crypto";
+
 import { extractGraphFunction, granularPrompt, wikiPrompt } from "./prompts.mjs";
 
 const entityTypes = new Set([
@@ -49,6 +51,28 @@ function parseBody(event) {
   } catch {
     return null;
   }
+}
+
+function canonicalJson(value) {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.keys(value)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function extractionInputHash(body) {
+  return createHash("sha256")
+    .update(
+      canonicalJson({
+        text: body.text.trim(),
+        mode: body.mode,
+      }),
+    )
+    .digest("hex");
 }
 
 function boundedString(value, maxLength, { allowEmpty = false } = {}) {
@@ -210,10 +234,12 @@ export function createExtractGraphHandler({
   supabaseUrl,
   publishableKey,
   getPermanentCredential,
-  getCachedPatch,
-  putCachedPatch,
+  acquireExtraction,
+  completeExtraction,
   fetchImpl,
   model = "gemini-2.5-flash",
+  now = () => Date.now(),
+  newOwnerToken = () => randomUUID(),
   sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
 }) {
   return async function handle(event) {
@@ -252,10 +278,38 @@ export function createExtractGraphHandler({
     }
 
     const cacheKey = `${userId}:${notebookId}:${body.turnId}:${body.extractorVersion}`;
+    const inputHash = extractionInputHash(body);
+    const ownerToken = newOwnerToken();
+    const claimedAt = now();
+    let acquisition;
     try {
-      const cached = await getCachedPatch(cacheKey);
-      if (validPatch(cached)) return jsonResponse(200, { patch: cached });
+      acquisition = await acquireExtraction({
+        id: cacheKey,
+        inputHash,
+        ownerToken,
+        now: claimedAt,
+        leaseExpiresAt: claimedAt + 35_000,
+        expiresAt: Math.floor(claimedAt / 1000) + 7 * 24 * 60 * 60,
+      });
     } catch {
+      return jsonResponse(503, { status: "rejected", code: "providerUnavailable" });
+    }
+    if (acquisition.status === "completed") {
+      return validPatch(acquisition.patch)
+        ? jsonResponse(200, { patch: acquisition.patch })
+        : jsonResponse(503, { status: "rejected", code: "providerUnavailable" });
+    }
+    if (acquisition.status === "pending") {
+      return jsonResponse(409, {
+        status: "rejected",
+        code: "inProgress",
+        retryAfterMs: acquisition.retryAfterMs,
+      });
+    }
+    if (acquisition.status === "mismatch") {
+      return jsonResponse(409, { status: "rejected", code: "requestIdReused" });
+    }
+    if (acquisition.status !== "acquired") {
       return jsonResponse(503, { status: "rejected", code: "providerUnavailable" });
     }
 
@@ -308,12 +362,38 @@ export function createExtractGraphHandler({
         if (!patch) {
           return jsonResponse(502, { status: "rejected", code: "invalidProviderResponse" });
         }
-        try {
-          await putCachedPatch(cacheKey, patch);
-        } catch {
-          return jsonResponse(503, { status: "rejected", code: "providerUnavailable" });
+        let completion;
+        for (let completionAttempt = 0; completionAttempt < 3; completionAttempt += 1) {
+          try {
+            completion = await completeExtraction({
+              id: cacheKey,
+              inputHash,
+              ownerToken,
+              patch,
+              expiresAt: Math.floor(now() / 1000) + 7 * 24 * 60 * 60,
+            });
+            break;
+          } catch {
+            if (completionAttempt === 2) {
+              return jsonResponse(503, { status: "rejected", code: "providerUnavailable" });
+            }
+            await sleep(100 * 2 ** completionAttempt);
+          }
         }
-        return jsonResponse(200, { patch });
+        if (completion.status === "completed" && validPatch(completion.patch)) {
+          return jsonResponse(200, { patch: completion.patch });
+        }
+        if (completion.status === "pending") {
+          return jsonResponse(409, {
+            status: "rejected",
+            code: "inProgress",
+            retryAfterMs: completion.retryAfterMs,
+          });
+        }
+        if (completion.status === "mismatch") {
+          return jsonResponse(409, { status: "rejected", code: "requestIdReused" });
+        }
+        return jsonResponse(503, { status: "rejected", code: "providerUnavailable" });
       } catch {
         if (attempt < 2) {
           await sleep(500 * 2 ** attempt);

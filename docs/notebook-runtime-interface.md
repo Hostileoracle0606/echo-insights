@@ -48,10 +48,20 @@ Returns a validated `GraphPatch` containing `entities`, `relations`, and
 request, reads the permanent credential from Secrets Manager, and calls Gemini
 server-side. Flutter receives the patch, never a credential.
 
-`turnId` and `extractorVersion` form part of the authenticated retry-cache key.
-Repeated delivery of the same finalized turn returns the cached patch instead
-of paying for or producing a different extraction. Cached patches expire after
-seven days.
+`turnId` and `extractorVersion` form part of the authenticated extraction key.
+The first delivery atomically claims that key under a bounded lease before it
+calls Gemini. Overlapping deliveries receive `409 inProgress` with a bounded
+`retryAfterMs`; the client polls without spending its ordinary failure-retry
+budget. Once complete, every delivery receives the same canonical patch.
+
+An input hash binds the key to the immutable normalized transcript and mode.
+Derived retrieval/context is deliberately excluded because Flutter reconstructs
+it during crash recovery; the first successful claimant fixes the canonical
+result. Reusing the key for different immutable input returns
+`409 requestIdReused`. An expired lease can be acquired by a replacement
+invocation, while owner-token checks prevent the stale invocation from
+overwriting the replacement's result. Completed records expire after seven
+days.
 
 ## Graph-extraction design decisions
 
@@ -82,9 +92,10 @@ seven days.
 - **Validate both sides of the provider call.** The runtime rejects malformed
   client input and invalid model output before either can affect canonical
   graph state.
-- **Cache by user, notebook, turn, and extractor version.** An uncertain retry
-  returns the original patch, avoiding duplicate model cost and divergent
-  extraction results. The encrypted cache expires entries after seven days.
+- **Claim by user, notebook, turn, and extractor version.** Conditional
+  DynamoDB updates elect one current extraction owner. Input hashes, expiring
+  leases, and owner-checked completion make uncertain and overlapping retries
+  converge on one canonical patch. Completed records expire after seven days.
 - **Inject infrastructure dependencies into the core handler.** Secret reads,
   caching, networking, timing, and model selection are supplied by the Lambda
   entry point. The complete workflow can therefore be tested without live

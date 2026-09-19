@@ -9,6 +9,9 @@ import '../models/graph_patch.dart';
 import '../models/journal_state.dart';
 import 'extraction_context.dart';
 
+const int _maxInProgressPolls = 40;
+const int _maxInProgressDelayMs = 2000;
+
 class GraphExtractionException implements Exception {
   final String message;
   final int? statusCode;
@@ -77,6 +80,7 @@ class ExtractGraphService {
       '$_baseUrl/v1/notebooks/${Uri.encodeComponent(notebookId)}/extractions',
     );
 
+    var inProgressPolls = 0;
     for (var attempt = 0; attempt <= maxRetries; attempt++) {
       try {
         final response = await _client.post(
@@ -91,6 +95,27 @@ class ExtractGraphService {
 
         if (response.statusCode == 401 || response.statusCode == 403) {
           throw StateError('The signed-in session is no longer valid');
+        }
+        if (response.statusCode == 409 &&
+            inProgressPolls < _maxInProgressPolls) {
+          Object? decoded;
+          try {
+            decoded = jsonDecode(response.body);
+          } on FormatException {
+            decoded = null;
+          }
+          if (decoded is Map && decoded['code'] == 'inProgress') {
+            final requestedDelay = decoded['retryAfterMs'];
+            final delayMs = requestedDelay is num
+                ? requestedDelay.toInt().clamp(0, _maxInProgressDelayMs)
+                : 500;
+            inProgressPolls += 1;
+            await Future<void>.delayed(Duration(milliseconds: delayMs));
+            // Waiting for the owner is not a failed request and therefore must
+            // not consume the ordinary network/provider retry budget.
+            attempt -= 1;
+            continue;
+          }
         }
         if ((response.statusCode == 429 || response.statusCode >= 500) &&
             attempt < maxRetries) {
