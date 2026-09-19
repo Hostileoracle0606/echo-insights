@@ -260,6 +260,24 @@ void main() {
       expect(m.state.pending, hasLength(1));
       expect(m.state.pending.first.transcript, 'You mentioned Acme.');
     });
+
+    test('the first interim transcript opens the next assistant turn', () {
+      final m = machine();
+      m.dispatch(const SessionStarted(sessionId: 's1', notebookId: 'nb1'));
+      m.dispatch(const InterimTranscript(
+        speaker: Speaker.assistant,
+        text: 'You mentioned Acme.',
+      ));
+      m.dispatch(const AssistantInterrupted(heardChars: 19));
+      m.dispatch(const TurnCompleted(speaker: Speaker.assistant));
+
+      m.dispatch(const InterimTranscript(
+        speaker: Speaker.assistant,
+        text: 'What happened next?',
+      ));
+
+      expect(m.state.activeAssistant?.text, 'What happened next?');
+    });
   });
 
   group('durable turn processing', () {

@@ -8,6 +8,7 @@ import type {
   TurnMachine,
   TurnMachineDeps,
   TurnMachineState,
+  TurnCheckpoint,
 } from "./types";
 
 const EMPTY_STATE: TurnMachineState = {
@@ -66,14 +67,15 @@ function newActiveTurn(turnId: string, speaker: Speaker, startedAt: string): Act
   };
 }
 
-export function createTurnMachine(deps: TurnMachineDeps): TurnMachine {
+export function createTurnMachine(deps: TurnMachineDeps, checkpoint?: TurnCheckpoint): TurnMachine {
   const hash = deps.hash ?? fnv1a;
   const extractorVersion = deps.extractorVersion ?? "v1";
   const provisional = deps.provisionalExtraction ?? false;
 
-  let state: TurnMachineState = EMPTY_STATE;
+  if (checkpoint && checkpoint.version !== 1) throw new Error("Unsupported turn checkpoint");
+  let state: TurnMachineState = checkpoint ? structuredClone(checkpoint.state) : structuredClone(EMPTY_STATE);
   /** In-memory only: prevents starting the same durable step twice. */
-  let inFlight: string | null = null;
+  let inFlight: string | null = checkpoint?.inFlight ?? null;
   /**
    * Assistant transcript gate after a barge-in. Gemini's documented sequence is
    * `interrupted` then `turnComplete`, and output transcription has no ordering
@@ -81,7 +83,7 @@ export function createTurnMachine(deps: TurnMachineDeps): TurnMachine {
    * `collecting` drops it for the interrupted turn; `awaitingNewTurn` drops
    * trailing final text until genuinely new speech starts.
    */
-  let assistantGate: "collecting" | "awaitingNewTurn" | null = null;
+  let assistantGate: "collecting" | "awaitingNewTurn" | null = checkpoint?.assistantGate ?? null;
 
   function keyOf(turn: {
     turnId: string;
@@ -516,5 +518,6 @@ export function createTurnMachine(deps: TurnMachineDeps): TurnMachine {
       return state;
     },
     dispatch: reduce,
+    checkpoint: () => structuredClone({ version: 1, state, inFlight, assistantGate }),
   };
 }

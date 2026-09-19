@@ -24,6 +24,45 @@ const payload = (name: string): ExtractGraphResult => ({
   followUp: { question: "", reason: "", targetEntityNames: [] },
 });
 
+describe("process-independent checkpoints", () => {
+  function restore(original: ReturnType<typeof machine>) {
+    return createTurnMachine({
+      now: () => "2026-09-18T00:00:00.000Z",
+      newTurnId: () => "restored-new-turn",
+      newRequestId: () => "restored-new-request",
+    }, JSON.parse(JSON.stringify(original.checkpoint())));
+  }
+
+  it("keeps the interruption gate across a process restart", () => {
+    const first = machine();
+    first.dispatch({ type: "sessionStarted", sessionId: "s1", notebookId: "nb1" });
+    first.dispatch({ type: "interimTranscript", speaker: "assistant", text: "Never heard." });
+    first.dispatch({ type: "assistantInterrupted", heardChars: null });
+    const second = restore(first);
+    second.dispatch({ type: "turnCompleted", speaker: "assistant" });
+    second.dispatch({ type: "finalTranscript", speaker: "assistant", text: "Never heard." });
+    expect(second.state.pending).toEqual([]);
+    expect(second.state.conversation).toEqual([]);
+  });
+
+  it("does not restart in-flight extraction when another turn arrives after restart", () => {
+    const first = machine();
+    first.dispatch({ type: "sessionStarted", sessionId: "s1", notebookId: "nb1" });
+    first.dispatch({ type: "finalTranscript", speaker: "user", text: "I work at Acme." });
+    const effects = first.dispatch({ type: "turnCompleted", speaker: "user" });
+    const extraction = effects.find((effect) => effect.type === "startDurableExtraction")!;
+    if (extraction.type !== "startDurableExtraction") throw new Error("Missing extraction");
+    const second = restore(first);
+    second.dispatch({ type: "finalTranscript", speaker: "user", text: "I know Maya." });
+    const more = second.dispatch({ type: "turnCompleted", speaker: "user" });
+    expect(more.some((effect) => effect.type === "startDurableExtraction")).toBe(false);
+    const settled = second.dispatch({ type: "durableExtractionSucceeded", key: extraction.key, payload: payload("Acme") });
+    expect(settled.some((effect) => effect.type === "startCommit")).toBe(true);
+    expect(second.state.pending).toHaveLength(2);
+    expect(first.state.pending).toHaveLength(1);
+  });
+});
+
 describe("interim transcripts", () => {
   it("treats interim text as replaceable display state and bumps the version", () => {
     const m = machine();

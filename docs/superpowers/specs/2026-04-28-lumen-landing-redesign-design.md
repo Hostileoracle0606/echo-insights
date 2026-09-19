@@ -71,11 +71,11 @@ TanStack Router with file-based route generation. Renaming
 `src/routes/index.tsx` → `src/routes/app.tsx` regenerates `routeTree.gen.ts`
 so:
 
-| URL | Component |
-|---|---|
-| `/` | `landing.tsx` (NEW) |
-| `/app` | `app.tsx` (formerly `index.tsx`) |
-| `/dock-preview` | unchanged |
+| URL             | Component                        |
+| --------------- | -------------------------------- |
+| `/`             | `landing.tsx` (NEW)              |
+| `/app`          | `app.tsx` (formerly `index.tsx`) |
+| `/dock-preview` | unchanged                        |
 
 The `Begin Journey` CTA uses `<Link to="/app">` for client-side navigation.
 
@@ -88,24 +88,24 @@ landing page is just another route. Deployment, CI, hosting unchanged.
 
 Top to bottom:
 
-| Block | Treatment |
-|---|---|
-| Nav | Trim. Lumen logo (left), `Begin Journey` button (right). No nav links, no `Join Waitlist`. |
-| Hero | Keep. Same headline, subhead, ambient gold orbs/glow. CTAs: `Begin Journey` and `Watch Film`. |
-| Bento grid | Three glass cards, same layout as mockup (`md:col-span-2 + md:col-span-1` row 1, `md:col-span-3` row 2). New animated widgets inside each. |
-| Voices of Lumen | **Removed.** No replacement. |
-| Footer | Keep. `© {currentYear} Lumen`. Four placeholder hash-anchor links (Privacy, Terms, Journal Guide, Journal Ethics). |
+| Block           | Treatment                                                                                                                                  |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| Nav             | Trim. Lumen logo (left), `Begin Journey` button (right). No nav links, no `Join Waitlist`.                                                 |
+| Hero            | Keep. Same headline, subhead, ambient gold orbs/glow. CTAs: `Begin Journey` and `Watch Film`.                                              |
+| Bento grid      | Three glass cards, same layout as mockup (`md:col-span-2 + md:col-span-1` row 1, `md:col-span-3` row 2). New animated widgets inside each. |
+| Voices of Lumen | **Removed.** No replacement.                                                                                                               |
+| Footer          | Keep. `© {currentYear} Lumen`. Four placeholder hash-anchor links (Privacy, Terms, Journal Guide, Journal Ethics).                         |
 
 ### Visual system
 
 The landing page uses the design tokens specified in
 `Downloads/stitch_lumen_living_knowledge_graph/DESIGN.md` — gold primary
 (`#D4AF37`, `#735c00`), warm whites, Noto Serif headings, Inter body,
-glassmorphic surfaces. The widgets are themed to fit *into* that system: gold
+glassmorphic surfaces. The widgets are themed to fit _into_ that system: gold
 accents replace the app's amber, Noto Serif replaces Fraunces for landing-page
 labels, glass cards replace the app's paper surface.
 
-The widgets reuse the *structural* code (state machines, force simulation, goo
+The widgets reuse the _structural_ code (state machines, force simulation, goo
 SVG filter) but override visual tokens via Tailwind utility classes scoped to
 the landing route.
 
@@ -119,13 +119,13 @@ the landing route.
 
 **State machine:** 12-second loop driven by a `useEffect` interval.
 
-| Phase | Duration | Mode | Visible content |
-|---|---|---|---|
-| 1 | 1.0 s | `idle` | Collapsed narrow pill (180 px) |
-| 2 | 4.5 s | `listening` | Mercury silhouette active. "You" speaker label. Transcript types in word-by-word at ~80 ms per word. |
-| 3 | 1.5 s | `thinking` | "Mapping your thought…" with spinning loader |
-| 4 | 4.0 s | `speaking` | Mercury silhouette active. "Lumen" label. Agent transcript types in. |
-| 5 | 1.0 s | `idle` | Collapsed → loop |
+| Phase | Duration | Mode        | Visible content                                                                                      |
+| ----- | -------- | ----------- | ---------------------------------------------------------------------------------------------------- |
+| 1     | 1.0 s    | `idle`      | Collapsed narrow pill (180 px)                                                                       |
+| 2     | 4.5 s    | `listening` | Mercury silhouette active. "You" speaker label. Transcript types in word-by-word at ~80 ms per word. |
+| 3     | 1.5 s    | `thinking`  | "Mapping your thought…" with spinning loader                                                         |
+| 4     | 4.0 s    | `speaking`  | Mercury silhouette active. "Lumen" label. Agent transcript types in.                                 |
+| 5     | 1.0 s    | `idle`      | Collapsed → loop                                                                                     |
 
 **Reused infrastructure:**
 
@@ -147,10 +147,10 @@ the landing route.
 **Sample text** (already declared in `dock-preview.tsx`, reused via
 `sample-data.ts` re-export):
 
-- User: *"I had coffee with Maya this morning and she mentioned the Atlas
+- User: _"I had coffee with Maya this morning and she mentioned the Atlas
   migration is being delayed again, and honestly I'm not sure how I feel
-  about it"*
-- Agent: *"How long have you been turning this over with Maya?"*
+  about it"_
+- Agent: _"How long have you been turning this over with Maya?"_
 
 ### 5.2 Gentle Inquiry — animated bubbles
 
@@ -160,23 +160,23 @@ React state.
 **Behavior:** 7-second loop, three exchange pairs cycle through to avoid
 robotic repetition.
 
-| t (s) | Event |
-|---|---|
-| 0.0 | Both bubbles hidden (opacity 0, translateY 8 px) |
-| 0.3 | User bubble fades in + slides up (300 ms) |
-| 1.5 | Three pulsing dots appear inside an empty agent bubble |
-| 3.0 | Dots are replaced by agent text, fades in (300 ms) |
-| 6.0 | Both bubbles fade out (200 ms) + slide down |
-| 7.0 | Loop restarts with the next exchange pair |
+| t (s) | Event                                                  |
+| ----- | ------------------------------------------------------ |
+| 0.0   | Both bubbles hidden (opacity 0, translateY 8 px)       |
+| 0.3   | User bubble fades in + slides up (300 ms)              |
+| 1.5   | Three pulsing dots appear inside an empty agent bubble |
+| 3.0   | Dots are replaced by agent text, fades in (300 ms)     |
+| 6.0   | Both bubbles fade out (200 ms) + slide down            |
+| 7.0   | Loop restarts with the next exchange pair              |
 
 **Exchange pairs:**
 
-1. *"I felt overwhelmed by the project scope today."* / *"What specific part
-   of the scope feels heaviest right now?"*
-2. *"I had coffee with Maya this morning."* / *"How long have you been turning
-   this over with her?"*
-3. *"I keep thinking about the move."* / *"What about it surfaces most
-   often?"*
+1. _"I felt overwhelmed by the project scope today."_ / _"What specific part
+   of the scope feels heaviest right now?"_
+2. _"I had coffee with Maya this morning."_ / _"How long have you been turning
+   this over with her?"_
+3. _"I keep thinking about the move."_ / _"What about it surfaces most
+   often?"_
 
 **Visual treatment** (matches the existing static mockup): user bubble
 right-aligned in solid white with `rounded-tr-none`; agent bubble left-aligned
@@ -194,18 +194,18 @@ hand-drawn `drawNodeIcon` glyphs.
 
 **Seed data** (declared in `sample-data.ts`):
 
-| Entity | Type |
-|---|---|
-| Maya | person |
-| Atlas migration | project |
-| coffee shop | place |
-| overwhelm | emotion |
-| timeline | concept |
-| Kai | person |
-| design review | event |
-| portfolio | project |
-| weekend hike | activity |
-| Marin | place |
+| Entity          | Type     |
+| --------------- | -------- |
+| Maya            | person   |
+| Atlas migration | project  |
+| coffee shop     | place    |
+| overwhelm       | emotion  |
+| timeline        | concept  |
+| Kai             | person   |
+| design review   | event    |
+| portfolio       | project  |
+| weekend hike    | activity |
+| Marin           | place    |
 
 **Relations:**
 
@@ -226,12 +226,12 @@ clutter the small card.
 
 **Loop (15 s total):**
 
-| Phase | Duration | Behavior |
-|---|---|---|
-| Stage in | 8.0 s | One entity appears every 800 ms with a 600 ms scale-up + glow pulse. Relations snap into place when both endpoints are present. |
-| Drift | 6.0 s | Simulation continues with `alphaTarget(0.05)` for gentle ambient motion. |
-| Fade | 1.0 s | Whole canvas fades to opacity 0. |
-| (loop) | 0.0 s | Reset, return to phase 1. |
+| Phase    | Duration | Behavior                                                                                                                        |
+| -------- | -------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| Stage in | 8.0 s    | One entity appears every 800 ms with a 600 ms scale-up + glow pulse. Relations snap into place when both endpoints are present. |
+| Drift    | 6.0 s    | Simulation continues with `alphaTarget(0.05)` for gentle ambient motion.                                                        |
+| Fade     | 1.0 s    | Whole canvas fades to opacity 0.                                                                                                |
+| (loop)   | 0.0 s    | Reset, return to phase 1.                                                                                                       |
 
 **Interactivity disabled.** The widget passes `onSelect={undefined}`, an
 explicit `interactive={false}` prop is added to `<GraphView>` to disable
@@ -281,32 +281,32 @@ The four bottom links (Privacy, Terms, Journal Guide, Journal Ethics) remain
 All three widgets respect `prefers-reduced-motion: reduce` via a
 `useReducedMotion()` hook.
 
-| Widget | Reduced-motion fallback |
-|---|---|
-| Effortless Capture | Pill renders statically expanded in `speaking` mode with the agent line displayed. No transitions, no goo blob animation. |
-| Gentle Inquiry | Both bubbles statically present with the first exchange pair. No fades, no looping. |
-| Crystalline Knowledge | Graph runs ONE simulation tick on mount then freezes (`alphaTarget(0)`). No entry stagger, no drift, no fade-loop. |
+| Widget                | Reduced-motion fallback                                                                                                   |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| Effortless Capture    | Pill renders statically expanded in `speaking` mode with the agent line displayed. No transitions, no goo blob animation. |
+| Gentle Inquiry        | Both bubbles statically present with the first exchange pair. No fades, no looping.                                       |
+| Crystalline Knowledge | Graph runs ONE simulation tick on mount then freezes (`alphaTarget(0)`). No entry stagger, no drift, no fade-loop.        |
 
 ## 8. Mobile behavior
 
 The bento grid collapses to a single column at `< md` (Tailwind's 768 px
 breakpoint), matching the original mockup. Per-widget mobile treatment:
 
-| Widget | Mobile treatment |
-|---|---|
-| Effortless Capture | Pill collapsed-min-width drops from 180 px to 140 px. Expanded-max-width clamps to `calc(100vw - 4rem)`. |
-| Gentle Inquiry | Bubbles reflow naturally; outer card padding tightens via existing Tailwind utilities. |
+| Widget                | Mobile treatment                                                                                                                |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| Effortless Capture    | Pill collapsed-min-width drops from 180 px to 140 px. Expanded-max-width clamps to `calc(100vw - 4rem)`.                        |
+| Gentle Inquiry        | Bubbles reflow naturally; outer card padding tightens via existing Tailwind utilities.                                          |
 | Crystalline Knowledge | Card stacks vertically: text on top, graph on bottom at `aspect-video`. Canvas autosizes through the existing `ResizeObserver`. |
 
 ## 9. Risks and mitigations
 
-| Risk | Mitigation |
-|---|---|
-| `<GraphView>` couples tightly to journal-store types (`Entity`, `Relation`) | Reuse those exact types in `sample-data.ts`. No type forking. |
-| `dock-preview.tsx` was a private exploration — extracting `<DockPill>` may surface coupling we didn't notice | Read the route end-to-end during extraction; flag any dependency on `useGeminiLive` or `journal-store` and keep them inside the parent, not the extracted pill. |
-| Three concurrent loops on one page (dock 12 s, bubbles 7 s, graph 15 s) could thrash main-thread | All animations CSS-driven where possible. The graph simulation already runs on `requestAnimationFrame`. Watch the perf profile during implementation. |
-| Visitors hit `/` expecting the journal | Stretch goal: detect `localStorage` evidence of a prior session (`journal-store` keys) and offer a "Resume your journal →" link in the nav. **Out of scope for this design.** |
-| Routing rename breaks existing dev-tooling, bookmarks, deeplinks | `index.tsx` → `app.tsx` is a self-contained rename. No external links are documented in the codebase. The `routeTree.gen.ts` regeneration is automatic. |
+| Risk                                                                                                         | Mitigation                                                                                                                                                                    |
+| ------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `<GraphView>` couples tightly to journal-store types (`Entity`, `Relation`)                                  | Reuse those exact types in `sample-data.ts`. No type forking.                                                                                                                 |
+| `dock-preview.tsx` was a private exploration — extracting `<DockPill>` may surface coupling we didn't notice | Read the route end-to-end during extraction; flag any dependency on `useGeminiLive` or `journal-store` and keep them inside the parent, not the extracted pill.               |
+| Three concurrent loops on one page (dock 12 s, bubbles 7 s, graph 15 s) could thrash main-thread             | All animations CSS-driven where possible. The graph simulation already runs on `requestAnimationFrame`. Watch the perf profile during implementation.                         |
+| Visitors hit `/` expecting the journal                                                                       | Stretch goal: detect `localStorage` evidence of a prior session (`journal-store` keys) and offer a "Resume your journal →" link in the nav. **Out of scope for this design.** |
+| Routing rename breaks existing dev-tooling, bookmarks, deeplinks                                             | `index.tsx` → `app.tsx` is a self-contained rename. No external links are documented in the codebase. The `routeTree.gen.ts` regeneration is automatic.                       |
 
 ## 10. Success criteria
 

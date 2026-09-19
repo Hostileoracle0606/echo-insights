@@ -5,6 +5,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lumen/logic/turn_state.dart';
 import 'package:lumen/models/journal_state.dart';
 import 'package:lumen/providers/journal_provider.dart';
 import 'package:lumen/screens/journal/journal_screen.dart';
@@ -12,9 +13,9 @@ import 'package:lumen/theme/lumen_theme.dart';
 
 class _SeededJournal extends JournalNotifier {
   _SeededJournal(this._log);
-  final List<({String role, String text})> _log;
+  final List<ConversationTurn> _log;
   @override
-  List<({String role, String text})> get conversation => _log;
+  List<ConversationTurn> get conversation => _log;
   @override
   JournalState build() => JournalState.empty();
 }
@@ -27,9 +28,19 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(402, 874));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
-    const log = <({String role, String text})>[
-      (role: 'user', text: 'Had coffee with Maya about the Atlas launch.'),
-      (role: 'agent', text: 'When did the Atlas launch slip?'),
+    const log = <ConversationTurn>[
+      ConversationTurn(
+        turnId: 'user-turn',
+        role: Speaker.user,
+        text: 'Had coffee with Maya about the Atlas launch.',
+        createdAt: '2026-09-18T12:00:00Z',
+      ),
+      ConversationTurn(
+        turnId: 'assistant-turn',
+        role: Speaker.assistant,
+        text: 'When did the Atlas launch slip?',
+        createdAt: '2026-09-18T12:00:01Z',
+      ),
     ];
 
     await tester.pumpWidget(

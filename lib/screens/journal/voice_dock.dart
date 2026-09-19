@@ -14,9 +14,8 @@ enum DockMode { idle, listening, speaking, thinking }
 /// Who spoke a turn in the split-screen transcript.
 enum DockSpeaker { you, lumen }
 
-/// One line of the rolling conversation. Mirrors the `({role, text})` records
-/// the journal provider already keeps in `_conversation`, so the stitch is a
-/// `'user' -> DockSpeaker.you` map.
+/// One line of the rolling conversation. The journal provider keeps canonical
+/// user/assistant roles; the screen maps them to these presentation labels.
 class DockTurn {
   final DockSpeaker speaker;
   final String text;

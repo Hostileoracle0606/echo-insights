@@ -209,6 +209,15 @@ export interface TurnMachineDeps {
 
 export interface TurnMachine {
   readonly state: TurnMachineState;
+  checkpoint: () => TurnCheckpoint;
   /** Applies one event. Returns the effects the adapter should carry out. */
   dispatch: (event: TurnEvent) => TurnEffect[];
+}
+
+/** Complete process-independent state, including gates hidden from the UI. */
+export interface TurnCheckpoint {
+  version: 1;
+  state: TurnMachineState;
+  inFlight: string | null;
+  assistantGate: "collecting" | "awaitingNewTurn" | null;
 }

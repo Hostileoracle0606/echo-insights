@@ -14,8 +14,6 @@ class Env {
   }
 
   static const _defined = <String, String>{
-    'GEMINI_API_KEY': String.fromEnvironment('GEMINI_API_KEY'),
-    'VITE_GEMINI_API_KEY': String.fromEnvironment('VITE_GEMINI_API_KEY'),
     'NOTEBOOK_RUNTIME_URL': String.fromEnvironment('NOTEBOOK_RUNTIME_URL'),
     'VITE_NOTEBOOK_RUNTIME_URL':
         String.fromEnvironment('VITE_NOTEBOOK_RUNTIME_URL'),
@@ -49,8 +47,6 @@ class Env {
     return trimmed;
   }
 
-  static String get geminiApiKey =>
-      _first(const ['GEMINI_API_KEY', 'VITE_GEMINI_API_KEY']);
   static String get notebookRuntimeUrl =>
       _first(const ['NOTEBOOK_RUNTIME_URL', 'VITE_NOTEBOOK_RUNTIME_URL']);
   static String get supabaseUrl =>

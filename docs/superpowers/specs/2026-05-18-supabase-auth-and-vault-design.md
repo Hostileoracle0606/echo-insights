@@ -86,7 +86,7 @@ Three things change:
    different concern (talking to Gemini ≠ identifying yourself to
    Lumen), and keeping it local-only preserves the existing trust model.
 
-2. **The vault becomes multi-notebook.** Each journaling *session*
+2. **The vault becomes multi-notebook.** Each journaling _session_
    (capture-to-stop) becomes its own notebook (Reading A from
    brainstorming). The dashboard is a wall of those session-notebooks;
    the master vault aggregates entities across them.
@@ -94,8 +94,8 @@ Three things change:
 3. **The vault becomes browsable in-app.** Today the vault only exists
    as a downloadable ZIP. `/vault` is the in-app rendering of that same
    structure, with one drag-to-expand interaction (graph collapses,
-   note pane fills the right side) to switch between *ambient context*
-   reading and *focused* reading.
+   note pane fills the right side) to switch between _ambient context_
+   reading and _focused_ reading.
 
 ## 4. Architecture overview
 
@@ -374,7 +374,9 @@ import { createServerClient } from "@supabase/ssr";
 
 export const getServerSupabase = (req: Request) =>
   createServerClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-    cookies: { /* read/write from req/response */ },
+    cookies: {
+      /* read/write from req/response */
+    },
   });
 ```
 
@@ -394,9 +396,9 @@ export const supabase = createBrowserClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 ### Relationship to the existing BYOK Gemini gate
 
-The `/welcome` BYOK gate stays exactly as it is — it gates *talking to
-Gemini* for live transcription, which is a different concern from
-*identifying yourself to Lumen*. The order is:
+The `/welcome` BYOK gate stays exactly as it is — it gates _talking to
+Gemini_ for live transcription, which is a different concern from
+_identifying yourself to Lumen_. The order is:
 
 ```
 Anonymous → /auth/login → authenticated → /welcome (if no Gemini key)
@@ -415,7 +417,7 @@ into their profile so they don't re-enter it across devices.
 1. **Created** when the user starts a new recording session from
    `/dashboard` ("Start a new session" button) or directly from the
    nav. Notebook row inserts immediately with `title = "Untitled
-   Session"`, `title_source = "auto"`, `started_at = now()`.
+Session"`, `title_source = "auto"`, `started_at = now()`.
 2. **Active** as long as the user is recording / speaking. Entries
    stream into `journal_entries`; the extractor edge function (now
    auth-scoped) writes entities/relations as they're produced.
@@ -611,15 +613,15 @@ the Cloudflare Worker runtime as well as in the browser.
 
 ### V1 feature set
 
-| Feature | Syntax | Render |
-|---|---|---|
-| Wikilink | `[[Maya]]` | `<a class="wikilink" data-target="maya">Maya</a>` |
-| Aliased wikilink | `[[Maya\|her]]` | text = "her", target = "maya" |
-| Anchored wikilink | `[[Sessions/2026-05-17/22:30\|10:30 PM]]` | navigates to session note |
-| YAML frontmatter | `--- … ---` | extracted; rendered in a quiet sidebar callout |
-| Tags | `#person #cs246` | hashtag pill; click filters sidebar |
-| Task-list | `- [ ] question` | unchecked checkbox in amber |
-| Standard markdown | h1-h6, b, i, ul/ol, blockquote, code, tables | as Obsidian |
+| Feature           | Syntax                                       | Render                                            |
+| ----------------- | -------------------------------------------- | ------------------------------------------------- |
+| Wikilink          | `[[Maya]]`                                   | `<a class="wikilink" data-target="maya">Maya</a>` |
+| Aliased wikilink  | `[[Maya\|her]]`                              | text = "her", target = "maya"                     |
+| Anchored wikilink | `[[Sessions/2026-05-17/22:30\|10:30 PM]]`    | navigates to session note                         |
+| YAML frontmatter  | `--- … ---`                                  | extracted; rendered in a quiet sidebar callout    |
+| Tags              | `#person #cs246`                             | hashtag pill; click filters sidebar               |
+| Task-list         | `- [ ] question`                             | unchecked checkbox in amber                       |
+| Standard markdown | h1-h6, b, i, ul/ol, blockquote, code, tables | as Obsidian                                       |
 
 ### V1 deferred
 
@@ -649,8 +651,7 @@ navigate — `/vault` stays on one URL.
 
 ```ts
 type MasterGraphData = {
-  nodes: { id: string; name: string; type: EntityType;
-           mentions: number; days: string[] }[];
+  nodes: { id: string; name: string; type: EntityType; mentions: number; days: string[] }[];
   edges: { source: string; target: string; label: string }[];
 };
 
@@ -660,7 +661,7 @@ function buildMasterGraph(notebooks: NotebookWithChildren[]): MasterGraphData;
 - Nodes: group all entities across notebooks by `slugify(name)`. Take
   `name` from the most-recently-mentioned occurrence; sum `mentions`;
   union of `days = notebooks.where(contains entity).map(started_at as
-  YYYY-MM-DD)`.
+YYYY-MM-DD)`.
 - Edges: deduplicate `(slugify(source), slugify(target), label)` across
   all notebooks; drop edges with `superseded_at` set.
 
@@ -676,7 +677,7 @@ type HighlightState =
 ```
 
 - Sidebar hover sets a transient state via `onMouseEnter`.
-- Sidebar leave snaps back to the *pinned* state derived from the
+- Sidebar leave snaps back to the _pinned_ state derived from the
   active note (clicked, not hovered).
 - The graph component consumes `HighlightState` via context, computes
   per-frame `nodeOpacity` / `linkColor` from it, and animates
@@ -745,9 +746,9 @@ Obsidian workflow; ships in a follow-up.
 ### First-login flow
 
 1. After sign-in, the client checks `localStorage.getItem('lumen.journal.v1')`.
-2. If non-empty *and* the user has zero notebooks in Postgres, prompt:
-   *"Import your existing local journal? (12 sessions inferred from
-   {n} entries spanning {date range}.)"*
+2. If non-empty _and_ the user has zero notebooks in Postgres, prompt:
+   _"Import your existing local journal? (12 sessions inferred from
+   {n} entries spanning {date range}.)"_
 3. On accept, POST the blob to the `migrate-legacy` edge function.
 
 ### `migrate-legacy` edge function
@@ -762,7 +763,7 @@ Logic:
 4. For each inferred session, collect:
    - Entries with `createdAt` in the session's window.
    - Entities whose `firstSeen` or `lastSeen` falls in the window
-     *and* whose id appears in any of the session's entries'
+     _and_ whose id appears in any of the session's entries'
      `entityIds`.
    - Relations whose endpoints exist in the entity set above.
 5. Title each session via Groq (4-6 words from concatenated entries).
@@ -800,7 +801,7 @@ verify_jwt = true
 ```
 
 - `extract-graph` now reads `auth.uid()` from the JWT, looks up the
-  user's *active* notebook (passed in the request body as `notebookId`,
+  user's _active_ notebook (passed in the request body as `notebookId`,
   validated against `notebooks.user_id = auth.uid()`), and writes
   entities/relations scoped to that `(user_id, notebook_id)`.
 - `speak-agent` (the agent voice / Groq follow-up generator) similarly
@@ -842,7 +843,7 @@ The `nodeOpacity` accessor returns `highlightSet.has(node.id) ? 1 :
 ### Query patterns
 
 - `/dashboard`: `select * from notebooks where user_id = auth.uid()
-  and archived_at is null order by started_at desc limit 100`. Index
+and archived_at is null order by started_at desc limit 100`. Index
   on `(user_id, started_at desc)`.
 - `/vault` data load: three parallel queries — `notebooks`,
   `entities` join on notebook_id, `relations` join on notebook_id.
@@ -853,14 +854,14 @@ The `nodeOpacity` accessor returns `highlightSet.has(node.id) ? 1 :
 
 ## 17. Risks and open questions
 
-| Risk | Mitigation |
-|---|---|
-| **Master graph performance past ~3000 nodes.** | Min-mention filter (§16); promote to user-scoped entities if it becomes a real ceiling. |
-| **First-login migration is irreversible from the user's POV.** | Don't clear legacy blob until they confirm import. Surface a "re-run migration" affordance in settings. |
-| **30-minute gap heuristic is wrong for some users.** | Show a preview ("12 sessions inferred — looks right?") before committing. Make the gap configurable in v1.1 if signal emerges. |
-| **AI titler returns nonsense or PII-laden titles.** | User can rename inline; rename sets `title_source = "user"` so re-extraction never overwrites. |
-| **Cookie-based SSR sessions + Cloudflare Workers.** | `@supabase/ssr` supports Workers via its cookie adapter; verify in a spike before committing migration order. |
-| **BYOK Gemini key is per-device, but accounts are per-user.** | Stays out of scope for v1. Add encrypted server-side stash in v1.1 if cross-device usage becomes common. |
+| Risk                                                           | Mitigation                                                                                                                     |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| **Master graph performance past ~3000 nodes.**                 | Min-mention filter (§16); promote to user-scoped entities if it becomes a real ceiling.                                        |
+| **First-login migration is irreversible from the user's POV.** | Don't clear legacy blob until they confirm import. Surface a "re-run migration" affordance in settings.                        |
+| **30-minute gap heuristic is wrong for some users.**           | Show a preview ("12 sessions inferred — looks right?") before committing. Make the gap configurable in v1.1 if signal emerges. |
+| **AI titler returns nonsense or PII-laden titles.**            | User can rename inline; rename sets `title_source = "user"` so re-extraction never overwrites.                                 |
+| **Cookie-based SSR sessions + Cloudflare Workers.**            | `@supabase/ssr` supports Workers via its cookie adapter; verify in a spike before committing migration order.                  |
+| **BYOK Gemini key is per-device, but accounts are per-user.**  | Stays out of scope for v1. Add encrypted server-side stash in v1.1 if cross-device usage becomes common.                       |
 
 ### Deferred features (post-v1)
 

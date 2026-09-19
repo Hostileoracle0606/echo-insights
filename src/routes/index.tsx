@@ -527,7 +527,10 @@ function Index() {
       // Every read goes through a ref so a result that resolves late sees the
       // state as it is now, not as it was when the request was issued.
       getState: () => stateRef.current,
-      getConversation: () => conversationRef.current.map((t) => ({ role: t.role, text: t.text })),
+      // Extraction consumes the turn machine's canonical role names. The
+      // presentation-only "agent" label never crosses the runtime seam.
+      getConversation: () =>
+        turnMachineRef.current?.state.conversation.map(({ role, text }) => ({ role, text })) ?? [],
       getExtractionMode: () => extractionModeRef.current,
       getRevision: () => notebookRevisionRef.current,
       setRevision: (revision) => {

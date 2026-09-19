@@ -39,6 +39,9 @@ build
 # Demo export artifacts
 demo-export/
 
+# Superpowers brainstorming scratch
+.superpowers/
+
 # Supabase local state
 supabase/.temp/
 

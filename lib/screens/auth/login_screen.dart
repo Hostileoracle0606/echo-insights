@@ -32,7 +32,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     try {
       final service = ref.read(supabaseServiceProvider);
       await service.signInWithEmail(_email.text.trim(), _password.text);
-      if (mounted) context.go('/journal');
     } catch (error) {
       setState(() => _error = error.toString());
     } finally {

@@ -34,6 +34,7 @@ These assumptions shaped the plan. If any is false in the current tree, stop and
 ## File Structure
 
 **Created:**
+
 - `vitest.config.ts` — Vitest config (node env, tsconfig paths).
 - `supabase/migrations/20260617000000_journal_entries_provenance.sql` — add `entity_ids`/`relation_ids` columns.
 - `src/lib/journal-rows.ts` — pure row↔`JournalEntry` mappers (extracted so they're testable without importing the Supabase client).
@@ -51,6 +52,7 @@ These assumptions shaped the plan. If any is false in the current tree, stop and
 - `src/lib/journal-memory.test.ts` — adapter integration test.
 
 **Modified:**
+
 - `package.json` — add deps + `test`/`test:watch` scripts.
 - `src/lib/journal-store.ts` — use the extracted mappers; write `entity_ids`/`relation_ids` in `saveState`.
 - `src/routes/index.tsx` — register `get_relevant_memory`, handle it, reset index on notebook load/clear.
@@ -61,6 +63,7 @@ These assumptions shaped the plan. If any is false in the current tree, stop and
 ## Task 0: Stand up Vitest
 
 **Files:**
+
 - Modify: `package.json`
 - Create: `vitest.config.ts`
 - Create (temporary): `src/lib/__smoke__.test.ts`
@@ -88,6 +91,7 @@ export default defineConfig({
 - [ ] **Step 3: Add test scripts to `package.json`**
 
 In the `"scripts"` block, add:
+
 ```json
     "test": "vitest run",
     "test:watch": "vitest",
@@ -96,6 +100,7 @@ In the `"scripts"` block, add:
 - [ ] **Step 4: Write a smoke test to prove the harness runs**
 
 Create `src/lib/__smoke__.test.ts`:
+
 ```ts
 import { describe, expect, test } from "vitest";
 
@@ -129,12 +134,14 @@ git commit -m "test: add vitest harness (node env, tsconfig paths)"
 This is the spec prerequisite. We extract the journal-entry row mappers into a pure module so the round-trip is testable without importing the Supabase browser client.
 
 **Files:**
+
 - Create: `src/lib/journal-rows.ts`
 - Create: `src/lib/journal-rows.test.ts`
 
 - [ ] **Step 1: Write the failing test**
 
 Create `src/lib/journal-rows.test.ts`:
+
 ```ts
 import { describe, expect, test } from "vitest";
 import { journalEntryToRow, rowToEntry } from "./journal-rows";
@@ -222,12 +229,14 @@ git commit -m "feat: pure journal-entry row mappers with provenance arrays"
 ## Task 2: Wire the provenance mappers into the store + migration
 
 **Files:**
+
 - Modify: `src/lib/journal-store.ts`
 - Create: `supabase/migrations/20260617000000_journal_entries_provenance.sql`
 
 - [ ] **Step 1: Create the migration**
 
 Create `supabase/migrations/20260617000000_journal_entries_provenance.sql`:
+
 ```sql
 -- Durable provenance for GraphRAG retrieval: persist which entities/relations
 -- each journal entry produced, so grounded source passages survive a reload.
@@ -239,6 +248,7 @@ alter table journal_entries
 - [ ] **Step 2: Import the extracted mappers in `journal-store.ts`**
 
 At the top of `src/lib/journal-store.ts`, after the existing imports, add:
+
 ```ts
 import { journalEntryToRow, rowToEntry } from "./journal-rows";
 ```
@@ -250,23 +260,29 @@ Delete the local definition (the `function rowToEntry(r: any): JournalEntry { ..
 - [ ] **Step 4: Use `journalEntryToRow` in `saveState`**
 
 In `saveState`, replace the `journal_entries` insert block (currently):
+
 ```ts
-  if (state.entries.length) {
-    await supabase.from("journal_entries").insert(
-      state.entries.map((e) => ({
-        id: e.id, user_id: userId, notebook_id: notebookId,
-        text: e.text, created_at: e.createdAt,
-      })),
-    );
-  }
+if (state.entries.length) {
+  await supabase.from("journal_entries").insert(
+    state.entries.map((e) => ({
+      id: e.id,
+      user_id: userId,
+      notebook_id: notebookId,
+      text: e.text,
+      created_at: e.createdAt,
+    })),
+  );
+}
 ```
+
 with:
+
 ```ts
-  if (state.entries.length) {
-    await supabase.from("journal_entries").insert(
-      state.entries.map((e) => journalEntryToRow(e, userId, notebookId)),
-    );
-  }
+if (state.entries.length) {
+  await supabase
+    .from("journal_entries")
+    .insert(state.entries.map((e) => journalEntryToRow(e, userId, notebookId)));
+}
 ```
 
 - [ ] **Step 5: Typecheck the change**
@@ -293,6 +309,7 @@ git commit -m "feat: persist journal-entry provenance (entity_ids/relation_ids)"
 ## Task 3: Add retrieval dependencies + vendored foundation (types, noise)
 
 **Files:**
+
 - Modify: `package.json`
 - Create: `src/lib/graphloop/types.ts`
 - Create: `src/lib/graphloop/noise.ts`
@@ -310,8 +327,15 @@ Expected: all three appear in `dependencies`.
 // src/lib/journal-types.ts are structurally identical to Entity/Relation/GraphEntry here.
 
 export type EntityType =
-  | "person" | "place" | "organization" | "project" | "event"
-  | "activity" | "concept" | "emotion" | "other";
+  | "person"
+  | "place"
+  | "organization"
+  | "project"
+  | "event"
+  | "activity"
+  | "concept"
+  | "emotion"
+  | "other";
 
 export interface Entity {
   id: string;
@@ -366,11 +390,11 @@ export const DEFAULT_RANK_WEIGHTS: RankWeights = {
 };
 
 export interface RetrievalOptions {
-  hops?: number;          // default 2
-  maxEntities?: number;   // default 24
-  maxRelations?: number;  // default 48
-  tier?: "local" | "global" | "auto";   // default "auto"
-  mode?: "lexical" | "hybrid" | "auto";  // default "auto" (hybrid iff embeddingModel)
+  hops?: number; // default 2
+  maxEntities?: number; // default 24
+  maxRelations?: number; // default 48
+  tier?: "local" | "global" | "auto"; // default "auto"
+  mode?: "lexical" | "hybrid" | "auto"; // default "auto" (hybrid iff embeddingModel)
   weights?: Partial<RankWeights>;
 }
 
@@ -399,14 +423,36 @@ export interface RetrievalResult {
 // filterNoise was dropped (Lumen does its own noise filtering in extract-graph).
 
 export const DEFAULT_NOISE_NAMES = new Set([
-  "i", "me", "my", "mine", "you", "your", "yours", "we", "us", "our",
-  "they", "them", "their",
-  "today", "yesterday", "tomorrow", "morning", "afternoon", "evening",
-  "night", "now", "later",
+  "i",
+  "me",
+  "my",
+  "mine",
+  "you",
+  "your",
+  "yours",
+  "we",
+  "us",
+  "our",
+  "they",
+  "them",
+  "their",
+  "today",
+  "yesterday",
+  "tomorrow",
+  "morning",
+  "afternoon",
+  "evening",
+  "night",
+  "now",
+  "later",
 ]);
 
 export const normalizeName = (name: string): string =>
-  name.toLowerCase().normalize("NFKD").replace(/[^a-z0-9 ]+/g, "").trim();
+  name
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[^a-z0-9 ]+/g, "")
+    .trim();
 ```
 
 - [ ] **Step 4: Typecheck**
@@ -426,12 +472,14 @@ git commit -m "feat: add retrieval deps + vendored graphloop types/noise foundat
 ## Task 4: Vendor graph-ops + test
 
 **Files:**
+
 - Create: `src/lib/graphloop/graph-ops.ts`
 - Create: `src/lib/graphloop/graph-ops.test.ts`
 
 - [ ] **Step 1: Write the failing test (fixtures as plain literals)**
 
 Create `src/lib/graphloop/graph-ops.test.ts`:
+
 ```ts
 import { describe, expect, test } from "vitest";
 import type { Entity, GraphState, Relation } from "./types";
@@ -439,10 +487,21 @@ import { activeRelations, buildNeighbors, relationUncertainty } from "./graph-op
 
 const T = "2026-06-12T00:00:00.000Z";
 const ent = (id: string, name: string): Entity => ({
-  id, name, type: "concept", metadata: {}, mentions: 1, firstSeen: T, lastSeen: T,
+  id,
+  name,
+  type: "concept",
+  metadata: {},
+  mentions: 1,
+  firstSeen: T,
+  lastSeen: T,
 });
 const rel = (source: string, target: string, label: string): Relation => ({
-  id: `${source}__${label}__${target}`, source, target, label, metadata: {}, createdAt: T,
+  id: `${source}__${label}__${target}`,
+  source,
+  target,
+  label,
+  metadata: {},
+  createdAt: T,
 });
 
 // Two people both linked to "atlas", surfaced in separate entries.
@@ -453,8 +512,20 @@ const seed = (): GraphState => {
     entities: { maya: ent("maya", "Maya"), sam: ent("sam", "Sam"), atlas: ent("atlas", "Atlas") },
     relations: { [r1.id]: r1, [r2.id]: r2 },
     entries: [
-      { id: "e1", text: "Maya on Atlas", createdAt: T, entityIds: ["maya", "atlas"], relationIds: [r1.id] },
-      { id: "e2", text: "Sam on Atlas", createdAt: T, entityIds: ["sam", "atlas"], relationIds: [r2.id] },
+      {
+        id: "e1",
+        text: "Maya on Atlas",
+        createdAt: T,
+        entityIds: ["maya", "atlas"],
+        relationIds: [r1.id],
+      },
+      {
+        id: "e2",
+        text: "Sam on Atlas",
+        createdAt: T,
+        entityIds: ["sam", "atlas"],
+        relationIds: [r2.id],
+      },
     ],
   };
 };
@@ -565,12 +636,14 @@ git commit -m "feat: vendor graphloop graph-ops (active/neighbors/uncertainty)"
 ## Task 5: Vendor search-index (Orama) + test
 
 **Files:**
+
 - Create: `src/lib/graphloop/search-index.ts`
 - Create: `src/lib/graphloop/search-index.test.ts`
 
 - [ ] **Step 1: Write the failing test**
 
 Create `src/lib/graphloop/search-index.test.ts`:
+
 ```ts
 import { describe, expect, test } from "vitest";
 import type { Entity } from "./types";
@@ -578,7 +651,14 @@ import { SearchIndex } from "./search-index";
 
 const T = "2026-06-12T00:00:00.000Z";
 const ent = (id: string, name: string, description?: string): Entity => ({
-  id, name, type: "concept", description, metadata: {}, mentions: 1, firstSeen: T, lastSeen: T,
+  id,
+  name,
+  type: "concept",
+  description,
+  metadata: {},
+  mentions: 1,
+  firstSeen: T,
+  lastSeen: T,
 });
 
 describe("SearchIndex (lexical)", () => {
@@ -640,8 +720,7 @@ export interface SearchHit {
   score: number;
 }
 
-const contentHash = (e: Entity): string =>
-  `${e.lastSeen}|${e.name}|${e.description ?? ""}`;
+const contentHash = (e: Entity): string => `${e.lastSeen}|${e.name}|${e.description ?? ""}`;
 
 const docFor = (e: Entity, vec?: number[]) => ({
   id: e.id,
@@ -675,9 +754,10 @@ export class SearchIndex {
 
   /** Sync entities into the index. Returns how many docs were (re)indexed. */
   async sync(entities: Entity[], vectors?: Map<string, number[]>): Promise<{ indexed: number }> {
-    const dim = vectors && vectors.size > 0
-      ? (vectors.values().next().value?.length ?? null)
-      : (this.vectorDim ?? null);
+    const dim =
+      vectors && vectors.size > 0
+        ? (vectors.values().next().value?.length ?? null)
+        : (this.vectorDim ?? null);
     await this.ensureDb(dim);
 
     const present = new Set(entities.map((e) => e.id));
@@ -698,14 +778,21 @@ export class SearchIndex {
       for (const id of removed) this.hashes.delete(id);
     }
     if (changed.length) {
-      await upsertMultiple(this.db!, changed.map((e) => docFor(e, vectors?.get(e.id))));
+      await upsertMultiple(
+        this.db!,
+        changed.map((e) => docFor(e, vectors?.get(e.id))),
+      );
       for (const [id, h] of pendingHashes) this.hashes.set(id, h);
     }
     return { indexed: changed.length };
   }
 
   /** BM25 (and vector, if queryVector given) search. Returns ranked hits. */
-  async search(term: string, queryVector: number[] | undefined, limit: number): Promise<SearchHit[]> {
+  async search(
+    term: string,
+    queryVector: number[] | undefined,
+    limit: number,
+  ): Promise<SearchHit[]> {
     if (!this.db) return [];
     const params: Record<string, unknown> =
       queryVector && this.vectorDim
@@ -742,12 +829,14 @@ git commit -m "feat: vendor graphloop SearchIndex (Orama BM25)"
 ## Task 6: Vendor communities (Louvain) + test
 
 **Files:**
+
 - Create: `src/lib/graphloop/communities.ts`
 - Create: `src/lib/graphloop/communities.test.ts`
 
 - [ ] **Step 1: Write the failing test**
 
 Create `src/lib/graphloop/communities.test.ts`:
+
 ```ts
 import { describe, expect, test } from "vitest";
 import type { Entity, GraphState, Relation } from "./types";
@@ -755,10 +844,21 @@ import { buildCommunities } from "./communities";
 
 const T = "2026-06-12T00:00:00.000Z";
 const ent = (id: string): Entity => ({
-  id, name: id.toUpperCase(), type: "concept", metadata: {}, mentions: 1, firstSeen: T, lastSeen: T,
+  id,
+  name: id.toUpperCase(),
+  type: "concept",
+  metadata: {},
+  mentions: 1,
+  firstSeen: T,
+  lastSeen: T,
 });
 const rel = (source: string, target: string): Relation => ({
-  id: `${source}__rel__${target}`, source, target, label: "rel", metadata: {}, createdAt: T,
+  id: `${source}__rel__${target}`,
+  source,
+  target,
+  label: "rel",
+  metadata: {},
+  createdAt: T,
 });
 const state = (rels: Relation[]): GraphState => {
   const entities: Record<string, Entity> = {};
@@ -822,7 +922,7 @@ export function buildCommunities(state: GraphState): CommunitySummary[] {
   for (const [cid, ids] of groups) {
     const ranked = ids
       .map((id) => ({ id, mentions: state.entities[id]?.mentions ?? 0, degree: g.degree(id) }))
-      .sort((a, b) => (b.degree - a.degree) || (b.mentions - a.mentions));
+      .sort((a, b) => b.degree - a.degree || b.mentions - a.mentions);
     const topEntities = ranked.slice(0, 5).map((r) => state.entities[r.id]?.name ?? r.id);
     summaries.push({
       id: cid,
@@ -842,6 +942,7 @@ Run: `npx vitest run src/lib/graphloop/communities.test.ts`
 Expected: PASS, 2 tests.
 
 > If TypeScript reports no types for `graphology-communities-louvain`, create `src/lib/graphloop/graphology-louvain.d.ts` with:
+>
 > ```ts
 > declare module "graphology-communities-louvain" {
 >   import type Graph from "graphology";
@@ -862,6 +963,7 @@ git commit -m "feat: vendor graphloop communities (Louvain global tier)"
 ## Task 7: Vendor embed + retrieve + barrel, then test retrieve
 
 **Files:**
+
 - Create: `src/lib/graphloop/embed.ts`
 - Create: `src/lib/graphloop/retrieve.ts`
 - Create: `src/lib/graphloop/index.ts`
@@ -870,6 +972,7 @@ git commit -m "feat: vendor graphloop communities (Louvain global tier)"
 - [ ] **Step 1: Write the failing test (fixture with provenance entries)**
 
 Create `src/lib/graphloop/retrieve.test.ts`:
+
 ```ts
 import { describe, expect, test } from "vitest";
 import type { Entity, GraphState, Relation } from "./types";
@@ -881,10 +984,21 @@ const FIXED_NOW = Date.parse("2026-06-12T00:00:00.000Z");
 const T = "2026-06-12T00:00:00.000Z";
 
 const ent = (id: string, name: string, type: Entity["type"]): Entity => ({
-  id, name, type, metadata: {}, mentions: 1, firstSeen: T, lastSeen: T,
+  id,
+  name,
+  type,
+  metadata: {},
+  mentions: 1,
+  firstSeen: T,
+  lastSeen: T,
 });
 const rel = (source: string, target: string, label: string): Relation => ({
-  id: `${source}__${label}__${target}`, source, target, label, metadata: {}, createdAt: T,
+  id: `${source}__${label}__${target}`,
+  source,
+  target,
+  label,
+  metadata: {},
+  createdAt: T,
 });
 
 const fixture = (): GraphState => {
@@ -901,9 +1015,27 @@ const fixture = (): GraphState => {
     },
     relations: { [r1.id]: r1, [r2.id]: r2, [r3.id]: r3 },
     entries: [
-      { id: "e1", text: "Maya leads Project Atlas", createdAt: T, entityIds: ["maya", "project-atlas"], relationIds: [r1.id] },
-      { id: "e2", text: "Sam works on Project Atlas", createdAt: T, entityIds: ["sam", "project-atlas"], relationIds: [r2.id] },
-      { id: "e3", text: "Lin likes coffee", createdAt: T, entityIds: ["lin", "coffee"], relationIds: [r3.id] },
+      {
+        id: "e1",
+        text: "Maya leads Project Atlas",
+        createdAt: T,
+        entityIds: ["maya", "project-atlas"],
+        relationIds: [r1.id],
+      },
+      {
+        id: "e2",
+        text: "Sam works on Project Atlas",
+        createdAt: T,
+        entityIds: ["sam", "project-atlas"],
+        relationIds: [r2.id],
+      },
+      {
+        id: "e3",
+        text: "Lin likes coffee",
+        createdAt: T,
+        entityIds: ["lin", "coffee"],
+        relationIds: [r3.id],
+      },
     ],
   };
 };
@@ -947,7 +1079,12 @@ describe("retrieve (local, lexical)", () => {
 
   test("never returns a dangling relation (both endpoints kept)", async () => {
     const s = fixture();
-    const r = await retrieve(s, "atlas", { maxEntities: 2 }, { index: await makeIndex(s), now: FIXED_NOW });
+    const r = await retrieve(
+      s,
+      "atlas",
+      { maxEntities: 2 },
+      { index: await makeIndex(s), now: FIXED_NOW },
+    );
     const keptIds = new Set(r.entities.map((e) => e.id));
     for (const rl of r.relations) {
       expect(keptIds.has(rl.source) && keptIds.has(rl.target)).toBe(true);
@@ -965,7 +1102,9 @@ describe("retrieve (local, lexical)", () => {
   test("falls back to community summaries when no seed matches", async () => {
     const s = fixture();
     const r = await retrieve(
-      s, "totallyunrelatedquery", {},
+      s,
+      "totallyunrelatedquery",
+      {},
       { index: await makeIndex(s), now: FIXED_NOW, communities: buildCommunities(s) },
     );
     expect(r.entities).toEqual([]);
@@ -997,8 +1136,13 @@ export async function embedTexts(model: EmbeddingModel, texts: string[]): Promis
 
 ```ts
 import type {
-  CommunitySummary, Entity, GraphState, RankWeights, Relation,
-  RetrievalOptions, RetrievalResult,
+  CommunitySummary,
+  Entity,
+  GraphState,
+  RankWeights,
+  Relation,
+  RetrievalOptions,
+  RetrievalResult,
 } from "./types";
 import { DEFAULT_RANK_WEIGHTS } from "./types";
 import { activeRelations, buildNeighbors, relationUncertainty, wordCount } from "./graph-ops";
@@ -1017,7 +1161,11 @@ export interface RetrieveDeps {
 const MAX_COMMUNITY_SUMMARIES = 5;
 
 const emptyResult = (): RetrievalResult => ({
-  entities: [], relations: [], entries: [], seeds: [], context: "",
+  entities: [],
+  relations: [],
+  entries: [],
+  seeds: [],
+  context: "",
 });
 
 function resolveOptions(opts: RetrievalOptions | undefined, deps: RetrieveDeps) {
@@ -1049,8 +1197,11 @@ export async function retrieve(
   // ---- 1. seed selection ----
   let queryVector: number[] | undefined;
   if (o.mode === "hybrid" && deps.embedModel) {
-    try { queryVector = (await embedTexts(deps.embedModel, [q]))[0]; }
-    catch { queryVector = undefined; } // graceful fallback to BM25
+    try {
+      queryVector = (await embedTexts(deps.embedModel, [q]))[0];
+    } catch {
+      queryVector = undefined;
+    } // graceful fallback to BM25
   }
   const hits = await deps.index.search(q, queryVector, o.maxEntities * 2);
   const seedScore = new Map<string, number>();
@@ -1060,7 +1211,8 @@ export async function retrieve(
   const nq = normalizeName(q);
   for (const e of Object.values(state.entities)) {
     const nn = normalizeName(e.name);
-    if (nn.length >= 2 && nq.includes(nn)) seedScore.set(e.id, Math.max(seedScore.get(e.id) ?? 0, 1));
+    if (nn.length >= 2 && nq.includes(nn))
+      seedScore.set(e.id, Math.max(seedScore.get(e.id) ?? 0, 1));
   }
   const seeds = [...seedScore.keys()].filter((id) => state.entities[id]);
 
@@ -1082,7 +1234,10 @@ export async function retrieve(
     const next: string[] = [];
     for (const id of frontier) {
       for (const nb of neighbors.get(id) ?? []) {
-        if (!hop.has(nb)) { hop.set(nb, d); next.push(nb); }
+        if (!hop.has(nb)) {
+          hop.set(nb, d);
+          next.push(nb);
+        }
       }
     }
     frontier = next;
@@ -1110,7 +1265,8 @@ export async function retrieve(
       const importance = Math.log(e.mentions + 1) / Math.log(maxMentions + 1);
       const incident = relByEntity.get(id) ?? [];
       const confidence = incident.length
-        ? incident.reduce((acc, r) => acc + (1 - (uncertainty.get(r.id) ?? 0) / 3), 0) / incident.length
+        ? incident.reduce((acc, r) => acc + (1 - (uncertainty.get(r.id) ?? 0) / 3), 0) /
+          incident.length
         : Math.min(1, wordCount(e.description) / 30);
       const total =
         o.weights.relevance * relevance +
@@ -1132,7 +1288,8 @@ export async function retrieve(
   // ---- provenance entries ----
   const relIds = new Set(keptRelations.map((r) => r.id));
   const entries = state.entries.filter(
-    (en) => en.entityIds.some((id) => keptIds.has(id)) || en.relationIds.some((id) => relIds.has(id)),
+    (en) =>
+      en.entityIds.some((id) => keptIds.has(id)) || en.relationIds.some((id) => relIds.has(id)),
   );
 
   // ---- 6. pack ----
@@ -1145,10 +1302,21 @@ function globalResult(communities: CommunitySummary[]): RetrievalResult {
   const top = communities.slice(0, MAX_COMMUNITY_SUMMARIES);
   const lines = ["## Relevant areas of memory"];
   for (const c of top) lines.push(`- ${c.label} (${c.size} entities): ${c.topEntities.join(", ")}`);
-  return { entities: [], relations: [], entries: [], seeds: [], communities: top, context: lines.join("\n") };
+  return {
+    entities: [],
+    relations: [],
+    entries: [],
+    seeds: [],
+    communities: top,
+    context: lines.join("\n"),
+  };
 }
 
-function packContext(entities: Entity[], relations: Relation[], entries: GraphState["entries"]): string {
+function packContext(
+  entities: Entity[],
+  relations: Relation[],
+  entries: GraphState["entries"],
+): string {
   if (entities.length === 0) return "";
   const byId = new Map(entities.map((e) => [e.id, e]));
   const out: string[] = ["## Entities"];
@@ -1185,8 +1353,15 @@ export { normalizeName, DEFAULT_NOISE_NAMES } from "./noise";
 export { embedTexts } from "./embed";
 export { emptyState, DEFAULT_RANK_WEIGHTS } from "./types";
 export type {
-  Entity, Relation, GraphEntry, GraphState, EntityType,
-  RankWeights, RetrievalOptions, RetrievalResult, CommunitySummary,
+  Entity,
+  Relation,
+  GraphEntry,
+  GraphState,
+  EntityType,
+  RankWeights,
+  RetrievalOptions,
+  RetrievalResult,
+  CommunitySummary,
 } from "./types";
 ```
 
@@ -1207,12 +1382,14 @@ git commit -m "feat: vendor graphloop retrieve + embed + barrel (lexical GraphRA
 ## Task 8: Lumen adapter — `journal-memory.ts`
 
 **Files:**
+
 - Create: `src/lib/journal-memory.ts`
 - Create: `src/lib/journal-memory.test.ts`
 
 - [ ] **Step 1: Write the failing test**
 
 Create `src/lib/journal-memory.test.ts`:
+
 ```ts
 import { beforeEach, describe, expect, test } from "vitest";
 import type { JournalState } from "./journal-types";
@@ -1224,18 +1401,52 @@ const fixture = (): JournalState => ({
   followUps: [],
   askedQuestions: [],
   entities: {
-    maya: { id: "maya", name: "Maya", type: "person", metadata: {}, mentions: 1, firstSeen: T, lastSeen: T },
-    "project-atlas": { id: "project-atlas", name: "Project Atlas", type: "project", metadata: {}, mentions: 1, firstSeen: T, lastSeen: T },
-    coffee: { id: "coffee", name: "coffee", type: "concept", metadata: {}, mentions: 1, firstSeen: T, lastSeen: T },
+    maya: {
+      id: "maya",
+      name: "Maya",
+      type: "person",
+      metadata: {},
+      mentions: 1,
+      firstSeen: T,
+      lastSeen: T,
+    },
+    "project-atlas": {
+      id: "project-atlas",
+      name: "Project Atlas",
+      type: "project",
+      metadata: {},
+      mentions: 1,
+      firstSeen: T,
+      lastSeen: T,
+    },
+    coffee: {
+      id: "coffee",
+      name: "coffee",
+      type: "concept",
+      metadata: {},
+      mentions: 1,
+      firstSeen: T,
+      lastSeen: T,
+    },
   },
   relations: {
     "maya__leads__project-atlas": {
-      id: "maya__leads__project-atlas", source: "maya", target: "project-atlas",
-      label: "leads", metadata: {}, createdAt: T,
+      id: "maya__leads__project-atlas",
+      source: "maya",
+      target: "project-atlas",
+      label: "leads",
+      metadata: {},
+      createdAt: T,
     },
   },
   entries: [
-    { id: "e1", text: "Maya leads Project Atlas", createdAt: T, entityIds: ["maya", "project-atlas"], relationIds: ["maya__leads__project-atlas"] },
+    {
+      id: "e1",
+      text: "Maya leads Project Atlas",
+      createdAt: T,
+      entityIds: ["maya", "project-atlas"],
+      relationIds: ["maya__leads__project-atlas"],
+    },
     { id: "e2", text: "I like coffee", createdAt: T, entityIds: ["coffee"], relationIds: [] },
   ],
 });
@@ -1284,7 +1495,11 @@ import { retrieve } from "@/lib/graphloop/retrieve";
 import type { GraphState, RetrievalOptions, RetrievalResult } from "@/lib/graphloop/types";
 
 const EMPTY_RESULT: RetrievalResult = {
-  entities: [], relations: [], entries: [], seeds: [], context: "",
+  entities: [],
+  relations: [],
+  entries: [],
+  seeds: [],
+  context: "",
 };
 
 /**
@@ -1361,12 +1576,14 @@ git commit -m "feat: journal-memory adapter (active-notebook lexical retrieval)"
 No unit test (route + live session); verified via typecheck/build + a manual run step.
 
 **Files:**
+
 - Modify: `src/routes/index.tsx`
 - Modify: `src/lib/conversation-policy.ts`
 
 - [ ] **Step 1: Import the adapter in `index.tsx`**
 
 Near the existing `import { extractGraph } from "@/lib/extract-graph";` line, add:
+
 ```ts
 import { resetMemoryIndex, retrieveMemory } from "@/lib/journal-memory";
 ```
@@ -1374,6 +1591,7 @@ import { resetMemoryIndex, retrieveMemory } from "@/lib/journal-memory";
 - [ ] **Step 2: Register the second tool in the `liveTools` memo**
 
 In the `liveTools` `useMemo` array ([src/routes/index.tsx:766-776](../../../src/routes/index.tsx)), add a second declaration after the `get_graph_summary` object:
+
 ```ts
       {
         name: "get_relevant_memory",
@@ -1392,24 +1610,24 @@ In the `liveTools` `useMemo` array ([src/routes/index.tsx:766-776](../../../src/
 - [ ] **Step 3: Handle the tool call (async) in `handleToolCall`**
 
 Replace the `handleToolCall` callback ([src/routes/index.tsx:781-787](../../../src/routes/index.tsx)) with:
+
 ```ts
-  const handleToolCall = useCallback(
-    async (call: GeminiToolCall) => {
-      if (call.name === "get_graph_summary") return buildGraphSummary();
-      if (call.name === "get_relevant_memory") {
-        const query =
-          typeof call.args?.query === "string" ? call.args.query : "";
-        const { context } = await retrieveMemory(
-          stateRef.current,
-          query,
-          notebookIdRef.current ?? "active",
-        );
-        return { context };
-      }
-      return { error: `Unknown tool: ${call.name}` };
-    },
-    [buildGraphSummary],
-  );
+const handleToolCall = useCallback(
+  async (call: GeminiToolCall) => {
+    if (call.name === "get_graph_summary") return buildGraphSummary();
+    if (call.name === "get_relevant_memory") {
+      const query = typeof call.args?.query === "string" ? call.args.query : "";
+      const { context } = await retrieveMemory(
+        stateRef.current,
+        query,
+        notebookIdRef.current ?? "active",
+      );
+      return { context };
+    }
+    return { error: `Unknown tool: ${call.name}` };
+  },
+  [buildGraphSummary],
+);
 ```
 
 > `stateRef` and `notebookIdRef` already exist in this component (used by `buildGraphSummary` and the load effect). If `call.args` is not typed to allow indexing, read it as `(call.args as Record<string, unknown> | undefined)?.query`.
@@ -1417,17 +1635,21 @@ Replace the `handleToolCall` callback ([src/routes/index.tsx:781-787](../../../s
 - [ ] **Step 4: Reset the memory index when a notebook loads and on clear**
 
 In the load effect, right after `setNotebookId(notebook.id)` / `notebookIdRef.current = notebook.id` ([src/routes/index.tsx:826-827](../../../src/routes/index.tsx)), add:
+
 ```ts
-        resetMemoryIndex();
+resetMemoryIndex();
 ```
+
 And in the clear-journal handler that sets `setState(EMPTY_STATE)` ([src/routes/index.tsx:997](../../../src/routes/index.tsx)), add right after it:
+
 ```ts
-    resetMemoryIndex();
+resetMemoryIndex();
 ```
 
 - [ ] **Step 5: Document the second tool in `conversation-policy.ts`**
 
 In `GEMINI_LIVE_SYSTEM_INSTRUCTION`, immediately after the line `- sessionElapsedMin: how long the session has been running.` ([src/lib/conversation-policy.ts:308](../../../src/lib/conversation-policy.ts)), insert:
+
 ```ts
 
 YOUR SECOND PRIVATE TOOL — get_relevant_memory({ query }):
@@ -1474,6 +1696,7 @@ Expected: production build succeeds.
 
 Apply the migration to your Supabase project, then:
 Run: `npm run dev`
+
 - Sign in, start a session, say two related sentences that name an entity (e.g. "I had coffee with Maya about Project Atlas").
 - In a later turn, reference it indirectly ("how's that project going?").
 - Confirm in the browser devtools/network that the model issues a `get_relevant_memory` tool call and that the session continues normally (the agent should ground its reply without naming any machinery).
@@ -1492,6 +1715,7 @@ git commit -m "chore: verification fixups for graphloop memory integration"
 ## Self-Review (completed by plan author)
 
 **Spec coverage:**
+
 - Read-side `retrieveMemory` over active-notebook `JournalState` → Tasks 7–8. ✓
 - Separate `get_relevant_memory` tool → Task 9. ✓
 - Durable provenance prerequisite → Tasks 1–2. ✓

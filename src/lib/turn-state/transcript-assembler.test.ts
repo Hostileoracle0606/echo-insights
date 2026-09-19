@@ -3,6 +3,18 @@ import { describe, expect, it } from "vitest";
 import { createTranscriptAssembler } from "./transcript-assembler";
 
 describe("createTranscriptAssembler", () => {
+  it("restores unfinished transcription without losing the user turn boundary", () => {
+    const first = createTranscriptAssembler();
+    first.userChunk("I work at ");
+    const second = createTranscriptAssembler(JSON.parse(JSON.stringify(first.checkpoint())));
+    expect(second.userFinal("Acme.")).toEqual([
+      { type: "finalTranscript", speaker: "user", text: "I work at Acme." },
+    ]);
+    expect(second.assistantChunk("Tell me more.")).toEqual([
+      { type: "turnCompleted", speaker: "user" },
+      { type: "interimTranscript", speaker: "assistant", text: "Tell me more." },
+    ]);
+  });
   it("turns incremental chunks into ONE replaceable interim transcript", () => {
     const a = createTranscriptAssembler();
 

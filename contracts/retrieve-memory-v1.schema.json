@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://echo-insights.local/contracts/retrieve-memory-v1.schema.json",
+  "title": "Retrieve Memory V1 Response",
+  "type": "object",
+  "required": ["version", "context", "entityIds"],
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "context": {
+      "type": "string"
+    },
+    "entityIds": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

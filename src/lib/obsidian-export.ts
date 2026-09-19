@@ -266,7 +266,9 @@ export async function exportToObsidianZip(state: JournalState): Promise<Blob> {
     indexLines.push("## Recent days", "");
     for (const date of recentDays) {
       const count = byDay.get(date)?.length ?? 0;
-      indexLines.push(`- [[Daily/${date}|${date}]] _(${count} ${count === 1 ? "entry" : "entries"})_`);
+      indexLines.push(
+        `- [[Daily/${date}|${date}]] _(${count} ${count === 1 ? "entry" : "entries"})_`,
+      );
     }
     indexLines.push("");
   }
@@ -276,7 +278,9 @@ export async function exportToObsidianZip(state: JournalState): Promise<Blob> {
     if (!list.length) continue;
     indexLines.push(`## ${label}`, "");
     for (const e of list) {
-      indexLines.push(`- [[${e.name}]] _(${e.mentions} ${e.mentions === 1 ? "mention" : "mentions"})_`);
+      indexLines.push(
+        `- [[${e.name}]] _(${e.mentions} ${e.mentions === 1 ? "mention" : "mentions"})_`,
+      );
     }
     indexLines.push("");
   }

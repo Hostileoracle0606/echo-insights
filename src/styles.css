@@ -245,26 +245,70 @@
  * scale (size pulse) so bulges read as fluid bumps, not pinned circles
  * inflating in place. */
 @keyframes goo-drift-top-1 {
-  0%, 100% { transform: translateY(0) scale(0.9); }
-  50%      { transform: translateY(-3px) scale(1.5); }
+  0%,
+  100% {
+    transform: translateY(0) scale(0.9);
+  }
+  50% {
+    transform: translateY(-3px) scale(1.5);
+  }
 }
 @keyframes goo-drift-top-2 {
-  0%, 100% { transform: translateY(2px) scale(1.0); }
-  50%      { transform: translateY(-4px) scale(1.6); }
+  0%,
+  100% {
+    transform: translateY(2px) scale(1);
+  }
+  50% {
+    transform: translateY(-4px) scale(1.6);
+  }
 }
 @keyframes goo-drift-bot-1 {
-  0%, 100% { transform: translateY(0) scale(0.95); }
-  50%      { transform: translateY(3px) scale(1.5); }
+  0%,
+  100% {
+    transform: translateY(0) scale(0.95);
+  }
+  50% {
+    transform: translateY(3px) scale(1.5);
+  }
 }
 @keyframes goo-drift-bot-2 {
-  0%, 100% { transform: translateY(-2px) scale(1.0); }
-  50%      { transform: translateY(4px) scale(1.55); }
+  0%,
+  100% {
+    transform: translateY(-2px) scale(1);
+  }
+  50% {
+    transform: translateY(4px) scale(1.55);
+  }
 }
 
-.goo-blob-t1 { top: -3px;    left: 22%; width: 14px; height: 14px; animation: goo-drift-top-1 2.0s ease-in-out infinite;        }
-.goo-blob-t2 { top: -2px;    left: 70%; width: 12px; height: 12px; animation: goo-drift-top-2 1.7s ease-in-out -0.4s infinite;  }
-.goo-blob-b1 { bottom: -3px; left: 32%; width: 14px; height: 14px; animation: goo-drift-bot-1 2.4s ease-in-out -0.9s infinite;  }
-.goo-blob-b2 { bottom: -2px; left: 78%; width: 12px; height: 12px; animation: goo-drift-bot-2 2.1s ease-in-out -1.3s infinite;  }
+.goo-blob-t1 {
+  top: -3px;
+  left: 22%;
+  width: 14px;
+  height: 14px;
+  animation: goo-drift-top-1 2s ease-in-out infinite;
+}
+.goo-blob-t2 {
+  top: -2px;
+  left: 70%;
+  width: 12px;
+  height: 12px;
+  animation: goo-drift-top-2 1.7s ease-in-out -0.4s infinite;
+}
+.goo-blob-b1 {
+  bottom: -3px;
+  left: 32%;
+  width: 14px;
+  height: 14px;
+  animation: goo-drift-bot-1 2.4s ease-in-out -0.9s infinite;
+}
+.goo-blob-b2 {
+  bottom: -2px;
+  left: 78%;
+  width: 12px;
+  height: 12px;
+  animation: goo-drift-bot-2 2.1s ease-in-out -1.3s infinite;
+}
 
 @media (prefers-reduced-motion: reduce) {
   .agent-speaking,

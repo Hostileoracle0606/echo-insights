@@ -19,6 +19,7 @@ import type { TurnEvent } from "./types";
  * `turnComplete` as a fallback.
  */
 export interface TranscriptAssembler {
+  checkpoint: () => AssemblerCheckpoint;
   /** Incremental user transcription chunk. */
   userChunk: (chunk: string) => TurnEvent[];
   /** Provider interim transcription: replaces the accumulated buffer. */
@@ -34,11 +35,18 @@ export interface TranscriptAssembler {
   assistantText: () => string;
 }
 
-export function createTranscriptAssembler(): TranscriptAssembler {
-  let userBuffer = "";
-  let assistantBuffer = "";
-  let userTurnOpen = false;
-  let userTurnClosed = false;
+export interface AssemblerCheckpoint {
+  userBuffer: string;
+  assistantBuffer: string;
+  userTurnOpen: boolean;
+  userTurnClosed: boolean;
+}
+
+export function createTranscriptAssembler(checkpoint?: AssemblerCheckpoint): TranscriptAssembler {
+  let userBuffer = checkpoint?.userBuffer ?? "";
+  let assistantBuffer = checkpoint?.assistantBuffer ?? "";
+  let userTurnOpen = checkpoint?.userTurnOpen ?? false;
+  let userTurnClosed = checkpoint?.userTurnClosed ?? false;
 
   /** The assistant answering is the signal that the user's turn is over. */
   function closeUserTurnIfNeeded(): TurnEvent[] {
@@ -55,6 +63,7 @@ export function createTranscriptAssembler(): TranscriptAssembler {
   }
 
   return {
+    checkpoint: () => ({ userBuffer, assistantBuffer, userTurnOpen, userTurnClosed }),
     userChunk(chunk) {
       if (!chunk) return [];
       userBuffer += chunk;

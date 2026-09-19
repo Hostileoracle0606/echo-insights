@@ -25,10 +25,10 @@ test("keeps the Gemini credential in a retained secret without template plaintex
   expect(Object.values(secrets)[0]).not.toHaveProperty("Properties.SecretString");
 });
 
-test("exposes the live-session broker through an authenticated and throttled route", () => {
+test("exposes authenticated live-session and graph-extraction routes", () => {
   const template = synthesizeTemplate();
 
-  template.resourceCountIs("AWS::Lambda::Function", 2);
+  template.resourceCountIs("AWS::Lambda::Function", 3);
   template.hasResourceProperties("AWS::ApiGatewayV2::Authorizer", {
     AuthorizerType: "REQUEST",
     EnableSimpleResponses: true,
@@ -38,6 +38,10 @@ test("exposes the live-session broker through an authenticated and throttled rou
   template.hasResourceProperties("AWS::ApiGatewayV2::Route", {
     AuthorizationType: "CUSTOM",
     RouteKey: "POST /v1/notebooks/{notebookId}/live-sessions",
+  });
+  template.hasResourceProperties("AWS::ApiGatewayV2::Route", {
+    AuthorizationType: "CUSTOM",
+    RouteKey: "POST /v1/notebooks/{notebookId}/extractions",
   });
   template.hasResourceProperties("AWS::ApiGatewayV2::Stage", {
     StageName: "$default",
@@ -56,6 +60,23 @@ test("exposes the live-session broker through an authenticated and throttled rou
           Resource: Match.objectLike({ Ref: Match.anyValue() }),
         }),
       ]),
+    },
+  });
+});
+
+test("retains a server-side extraction retry cache", () => {
+  const template = synthesizeTemplate();
+
+  template.hasResource("AWS::DynamoDB::Table", {
+    DeletionPolicy: "Retain",
+    UpdateReplacePolicy: "Retain",
+    Properties: {
+      BillingMode: "PAY_PER_REQUEST",
+      KeySchema: [{ AttributeName: "id", KeyType: "HASH" }],
+      TimeToLiveSpecification: {
+        AttributeName: "expiresAt",
+        Enabled: true,
+      },
     },
   });
 });

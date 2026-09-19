@@ -54,7 +54,9 @@ Map<String, dynamic> stateToGraphloop(JournalState state) => {
       'entries': state.entries.map(_entry).toList(),
     };
 
-/// Calls the retrieve-memory edge function. Fail-closed: any error returns "".
+const int retrieveMemoryContractVersion = 1;
+
+/// Successful response from the versioned retrieve-memory interface.
 class MemoryRetrieval {
   final String context;
   final List<String> entityIds;
@@ -67,18 +69,27 @@ class MemoryRetrieval {
   static const empty = MemoryRetrieval(context: '', entityIds: []);
 
   factory MemoryRetrieval.fromData(dynamic data) {
-    if (data is! Map) return empty;
+    if (data is! Map) {
+      throw const FormatException('Invalid retrieve-memory v1 response');
+    }
+    if (data['version'] != retrieveMemoryContractVersion) {
+      throw const FormatException('Unsupported retrieve-memory contract version');
+    }
     final context = data['context'];
     final ids = data['entityIds'];
+    if (context is! String || ids is! List || ids.any((id) => id is! String)) {
+      throw const FormatException('Invalid retrieve-memory v1 response');
+    }
     return MemoryRetrieval(
-      context: context is String ? context : '',
-      entityIds: ids is List
-          ? ids.whereType<String>().toList(growable: false)
-          : const [],
+      context: context,
+      entityIds: ids.cast<String>().toList(growable: false),
     );
   }
 }
 
+/// Calls the retrieve-memory Edge Function. Transport/provider failures degrade
+/// to empty memory. Contract mismatches are rejected, logged distinctly, then
+/// fail closed so retrieval cannot break journaling.
 class RetrieveMemoryService {
   final SupabaseClient _client;
 
@@ -124,6 +135,9 @@ class RetrieveMemoryService {
       final result = MemoryRetrieval.fromData(res.data);
       emit(result.context.isEmpty ? 'empty' : 'ok', result.context.length);
       return result;
+    } on FormatException {
+      emit('contractError', 0);
+      return MemoryRetrieval.empty;
     } catch (_) {
       emit('error', 0);
       return MemoryRetrieval.empty;

@@ -26,7 +26,9 @@ export function SessionProvider({
   const [session, setSession] = useState<Session | null>(initialSession);
 
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, next) => {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, next) => {
       setSession(next);
     });
     return () => {
@@ -35,9 +37,7 @@ export function SessionProvider({
   }, []);
 
   return (
-    <SessionContext.Provider
-      value={{ session, user: session?.user ?? null, supabase }}
-    >
+    <SessionContext.Provider value={{ session, user: session?.user ?? null, supabase }}>
       {children}
     </SessionContext.Provider>
   );

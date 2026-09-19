@@ -6,7 +6,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../audio/pcm_capture.dart';
 import '../audio/pcm_player.dart';
-import '../env.dart';
 import '../logic/agenda.dart' as agenda_logic;
 import '../logic/conversation_policy.dart';
 import '../logic/merge.dart' as merge_logic;
@@ -17,7 +16,6 @@ import '../logic/voice_log.dart';
 import '../models/graph_patch.dart';
 import '../models/journal_entry.dart';
 import '../models/journal_state.dart';
-import '../services/extract_graph_service.dart';
 import '../services/gemini_live_client.dart';
 import '../services/notebook_commit_service.dart' as commit_service;
 import '../services/notebook_runtime_service.dart';
@@ -73,7 +71,7 @@ class JournalNotifier extends Notifier<JournalState> {
   );
   String? _restoredNotebookId;
 
-  final _conversation = <({String role, String text})>[];
+  final _conversation = <ConversationTurn>[];
   String? _activeNotebookId;
   SessionStatus _status = SessionStatus.idle;
   DateTime? _sessionStartedAt;
@@ -92,8 +90,7 @@ class JournalNotifier extends Notifier<JournalState> {
   int _revision = 0;
   SessionStatus get status => _status;
   String get lastTranscript => _lastTranscript;
-  List<({String role, String text})> get conversation =>
-      List.unmodifiable(_conversation);
+  List<ConversationTurn> get conversation => List.unmodifiable(_conversation);
   bool get muted => _muted;
   bool get agentSpeaking => _agentSpeaking;
   int get revision => _revision;
@@ -183,8 +180,7 @@ class JournalNotifier extends Notifier<JournalState> {
     final latest = _turnMachine.state;
     _conversation
       ..clear()
-      ..addAll(
-          latest.conversation.map((t) => (role: t.role.name, text: t.text)));
+      ..addAll(latest.conversation);
     _notifyUi();
   }
 
@@ -302,7 +298,7 @@ class JournalNotifier extends Notifier<JournalState> {
   }
 
   Future<void> _runDurableExtraction(StartDurableExtraction effect) async {
-    final extractService = ExtractGraphService(apiKey: Env.geminiApiKey);
+    final extractService = ref.read(extractGraphServiceProvider);
     try {
       final retrieval = await RetrieveMemoryService(
         ref.read(supabaseClientProvider),
@@ -313,10 +309,15 @@ class JournalNotifier extends Notifier<JournalState> {
       );
       final openFollowUps = state.followUps.where((item) => !item.answered);
       final patch = await extractService.extract(
+        notebookId: effect.key.notebookId,
+        turnId: effect.key.turnId,
+        extractorVersion: extractorVersion,
         text: effect.transcript,
         state: state,
         mode: 'granular',
-        recentConversation: _conversation,
+        recentConversation: _conversation
+            .map((turn) => (role: turn.role, text: turn.text))
+            .toList(growable: false),
         retrievedEntityIds: retrieval.entityIds,
         answeringFollowUp: openFollowUps.isEmpty ? null : openFollowUps.last,
       );
@@ -536,7 +537,7 @@ class JournalNotifier extends Notifier<JournalState> {
           )
           .toList(),
       'recentAgentQuestions': _conversation
-          .where((turn) => turn.role == 'agent')
+          .where((turn) => turn.role == Speaker.assistant)
           .map((turn) => turn.text)
           .where((text) => text.isNotEmpty)
           .take(8)

@@ -17,6 +17,12 @@ enum Speaker { user, assistant }
 /// Durable checkpoint stages. Persisted, so a restart resumes rather than repeats.
 enum DurableStage { finalRecorded, extracted, commitPending, committed, failed }
 
+enum _AssistantTranscriptGate {
+  accepting,
+  discardingInterruptedTurn,
+  awaitingNextTurn,
+}
+
 const int _maxConversation = 16;
 const int _provisionalMinChars = 6;
 
@@ -465,7 +471,7 @@ class TurnMachine {
   /// Assistant transcript gate after a barge-in. Gemini's documented sequence
   /// is `interrupted` then `turnComplete`, and output transcription has no
   /// ordering guarantee — text can still arrive for speech never played.
-  String? _assistantGate;
+  _AssistantTranscriptGate _assistantGate = _AssistantTranscriptGate.accepting;
 
   ActiveTurn? _active(Speaker s) => s == Speaker.user ? state.activeUser : state.activeAssistant;
   ActiveTurn? _awaiting(Speaker s) =>
@@ -600,7 +606,7 @@ class TurnMachine {
   List<TurnEffect> dispatch(TurnEvent event) {
     switch (event) {
       case SessionStarted():
-        _assistantGate = null;
+        _assistantGate = _AssistantTranscriptGate.accepting;
         if (state.notebookId != null && state.notebookId == event.notebookId) {
           // Reconnecting to the SAME notebook. A live socket is session-scoped;
           // a finalized turn's durable work is notebook-scoped and stays valid.
@@ -636,14 +642,18 @@ class TurnMachine {
         state.awaitingAssistant = null;
         state.previewEntityNames = null;
         state.previewTurnId = null;
-        _assistantGate = null;
+        _assistantGate = _AssistantTranscriptGate.accepting;
         return const [];
 
       case InterimTranscript():
         if (state.sessionId == null) return const [];
         if (event.speaker == Speaker.assistant) {
-          if (_assistantGate == 'collecting') return const [];
-          if (_assistantGate == 'awaitingNewTurn') _assistantGate = null;
+          if (_assistantGate == _AssistantTranscriptGate.discardingInterruptedTurn) {
+            return const [];
+          }
+          if (_assistantGate == _AssistantTranscriptGate.awaitingNextTurn) {
+            _assistantGate = _AssistantTranscriptGate.accepting;
+          }
         }
         final base = _ensureActive(event.speaker);
         // An authoritative final transcript already arrived; interim chatter
@@ -673,7 +683,8 @@ class TurnMachine {
       case FinalTranscript():
         if (state.sessionId == null) return const [];
         // Unheard text for an interrupted assistant turn never becomes durable.
-        if (event.speaker == Speaker.assistant && _assistantGate != null) {
+        if (event.speaker == Speaker.assistant &&
+            _assistantGate != _AssistantTranscriptGate.accepting) {
           return const [];
         }
 
@@ -693,8 +704,9 @@ class TurnMachine {
 
       case TurnCompleted():
         final active = _active(event.speaker);
-        if (event.speaker == Speaker.assistant && _assistantGate == 'collecting') {
-          _assistantGate = 'awaitingNewTurn';
+        if (event.speaker == Speaker.assistant &&
+            _assistantGate == _AssistantTranscriptGate.discardingInterruptedTurn) {
+          _assistantGate = _AssistantTranscriptGate.awaitingNextTurn;
         }
         if (active == null) return const [];
 
@@ -728,7 +740,7 @@ class TurnMachine {
 
       case AssistantInterrupted():
         final effects = <TurnEffect>[const FlushPlayback()];
-        _assistantGate = 'collecting';
+        _assistantGate = _AssistantTranscriptGate.discardingInterruptedTurn;
         final active = state.activeAssistant;
         if (active == null) return effects;
 

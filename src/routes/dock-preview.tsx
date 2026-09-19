@@ -1,15 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import {
-  Bot,
-  Keyboard,
-  Loader2,
-  Mic,
-  MicOff,
-  Send,
-  Volume2,
-  Waves,
-} from "lucide-react";
+import { Bot, Keyboard, Loader2, Mic, MicOff, Send, Volume2, Waves } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -133,9 +124,14 @@ function DockPreview() {
           <div className="rounded-lg border bg-card/60 p-4 text-xs text-muted-foreground">
             <p className="font-medium text-foreground">What to look for</p>
             <ul className="mt-2 space-y-1 list-disc pl-5">
-              <li>Width and height animate <em>together</em> — never one then the other.</li>
+              <li>
+                Width and height animate <em>together</em> — never one then the other.
+              </li>
               <li>The capsule stays a true pill (rounded-full) at every frame.</li>
-              <li>Content fades in <em>after</em> the shape settles, fades out <em>before</em> it collapses.</li>
+              <li>
+                Content fades in <em>after</em> the shape settles, fades out <em>before</em> it
+                collapses.
+              </li>
               <li>Slight overshoot at the end of each transition (the spring).</li>
             </ul>
           </div>
@@ -209,10 +205,7 @@ function DockPill({
             />
             <feMorphology in="goo" operator="erode" radius="1" result="eroded" />
             <feComposite in="goo" in2="eroded" operator="out" result="ring" />
-            <feFlood
-              style={{ floodColor: "var(--color-border)" }}
-              result="bordercolor"
-            />
+            <feFlood style={{ floodColor: "var(--color-border)" }} result="bordercolor" />
             <feComposite in="bordercolor" in2="ring" operator="in" result="coloredOutline" />
             <feMerge>
               <feMergeNode in="goo" />
@@ -226,10 +219,7 @@ function DockPill({
         // and its sibling blobs into one mercury silhouette. The wrapper
         // sizes to the pill (relative + inline children) so blob percentages
         // ride the morphing pill's edges automatically.
-        className={cn(
-          "pointer-events-auto relative",
-          voiceActive && "goo-active",
-        )}
+        className={cn("pointer-events-auto relative", voiceActive && "goo-active")}
       >
         {voiceActive && (
           <>
@@ -257,115 +247,117 @@ function DockPill({
           className={cn(
             "grid overflow-hidden rounded-full backdrop-blur",
             "transition-[grid-template-rows,width] duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)]",
-            voiceActive
-              ? "bg-card"
-              : "border bg-card/95 shadow-[var(--shadow-paper)]",
+            voiceActive ? "bg-card" : "border bg-card/95 shadow-[var(--shadow-paper)]",
             isExpanded
               ? "w-[min(560px,calc(100vw-2rem))] grid-rows-[1fr_auto]"
               : "w-[180px] grid-rows-[0fr_auto]",
           )}
         >
-        <div className="overflow-hidden">
-          <div
-            // Inner content opacity asymmetry:
-            //  - expanding: wait 200ms (capsule grows first), then fade in 300ms
-            //  - collapsing: snap to opacity-0 in 120ms (content clears before
-            //    the capsule shrinks). Without this asymmetry the morph reads
-            //    as "two boxes stacked", not "one shape that grew".
-            //
-            // min-h-[68px] + items-center: the button row below is ~60px tall
-            // (h-12 mic + p-1.5 padding), so a one-line transcript squished
-            // against it reads as "ribbon glued to dock". Giving content a
-            // 68px envelope with vertical centering balances the visual weight
-            // of the controls and keeps the capsule feeling like one body.
-            className={cn(
-              "flex min-h-[68px] items-center px-5 py-3 transition-opacity",
-              isExpanded
-                ? "opacity-100 duration-300 delay-200"
-                : "opacity-0 duration-100 delay-0",
-            )}
-          >
-            {typing ? (
-              <form className="flex items-center gap-3" onSubmit={(e) => e.preventDefault()}>
-                <Keyboard className="h-4 w-4 shrink-0 text-muted-foreground" />
-                <input
-                  placeholder="Type a thought…"
-                  className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-                />
-                <button
-                  type="submit"
-                  aria-label="Send"
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground transition hover:bg-background hover:text-foreground"
-                >
-                  <Send className="h-4 w-4" />
-                </button>
-              </form>
-            ) : speaking ? (
-              <div className="flex w-full items-center justify-center gap-3 text-sm">
-                <Bot className="h-4 w-4 shrink-0 text-accent" />
-                <span className="max-h-32 max-w-[85%] overflow-y-auto text-center leading-snug text-foreground">
-                  {agentText || "…"}
-                </span>
-              </div>
-            ) : listening ? (
-              <div className="flex w-full items-center justify-center gap-3 text-sm">
-                <Waves className="h-4 w-4 shrink-0 text-accent" />
-                <span className="max-h-32 max-w-[85%] overflow-y-auto text-center leading-snug">
-                  {userText ? (
-                    <span className="text-foreground">{userText}</span>
-                  ) : (
-                    <span className="text-muted-foreground">Listening…</span>
-                  )}
-                </span>
-              </div>
-            ) : thinking ? (
-              <div className="flex w-full items-center justify-center gap-2 text-sm text-muted-foreground">
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                <span>Mapping your thought…</span>
-              </div>
-            ) : followUp ? (
-              <div className="flex w-full items-center justify-center gap-3 text-sm">
-                <Bot className="h-4 w-4 shrink-0 text-muted-foreground" />
-                <span className="max-w-[85%] text-center leading-snug text-muted-foreground">
-                  {SAMPLE_FOLLOW_UP}
-                </span>
-              </div>
-            ) : null}
+          <div className="overflow-hidden">
+            <div
+              // Inner content opacity asymmetry:
+              //  - expanding: wait 200ms (capsule grows first), then fade in 300ms
+              //  - collapsing: snap to opacity-0 in 120ms (content clears before
+              //    the capsule shrinks). Without this asymmetry the morph reads
+              //    as "two boxes stacked", not "one shape that grew".
+              //
+              // min-h-[68px] + items-center: the button row below is ~60px tall
+              // (h-12 mic + p-1.5 padding), so a one-line transcript squished
+              // against it reads as "ribbon glued to dock". Giving content a
+              // 68px envelope with vertical centering balances the visual weight
+              // of the controls and keeps the capsule feeling like one body.
+              className={cn(
+                "flex min-h-[68px] items-center px-5 py-3 transition-opacity",
+                isExpanded
+                  ? "opacity-100 duration-300 delay-200"
+                  : "opacity-0 duration-100 delay-0",
+              )}
+            >
+              {typing ? (
+                <form className="flex items-center gap-3" onSubmit={(e) => e.preventDefault()}>
+                  <Keyboard className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  <input
+                    placeholder="Type a thought…"
+                    className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+                  />
+                  <button
+                    type="submit"
+                    aria-label="Send"
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground transition hover:bg-background hover:text-foreground"
+                  >
+                    <Send className="h-4 w-4" />
+                  </button>
+                </form>
+              ) : speaking ? (
+                <div className="flex w-full items-center justify-center gap-3 text-sm">
+                  <Bot className="h-4 w-4 shrink-0 text-accent" />
+                  <span className="max-h-32 max-w-[85%] overflow-y-auto text-center leading-snug text-foreground">
+                    {agentText || "…"}
+                  </span>
+                </div>
+              ) : listening ? (
+                <div className="flex w-full items-center justify-center gap-3 text-sm">
+                  <Waves className="h-4 w-4 shrink-0 text-accent" />
+                  <span className="max-h-32 max-w-[85%] overflow-y-auto text-center leading-snug">
+                    {userText ? (
+                      <span className="text-foreground">{userText}</span>
+                    ) : (
+                      <span className="text-muted-foreground">Listening…</span>
+                    )}
+                  </span>
+                </div>
+              ) : thinking ? (
+                <div className="flex w-full items-center justify-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  <span>Mapping your thought…</span>
+                </div>
+              ) : followUp ? (
+                <div className="flex w-full items-center justify-center gap-3 text-sm">
+                  <Bot className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  <span className="max-w-[85%] text-center leading-snug text-muted-foreground">
+                    {SAMPLE_FOLLOW_UP}
+                  </span>
+                </div>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="flex items-center justify-center gap-1 p-1.5">
+            <button
+              type="button"
+              onClick={onClickKeyboard}
+              aria-pressed={typing}
+              className={cn(
+                "inline-flex h-11 w-11 items-center justify-center rounded-full text-muted-foreground transition hover:bg-background hover:text-foreground",
+                typing && "bg-background text-foreground",
+              )}
+            >
+              <Keyboard className="h-[18px] w-[18px]" />
+            </button>
+            <button
+              type="button"
+              onClick={onClickMic}
+              className={cn(
+                "relative inline-flex h-12 w-12 items-center justify-center rounded-full transition",
+                listening
+                  ? "bg-accent text-foreground"
+                  : "bg-foreground text-background hover:scale-105",
+              )}
+            >
+              {listening ? (
+                <MicOff className="h-[18px] w-[18px]" />
+              ) : (
+                <Mic className="h-[18px] w-[18px]" />
+              )}
+            </button>
+            <button
+              type="button"
+              className="inline-flex h-11 w-11 items-center justify-center rounded-full text-muted-foreground transition hover:bg-background hover:text-foreground"
+            >
+              <Volume2 className="h-[18px] w-[18px]" />
+            </button>
           </div>
         </div>
-
-        <div className="flex items-center justify-center gap-1 p-1.5">
-          <button
-            type="button"
-            onClick={onClickKeyboard}
-            aria-pressed={typing}
-            className={cn(
-              "inline-flex h-11 w-11 items-center justify-center rounded-full text-muted-foreground transition hover:bg-background hover:text-foreground",
-              typing && "bg-background text-foreground",
-            )}
-          >
-            <Keyboard className="h-[18px] w-[18px]" />
-          </button>
-          <button
-            type="button"
-            onClick={onClickMic}
-            className={cn(
-              "relative inline-flex h-12 w-12 items-center justify-center rounded-full transition",
-              listening
-                ? "bg-accent text-foreground"
-                : "bg-foreground text-background hover:scale-105",
-            )}
-          >
-            {listening ? <MicOff className="h-[18px] w-[18px]" /> : <Mic className="h-[18px] w-[18px]" />}
-          </button>
-          <button
-            type="button"
-            className="inline-flex h-11 w-11 items-center justify-center rounded-full text-muted-foreground transition hover:bg-background hover:text-foreground"
-          >
-            <Volume2 className="h-[18px] w-[18px]" />
-          </button>
-        </div>
-      </div>
       </div>
     </div>
   );
