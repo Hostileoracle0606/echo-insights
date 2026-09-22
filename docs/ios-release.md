@@ -246,11 +246,70 @@ change.
 
 ---
 
-## 6. Pre-submission checklist
+## 6. Privacy: manifest, nutrition labels, policy
+
+### What the app actually does with data
+
+| Data | Where it goes | Retained |
+|---|---|---|
+| Microphone audio (16 kHz PCM) | Streamed **from the device directly to Google** (`generativelanguage.googleapis.com`, Gemini Live API) over WSS during a session | Not stored by Lumen; Google's API data terms apply |
+| Transcripts, journal entries, knowledge graph | Supabase (Lumen's backend) | Until the user deletes the account |
+| Transcripts (in-flight turns) | On-device checkpoint files (Application Support, `turn-journal-v1`) | Until the turn is committed, or account deletion |
+| Email address, account ID | Supabase Auth | Until the user deletes the account |
+| Transcript text, for graph extraction | Lumen's runtime (`infra/`), which calls Gemini | Not stored beyond the request |
+
+No analytics, advertising or tracking SDKs; no tracking domains.
+
+### Privacy manifest
+
+`ios/Runner/PrivacyInfo.xcprivacy` (bundled via the Runner target's
+Resources phase) declares `NSPrivacyTracking = false` and collected types
+**Audio Data**, **Other User Content**, **Email Address** and **User ID**,
+all *linked to the user*, *not used for tracking*, purpose *App
+Functionality*. It declares no required-reason APIs: the app's Dart code
+calls none directly, and the plugins (`path_provider`,
+`shared_preferences` via `supabase_flutter`, `record`, `just_audio`, …) ship
+their own manifests. If App Store Connect's upload validation or the Xcode
+*Privacy Report* (Organizer → archive → *Generate Privacy Report*) flags a
+missing reason, add it to the app manifest then.
+
+### App Store Connect → App Privacy (nutrition labels)
+
+Answer **Yes, we collect data**, then:
+
+| Category → type | Linked to user | Tracking | Purposes |
+|---|---|---|---|
+| Audio Data → *Voice or sound recordings* | Yes | No | App Functionality |
+| User Content → *Other User Content* (journal transcripts and graph) | Yes | No | App Functionality |
+| Contact Info → *Email Address* | Yes | No | App Functionality |
+| Identifiers → *User ID* | Yes | No | App Functionality |
+
+Apple counts data sent to a third-party partner as collected. The labels do
+not name recipients, so **the transfer of microphone audio to Google (Gemini
+Live API) must be disclosed in the privacy policy**. It is a data transfer,
+not an implementation detail.
+
+### Hosted privacy policy (external action)
+
+A public URL is needed both in App Store Connect (*App Information → Privacy
+Policy URL*) and in the app (the account sheet's *Privacy Policy* link, from
+`PRIVACY_POLICY_URL`). At minimum the policy must say:
+
+- what is collected (the table above);
+- that voice audio is streamed to **Google** for real-time speech processing
+  and replies, and transcript text is sent to Google for graph extraction;
+- that Supabase hosts account and journal data;
+- how to delete the account in the app (*Account → Delete account*), and
+  that deletion removes all server data and the on-device journal;
+- a contact address.
+
+---
+
+## 7. Pre-submission checklist
 
 - [ ] App Store Connect app record exists
 - [ ] Hosted privacy policy URL is live and entered in App Store Connect
-- [ ] App Privacy (nutrition label) answers entered (see §7)
+- [ ] App Privacy (nutrition label) answers entered (see §6)
 - [ ] Demo account created and entered under *App Review Information*
       (see §5)
 - [ ] `ios/Podfile.lock` regenerated on a Mac and committed
