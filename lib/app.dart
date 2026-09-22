@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'providers/auth_provider.dart';
+import 'providers/journal_provider.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/auth/signup_screen.dart';
 import 'screens/dashboard/dashboard_screen.dart';
@@ -42,11 +43,36 @@ final routerProvider = Provider<GoRouter>((ref) {
   );
 });
 
-class LumenApp extends ConsumerWidget {
+class LumenApp extends ConsumerStatefulWidget {
   const LumenApp({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<LumenApp> createState() => _LumenAppState();
+}
+
+class _LumenAppState extends ConsumerState<LumenApp> {
+  late final AppLifecycleListener _lifecycle;
+
+  @override
+  void initState() {
+    super.initState();
+    _lifecycle = AppLifecycleListener(onStateChange: _onLifecycleChange);
+  }
+
+  @override
+  void dispose() {
+    _lifecycle.dispose();
+    super.dispose();
+  }
+
+  void _onLifecycleChange(AppLifecycleState lifecycle) {
+    // Only an existing journal can hold a live session; never build one here.
+    if (!ref.exists(journalProvider)) return;
+    ref.read(journalProvider.notifier).handleAppLifecycle(lifecycle);
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final router = ref.watch(routerProvider);
     return MaterialApp.router(
       title: 'Lumen',

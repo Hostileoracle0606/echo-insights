@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:audio_session/audio_session.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart' show AppLifecycleState;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../audio/mic_controller.dart';
@@ -187,6 +188,39 @@ class JournalNotifier extends Notifier<JournalState> {
 
   void _notifyUi() {
     state = state.copyWith();
+  }
+
+  /// Forwarded from LumenApp's AppLifecycleListener. There is deliberately no
+  /// teardown on `paused`: UIBackgroundModes audio keeps an active session
+  /// recording with the screen locked.
+  void handleAppLifecycle(AppLifecycleState lifecycle) {
+    switch (lifecycle) {
+      case AppLifecycleState.paused:
+        vlog('session', 'app backgrounded; session ${_status.name}');
+      case AppLifecycleState.detached:
+        // The app is being torn down (swiped away from the app switcher):
+        // close the socket and mic and end the notebook rather than leave it
+        // open. A no-op when nothing is active.
+        vlog('session', 'app detached; ending session');
+        unawaited(endSession());
+      case AppLifecycleState.resumed:
+        _reconcileAfterResume();
+      case AppLifecycleState.inactive:
+      case AppLifecycleState.hidden:
+        break;
+    }
+  }
+
+  /// Foregrounded again: state may have moved while no frames were drawn.
+  /// Retry a mic still suspended by an interruption that ended without
+  /// shouldResume, then repaint from the notifier's actual state.
+  void _reconcileAfterResume() {
+    final mic = _mic;
+    if (_status == SessionStatus.live && mic != null && mic.suspended) {
+      vlog('session', 'resuming mic suspended by an interruption');
+      unawaited(mic.resume());
+    }
+    _notifyUi();
   }
 
   Future<T> _serializeLifecycle<T>(Future<T> Function() operation) {
