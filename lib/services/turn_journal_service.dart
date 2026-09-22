@@ -144,6 +144,16 @@ class TurnJournalService {
     });
   }
 
+  /// Deletes every checkpoint for every notebook. Called on account deletion
+  /// so no verbatim transcript outlives the account on this device.
+  Future<void> forgetAll() {
+    return _serialized(() async {
+      final root = await _directoryProvider();
+      final directory = Directory('${root.path}/turn-journal-v$_version');
+      if (await directory.exists()) await directory.delete(recursive: true);
+    });
+  }
+
   Future<T> _serialized<T>(Future<T> Function() operation) {
     final result = _tail.then((_) => operation());
     _tail = result.then<void>(

@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/notebook.dart';
+import 'turn_journal_service.dart';
 
 /// Notebook lifecycle only (create/list/end) — reads and writes of a
 /// notebook's journal/graph data go through NotebookCommitService instead
@@ -17,6 +18,18 @@ class SupabaseService {
       _client.auth.signUp(email: email, password: password);
 
   Future<void> signOut() => _client.auth.signOut();
+
+  /// Permanently deletes the signed-in account (App Store Guideline
+  /// 5.1.1(v)). The delete-account edge function takes the user id from the
+  /// caller's JWT, and every server row cascades from the auth user. Local
+  /// transcripts are wiped only once the server delete has succeeded, then
+  /// the now-invalid session is dropped. A failed call throws and leaves
+  /// everything in place.
+  Future<void> deleteAccount({required TurnJournalService journal}) async {
+    await _client.functions.invoke('delete-account');
+    await journal.forgetAll();
+    await _client.auth.signOut();
+  }
 
   User? get currentUser => _client.auth.currentUser;
 

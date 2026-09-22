@@ -66,6 +66,23 @@ stack; they are the same values CI uses:
 Never put the service-role key, `GEMINI_API_KEY` or any other server secret
 here. Gemini credentials are minted per session by the backend.
 
+### Backend the build depends on
+
+In-app account deletion needs its migration and edge function deployed to the
+same Supabase project the build points at. The retrieval CI job does not
+deploy them:
+
+```sh
+supabase link --project-ref <ref>
+supabase db push                               # includes 20260922000000_account_deletion.sql
+supabase functions deploy delete-account --project-ref <ref>
+```
+
+`delete-account` uses the project's built-in `SUPABASE_SERVICE_ROLE_KEY`; it
+needs no extra secret. Check it on a throwaway account before submitting:
+sign up, record a turn, then *Account → Delete account*. Afterwards,
+*Authentication → Users* should no longer list the account.
+
 ---
 
 ## 2. Build the signed archive

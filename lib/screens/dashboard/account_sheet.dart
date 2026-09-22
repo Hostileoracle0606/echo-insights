@@ -67,6 +67,34 @@ class _AccountSheetState extends ConsumerState<AccountSheet> {
     }
   }
 
+  Future<void> _deleteAccount() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => const _DeleteAccountDialog(),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      // A clean end matters here too: a checkpoint still being written could
+      // otherwise land after the local journal is wiped.
+      if (!await _endLiveSession()) return;
+      final service = ref.read(supabaseServiceProvider);
+      final journal = ref.read(turnJournalServiceProvider);
+      ref.invalidate(journalProvider);
+      await service.deleteAccount(journal: journal);
+    } catch (_) {
+      if (mounted) {
+        setState(() => _error =
+            "Couldn't delete your account. Check your connection and try again.");
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   Future<void> _openPrivacyPolicy() async {
     await launchUrl(Uri.parse(Env.privacyPolicyUrl));
   }
@@ -160,6 +188,14 @@ class _AccountSheetState extends ConsumerState<AccountSheet> {
                       : null,
                   onTap: _busy ? null : _signOut,
                 ),
+                ListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+                  title: Text(
+                    'Delete account',
+                    style: bodyStyle.copyWith(color: colors.destructive),
+                  ),
+                  onTap: _busy ? null : _deleteAccount,
+                ),
                 if (_error != null)
                   Padding(
                     padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
@@ -176,6 +212,75 @@ class _AccountSheetState extends ConsumerState<AccountSheet> {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Two-step, typed confirmation: deletion is permanent, so the button stays
+/// disabled until the user types DELETE.
+class _DeleteAccountDialog extends StatefulWidget {
+  const _DeleteAccountDialog();
+
+  @override
+  State<_DeleteAccountDialog> createState() => _DeleteAccountDialogState();
+}
+
+class _DeleteAccountDialogState extends State<_DeleteAccountDialog> {
+  static const _phrase = 'DELETE';
+  final _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.lumenColors;
+    final confirmed = _controller.text.trim() == _phrase;
+    return AlertDialog(
+      backgroundColor: colors.card,
+      title: const Text('Delete your account?'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'This permanently deletes your account, every notebook, '
+            'transcript and graph, and the journal saved on this device. '
+            "It can't be undone.",
+            style: TextStyle(color: colors.ink),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Type $_phrase to confirm.',
+            style: TextStyle(color: colors.mutedForeground),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _controller,
+            autofocus: true,
+            autocorrect: false,
+            textCapitalization: TextCapitalization.characters,
+            onChanged: (_) => setState(() {}),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: Text('Cancel', style: TextStyle(color: colors.ink)),
+        ),
+        FilledButton(
+          style: FilledButton.styleFrom(
+            backgroundColor: colors.destructive,
+            foregroundColor: colors.destructiveForeground,
+          ),
+          onPressed: confirmed ? () => Navigator.of(context).pop(true) : null,
+          child: const Text('Delete account'),
+        ),
+      ],
     );
   }
 }

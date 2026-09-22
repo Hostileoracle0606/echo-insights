@@ -9,11 +9,12 @@ FinalizedTurn turn({
   DurableStage stage = DurableStage.finalRecorded,
   Map<String, dynamic>? extraction,
   int? baseRevision,
+  String notebookId = 'notebook-1',
 }) {
   return FinalizedTurn(
     turnId: 'turn-1',
     sessionId: 'session-1',
-    notebookId: 'notebook-1',
+    notebookId: notebookId,
     speaker: Speaker.user,
     transcript: 'I work at Acme.',
     transcriptVersion: 2,
@@ -131,5 +132,23 @@ void main() {
     final restored = await journal.loadTurns('notebook-1');
 
     expect(restored.single.stage, DurableStage.extracted);
+  });
+
+  test('forgetAll removes every notebook\'s transcripts from disk', () async {
+    await journal.persistTurn(turn());
+    await journal.persistTurn(turn(notebookId: 'notebook-2'));
+    final journalDir = Directory('${directory.path}/turn-journal-v1');
+    expect(journalDir.listSync(), hasLength(2));
+
+    await journal.forgetAll();
+
+    expect(await journalDir.exists(), isFalse);
+    expect(await journal.loadTurns('notebook-1'), isEmpty);
+    expect(await journal.loadTurns('notebook-2'), isEmpty);
+  });
+
+  test('forgetAll is a no-op when nothing was ever journaled', () async {
+    await journal.forgetAll();
+    expect(await journal.loadTurns('notebook-1'), isEmpty);
   });
 }
