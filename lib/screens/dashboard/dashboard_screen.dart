@@ -43,13 +43,17 @@ class DashboardScreen extends ConsumerWidget {
       backgroundColor: colors.paper,
       body: SafeArea(
         child: notebooks.when(
-          loading: () => Center(
-            child: CircularProgressIndicator(color: colors.amber),
-          ),
-          error: (_, __) => _message(
+          // Loading and error keep the account button reachable: without the
+          // hero there was otherwise no way to sign out or delete the account.
+          loading: () => _statusLayout(
+            context,
             colors,
-            "Couldn't load your notebooks.\n"
-            'Check your connection and try again.',
+            Center(child: CircularProgressIndicator(color: colors.amber)),
+          ),
+          error: (_, __) => _statusLayout(
+            context,
+            colors,
+            _loadError(context, ref, colors),
           ),
           data: (list) {
             final isEmpty = list.isEmpty;
@@ -227,19 +231,79 @@ class DashboardScreen extends ConsumerWidget {
     );
   }
 
-  Widget _message(LumenColors colors, String text) {
+  Widget _statusLayout(
+    BuildContext context,
+    LumenColors colors,
+    Widget child,
+  ) {
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(22, 14, 10, 0),
+          child: Row(
+            children: [
+              Text(
+                'Lumen',
+                style: Theme.of(context)
+                    .textTheme
+                    .headlineMedium
+                    ?.copyWith(fontSize: 15, color: colors.ink),
+              ),
+              Text(
+                '.',
+                style: Theme.of(context)
+                    .textTheme
+                    .headlineMedium
+                    ?.copyWith(fontSize: 15, color: colors.amber),
+              ),
+              const Spacer(),
+              IconButton(
+                icon: const Icon(Icons.person_outline),
+                color: colors.ink,
+                tooltip: 'Account',
+                onPressed: () => showAccountSheet(context),
+              ),
+            ],
+          ),
+        ),
+        Expanded(child: child),
+      ],
+    );
+  }
+
+  Widget _loadError(BuildContext context, WidgetRef ref, LumenColors colors) {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
-        child: Text(
-          text,
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            fontFamily: LumenText.sansFontFamily,
-            fontSize: 14,
-            height: 1.5,
-            color: colors.mutedForeground,
-          ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              "Couldn't load your notebooks",
+              textAlign: TextAlign.center,
+              style: Theme.of(context)
+                  .textTheme
+                  .headlineMedium
+                  ?.copyWith(fontSize: 22, color: colors.ink),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Check your connection and try again. Your journal is saved; '
+              'nothing was lost.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontFamily: LumenText.sansFontFamily,
+                fontSize: 14,
+                height: 1.5,
+                color: colors.mutedForeground,
+              ),
+            ),
+            const SizedBox(height: 20),
+            FilledButton(
+              onPressed: () => ref.invalidate(notebooksProvider),
+              child: const Text('Retry'),
+            ),
+          ],
         ),
       ),
     );

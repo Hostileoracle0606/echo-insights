@@ -208,4 +208,40 @@ void main() {
 
     await tester.pumpWidget(const SizedBox());
   });
+
+  testWidgets('a load failure keeps Account reachable and Retry refetches',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(402, 874));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    var loads = 0;
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          notebooksProvider.overrideWith((ref) async {
+            loads++;
+            throw StateError('offline');
+          }),
+        ],
+        child: MaterialApp(
+          debugShowCheckedModeBanner: false,
+          theme: LumenTheme.light(),
+          home: const DashboardScreen(),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text("Couldn't load your notebooks"), findsOneWidget);
+    expect(find.byTooltip('Account'), findsOneWidget);
+    expect(loads, 1);
+
+    await tester.tap(find.text('Retry'));
+    await tester.pump();
+    await tester.pump();
+    expect(loads, 2);
+
+    await tester.pumpWidget(const SizedBox());
+  });
 }
