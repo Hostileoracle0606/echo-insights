@@ -80,6 +80,16 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     decoration: const InputDecoration(labelText: 'Password'),
                     onSubmitted: (_) => _submit(),
                   ),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton(
+                      onPressed: () => context.go(
+                        '/auth/forgot',
+                        extra: _email.text.trim(),
+                      ),
+                      child: const Text('Forgot password?'),
+                    ),
+                  ),
                   if (_error != null) ...[
                     const SizedBox(height: 12),
                     Text(
@@ -89,7 +99,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       ),
                     ),
                   ],
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 12),
                   FilledButton(
                     onPressed: _loading ? null : _submit,
                     child: _loading

@@ -19,6 +19,16 @@ class SupabaseService {
 
   Future<void> signOut() => _client.auth.signOut();
 
+  /// Sends a password recovery email. Supabase answers the same way whether
+  /// or not an account exists, so the caller never learns which emails are
+  /// registered. The link opens [redirectTo] (the web app's /auth/reset),
+  /// where the new password is set.
+  Future<void> requestPasswordReset(String email, {String? redirectTo}) =>
+      _client.auth.resetPasswordForEmail(
+        email,
+        redirectTo: (redirectTo == null || redirectTo.isEmpty) ? null : redirectTo,
+      );
+
   /// Permanently deletes the signed-in account (App Store Guideline
   /// 5.1.1(v)). The delete-account edge function takes the user id from the
   /// caller's JWT, and every server row cascades from the auth user. Local

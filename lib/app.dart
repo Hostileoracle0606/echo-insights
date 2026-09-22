@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import 'providers/auth_provider.dart';
 import 'providers/journal_provider.dart';
+import 'screens/auth/forgot_password_screen.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/auth/signup_screen.dart';
 import 'screens/dashboard/dashboard_screen.dart';
@@ -31,6 +32,12 @@ final routerProvider = Provider<GoRouter>((ref) {
     routes: [
       GoRoute(path: '/auth/login', builder: (_, __) => const LoginScreen()),
       GoRoute(path: '/auth/signup', builder: (_, __) => const SignupScreen()),
+      GoRoute(
+        path: '/auth/forgot',
+        builder: (_, state) => ForgotPasswordScreen(
+          initialEmail: state.extra is String ? state.extra as String : null,
+        ),
+      ),
       GoRoute(path: '/dashboard', builder: (_, __) => const DashboardScreen()),
       GoRoute(
         path: '/notebook/:id',

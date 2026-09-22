@@ -11,8 +11,9 @@ export const REQUIRED_DEFINES = Object.freeze([
 ]);
 
 // A signed App Store build must link a live privacy policy from the account
-// sheet (Guideline 5.1.1(i)). Unsigned builds pass it through when set.
-export const SIGNED_ONLY_DEFINES = Object.freeze(["PRIVACY_POLICY_URL"]);
+// sheet (Guideline 5.1.1(i)) and send password-reset links to a real page.
+// Unsigned builds pass these through when set.
+export const SIGNED_ONLY_DEFINES = Object.freeze(["PRIVACY_POLICY_URL", "PASSWORD_RESET_URL"]);
 
 export const BUILD_TARGETS = Object.freeze({
   // Unsigned .app for CI and release smoke checks.

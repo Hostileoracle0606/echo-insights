@@ -25,6 +25,7 @@ class Env {
     'VITE_SUPABASE_PUBLISHABLE_KEY':
         String.fromEnvironment('VITE_SUPABASE_PUBLISHABLE_KEY'),
     'PRIVACY_POLICY_URL': String.fromEnvironment('PRIVACY_POLICY_URL'),
+    'PASSWORD_RESET_URL': String.fromEnvironment('PASSWORD_RESET_URL'),
   };
 
   static String _first(List<String> keys) {
@@ -69,6 +70,11 @@ class Env {
   /// Hosted privacy policy, linked from the account sheet. Required for
   /// signed App Store builds by scripts/ios-build.mjs; optional otherwise.
   static String get privacyPolicyUrl => _first(const ['PRIVACY_POLICY_URL']);
+
+  /// The web app's /auth/reset page, where a recovery link lands. Required
+  /// for signed App Store builds by scripts/ios-build.mjs; when empty,
+  /// Supabase falls back to the project's Site URL.
+  static String get passwordResetUrl => _first(const ['PASSWORD_RESET_URL']);
 
   static String get notebookRuntimeUrl =>
       _first(const ['NOTEBOOK_RUNTIME_URL', 'VITE_NOTEBOOK_RUNTIME_URL']);
