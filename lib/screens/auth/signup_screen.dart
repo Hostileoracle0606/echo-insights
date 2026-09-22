@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../providers/supabase_provider.dart';
+import 'auth_error_message.dart';
 
 class SignupScreen extends ConsumerStatefulWidget {
   const SignupScreen({super.key});
@@ -45,7 +46,12 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
         _message = 'Account created. Check your email if confirmation is on.';
       });
     } catch (error) {
-      setState(() => _error = error.toString());
+      setState(
+        () => _error = authErrorMessage(
+          error,
+          fallback: "Couldn't create your account. Check your connection and try again.",
+        ),
+      );
     } finally {
       if (mounted) setState(() => _loading = false);
     }

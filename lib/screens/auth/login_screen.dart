@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../providers/supabase_provider.dart';
+import 'auth_error_message.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -33,7 +34,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       final service = ref.read(supabaseServiceProvider);
       await service.signInWithEmail(_email.text.trim(), _password.text);
     } catch (error) {
-      setState(() => _error = error.toString());
+      setState(
+        () => _error = authErrorMessage(
+          error,
+          fallback: "Couldn't sign in. Check your connection and try again.",
+        ),
+      );
     } finally {
       if (mounted) setState(() => _loading = false);
     }

@@ -8,13 +8,12 @@ import 'env.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Env.load();
+  Env.assertConfigured();
 
-  if (Env.supabaseUrl.isNotEmpty && Env.supabaseAnonKey.isNotEmpty) {
-    await Supabase.initialize(
-      url: Env.supabaseUrl,
-      publishableKey: Env.supabaseAnonKey,
-    );
-  }
+  await Supabase.initialize(
+    url: Env.supabaseUrl,
+    publishableKey: Env.supabaseAnonKey,
+  );
 
   runApp(const ProviderScope(child: LumenApp()));
 }

@@ -47,6 +47,24 @@ class Env {
     return trimmed;
   }
 
+  /// Throws a [StateError] naming every missing value. Called at startup so a
+  /// build without its --dart-define values fails loudly instead of limping
+  /// to a login screen with no backend. Values injected through
+  /// `dotenv.testLoad` satisfy it too.
+  static void assertConfigured() {
+    final missing = [
+      if (supabaseUrl.isEmpty) 'SUPABASE_URL',
+      if (supabaseAnonKey.isEmpty) 'SUPABASE_ANON_KEY',
+      if (notebookRuntimeUrl.isEmpty) 'NOTEBOOK_RUNTIME_URL',
+    ];
+    if (missing.isNotEmpty) {
+      throw StateError(
+        'Lumen is missing required configuration: ${missing.join(', ')}. '
+        'Build with scripts/ios-build.mjs, which passes them as --dart-define.',
+      );
+    }
+  }
+
   static String get notebookRuntimeUrl =>
       _first(const ['NOTEBOOK_RUNTIME_URL', 'VITE_NOTEBOOK_RUNTIME_URL']);
   static String get supabaseUrl =>
