@@ -42,7 +42,7 @@ bundled credentials. No Apple secrets live in CI.
   `security find-identity -v -p codesigning | grep "Apple Distribution"`.
 - The App ID `com.echoinsights.lumen` must have the **Background Modes**
   capability available. Automatic signing registers this when the capability
-  is enabled on the Runner target (see §6).
+  is enabled on the Runner target (see §5).
 
 ### In App Store Connect
 
@@ -198,13 +198,61 @@ Work through these in order:
 
 ---
 
-## 5. Pre-submission checklist
+## 5. Background audio: capability and App Review notes
+
+`ios/Runner/Info.plist` declares `UIBackgroundModes` → `audio`, so a journaling
+session keeps recording when the screen locks or the user switches apps.
+Choosing this was deliberate, and it gets extra App Review scrutiny.
+
+**One-time Xcode step (needs a Mac):** open `ios/Runner.xcworkspace` → *Runner*
+target → *Signing & Capabilities* → **+ Capability** → *Background Modes* →
+tick **Audio, AirPlay, and Picture in Picture**. That records the capability on
+the target so automatic signing includes it in the provisioning profile. The
+plist key alone is what the OS reads at runtime, but review and signing expect
+the capability to be enabled on the target too. Commit the resulting
+`project.pbxproj` change.
+
+**App Review Information → Notes.** Paste this and fill in the demo account:
+
+> Lumen is a voice journal. The user starts a journaling session and talks;
+> Lumen listens, replies by voice, and builds a personal knowledge graph from
+> what was said.
+>
+> **Why background audio:** a journaling session is a continuous spoken
+> conversation, often several minutes long. Users commonly lock the phone or
+> put it in a pocket while talking, the same way they would during a phone
+> call. The `audio` background mode keeps the microphone capture and the
+> spoken replies running during an active session only. When the user ends
+> the session, Lumen stops recording and releases the audio session, so it
+> does no background audio work outside a session the user started. The
+> microphone indicator is visible for the whole session.
+>
+> **To test:** sign in with the demo account below → tap **New notebook** →
+> allow microphone access → speak for a few seconds → lock the phone and keep
+> speaking → unlock: the transcript continues. Incoming calls pause the
+> session, which resumes after the call.
+>
+> Demo account: `<email>` / `<password>`
+>
+> **Account deletion:** dashboard → person icon (top right) → *Delete account*.
+
+Create the demo account in the production Supabase project and do **not**
+delete it. App Review signs in with it. If it has no notebooks, the
+reviewer's first view is the empty dashboard, which is fine.
+
+Keep the claim true. If session recording is ever changed to stop when the
+app goes to the background, remove the `audio` background mode in the same
+change.
+
+---
+
+## 6. Pre-submission checklist
 
 - [ ] App Store Connect app record exists
 - [ ] Hosted privacy policy URL is live and entered in App Store Connect
 - [ ] App Privacy (nutrition label) answers entered (see §7)
 - [ ] Demo account created and entered under *App Review Information*
-      (see §6)
+      (see §5)
 - [ ] `ios/Podfile.lock` regenerated on a Mac and committed
 - [ ] Build uploaded, processed, and installed from TestFlight on a physical
       iPhone
