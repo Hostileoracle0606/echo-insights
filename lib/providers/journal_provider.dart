@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:audio_session/audio_session.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart' show AppLifecycleState;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -92,7 +91,7 @@ class JournalNotifier extends Notifier<JournalState> {
   late final TurnEffectQueue _effectQueue = TurnEffectQueue(
     onFailure: (error, stackTrace) {
       vlog('session', 'turn effect failed: $error');
-      debugPrintStack(stackTrace: stackTrace);
+      vlogStack(stackTrace);
     },
   );
   String? _restoredNotebookId;
@@ -370,7 +369,7 @@ class JournalNotifier extends Notifier<JournalState> {
       await _player?.flush();
     } catch (error, stack) {
       vlog('playback', 'flush failed: $error');
-      debugPrintStack(stackTrace: stack);
+      vlogStack(stack);
     } finally {
       _clearAgentSpeaking();
     }
@@ -411,7 +410,7 @@ class JournalNotifier extends Notifier<JournalState> {
     } catch (error, stack) {
       _restoredNotebookId = null;
       vlog('session', 'turn journal restore failed: $error');
-      debugPrintStack(stackTrace: stack);
+      vlogStack(stack);
     }
   }
 
@@ -492,7 +491,7 @@ class JournalNotifier extends Notifier<JournalState> {
       } catch (error, stack) {
         // Do not send a commit that cannot be reproduced after a crash.
         vlog('session', 'commit checkpoint failed: $error');
-        debugPrintStack(stackTrace: stack);
+        vlogStack(stack);
         return;
       }
     }
@@ -732,7 +731,7 @@ class JournalNotifier extends Notifier<JournalState> {
           await _loadNotebookUnlocked(notebookId);
         } catch (error, stack) {
           vlog('session', 'open notebook failed: $error');
-          debugPrintStack(stackTrace: stack);
+          vlogStack(stack);
           return const NotebookTransitionResult.failure(
             'Could not open that notebook. Check your connection and try again.',
           );
@@ -823,7 +822,7 @@ class JournalNotifier extends Notifier<JournalState> {
         await session.setActive(true);
         _audioSessionActive = true;
       } catch (error) {
-        debugPrint('[journal] audio session config unavailable: $error');
+        jlog('audio session config unavailable: $error');
       }
       if (!_liveSessionGuard.isCurrent(lease)) {
         return const NotebookTransitionResult.failure(
@@ -988,7 +987,7 @@ class JournalNotifier extends Notifier<JournalState> {
         }
         ..onError = (error) {
           if (!isCurrent()) return;
-          debugPrint('[journal] Gemini Live error: $error');
+          jlog('Gemini Live error: $error');
           _setStatus(SessionStatus.error);
         };
       _live = live;
@@ -1044,7 +1043,7 @@ class JournalNotifier extends Notifier<JournalState> {
         }
         vlog('playback', 'agent-audio playback ready');
       } catch (error) {
-        debugPrint('[journal] agent-audio playback unavailable, continuing '
+        jlog('agent-audio playback unavailable, continuing '
             'without it: $error');
         unawaited(player.dispose().catchError((_) {}));
         if (identical(_player, player)) _player = null;
@@ -1056,7 +1055,7 @@ class JournalNotifier extends Notifier<JournalState> {
       }
       return const NotebookTransitionResult.success();
     } catch (error, stack) {
-      debugPrint('[journal] startSession failed: $error\n$stack');
+      jlog('startSession failed: $error\n$stack');
       await _closeLiveTransportUnlocked();
       _setStatus(SessionStatus.error);
       return const NotebookTransitionResult.failure(
@@ -1104,19 +1103,19 @@ class JournalNotifier extends Notifier<JournalState> {
       await (mic != null ? mic.stop() : capture?.stop());
     } catch (error, stack) {
       vlog('session', 'mic shutdown failed: $error');
-      debugPrintStack(stackTrace: stack);
+      vlogStack(stack);
     }
     try {
       await live?.close();
     } catch (error, stack) {
       vlog('session', 'live transport shutdown failed: $error');
-      debugPrintStack(stackTrace: stack);
+      vlogStack(stack);
     }
     try {
       await player?.dispose();
     } catch (error, stack) {
       vlog('playback', 'player shutdown failed: $error');
-      debugPrintStack(stackTrace: stack);
+      vlogStack(stack);
     }
     if (_audioSessionActive) {
       _audioSessionActive = false;
@@ -1230,7 +1229,7 @@ class JournalNotifier extends Notifier<JournalState> {
           await service.endNotebook(notebookId);
         } catch (error, stack) {
           vlog('session', 'notebook end failed: $error');
-          debugPrintStack(stackTrace: stack);
+          vlogStack(stack);
           _muted = false;
           _setStatus(SessionStatus.error);
           return const NotebookTransitionResult.failure(
