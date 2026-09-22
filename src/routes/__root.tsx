@@ -1,4 +1,9 @@
 import { Outlet, Link, createRootRoute, HeadContent, Scripts } from "@tanstack/react-router";
+import { createServerFn } from "@tanstack/react-start";
+import { getRequest, getResponse } from "@tanstack/react-start/server";
+import type { Session } from "@supabase/supabase-js";
+import { SessionProvider } from "@/lib/auth/session";
+import { getServerSupabase } from "@/lib/supabase/server";
 import appCss from "../styles.css?url";
 
 function NotFoundComponent() {
@@ -23,32 +28,73 @@ function NotFoundComponent() {
   );
 }
 
+const getInitialSession = createServerFn({ method: "GET" }).handler(
+  async (): Promise<Session | null> => {
+    try {
+      const request = getRequest();
+      const rawResponse = getResponse();
+      // getResponse() returns { headers: Headers, ... } — we only need
+      // response.headers.append() inside getServerSupabase, so a minimal
+      // shim satisfies the interface at runtime.
+      const responseShim = { headers: rawResponse.headers } as unknown as Response;
+      const supabase = getServerSupabase(request, responseShim);
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      return session;
+    } catch (e) {
+      console.warn("Failed to reach Supabase:", e);
+      return null;
+    }
+  },
+);
+
 export const Route = createRootRoute({
   head: () => ({
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
       { title: "Lumen — A voice-first journal that thinks with you" },
-      { name: "description", content: "Speak your day. Lumen listens, builds a living knowledge graph of the people, places and ideas in your life, and asks you what's missing. Export to Obsidian." },
+      {
+        name: "description",
+        content:
+          "Speak your day. Lumen listens, builds a living knowledge graph of the people, places and ideas in your life, and asks you what's missing. Export to Obsidian.",
+      },
       { name: "author", content: "Lumen" },
       { property: "og:title", content: "Lumen — A voice-first journal" },
-      { property: "og:description", content: "Speak. Lumen builds a knowledge graph of your life and asks what's missing." },
+      {
+        property: "og:description",
+        content: "Speak. Lumen builds a knowledge graph of your life and asks what's missing.",
+      },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
     ],
-    links: [
-      { rel: "stylesheet", href: appCss },
-    ],
+    links: [{ rel: "stylesheet", href: appCss }],
   }),
+  loader: async () => {
+    const session = await getInitialSession();
+    return { session };
+  },
   shellComponent: RootShell,
-  component: () => <Outlet />,
+  component: RouteComponent,
   notFoundComponent: NotFoundComponent,
 });
+
+function RouteComponent() {
+  const { session } = Route.useLoaderData() as { session: Session | null };
+  return (
+    <SessionProvider initialSession={session}>
+      <Outlet />
+    </SessionProvider>
+  );
+}
 
 function RootShell({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <head><HeadContent /></head>
+      <head>
+        <HeadContent />
+      </head>
       <body>
         {children}
         <Scripts />

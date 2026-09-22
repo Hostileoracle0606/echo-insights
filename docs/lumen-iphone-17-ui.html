@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Lumen Actual iPhone 17 UI Screens</title>
+    <style>
+      :root {
+        --phone-w: 402px;
+        --phone-h: 874px;
+        --ink: #f7f4ef;
+        --muted: rgba(247, 244, 239, 0.68);
+        --line: rgba(255, 255, 255, 0.14);
+        color-scheme: dark;
+        font-family:
+          Inter,
+          ui-sans-serif,
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          sans-serif;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        min-height: 100vh;
+        margin: 0;
+        color: var(--ink);
+        background:
+          radial-gradient(circle at 14% 8%, rgba(66, 214, 199, 0.14), transparent 30rem),
+          radial-gradient(circle at 82% 12%, rgba(169, 139, 255, 0.16), transparent 32rem),
+          linear-gradient(135deg, #101114, #1a1b24 52%, #101715);
+      }
+
+      .page {
+        width: min(1480px, 100%);
+        margin: 0 auto;
+        padding: 32px;
+      }
+
+      .header {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 24px;
+        align-items: end;
+        margin-bottom: 28px;
+      }
+
+      h1 {
+        margin: 0 0 10px;
+        font-size: clamp(32px, 4vw, 56px);
+        line-height: 1;
+        letter-spacing: 0;
+      }
+
+      .subhead {
+        max-width: 820px;
+        margin: 0;
+        color: var(--muted);
+        font-size: 16px;
+        line-height: 1.55;
+      }
+
+      .spec {
+        display: grid;
+        gap: 4px;
+        min-width: 220px;
+        padding: 14px 16px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.06);
+      }
+
+      .spec strong {
+        font-size: 13px;
+      }
+
+      .spec span {
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .screen-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(340px, 1fr));
+        gap: 28px;
+        align-items: start;
+      }
+
+      .shot {
+        display: grid;
+        justify-items: center;
+        gap: 16px;
+      }
+
+      .shot-title {
+        width: min(100%, 460px);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .shot-title h2 {
+        margin: 0;
+        font-size: 18px;
+        letter-spacing: 0;
+      }
+
+      .shot-title span {
+        color: var(--muted);
+        font-size: 12px;
+        text-align: right;
+      }
+
+      .phone {
+        width: calc(var(--phone-w) + 28px);
+        padding: 14px;
+        border-radius: 42px;
+        background: linear-gradient(145deg, #3d4148, #101114 44%, #3a3d45), #17191e;
+        box-shadow:
+          0 30px 80px rgba(0, 0, 0, 0.38),
+          inset 0 0 0 1px rgba(255, 255, 255, 0.16);
+      }
+
+      .viewport {
+        width: var(--phone-w);
+        height: var(--phone-h);
+        overflow: hidden;
+        border-radius: 31px;
+        background: #101114;
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+      }
+
+      .viewport img {
+        display: block;
+        width: var(--phone-w);
+        height: var(--phone-h);
+        object-fit: cover;
+      }
+
+      @media (max-width: 1320px) {
+        .screen-grid {
+          grid-template-columns: repeat(2, minmax(340px, 1fr));
+        }
+      }
+
+      @media (max-width: 880px) {
+        .page {
+          padding: 22px 14px;
+        }
+
+        .header {
+          grid-template-columns: 1fr;
+        }
+
+        .screen-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .phone {
+          transform: scale(0.84);
+          transform-origin: top center;
+          margin-bottom: -120px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <header class="header">
+        <div>
+          <h1>Lumen Actual iPhone 17 Screens</h1>
+          <p class="subhead">
+            These are captured from the real Flutter app running on the iPhone 17 simulator, using
+            the app’s actual widgets and styles rather than hand-drawn mockups.
+          </p>
+        </div>
+        <div class="spec" aria-label="Screenshot spec">
+          <strong>iPhone 17 simulator captures</strong>
+          <span>Displayed at 402 x 874 CSS px</span>
+          <span>Source PNGs are 1206 x 2622 px</span>
+        </div>
+      </header>
+
+      <section class="screen-grid" aria-label="Actual Lumen app screens">
+        <article class="shot">
+          <div class="shot-title">
+            <h2>Login</h2>
+            <span>Actual `LoginScreen`</span>
+          </div>
+          <div class="phone">
+            <div class="viewport">
+              <img src="assets/lumen-login.png" alt="Lumen login screen from the Flutter app" />
+            </div>
+          </div>
+        </article>
+
+        <article class="shot">
+          <div class="shot-title">
+            <h2>Signup</h2>
+            <span>Actual `SignupScreen`</span>
+          </div>
+          <div class="phone">
+            <div class="viewport">
+              <img src="assets/lumen-signup.png" alt="Lumen signup screen from the Flutter app" />
+            </div>
+          </div>
+        </article>
+
+        <article class="shot">
+          <div class="shot-title">
+            <h2>Live Journal</h2>
+            <span>Actual `JournalScreen` with preview state</span>
+          </div>
+          <div class="phone">
+            <div class="viewport">
+              <img
+                src="assets/lumen-journal-live.png"
+                alt="Lumen live journal screen from the Flutter app"
+              />
+            </div>
+          </div>
+        </article>
+      </section>
+    </main>
+  </body>
+</html>

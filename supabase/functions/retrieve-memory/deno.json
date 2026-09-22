@@ -1,0 +1,7 @@
+{
+  "imports": {
+    "@orama/orama": "https://esm.sh/@orama/orama@3.1.18",
+    "graphology": "https://esm.sh/graphology@0.26.0",
+    "graphology-communities-louvain": "https://esm.sh/graphology-communities-louvain@2.0.2"
+  }
+}

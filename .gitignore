@@ -15,10 +15,35 @@ dist-ssr
 .tanstack/**
 .nitro
 *.local
+.env
+.env.*
+!.env.example
 
 # Wrangler / Cloudflare
 .wrangler/
 .dev.vars
+
+# Python virtualenvs
+.venv/
+**/.venv/
+
+# Flutter
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+# no trailing slash: build is a symlink to an external dir on this machine,
+# and a "build/" pattern only matches real directories, not symlinks
+build
+*.iml
+
+# Demo export artifacts
+demo-export/
+
+# Superpowers brainstorming scratch
+.superpowers/
+
+# Supabase local state
+supabase/.temp/
 
 # Editor directories and files
 .vscode/*
