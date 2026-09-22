@@ -62,6 +62,7 @@ stack; they are the same values CI uses:
 | `SUPABASE_ANON_KEY` | Project publishable/anon key (public by design; RLS protects data) |
 | `NOTEBOOK_RUNTIME_URL` | The `NotebookRuntimeUrl` output of the `infra/` stack (see `infra/README.md`) |
 | `PRIVACY_POLICY_URL` | The hosted privacy policy, linked from the in-app account sheet. **Required for the signed `ipa` build only**; the unsigned CI build passes it through if set. |
+| `PASSWORD_RESET_URL` | The web app's reset page, `https://<web origin>/auth/reset`, where password-recovery emails land. **Required for the signed `ipa` build only.** |
 
 Never put the service-role key, `GEMINI_API_KEY` or any other server secret
 here. Gemini credentials are minted per session by the backend.
@@ -83,6 +84,27 @@ needs no extra secret. Check it on a throwaway account before submitting:
 sign up, record a turn, then *Account → Delete account*. Afterwards,
 *Authentication → Users* should no longer list the account.
 
+### Password reset (Supabase dashboard)
+
+*Forgot password?* in the app sends a recovery email, and the user sets the
+new password on the web app's `/auth/reset` page
+(`src/routes/auth/reset.tsx`). That page needs two dashboard settings:
+
+1. *Authentication → URL Configuration → Redirect URLs*: add
+   `https://<web origin>/auth/reset`, the same value as `PASSWORD_RESET_URL`.
+2. *Authentication → Email Templates → Reset Password*: point the link at
+   the redirect URL with a token hash, not the default `{{ .ConfirmationURL }}`:
+
+   ```html
+   <a href="{{ .RedirectTo }}?token_hash={{ .TokenHash }}&type=recovery">Reset your password</a>
+   ```
+
+   The app signs in with PKCE, so a default link would only work on the
+   device that asked for it. A `token_hash` link works in any browser.
+
+Check it end to end: login → *Forgot password?* → email → set a new password
+on the web → sign in to the app with it.
+
 ---
 
 ## 2. Build the signed archive
@@ -97,6 +119,7 @@ export SUPABASE_URL=https://<ref>.supabase.co
 export SUPABASE_ANON_KEY=<publishable key>
 export NOTEBOOK_RUNTIME_URL=<NotebookRuntimeUrl stack output>
 export PRIVACY_POLICY_URL=https://<your policy host>/privacy
+export PASSWORD_RESET_URL=https://<web origin>/auth/reset
 
 npm run release:ios:ipa -- --build-name=1.0.0 --build-number=<N>
 ```

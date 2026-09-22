@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as DockPreviewRouteImport } from './routes/dock-preview'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthSignupRouteImport } from './routes/auth/signup'
+import { Route as AuthResetRouteImport } from './routes/auth/reset'
 import { Route as AuthLoginRouteImport } from './routes/auth/login'
 import { Route as AuthCallbackRouteImport } from './routes/auth/callback'
 
@@ -30,6 +31,11 @@ const AuthSignupRoute = AuthSignupRouteImport.update({
   path: '/auth/signup',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthResetRoute = AuthResetRouteImport.update({
+  id: '/auth/reset',
+  path: '/auth/reset',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuthLoginRoute = AuthLoginRouteImport.update({
   id: '/auth/login',
   path: '/auth/login',
@@ -46,6 +52,7 @@ export interface FileRoutesByFullPath {
   '/dock-preview': typeof DockPreviewRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/auth/login': typeof AuthLoginRoute
+  '/auth/reset': typeof AuthResetRoute
   '/auth/signup': typeof AuthSignupRoute
 }
 export interface FileRoutesByTo {
@@ -53,6 +60,7 @@ export interface FileRoutesByTo {
   '/dock-preview': typeof DockPreviewRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/auth/login': typeof AuthLoginRoute
+  '/auth/reset': typeof AuthResetRoute
   '/auth/signup': typeof AuthSignupRoute
 }
 export interface FileRoutesById {
@@ -61,6 +69,7 @@ export interface FileRoutesById {
   '/dock-preview': typeof DockPreviewRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/auth/login': typeof AuthLoginRoute
+  '/auth/reset': typeof AuthResetRoute
   '/auth/signup': typeof AuthSignupRoute
 }
 export interface FileRouteTypes {
@@ -70,15 +79,23 @@ export interface FileRouteTypes {
     | '/dock-preview'
     | '/auth/callback'
     | '/auth/login'
+    | '/auth/reset'
     | '/auth/signup'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/dock-preview' | '/auth/callback' | '/auth/login' | '/auth/signup'
+  to:
+    | '/'
+    | '/dock-preview'
+    | '/auth/callback'
+    | '/auth/login'
+    | '/auth/reset'
+    | '/auth/signup'
   id:
     | '__root__'
     | '/'
     | '/dock-preview'
     | '/auth/callback'
     | '/auth/login'
+    | '/auth/reset'
     | '/auth/signup'
   fileRoutesById: FileRoutesById
 }
@@ -87,6 +104,7 @@ export interface RootRouteChildren {
   DockPreviewRoute: typeof DockPreviewRoute
   AuthCallbackRoute: typeof AuthCallbackRoute
   AuthLoginRoute: typeof AuthLoginRoute
+  AuthResetRoute: typeof AuthResetRoute
   AuthSignupRoute: typeof AuthSignupRoute
 }
 
@@ -113,6 +131,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthSignupRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/auth/reset': {
+      id: '/auth/reset'
+      path: '/auth/reset'
+      fullPath: '/auth/reset'
+      preLoaderRoute: typeof AuthResetRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/auth/login': {
       id: '/auth/login'
       path: '/auth/login'
@@ -135,6 +160,7 @@ const rootRouteChildren: RootRouteChildren = {
   DockPreviewRoute: DockPreviewRoute,
   AuthCallbackRoute: AuthCallbackRoute,
   AuthLoginRoute: AuthLoginRoute,
+  AuthResetRoute: AuthResetRoute,
   AuthSignupRoute: AuthSignupRoute,
 }
 export const routeTree = rootRouteImport
