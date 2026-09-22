@@ -28,7 +28,9 @@ void main() {
               AVAudioSessionCategoryOptions.allowBluetooth,
       avAudioSessionMode: AVAudioSessionMode.spokenAudio,
     ));
-    debugPrintSynchronously('[probe] audio session configured (playAndRecord)');
+    await session.setActive(true);
+    debugPrintSynchronously(
+        '[probe] audio session configured (playAndRecord) and active');
 
     // 2. Mic capture, playback deliberately absent: startSession now starts
     // capture BEFORE playback (playback is optional and its init can stall on

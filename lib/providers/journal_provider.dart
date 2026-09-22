@@ -4,6 +4,7 @@ import 'package:audio_session/audio_session.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../audio/mic_controller.dart';
 import '../audio/pcm_capture.dart';
 import '../audio/pcm_player.dart';
 import '../logic/agenda.dart' as agenda_logic;
@@ -52,7 +53,13 @@ const String extractorVersion = 'gemini/extract_graph/v2';
 class JournalNotifier extends Notifier<JournalState> {
   GeminiLiveClient? _live;
   PcmCapture? _capture;
+  MicController? _mic;
   PcmPlayer? _player;
+  // Interruption / route-change subscriptions for the live session, and
+  // whether this session activated the shared AVAudioSession (so close
+  // releases it and other apps' audio can resume).
+  final List<StreamSubscription<Object?>> _audioSessionSubs = [];
+  bool _audioSessionActive = false;
   final LiveSessionGuard _liveSessionGuard = LiveSessionGuard();
   Future<void> _lifecycleTail = Future<void>.value();
   int _lifecycleIntent = 0;
@@ -121,7 +128,11 @@ class JournalNotifier extends Notifier<JournalState> {
       }
       _finalizationTimers.clear();
       _agentSpeakingTimer?.cancel();
-      unawaited(_capture?.stop());
+      for (final sub in _audioSessionSubs) {
+        unawaited(sub.cancel());
+      }
+      _audioSessionSubs.clear();
+      unawaited(_mic?.stop() ?? _capture?.stop());
       unawaited(_live?.close());
       unawaited(_player?.dispose());
     });
@@ -753,6 +764,11 @@ class JournalNotifier extends Notifier<JournalState> {
                   AVAudioSessionCategoryOptions.allowBluetooth,
           avAudioSessionMode: AVAudioSessionMode.spokenAudio,
         ));
+        // Activate explicitly rather than relying on the implicit activation
+        // inside just_audio / record: that path is not sufficient once the
+        // app is backgrounded (UIBackgroundModes: audio).
+        await session.setActive(true);
+        _audioSessionActive = true;
       } catch (error) {
         debugPrint('[journal] audio session config unavailable: $error');
       }
@@ -915,6 +931,14 @@ class JournalNotifier extends Notifier<JournalState> {
 
       final capture = PcmCapture();
       _capture = capture;
+      final mic = MicController(
+        capture,
+        (pcm) {
+          if (isCurrent()) live.sendAudio(pcm);
+        },
+        reactivate: _activateAudioSession,
+      );
+      _mic = mic;
       if (!await capture.hasPermission()) {
         debugPrint('[journal] microphone permission not granted');
         await _closeLiveTransportUnlocked();
@@ -929,16 +953,15 @@ class JournalNotifier extends Notifier<JournalState> {
           'Session start was superseded by another notebook transition.',
         );
       }
-      await capture.start((pcm) {
-        if (isCurrent()) live.sendAudio(pcm);
-      });
+      await mic.start();
       if (!isCurrent()) {
-        await capture.stop();
+        await mic.stop();
         return const NotebookTransitionResult.failure(
           'Session start was superseded by another notebook transition.',
         );
       }
       vlog('session', 'mic capture started');
+      await _watchAudioSession(isCurrent);
 
       // Agent-audio playback comes LAST: it's optional (the session still
       // captures voice and builds the graph without it), and its init can
@@ -1001,14 +1024,20 @@ class JournalNotifier extends Notifier<JournalState> {
     _clearAgentSpeaking();
 
     final capture = _capture;
+    final mic = _mic;
     final live = _live;
     final player = _player;
     _capture = null;
+    _mic = null;
     _live = null;
     _player = null;
+    for (final sub in _audioSessionSubs) {
+      await sub.cancel();
+    }
+    _audioSessionSubs.clear();
 
     try {
-      await capture?.stop();
+      await (mic != null ? mic.stop() : capture?.stop());
     } catch (error, stack) {
       vlog('session', 'mic shutdown failed: $error');
       debugPrintStack(stackTrace: stack);
@@ -1025,7 +1054,61 @@ class JournalNotifier extends Notifier<JournalState> {
       vlog('playback', 'player shutdown failed: $error');
       debugPrintStack(stackTrace: stack);
     }
+    if (_audioSessionActive) {
+      _audioSessionActive = false;
+      try {
+        final session = await AudioSession.instance;
+        await session.setActive(false).timeout(const Duration(seconds: 2));
+      } catch (error) {
+        vlog('session', 'audio session release failed: $error');
+      }
+    }
     _assembler.reset();
+  }
+
+  Future<void> _activateAudioSession() async {
+    final session = await AudioSession.instance;
+    await session.setActive(true);
+    _audioSessionActive = true;
+  }
+
+  /// Phone calls, Siri and alarms interrupt the session; headphones and
+  /// Bluetooth devices move the route. Each maps to a [MicAction] so capture
+  /// pauses and resumes cleanly instead of wedging on a dead input.
+  Future<void> _watchAudioSession(bool Function() isCurrent) async {
+    final AudioSession session;
+    try {
+      session = await AudioSession.instance;
+    } catch (error) {
+      vlog('session', 'audio session events unavailable: $error');
+      return;
+    }
+    if (!isCurrent()) return;
+    _audioSessionSubs.addAll([
+      session.interruptionEventStream.listen((event) {
+        if (!isCurrent()) return;
+        final action = micActionForInterruption(event);
+        vlog('session',
+            'interruption ${event.begin ? 'began' : 'ended'} → ${action.name}');
+        // Drop queued agent audio so the reply does not resume mid-sentence.
+        if (action == MicAction.suspend) unawaited(_player?.flush());
+        unawaited(_mic?.apply(action));
+      }),
+      session.becomingNoisyEventStream.listen((_) {
+        if (!isCurrent()) return;
+        vlog('session', 'audio route became noisy (headphones unplugged)');
+        // Stop the reply rather than switch it to the loudspeaker, and rebind
+        // the mic to the built-in input.
+        unawaited(_player?.flush());
+        unawaited(_mic?.apply(MicAction.restart));
+      }),
+      session.devicesChangedEventStream.listen((event) {
+        if (!isCurrent()) return;
+        final action = micActionForDevicesChanged(event);
+        if (action != MicAction.none) vlog('session', 'input route changed');
+        unawaited(_mic?.apply(action));
+      }),
+    ]);
   }
 
   /// Stops realtime input, drains notebook-scoped writes, and then releases
