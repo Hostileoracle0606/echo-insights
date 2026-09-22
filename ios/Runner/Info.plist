@@ -26,8 +26,6 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
-	<key>NSCameraUsageDescription</key>
-	<string>Not used.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Lumen uses your microphone to capture your voice journal entries.</string>
 	<key>UIApplicationSceneManifest</key>
