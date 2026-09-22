@@ -258,8 +258,12 @@ class FinalTranscript extends TurnEvent {
 }
 
 class TurnCompleted extends TurnEvent {
-  const TurnCompleted({required this.speaker});
+  const TurnCompleted({required this.speaker, this.transcriptGeneration});
   final Speaker speaker;
+
+  /// Identifies the assembler buffer parked while this turn awaits its final
+  /// provider transcript. Null means there was no buffered transcript.
+  final int? transcriptGeneration;
 }
 
 class FinalizationDeadline extends TurnEvent {
@@ -369,9 +373,14 @@ class ReloadSnapshot extends TurnEffect {
 }
 
 class ScheduleFinalizationDeadline extends TurnEffect {
-  const ScheduleFinalizationDeadline({required this.speaker, required this.turnId});
+  const ScheduleFinalizationDeadline({
+    required this.speaker,
+    required this.turnId,
+    this.transcriptGeneration,
+  });
   final Speaker speaker;
   final String turnId;
+  final int? transcriptGeneration;
 }
 
 class PersistTurn extends TurnEffect {
@@ -724,7 +733,13 @@ class TurnMachine {
         }
         // No authoritative text yet. Park the turn and wait — but not forever.
         _setAwaiting(event.speaker, active);
-        return [ScheduleFinalizationDeadline(speaker: event.speaker, turnId: active.turnId)];
+        return [
+          ScheduleFinalizationDeadline(
+            speaker: event.speaker,
+            turnId: active.turnId,
+            transcriptGeneration: event.transcriptGeneration,
+          ),
+        ];
 
       case FinalizationDeadline():
         final waiting = _awaiting(event.speaker);

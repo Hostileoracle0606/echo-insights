@@ -3,6 +3,12 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import { createExtractGraphHandler } from "../lambda/extract-graph/core.mjs";
+import {
+  entityDescriptionTargetLength,
+  extractGraphFunction,
+  granularPrompt,
+  wikiPrompt,
+} from "../lambda/extract-graph/prompts.mjs";
 
 const notebookId = "8e03b8f4-4f20-4df3-8398-d854adc32b14";
 const conversationFixture = JSON.parse(
@@ -83,6 +89,16 @@ function inMemoryExtractionStore() {
     },
   };
 }
+
+test("asks for descriptions below the server hard limit", () => {
+  assert.equal(entityDescriptionTargetLength, 800);
+  assert.match(wikiPrompt, /at most 800 characters/);
+  assert.match(granularPrompt, /at most 800 characters/);
+  assert.equal(
+    extractGraphFunction.parameters.properties.entities.items.properties.description.maxLength,
+    800,
+  );
+});
 
 test("returns the canonical completed extraction without calling Gemini", async () => {
   const patch = {
@@ -202,6 +218,127 @@ test("returns a validated patch without returning the permanent credential", asy
   assert.match(providerBody.contents[0].parts[0].text, /Maya and I discussed Project Atlas/);
   assert.equal(cached.key, `user-123:${notebookId}:turn-123:gemini/extract_graph/v2`);
   assert.deepEqual(cached.patch, body.patch);
+});
+
+test("clamps oversized provider descriptions before caching and returning them", async () => {
+  const oversized = "x".repeat(1200);
+  let cachedPatch;
+  const handle = createExtractGraphHandler(
+    dependencies({
+      completeExtraction: async ({ patch }) => {
+        cachedPatch = patch;
+        return { status: "completed", patch };
+      },
+      fetchImpl: async (url) => {
+        if (String(url).includes("/rest/v1/notebooks")) {
+          return { ok: true, json: async () => [{ id: notebookId }] };
+        }
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            candidates: [
+              {
+                content: {
+                  parts: [
+                    {
+                      functionCall: {
+                        name: "extract_graph",
+                        args: {
+                          entities: [
+                            { name: "Project Atlas", type: "project", description: oversized },
+                          ],
+                          relations: [],
+                          supersedes: [],
+                        },
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+          }),
+        };
+      },
+    }),
+  );
+
+  const response = await handle(requestEvent());
+  const patch = JSON.parse(response.body).patch;
+  const description = patch.entities[0].description;
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(description.length, 1000);
+  assert.equal(description.endsWith("…"), true);
+  assert.deepEqual(cachedPatch, patch);
+});
+
+test("clamps legacy context descriptions before request validation", async () => {
+  const oversized = "z".repeat(1200);
+  let providerBody;
+  const handle = createExtractGraphHandler(
+    dependencies({
+      fetchImpl: async (url, options) => {
+        if (String(url).includes("/rest/v1/notebooks")) {
+          return { ok: true, json: async () => [{ id: notebookId }] };
+        }
+        providerBody = JSON.parse(options.body);
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            candidates: [
+              {
+                content: {
+                  parts: [
+                    {
+                      functionCall: {
+                        name: "extract_graph",
+                        args: { entities: [], relations: [], supersedes: [] },
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+          }),
+        };
+      },
+    }),
+  );
+  const event = requestEvent();
+  const body = JSON.parse(event.body);
+  body.context.entities[0].description = oversized;
+  event.body = JSON.stringify(body);
+
+  const response = await handle(event);
+  const prompt = providerBody.contents[0].parts[0].text;
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(prompt.includes(oversized), false);
+  assert.equal(prompt.includes(`${"z".repeat(999)}…`), true);
+});
+
+test("clamps oversized descriptions in cached legacy patches", async () => {
+  const patch = {
+    entities: [
+      { name: "Project Atlas", type: "project", description: "c".repeat(1200) },
+    ],
+    relations: [],
+    supersedes: [],
+  };
+  const handle = createExtractGraphHandler(
+    dependencies({
+      acquireExtraction: async () => ({ status: "completed", patch }),
+    }),
+  );
+
+  const response = await handle(requestEvent());
+  const description = JSON.parse(response.body).patch.entities[0].description;
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(description.length, 1000);
+  assert.equal(description.endsWith("…"), true);
 });
 
 test("returns a cached patch without reading the credential or calling Gemini", async () => {

@@ -115,6 +115,40 @@ async function speak(pipeline: ReturnType<typeof harness>["pipeline"], text: str
 }
 
 describe("durable turn pipeline", () => {
+  it("expires the matching assembler buffer before a fallback finalizes", async () => {
+    let fireDeadline: (() => void) | undefined;
+    const order: string[] = [];
+    const h = harness({
+      scheduleDeadline: (_speaker, _turnId, fire) => {
+        fireDeadline = fire;
+      },
+      expireTranscriptFinalization: (speaker, generation) => {
+        order.push(`expire:${speaker}:${generation}`);
+      },
+      extract: vi.fn(async (transcript: string) => {
+        order.push(`extract:${transcript}`);
+        return payload("Acme");
+      }),
+    });
+    await h.pipeline.dispatch({ type: "sessionStarted", sessionId: "s1", notebookId: "nb1" });
+    await h.pipeline.dispatch({
+      type: "interimTranscript",
+      speaker: "user",
+      text: "Fallback text.",
+    });
+    await h.pipeline.dispatch({
+      type: "turnCompleted",
+      speaker: "user",
+      transcriptGeneration: 7,
+    });
+
+    expect(fireDeadline).toBeTypeOf("function");
+    fireDeadline?.();
+    await flush();
+
+    expect(order.slice(0, 2)).toEqual(["expire:user:7", "extract:Fallback text."]);
+  });
+
   it("extracts once and commits once for a finalized turn", async () => {
     const h = harness();
     await h.pipeline.dispatch({ type: "sessionStarted", sessionId: "s1", notebookId: "nb1" });

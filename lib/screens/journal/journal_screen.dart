@@ -27,6 +27,7 @@ class _JournalScreenState extends ConsumerState<JournalScreen> {
   // The split-screen transcript panel. The dock's toggle and the dock morph
   // share this one flag, so it lives at the screen rather than inside the dock.
   bool _splitOpen = false;
+  bool _leaving = false;
 
   // Drives the graph sidepane (opened from the top-bar hamburger).
   final _scaffoldKey = GlobalKey<ScaffoldState>();
@@ -34,21 +35,32 @@ class _JournalScreenState extends ConsumerState<JournalScreen> {
   @override
   void initState() {
     super.initState();
-    final id = widget.notebookId;
-    if (id != null) {
-      // Load the opened notebook's saved graph after the first frame (mutating
-      // the provider during initState/build would throw). If this is a fresh
-      // notebook, kick off the voice session right after the load completes —
-      // openNotebook is async and initState can't await, so this closure runs
-      // inside the post-frame callback instead.
-      WidgetsBinding.instance.addPostFrameCallback((_) async {
-        await ref.read(journalProvider.notifier).openNotebook(id);
-        if (!mounted) return;
-        if (widget.autoStart) {
-          await ref.read(journalProvider.notifier).startSession();
-        }
-      });
+    _scheduleNotebookEntry();
+  }
+
+  @override
+  void didUpdateWidget(covariant JournalScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.notebookId != widget.notebookId ||
+        oldWidget.autoStart != widget.autoStart) {
+      _scheduleNotebookEntry();
     }
+  }
+
+  void _scheduleNotebookEntry() {
+    final id = widget.notebookId;
+    if (id == null) return;
+    final autoStart = widget.autoStart;
+    // Provider state cannot be mutated during initState/build. The provider
+    // owns the whole transition so loading and optional startup cannot race.
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted || widget.notebookId != id) return;
+      final result = await ref
+          .read(journalProvider.notifier)
+          .enterNotebook(id, autoStart: autoStart);
+      if (!mounted || widget.notebookId != id || result.succeeded) return;
+      _showTransitionError(result);
+    });
   }
 
   // Sidepane row tap: close the drawer, then open the entity note sheet over
@@ -60,11 +72,34 @@ class _JournalScreenState extends ConsumerState<JournalScreen> {
 
   Future<void> _toggleMic(SessionStatus status) async {
     final notifier = ref.read(journalProvider.notifier);
+    late final NotebookTransitionResult result;
     if (status == SessionStatus.idle || status == SessionStatus.error) {
-      await notifier.startSession();
+      result = await notifier.startSession();
     } else {
-      await notifier.endSession();
+      result = await notifier.endSession();
     }
+    if (mounted && !result.succeeded) _showTransitionError(result);
+  }
+
+  Future<void> _leaveToDashboard() async {
+    if (_leaving) return;
+    setState(() => _leaving = true);
+    final result = await ref.read(journalProvider.notifier).leaveNotebook();
+    if (!mounted) return;
+    if (result.succeeded) {
+      context.go('/dashboard');
+      return;
+    }
+    setState(() => _leaving = false);
+    _showTransitionError(result);
+  }
+
+  void _showTransitionError(NotebookTransitionResult result) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(result.message ?? 'The notebook transition failed.'),
+      ),
+    );
   }
 
   // Map the session lifecycle onto dock modes. Connecting reads as "thinking"
@@ -121,7 +156,7 @@ class _JournalScreenState extends ConsumerState<JournalScreen> {
                   entityCount: state.entities.length,
                   relationCount: relationCount,
                   onMenuTap: () => _scaffoldKey.currentState?.openDrawer(),
-                  onHomeTap: () => context.go('/dashboard'),
+                  onHomeTap: _leaving ? null : _leaveToDashboard,
                 ),
               ),
             ),

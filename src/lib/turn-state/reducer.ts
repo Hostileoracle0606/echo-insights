@@ -360,7 +360,12 @@ export function createTurnMachine(deps: TurnMachineDeps, checkpoint?: TurnCheckp
         // No authoritative text yet. Park the turn and wait — but not forever.
         setAwaiting(event.speaker, next);
         return [
-          { type: "scheduleFinalizationDeadline", speaker: event.speaker, turnId: next.turnId },
+          {
+            type: "scheduleFinalizationDeadline",
+            speaker: event.speaker,
+            turnId: next.turnId,
+            transcriptGeneration: event.transcriptGeneration,
+          },
         ];
       }
 

@@ -82,6 +82,9 @@ export function createConversationRuntime(
       try {
         switch (effect.type) {
           case "scheduleFinalizationDeadline":
+            if (effect.transcriptGeneration !== undefined) {
+              assembler.expirePending(effect.speaker, effect.transcriptGeneration);
+            }
             result = { type: "finalizationDeadline", speaker: effect.speaker, turnId: effect.turnId }; break;
           case "startDurableExtraction": {
             const payload = await ports.extract(effect.transcript, effect.key, AbortSignal.timeout(25000));

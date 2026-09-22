@@ -48,6 +48,8 @@ export interface TurnPorts {
   reloadSnapshot: (notebookId: string) => Promise<{ revision: number } | null>;
   journal: TurnJournalStore;
   scheduleDeadline: (speaker: Speaker, turnId: string, fire: () => void) => void;
+  /** Expires the assembler buffer tied to a fallback before finalizing it. */
+  expireTranscriptFinalization?: (speaker: Speaker, generation: number) => void;
   /** Applies a committed turn to the caller's local graph. */
   onCommitted?: (turn: FinalizedTurn) => void;
   /** Display-only provisional preview. Must never touch canonical state. */
@@ -115,6 +117,12 @@ export function createTurnPipeline(machine: TurnMachine, ports: TurnPorts): Turn
 
       case "scheduleFinalizationDeadline":
         ports.scheduleDeadline(effect.speaker, effect.turnId, () => {
+          if (effect.transcriptGeneration !== undefined) {
+            ports.expireTranscriptFinalization?.(
+              effect.speaker,
+              effect.transcriptGeneration,
+            );
+          }
           void run({
             type: "finalizationDeadline",
             speaker: effect.speaker,

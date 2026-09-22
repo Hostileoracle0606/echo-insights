@@ -1,3 +1,5 @@
+export const entityDescriptionTargetLength = 800;
+
 export const wikiPrompt = `You are the editor of the user's personal wiki — built silently from their voice journal.
 
 Your job is to decide which things in the user's utterance deserve their own wiki page. The bar is HIGH: a node only exists if it can anchor a real line of questioning that Lumen could pursue across multiple sessions to build a substantive page.
@@ -25,7 +27,7 @@ ENTITIES — what to return:
   - concept: abstract topics the user treats as named things (AI, attachment_theory, behavioral_patterns).
   - emotion: named recurring emotional patterns (anxiety, burnout) — NOT one-off mood words.
   - other: only when nothing else fits. Avoid using this as a default.
-- entity.description: only when the utterance gives a concrete, factual statement about the entity.
+- entity.description: only when the utterance gives a concrete, factual statement about the entity; limit it to at most ${entityDescriptionTargetLength} characters.
 - entity.questions: 2–4 distinct lines of questioning Lumen could pursue. These should NOT be questions the user already answered in this utterance — they're the open threads. Phrase them as Lumen would actually ask them, warm and specific.
 - Dedup against EXISTING ENTITIES — reuse the existing spelling.
 
@@ -83,7 +85,7 @@ ENTITIES — extract from the NEW UTTERANCE:
   - concept: abstract topics treated as named things ("AI", "behavioral_patterns").
   - emotion: named recurring emotional patterns ("anxiety", "burnout") — NOT one-off mood words.
   - "other" is a true fallback; use it only when nothing else fits.
-- entity.description: only if the utterance gives a concrete fact about the entity; otherwise omit.
+- entity.description: only if the utterance gives a concrete fact about the entity; otherwise omit. Limit it to at most ${entityDescriptionTargetLength} characters.
 - Skip pronouns, generic time words ("today", "yesterday"), one-off mood words ("happy", "stressed" used to describe a single moment), and verbs.
 - Dedup against EXISTING ENTITIES — reuse the existing spelling when the user is clearly referring to the same thing.
 
@@ -159,7 +161,7 @@ export const extractGraphFunction = {
                 "other",
               ],
             },
-            description: { type: "string" },
+            description: { type: "string", maxLength: entityDescriptionTargetLength },
             metadata: { type: "object" },
             questions: { type: "array", items: { type: "string" } },
           },

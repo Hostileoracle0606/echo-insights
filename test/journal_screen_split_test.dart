@@ -2,9 +2,12 @@
 // surface the provider's conversation log as ChatGPT-style turns in the panel.
 // Exercises the real JournalScreen (not a composed stand-in) so the wiring —
 // toggle -> setState -> expanded -> conversationProvider -> turns — is covered.
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:lumen/logic/turn_state.dart';
 import 'package:lumen/models/journal_state.dart';
 import 'package:lumen/providers/journal_provider.dart';
@@ -18,6 +21,32 @@ class _SeededJournal extends JournalNotifier {
   List<ConversationTurn> get conversation => _log;
   @override
   JournalState build() => JournalState.empty();
+}
+
+class _LifecycleJournal extends JournalNotifier {
+  final leaveCompleter = Completer<NotebookTransitionResult>();
+  String? enteredNotebookId;
+  bool? enteredWithAutoStart;
+  int leaveCalls = 0;
+
+  @override
+  JournalState build() => JournalState.empty();
+
+  @override
+  Future<NotebookTransitionResult> enterNotebook(
+    String notebookId, {
+    bool autoStart = false,
+  }) async {
+    enteredNotebookId = notebookId;
+    enteredWithAutoStart = autoStart;
+    return const NotebookTransitionResult.success();
+  }
+
+  @override
+  Future<NotebookTransitionResult> leaveNotebook() {
+    leaveCalls += 1;
+    return leaveCompleter.future;
+  }
 }
 
 void main() {
@@ -81,5 +110,58 @@ void main() {
 
     // Unmount so the GraphCanvas ticker disposes before the test ends.
     await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('home waits for notebook shutdown before navigating',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(402, 874));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final journal = _LifecycleJournal();
+    final router = GoRouter(
+      initialLocation: '/notebook/notebook-a?start=true',
+      routes: [
+        GoRoute(
+          path: '/notebook/:id',
+          builder: (_, state) => JournalScreen(
+            notebookId: state.pathParameters['id'],
+            autoStart: state.uri.queryParameters['start'] == 'true',
+          ),
+        ),
+        GoRoute(
+          path: '/dashboard',
+          builder: (_, __) => const Scaffold(body: Text('Dashboard ready')),
+        ),
+      ],
+    );
+    addTearDown(router.dispose);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [journalProvider.overrideWith(() => journal)],
+        child: MaterialApp.router(
+          theme: LumenTheme.light(),
+          routerConfig: router,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(journal.enteredNotebookId, 'notebook-a');
+    expect(journal.enteredWithAutoStart, isTrue);
+
+    await tester.tap(find.text('Your notebooks'));
+    await tester.pump();
+
+    expect(journal.leaveCalls, 1);
+    expect(find.text('Dashboard ready'), findsNothing);
+
+    journal.leaveCompleter.complete(
+      const NotebookTransitionResult.success(),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.text('Dashboard ready'), findsOneWidget);
   });
 }

@@ -50,7 +50,6 @@ class _PreviewApp extends StatelessWidget {
               child: JournalTopBar(
                 entityCount: 24,
                 relationCount: 31,
-                status: SessionStatus.live,
               ),
             ),
           'voicedock' => const _VoiceDockPreview(),
@@ -147,7 +146,7 @@ class _VoiceDockPreviewState extends State<_VoiceDockPreview> {
               muted: _muted,
               transcript: _transcripts[_mode],
               onMicTap: _cycle,
-              onKeyboardTap: () {},
+              onToggleSplit: () {},
               onMuteTap: () => setState(() => _muted = !_muted),
             ),
             const SizedBox(height: 48),

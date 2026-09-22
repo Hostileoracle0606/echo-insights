@@ -10,7 +10,10 @@ import {
 import type { StartLiveSessionOutcome } from "@/lib/notebook-runtime-contract";
 import { PcmPlayer } from "@/lib/audio/pcm-player";
 
-import { createTranscriptAssembler } from "@/lib/turn-state/transcript-assembler";
+import {
+  createTranscriptAssembler,
+  type TranscriptAssembler,
+} from "@/lib/turn-state/transcript-assembler";
 import type { TurnEvent } from "@/lib/turn-state/types";
 
 import captureWorkletUrl from "@/audio/pcm-capture-worklet.js?url";
@@ -38,6 +41,8 @@ interface Options {
    * an explicit finalization authorizes a durable write.
    */
   onTurnEvent?: (event: TurnEvent) => void;
+  /** Shared with the turn pipeline so fallback deadlines expire exact buffers. */
+  transcriptAssembler?: TranscriptAssembler;
   /** User barge-in detected by Gemini's VAD; pending agent audio was flushed. */
   onInterrupted?: () => void;
   /**
@@ -112,7 +117,7 @@ export function useGeminiLive(opts: Options = {}): UseGeminiLive {
 
   // Turn assembly lives in a pure, platform-free module so web and Flutter
   // apply the same rules; the hook only owns audio and React state.
-  const assemblerRef = useRef(createTranscriptAssembler());
+  const assemblerRef = useRef(opts.transcriptAssembler ?? createTranscriptAssembler());
   const agentBufferRef = useRef("");
   /**
    * Playback watermark: characters of agent text whose audio has actually
@@ -341,7 +346,8 @@ export function useGeminiLive(opts: Options = {}): UseGeminiLive {
     };
 
     setupCompletedRef.current = false;
-    assemblerRef.current = createTranscriptAssembler();
+    assemblerRef.current = optsRef.current.transcriptAssembler ?? createTranscriptAssembler();
+    assemblerRef.current.reset();
     const emit = (events: TurnEvent[]) => {
       for (const event of events) {
         if (event.type === "interimTranscript" && event.speaker === "user") {

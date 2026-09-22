@@ -161,7 +161,7 @@ export type TurnEvent =
   | { type: "interimTranscript"; speaker: Speaker; text: string }
   /** Authoritative transcription. May arrive before or after `turnCompleted`. */
   | { type: "finalTranscript"; speaker: Speaker; text: string }
-  | { type: "turnCompleted"; speaker: Speaker }
+  | { type: "turnCompleted"; speaker: Speaker; transcriptGeneration?: number }
   /** Adapter-scheduled fallback when no final transcription follows completion. */
   | { type: "finalizationDeadline"; speaker: Speaker; turnId: string }
   /** Assistant playback watermark: characters confirmed heard. */
@@ -190,7 +190,12 @@ export type TurnEffect =
   | { type: "startCommit"; turnId: string; commitRequestId: string }
   /** Reload the authoritative snapshot, then replay `pending` in order. */
   | { type: "reloadSnapshot"; turnId: string }
-  | { type: "scheduleFinalizationDeadline"; speaker: Speaker; turnId: string }
+  | {
+      type: "scheduleFinalizationDeadline";
+      speaker: Speaker;
+      turnId: string;
+      transcriptGeneration?: number;
+    }
   /** Write the durable checkpoint before the next irreversible step. */
   | { type: "persistTurn"; turn: FinalizedTurn }
   | { type: "forgetTurn"; turnId: string }

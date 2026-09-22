@@ -8,6 +8,7 @@ import '../audio/pcm_capture.dart';
 import '../audio/pcm_player.dart';
 import '../logic/agenda.dart' as agenda_logic;
 import '../logic/conversation_policy.dart';
+import '../logic/live_session_guard.dart';
 import '../logic/merge.dart' as merge_logic;
 import '../logic/transcript_assembler.dart';
 import '../logic/turn_effect_queue.dart';
@@ -25,6 +26,18 @@ import 'supabase_provider.dart';
 
 enum SessionStatus { idle, connecting, live, ending, error }
 
+class NotebookTransitionResult {
+  const NotebookTransitionResult._(this.succeeded, [this.message]);
+
+  const NotebookTransitionResult.success() : this._(true);
+
+  const NotebookTransitionResult.failure(String message)
+      : this._(false, message);
+
+  final bool succeeded;
+  final String? message;
+}
+
 /// Milliseconds to wait for an authoritative transcript after turn completion.
 /// Gemini gives no ordering guarantee between the final input transcription and
 /// the turn-completion signal, so a completed turn waits briefly rather than
@@ -40,9 +53,13 @@ class JournalNotifier extends Notifier<JournalState> {
   GeminiLiveClient? _live;
   PcmCapture? _capture;
   PcmPlayer? _player;
+  final LiveSessionGuard _liveSessionGuard = LiveSessionGuard();
+  Future<void> _lifecycleTail = Future<void>.value();
+  int _lifecycleIntent = 0;
 
-  /// Fires when a completed turn never received an authoritative transcript.
-  Timer? _finalizationTimer;
+  /// One fallback per completed turn. User and assistant final transcripts can
+  /// both lag provider completion, so a single shared timer is insufficient.
+  final Map<String, Timer> _finalizationTimers = {};
   String _lastTranscript = '';
 
   /// Shared, platform-free turn rules. Identical to the web app's reducer.
@@ -98,7 +115,11 @@ class JournalNotifier extends Notifier<JournalState> {
   @override
   JournalState build() {
     ref.onDispose(() {
-      _finalizationTimer?.cancel();
+      _liveSessionGuard.invalidate();
+      for (final timer in _finalizationTimers.values) {
+        timer.cancel();
+      }
+      _finalizationTimers.clear();
       _agentSpeakingTimer?.cancel();
       unawaited(_capture?.stop());
       unawaited(_live?.close());
@@ -157,6 +178,23 @@ class JournalNotifier extends Notifier<JournalState> {
     state = state.copyWith();
   }
 
+  Future<T> _serializeLifecycle<T>(Future<T> Function() operation) {
+    final result = _lifecycleTail.then<T>((_) => operation());
+    _lifecycleTail = result.then<void>(
+      (_) {},
+      onError: (Object _, StackTrace __) {},
+    );
+    return result;
+  }
+
+  bool _isCurrentLiveSession(
+    LiveSessionLease lease,
+    GeminiLiveClient client,
+  ) =>
+      _liveSessionGuard.isCurrent(lease) &&
+      identical(_live, client) &&
+      _activeNotebookId == lease.notebookId;
+
   /// Feeds one adapter event into the shared turn machine and carries out the
   /// effects it asks for. The rules — one durable turn per finalized
   /// transcript, identity-checked async results, ordered replay after a
@@ -170,6 +208,10 @@ class JournalNotifier extends Notifier<JournalState> {
         // Interruption is latency-sensitive. Invalidate the current playback
         // source immediately instead of waiting behind extraction or commits.
         unawaited(_flushPlayback());
+      } else if (effect is ScheduleFinalizationDeadline) {
+        // Start the provider-ordering grace period immediately. Durable work
+        // may already be queued and must not delay a transcript deadline.
+        _scheduleFinalizationDeadline(effect);
       } else {
         durableEffects.add(effect);
       }
@@ -182,6 +224,25 @@ class JournalNotifier extends Notifier<JournalState> {
       ..clear()
       ..addAll(latest.conversation);
     _notifyUi();
+  }
+
+  void _scheduleFinalizationDeadline(ScheduleFinalizationDeadline effect) {
+    final key = '${effect.speaker.name}:${effect.turnId}';
+    _finalizationTimers.remove(key)?.cancel();
+    _finalizationTimers[key] = Timer(
+      const Duration(milliseconds: finalizationDeadlineMs),
+      () {
+        _finalizationTimers.remove(key);
+        final generation = effect.transcriptGeneration;
+        if (generation != null) {
+          _assembler.expirePending(effect.speaker, generation);
+        }
+        _dispatchTurn(FinalizationDeadline(
+          speaker: effect.speaker,
+          turnId: effect.turnId,
+        ));
+      },
+    );
   }
 
   Future<void> _performEffects(List<TurnEffect> effects) async {
@@ -207,14 +268,7 @@ class JournalNotifier extends Notifier<JournalState> {
             .firstOrNull;
         if (turn != null) await _runCommit(turn);
       case ScheduleFinalizationDeadline():
-        _finalizationTimer?.cancel();
-        _finalizationTimer = Timer(
-          const Duration(milliseconds: finalizationDeadlineMs),
-          () => _dispatchTurn(FinalizationDeadline(
-            speaker: effect.speaker,
-            turnId: effect.turnId,
-          )),
-        );
+        throw StateError('Transcript deadlines must run on the realtime path');
       case ReloadSnapshot():
         await _reloadSnapshot();
       case FlushPlayback():
@@ -568,22 +622,92 @@ class JournalNotifier extends Notifier<JournalState> {
     return {'context': context};
   }
 
-  /// Load a specific notebook's saved graph for viewing (dashboard → notebook).
-  /// Does not start a voice session — the mic continues it. A later
-  /// [startSession] reuses this notebook instead of finding the active one.
-  Future<void> openNotebook(String notebookId) async {
-    _activeNotebookId = notebookId;
+  Future<void> _loadNotebookUnlocked(String notebookId) async {
     final commitService = ref.read(notebookCommitServiceProvider);
     final snapshot = await commitService.getNotebookSnapshot(notebookId);
+    _activeNotebookId = notebookId;
     _revision = snapshot?.revision ?? 0;
     state = snapshot?.state ?? JournalState.empty();
     await _restoreTurnsForNotebook(notebookId);
   }
 
-  Future<void> startSession() async {
-    if (_status == SessionStatus.connecting || _status == SessionStatus.live) {
-      return;
+  /// Safely leaves the current notebook before loading another one.
+  ///
+  /// This is the one notebook-transition interface for route callers. It keeps
+  /// the previous notebook authoritative until its transport is closed and its
+  /// durable work has drained, so callbacks from the old socket can never be
+  /// interpreted under the new notebook id.
+  Future<NotebookTransitionResult> enterNotebook(
+    String notebookId, {
+    bool autoStart = false,
+  }) {
+    final intent = ++_lifecycleIntent;
+    if (_activeNotebookId != notebookId) {
+      // Invalidate synchronously. The serialized transition may wait behind a
+      // connecting session, but its already-queued callbacks become inert now.
+      _liveSessionGuard.invalidate();
     }
+    return _serializeLifecycle(() async {
+      if (intent != _lifecycleIntent) {
+        return const NotebookTransitionResult.failure(
+          'Notebook transition was superseded by a newer request.',
+        );
+      }
+      if (_activeNotebookId != null && _activeNotebookId != notebookId) {
+        final left = await _leaveNotebookUnlocked();
+        if (!left.succeeded) return left;
+        if (intent != _lifecycleIntent) {
+          return const NotebookTransitionResult.failure(
+            'Notebook transition was superseded by a newer request.',
+          );
+        }
+      }
+
+      if (_activeNotebookId != notebookId) {
+        try {
+          await _loadNotebookUnlocked(notebookId);
+        } catch (error, stack) {
+          vlog('session', 'open notebook failed: $error');
+          debugPrintStack(stackTrace: stack);
+          return const NotebookTransitionResult.failure(
+            'Could not open that notebook. Check your connection and try again.',
+          );
+        }
+        if (intent != _lifecycleIntent) {
+          return const NotebookTransitionResult.failure(
+            'Notebook transition was superseded by a newer request.',
+          );
+        }
+      }
+
+      if (autoStart) return _startSessionUnlocked();
+      return const NotebookTransitionResult.success();
+    });
+  }
+
+  /// Backwards-compatible safe entry point for callers that only load.
+  Future<NotebookTransitionResult> openNotebook(String notebookId) =>
+      enterNotebook(notebookId);
+
+  Future<NotebookTransitionResult> startSession() {
+    final intent = ++_lifecycleIntent;
+    return _serializeLifecycle(() {
+      if (intent != _lifecycleIntent) {
+        return Future.value(
+          const NotebookTransitionResult.failure(
+            'Session start was superseded by a newer request.',
+          ),
+        );
+      }
+      return _startSessionUnlocked();
+    });
+  }
+
+  Future<NotebookTransitionResult> _startSessionUnlocked() async {
+    if (_status == SessionStatus.connecting || _status == SessionStatus.live) {
+      return const NotebookTransitionResult.success();
+    }
+    final lease = _liveSessionGuard.begin();
     _setStatus(SessionStatus.connecting);
     _sessionStartedAt = DateTime.now();
 
@@ -593,15 +717,22 @@ class JournalNotifier extends Notifier<JournalState> {
       // user's active notebook (creating one if needed).
       if (_activeNotebookId == null) {
         final notebook = await service.ensureActiveNotebook();
-        _activeNotebookId = notebook?.id;
+        if (!_liveSessionGuard.isCurrent(lease)) {
+          return const NotebookTransitionResult.failure(
+            'Session start was superseded by another notebook transition.',
+          );
+        }
+        if (notebook == null) {
+          throw StateError('No active notebook is available');
+        }
+        await _loadNotebookUnlocked(notebook.id);
+      } else {
+        await _loadNotebookUnlocked(_activeNotebookId!);
       }
-      if (_activeNotebookId != null) {
-        final commitService = ref.read(notebookCommitServiceProvider);
-        final snapshot =
-            await commitService.getNotebookSnapshot(_activeNotebookId!);
-        _revision = snapshot?.revision ?? 0;
-        state = snapshot?.state ?? JournalState.empty();
-        await _restoreTurnsForNotebook(_activeNotebookId!);
+      if (!_liveSessionGuard.isCurrent(lease)) {
+        return const NotebookTransitionResult.failure(
+          'Session start was superseded by another notebook transition.',
+        );
       }
       vlog(
           'session',
@@ -625,6 +756,11 @@ class JournalNotifier extends Notifier<JournalState> {
       } catch (error) {
         debugPrint('[journal] audio session config unavailable: $error');
       }
+      if (!_liveSessionGuard.isCurrent(lease)) {
+        return const NotebookTransitionResult.failure(
+          'Session start was superseded by another notebook transition.',
+        );
+      }
 
       final notebookId = _activeNotebookId;
       if (notebookId == null) {
@@ -633,6 +769,11 @@ class JournalNotifier extends Notifier<JournalState> {
       final liveSession = await ref
           .read(notebookRuntimeServiceProvider)
           .startLiveSession(notebookId);
+      if (!_liveSessionGuard.isCurrent(lease)) {
+        return const NotebookTransitionResult.failure(
+          'Session start was superseded by another notebook transition.',
+        );
+      }
       if (liveSession is LiveSessionRejected) {
         throw StateError('Live session rejected: ${liveSession.code}');
       }
@@ -642,6 +783,10 @@ class JournalNotifier extends Notifier<JournalState> {
       // stale-result checks within this live conversation.
       final conversationSessionId =
           commit_service.NotebookCommitService.newRequestId();
+      final binding = lease.bind(
+        notebookId: notebookId,
+        sessionId: conversationSessionId,
+      );
 
       final live = GeminiLiveClient(
         sessionToken: readySession.sessionToken,
@@ -677,11 +822,13 @@ class JournalNotifier extends Notifier<JournalState> {
           },
         ],
       );
+      bool isCurrent() => _isCurrentLiveSession(binding, live);
       live
         // Meaningful transcript events, not cumulative sentence callbacks:
         // interim text is replaceable, and only a finalized, immutable
         // transcript may reach the graph.
         ..onTranscript = (chunk, isFinal) {
+          if (!isCurrent()) return;
           if (chunk.isEmpty && !isFinal) return;
           final events = isFinal
               ? _assembler.userFinal(chunk)
@@ -692,6 +839,7 @@ class JournalNotifier extends Notifier<JournalState> {
           }
         }
         ..onAgentTranscript = (chunk, isFinal) {
+          if (!isCurrent()) return;
           final events = isFinal
               ? _assembler.assistantFinal(chunk)
               : _assembler.assistantChunk(chunk);
@@ -700,18 +848,23 @@ class JournalNotifier extends Notifier<JournalState> {
           }
         }
         ..onAudio = (pcm) {
+          if (!isCurrent()) return;
           if (!_muted) _player?.feed(pcm);
           _markAgentSpeaking();
         }
         ..onInterrupted = () {
+          if (!isCurrent()) return;
           // Gemini supplies audio and transcription without a trustworthy
           // word-level alignment. Queuing PCM therefore cannot prove any text
           // was physically heard. The null boundary safely skips durable
           // extraction for this interrupted assistant turn, while the emitted
           // FlushPlayback effect discards the queued audio.
-          _dispatchTurn(const AssistantInterrupted(heardChars: null));
+          for (final event in _assembler.interrupted(null)) {
+            _dispatchTurn(event);
+          }
         }
         ..onTurnComplete = () {
+          if (!isCurrent()) return;
           _memoryCallsThisTurn = 0;
           _lastMemoryQuery = null;
           for (final event in _assembler.turnComplete()) {
@@ -720,11 +873,20 @@ class JournalNotifier extends Notifier<JournalState> {
           _clearAgentSpeaking();
         }
         ..onToolCall = (name, args) async {
-          if (name == 'get_graph_summary') return _buildGraphSummary();
-          if (name == 'get_relevant_memory') return _retrieveMemory(args);
-          return const {};
+          if (!isCurrent()) return const <String, dynamic>{};
+          Map<String, dynamic> result;
+          if (name == 'get_graph_summary') {
+            result = _buildGraphSummary();
+          } else if (name == 'get_relevant_memory') {
+            result = await _retrieveMemory(args);
+          } else {
+            result = const {};
+          }
+          if (!isCurrent()) return const <String, dynamic>{};
+          return result;
         }
         ..onSetupComplete = () {
+          if (!isCurrent()) return;
           // A live Gemini socket and an active turn-processing session are two
           // separate states. Establish the turn-machine identity before the UI
           // advertises the session as live so transcripts can be finalized,
@@ -737,20 +899,45 @@ class JournalNotifier extends Notifier<JournalState> {
           _setStatus(SessionStatus.live);
         }
         ..onError = (error) {
+          if (!isCurrent()) return;
           debugPrint('[journal] Gemini Live error: $error');
           _setStatus(SessionStatus.error);
         };
       _live = live;
 
       await live.connect();
-
-      _capture = PcmCapture();
-      if (!await _capture!.hasPermission()) {
-        debugPrint('[journal] microphone permission not granted');
-        _setStatus(SessionStatus.error);
-        return;
+      if (!isCurrent()) {
+        await live.close();
+        return const NotebookTransitionResult.failure(
+          'Session start was superseded by another notebook transition.',
+        );
       }
-      await _capture!.start((pcm) => _live?.sendAudio(pcm));
+
+      final capture = PcmCapture();
+      _capture = capture;
+      if (!await capture.hasPermission()) {
+        debugPrint('[journal] microphone permission not granted');
+        await _closeLiveTransportUnlocked();
+        _setStatus(SessionStatus.error);
+        return const NotebookTransitionResult.failure(
+          'Microphone permission is required to start a journal session.',
+        );
+      }
+      if (!isCurrent()) {
+        await capture.stop();
+        return const NotebookTransitionResult.failure(
+          'Session start was superseded by another notebook transition.',
+        );
+      }
+      await capture.start((pcm) {
+        if (isCurrent()) live.sendAudio(pcm);
+      });
+      if (!isCurrent()) {
+        await capture.stop();
+        return const NotebookTransitionResult.failure(
+          'Session start was superseded by another notebook transition.',
+        );
+      }
       vlog('session', 'mic capture started');
 
       // Agent-audio playback comes LAST: it's optional (the session still
@@ -758,19 +945,36 @@ class JournalNotifier extends Notifier<JournalState> {
       // stall for minutes on the simulator (just_audio / AVFoundation -11800)
       // and block other audio plugin calls — so it must never sit in front of
       // the mic on the critical path. Timeout-capped and non-fatal.
-      _player = PcmPlayer();
+      final player = PcmPlayer();
+      _player = player;
       try {
-        await _player!.init().timeout(const Duration(seconds: 5));
+        await player.init().timeout(const Duration(seconds: 5));
+        if (!isCurrent()) {
+          await player.dispose();
+          return const NotebookTransitionResult.failure(
+            'Session start was superseded by another notebook transition.',
+          );
+        }
         vlog('playback', 'agent-audio playback ready');
       } catch (error) {
         debugPrint('[journal] agent-audio playback unavailable, continuing '
             'without it: $error');
-        unawaited(_player?.dispose().catchError((_) {}));
-        _player = null;
+        unawaited(player.dispose().catchError((_) {}));
+        if (identical(_player, player)) _player = null;
       }
+      if (!isCurrent()) {
+        return const NotebookTransitionResult.failure(
+          'Session start was superseded by another notebook transition.',
+        );
+      }
+      return const NotebookTransitionResult.success();
     } catch (error, stack) {
       debugPrint('[journal] startSession failed: $error\n$stack');
+      await _closeLiveTransportUnlocked();
       _setStatus(SessionStatus.error);
+      return const NotebookTransitionResult.failure(
+        'Could not start the session. Check your connection and try again.',
+      );
     }
   }
 
@@ -786,21 +990,77 @@ class JournalNotifier extends Notifier<JournalState> {
     );
   }
 
-  Future<void> endSession() async {
-    if (_status == SessionStatus.idle) return;
-    _setStatus(SessionStatus.ending);
-    _finalizationTimer?.cancel();
+  Future<void> _closeLiveTransportUnlocked() async {
+    // Invalidate before the first await. A socket or microphone callback may
+    // already be queued even though resource shutdown has started.
+    _liveSessionGuard.invalidate();
+    for (final timer in _finalizationTimers.values) {
+      timer.cancel();
+    }
+    _finalizationTimers.clear();
     _clearAgentSpeaking();
-    await _capture?.stop();
-    await _live?.close();
-    await _player?.dispose();
-    _live = null;
+
+    final capture = _capture;
+    final live = _live;
+    final player = _player;
     _capture = null;
+    _live = null;
     _player = null;
+
+    try {
+      await capture?.stop();
+    } catch (error, stack) {
+      vlog('session', 'mic shutdown failed: $error');
+      debugPrintStack(stackTrace: stack);
+    }
+    try {
+      await live?.close();
+    } catch (error, stack) {
+      vlog('session', 'live transport shutdown failed: $error');
+      debugPrintStack(stackTrace: stack);
+    }
+    try {
+      await player?.dispose();
+    } catch (error, stack) {
+      vlog('playback', 'player shutdown failed: $error');
+      debugPrintStack(stackTrace: stack);
+    }
     _assembler.reset();
+  }
+
+  /// Stops realtime input, drains notebook-scoped writes, and then releases
+  /// the active notebook identity. Callers may navigate only after success.
+  Future<NotebookTransitionResult> leaveNotebook() {
+    // The operation itself is serialized, but stale realtime callbacks must be
+    // rejected immediately while it waits for an in-progress start operation.
+    final intent = ++_lifecycleIntent;
+    _liveSessionGuard.invalidate();
+    return _serializeLifecycle(() {
+      if (intent != _lifecycleIntent) {
+        return Future.value(
+          const NotebookTransitionResult.failure(
+            'Notebook transition was superseded by a newer request.',
+          ),
+        );
+      }
+      return _leaveNotebookUnlocked();
+    });
+  }
+
+  Future<NotebookTransitionResult> endSession() => leaveNotebook();
+
+  Future<NotebookTransitionResult> _leaveNotebookUnlocked() async {
+    final notebookId = _activeNotebookId;
+    final shouldEndNotebook = _sessionStartedAt != null;
+    if (notebookId == null && _status == SessionStatus.idle) {
+      return const NotebookTransitionResult.success();
+    }
+
+    _setStatus(SessionStatus.ending);
+    await _closeLiveTransportUnlocked();
     _dispatchTurn(const SessionEnded());
 
-    if (_activeNotebookId != null) {
+    if (notebookId != null) {
       final outcome = await drain();
       if (!outcome.isCompleted) {
         // The live input is closed, but the notebook identity and durable
@@ -813,14 +1073,36 @@ class JournalNotifier extends Notifier<JournalState> {
         );
         _muted = false;
         _setStatus(SessionStatus.error);
-        return;
+        return const NotebookTransitionResult.failure(
+          'Your latest journal changes are still saving. Try leaving again.',
+        );
       }
-      final service = ref.read(supabaseServiceProvider);
-      await service.endNotebook(_activeNotebookId!);
+      if (shouldEndNotebook) {
+        try {
+          final service = ref.read(supabaseServiceProvider);
+          await service.endNotebook(notebookId);
+        } catch (error, stack) {
+          vlog('session', 'notebook end failed: $error');
+          debugPrintStack(stackTrace: stack);
+          _muted = false;
+          _setStatus(SessionStatus.error);
+          return const NotebookTransitionResult.failure(
+            'Your journal was saved, but the session could not be closed. '
+            'Try leaving again.',
+          );
+        }
+      }
     }
+
     _muted = false;
-    _setStatus(SessionStatus.idle);
+    _sessionStartedAt = null;
     _activeNotebookId = null;
+    _restoredNotebookId = null;
+    _lastTranscript = '';
+    _lastMemoryQuery = null;
+    _memoryCallsThisTurn = 0;
+    _setStatus(SessionStatus.idle);
+    return const NotebookTransitionResult.success();
   }
 }
 

@@ -65,7 +65,7 @@ describe("createTranscriptAssembler", () => {
     const events = a.assistantChunk("You said Sarah");
 
     expect(events).toEqual([
-      { type: "turnCompleted", speaker: "user" },
+      { type: "turnCompleted", speaker: "user", transcriptGeneration: 1 },
       { type: "interimTranscript", speaker: "assistant", text: "You said Sarah" },
     ]);
     // Only once: a second assistant chunk must not re-close the user turn.
@@ -83,7 +83,9 @@ describe("createTranscriptAssembler", () => {
     a.userChunk("Hello");
     a.assistantChunk("Hi there.");
 
-    expect(a.turnComplete()).toEqual([{ type: "turnCompleted", speaker: "assistant" }]);
+    expect(a.turnComplete()).toEqual([
+      { type: "turnCompleted", speaker: "assistant", transcriptGeneration: 2 },
+    ]);
     // Buffers reset: the next turn starts from empty, not from "Hi there."
     expect(a.assistantChunk("Next answer.")).toEqual([
       { type: "interimTranscript", speaker: "assistant", text: "Next answer." },
@@ -95,8 +97,79 @@ describe("createTranscriptAssembler", () => {
     a.userChunk("Just thinking out loud.");
 
     expect(a.turnComplete()).toEqual([
-      { type: "turnCompleted", speaker: "user" },
+      { type: "turnCompleted", speaker: "user", transcriptGeneration: 1 },
       { type: "turnCompleted", speaker: "assistant" },
+    ]);
+  });
+
+  it("preserves a user prefix when its final arrives after turn completion", () => {
+    const a = createTranscriptAssembler();
+    a.userChunk("I work at ");
+
+    expect(a.assistantChunk("Tell me more.")[0]).toEqual({
+      type: "turnCompleted",
+      speaker: "user",
+      transcriptGeneration: 1,
+    });
+    expect(a.userFinal("Acme.")).toEqual([
+      { type: "finalTranscript", speaker: "user", text: "I work at Acme." },
+    ]);
+  });
+
+  it("preserves an assistant prefix when its final arrives after turnComplete", () => {
+    const a = createTranscriptAssembler();
+    a.assistantChunk("You work at ");
+
+    expect(a.turnComplete()).toEqual([
+      { type: "turnCompleted", speaker: "assistant", transcriptGeneration: 1 },
+    ]);
+    expect(a.assistantFinal("Acme.")).toEqual([
+      { type: "finalTranscript", speaker: "assistant", text: "You work at Acme." },
+    ]);
+  });
+
+  it("restores a parked prefix from a checkpoint", () => {
+    const first = createTranscriptAssembler();
+    first.assistantChunk("You work at ");
+    first.turnComplete();
+
+    const restored = createTranscriptAssembler(JSON.parse(JSON.stringify(first.checkpoint())));
+    expect(restored.assistantFinal("Acme.")).toEqual([
+      { type: "finalTranscript", speaker: "assistant", text: "You work at Acme." },
+    ]);
+  });
+
+  it("discards a final that arrives after its fallback deadline", () => {
+    const a = createTranscriptAssembler();
+    a.assistantChunk("Fallback text.");
+    const completed = a.turnComplete()[0];
+    if (completed?.type !== "turnCompleted" || completed.transcriptGeneration === undefined) {
+      throw new Error("expected a parked assistant transcript");
+    }
+
+    a.expirePending("assistant", completed.transcriptGeneration);
+    expect(a.assistantFinal(" Late duplicate.")).toEqual([]);
+    expect(a.assistantChunk("Next answer.")).toEqual([
+      { type: "interimTranscript", speaker: "assistant", text: "Next answer." },
+    ]);
+  });
+
+  it("does not let an expired turn consume the next active turn final", () => {
+    const a = createTranscriptAssembler();
+    a.assistantChunk("Old answer.");
+    const completed = a.turnComplete()[0];
+    if (completed?.type !== "turnCompleted" || completed.transcriptGeneration === undefined) {
+      throw new Error("expected a parked assistant transcript");
+    }
+    a.assistantChunk("New answer");
+
+    a.expirePending("assistant", completed.transcriptGeneration);
+    expect(a.assistantFinal(" complete.")).toEqual([
+      {
+        type: "finalTranscript",
+        speaker: "assistant",
+        text: "New answer complete.",
+      },
     ]);
   });
 
@@ -112,5 +185,14 @@ describe("createTranscriptAssembler", () => {
     a.assistantChunk("You mentioned Acme.");
 
     expect(a.interrupted(null)).toEqual([{ type: "assistantInterrupted", heardChars: null }]);
+  });
+
+  it("does not park interrupted assistant text for a late final", () => {
+    const a = createTranscriptAssembler();
+    a.assistantChunk("Text that may not have been heard.");
+    a.interrupted(null);
+
+    expect(a.turnComplete()).toEqual([{ type: "turnCompleted", speaker: "assistant" }]);
+    expect(a.assistantFinal(" trailing text")).toEqual([]);
   });
 });

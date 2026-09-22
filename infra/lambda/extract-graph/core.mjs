@@ -2,6 +2,11 @@ import { createHash, randomUUID } from "node:crypto";
 
 import { extractGraphFunction, granularPrompt, wikiPrompt } from "./prompts.mjs";
 
+// Model output targets 800 characters (see prompts.mjs). The additional 200
+// characters absorb provider variance while this hard boundary guarantees that
+// every accepted description can be reused as future extraction context.
+const maxEntityDescriptionLength = 1000;
+
 const entityTypes = new Set([
   "person",
   "place",
@@ -81,6 +86,44 @@ function boundedString(value, maxLength, { allowEmpty = false } = {}) {
     (allowEmpty || value.trim().length > 0);
 }
 
+function truncateString(value, maxLength) {
+  if (typeof value !== "string" || value.length <= maxLength) return value;
+  return `${value.slice(0, maxLength - 1).trimEnd()}…`;
+}
+
+function normalizeEntityDescription(entity) {
+  if (!entity || typeof entity !== "object" || Array.isArray(entity)) return entity;
+  if (typeof entity.description !== "string") return entity;
+  return {
+    ...entity,
+    description: truncateString(entity.description, maxEntityDescriptionLength),
+  };
+}
+
+function normalizeRequest(body) {
+  const context = body?.context;
+  if (!body || !context || typeof context !== "object" || Array.isArray(context)) return body;
+  return {
+    ...body,
+    context: {
+      ...context,
+      entities: Array.isArray(context.entities)
+        ? context.entities.map(normalizeEntityDescription)
+        : context.entities,
+    },
+  };
+}
+
+function normalizePatch(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  return {
+    ...value,
+    entities: Array.isArray(value.entities)
+      ? value.entities.map(normalizeEntityDescription)
+      : value.entities,
+  };
+}
+
 function validContext(context) {
   if (!context || typeof context !== "object" || Array.isArray(context)) return false;
   if (!Array.isArray(context.entities) || context.entities.length > 20) return false;
@@ -93,7 +136,10 @@ function validContext(context) {
     if (!entity || typeof entity !== "object") return false;
     if (!boundedString(entity.id, 160) || !boundedString(entity.name, 200)) return false;
     if (!entityTypes.has(entity.type)) return false;
-    if (entity.description != null && !boundedString(entity.description, 1000, { allowEmpty: true })) {
+    if (
+      entity.description != null &&
+      !boundedString(entity.description, maxEntityDescriptionLength, { allowEmpty: true })
+    ) {
       return false;
     }
   }
@@ -183,7 +229,12 @@ function validPatch(value) {
   for (const entity of value.entities) {
     if (!entity || typeof entity !== "object") return false;
     if (!boundedString(entity.name, 200) || !entityTypes.has(entity.type)) return false;
-    if (entity.description != null && typeof entity.description !== "string") return false;
+    if (
+      entity.description != null &&
+      !boundedString(entity.description, maxEntityDescriptionLength, { allowEmpty: true })
+    ) {
+      return false;
+    }
     if (entity.metadata != null && (typeof entity.metadata !== "object" || Array.isArray(entity.metadata))) {
       return false;
     }
@@ -219,12 +270,15 @@ function patchFromProviderResponse(payload) {
   if (!Array.isArray(parts)) return null;
   for (const part of parts) {
     const call = part?.functionCall;
-    if (call?.name === "extract_graph" && validPatch(call.args)) {
-      return {
-        entities: call.args.entities,
-        relations: call.args.relations,
-        supersedes: call.args.supersedes ?? [],
-      };
+    if (call?.name === "extract_graph") {
+      const args = call.args;
+      if (!args || !Array.isArray(args.entities) || !Array.isArray(args.relations)) continue;
+      const patch = normalizePatch({
+        entities: args.entities,
+        relations: args.relations,
+        supersedes: args.supersedes ?? [],
+      });
+      if (validPatch(patch)) return patch;
     }
   }
   return null;
@@ -250,7 +304,7 @@ export function createExtractGraphHandler({
     if (!authorization) return jsonResponse(401, { error: "unauthorized" });
 
     const notebookId = notebookIdFrom(event);
-    const body = parseBody(event);
+    const body = normalizeRequest(parseBody(event));
     if (!notebookId || !validRequest(body)) {
       return jsonResponse(400, { error: "invalidRequest" });
     }
@@ -295,8 +349,9 @@ export function createExtractGraphHandler({
       return jsonResponse(503, { status: "rejected", code: "providerUnavailable" });
     }
     if (acquisition.status === "completed") {
-      return validPatch(acquisition.patch)
-        ? jsonResponse(200, { patch: acquisition.patch })
+      const normalizedPatch = normalizePatch(acquisition.patch);
+      return validPatch(normalizedPatch)
+        ? jsonResponse(200, { patch: normalizedPatch })
         : jsonResponse(503, { status: "rejected", code: "providerUnavailable" });
     }
     if (acquisition.status === "pending") {
@@ -380,8 +435,9 @@ export function createExtractGraphHandler({
             await sleep(100 * 2 ** completionAttempt);
           }
         }
-        if (completion.status === "completed" && validPatch(completion.patch)) {
-          return jsonResponse(200, { patch: completion.patch });
+        const normalizedCompletedPatch = normalizePatch(completion.patch);
+        if (completion.status === "completed" && validPatch(normalizedCompletedPatch)) {
+          return jsonResponse(200, { patch: normalizedCompletedPatch });
         }
         if (completion.status === "pending") {
           return jsonResponse(409, {

@@ -53,6 +53,7 @@ import { downloadBlob, exportToObsidianZip } from "@/lib/obsidian-export";
 import type { ExtractGraphResult } from "@/lib/extract-graph";
 import { createTurnMachine } from "@/lib/turn-state/reducer";
 import { createTurnPipeline, type TurnPipeline } from "@/lib/turn-state/pipeline";
+import { createTranscriptAssembler } from "@/lib/turn-state/transcript-assembler";
 import { createLocalTurnJournal, createWebTurnPorts } from "@/lib/turn-state/web-adapter";
 import type { TurnEvent, TurnMachine } from "@/lib/turn-state/types";
 
@@ -428,6 +429,7 @@ function Index() {
   // src/lib/turn-state/ and docs/finalized-turn-extraction.md.
   const turnMachineRef = useRef<TurnMachine | null>(null);
   const turnPipelineRef = useRef<TurnPipeline | null>(null);
+  const transcriptAssemblerRef = useRef(createTranscriptAssembler());
   // Imperative handle into the main GraphView so the sidebar minimap can pan
   // the canvas to a node when that node is clicked in the overview.
   const graphViewRef = useRef<GraphViewHandle | null>(null);
@@ -565,6 +567,9 @@ function Index() {
       },
       onError: (message) => {
         console.error("[turn-state]", message);
+      },
+      expireTranscriptFinalization: (speaker, generation) => {
+        transcriptAssemblerRef.current.expirePending(speaker, generation);
       },
     });
     turnMachineRef.current = machine;
@@ -827,6 +832,7 @@ function Index() {
   }, [liveSessionRuntime]);
 
   const live = useGeminiLive({
+    transcriptAssembler: transcriptAssemblerRef.current,
     startLiveSession: requestLiveSession,
     systemInstruction: GEMINI_LIVE_SYSTEM_INSTRUCTION,
     voice: "Aoede",

@@ -1,37 +1,31 @@
-import type { TurnEvent } from "./types";
+import type { Speaker, TurnEvent } from "./types";
+
+interface PendingTranscriptCheckpoint {
+  generation: number;
+  text: string;
+  expired?: boolean;
+}
 
 /**
  * Translates Gemini Live's raw transcript signals into turn-machine events.
  *
- * This is where the cumulative-prefix bug lived. The old adapter fired a
- * "sentence" callback carrying the whole turn-so-far at every sentence
- * boundary, and each fire ran a complete extract → merge → commit. Sentence one
- * could therefore commit, and then sentence one *plus* sentence two could
- * commit again, double-counting everything in the first sentence.
- *
- * Here, chunks only ever produce a *replaceable* interim transcript. Nothing
- * durable happens until a turn is explicitly completed.
- *
- * Turn boundaries: Gemini's `turnComplete` describes the MODEL's turn. The user
- * turn ends earlier — server VAD detects end of speech and the model starts
- * answering — so the first assistant output after user speech is what closes
- * the user turn. A user turn the assistant never answered is closed by
- * `turnComplete` as a fallback.
+ * Chunks only produce replaceable interim text. When a provider turn closes,
+ * its buffer is parked until either the authoritative final chunk or the
+ * finalization deadline arrives. Gemini does not guarantee those signals'
+ * order, so clearing the buffer at `turnComplete` can lose the turn's prefix.
  */
 export interface TranscriptAssembler {
   checkpoint: () => AssemblerCheckpoint;
-  /** Incremental user transcription chunk. */
   userChunk: (chunk: string) => TurnEvent[];
-  /** Provider interim transcription: replaces the accumulated buffer. */
   userInterim: (text: string) => TurnEvent[];
-  /** Final ("finished") user transcription chunk; closes the transcript. */
   userFinal: (chunk: string) => TurnEvent[];
   assistantChunk: (chunk: string) => TurnEvent[];
   assistantFinal: (chunk: string) => TurnEvent[];
   turnComplete: () => TurnEvent[];
   interrupted: (heardChars: number | null) => TurnEvent[];
+  /** Expires the exact parked buffer governed by a fired fallback deadline. */
+  expirePending: (speaker: Speaker, generation: number) => void;
   reset: () => void;
-  /** Current assistant display text — the basis for the heard watermark. */
   assistantText: () => string;
 }
 
@@ -40,6 +34,10 @@ export interface AssemblerCheckpoint {
   assistantBuffer: string;
   userTurnOpen: boolean;
   userTurnClosed: boolean;
+  pendingUser?: PendingTranscriptCheckpoint[];
+  pendingAssistant?: PendingTranscriptCheckpoint[];
+  nextGeneration?: number;
+  assistantInterrupted?: boolean;
 }
 
 export function createTranscriptAssembler(checkpoint?: AssemblerCheckpoint): TranscriptAssembler {
@@ -47,38 +45,97 @@ export function createTranscriptAssembler(checkpoint?: AssemblerCheckpoint): Tra
   let assistantBuffer = checkpoint?.assistantBuffer ?? "";
   let userTurnOpen = checkpoint?.userTurnOpen ?? false;
   let userTurnClosed = checkpoint?.userTurnClosed ?? false;
+  let assistantInterrupted = checkpoint?.assistantInterrupted ?? false;
+  let nextGeneration = checkpoint?.nextGeneration ?? 0;
+  const pendingUser = structuredClone(checkpoint?.pendingUser ?? []);
+  const pendingAssistant = structuredClone(checkpoint?.pendingAssistant ?? []);
 
-  /** The assistant answering is the signal that the user's turn is over. */
+  const pendingFor = (speaker: Speaker): PendingTranscriptCheckpoint[] =>
+    speaker === "user" ? pendingUser : pendingAssistant;
+
+  function park(speaker: Speaker): number | undefined {
+    const text = speaker === "user" ? userBuffer : assistantBuffer;
+    if (speaker === "user") userBuffer = "";
+    else assistantBuffer = "";
+    if (!text.trim()) return undefined;
+    const pending = { generation: ++nextGeneration, text };
+    pendingFor(speaker).push(pending);
+    return pending.generation;
+  }
+
+  function discardExpiredBeforeNewTurn(speaker: Speaker): void {
+    const queue = pendingFor(speaker);
+    for (let index = queue.length - 1; index >= 0; index -= 1) {
+      if (queue[index]?.expired) queue.splice(index, 1);
+    }
+  }
+
+  function resolvePendingFinal(speaker: Speaker, chunk: string): TurnEvent[] | null {
+    const queue = pendingFor(speaker);
+    const pending = queue[0];
+    if (!pending) return null;
+    if (pending.expired) {
+      queue.shift();
+      const activeText = speaker === "user" ? userBuffer : assistantBuffer;
+      // Active text proves a newer turn is underway; this final belongs there.
+      // Otherwise it is the delayed final represented by the expired slot.
+      return activeText ? null : [];
+    }
+    queue.shift();
+    const text = pending.text + chunk;
+    if (!text.trim()) return [];
+    return [{ type: "finalTranscript", speaker, text }];
+  }
+
   function closeUserTurnIfNeeded(): TurnEvent[] {
     if (!userTurnOpen || userTurnClosed) return [];
     userTurnClosed = true;
-    return [{ type: "turnCompleted", speaker: "user" }];
+    const transcriptGeneration = park("user");
+    return [
+      transcriptGeneration === undefined
+        ? { type: "turnCompleted", speaker: "user" }
+        : { type: "turnCompleted", speaker: "user", transcriptGeneration },
+    ];
   }
 
-  function resetAll(): void {
+  function resetActive(): void {
     userBuffer = "";
     assistantBuffer = "";
     userTurnOpen = false;
     userTurnClosed = false;
+    assistantInterrupted = false;
   }
 
   return {
-    checkpoint: () => ({ userBuffer, assistantBuffer, userTurnOpen, userTurnClosed }),
+    checkpoint: () => ({
+      userBuffer,
+      assistantBuffer,
+      userTurnOpen,
+      userTurnClosed,
+      pendingUser: structuredClone(pendingUser),
+      pendingAssistant: structuredClone(pendingAssistant),
+      nextGeneration,
+      assistantInterrupted,
+    }),
+
     userChunk(chunk) {
       if (!chunk) return [];
+      discardExpiredBeforeNewTurn("user");
       userBuffer += chunk;
       userTurnOpen = true;
       return [{ type: "interimTranscript", speaker: "user", text: userBuffer }];
     },
 
     userInterim(text) {
-      // Replacement, not an append: the provider has revised its own guess.
+      discardExpiredBeforeNewTurn("user");
       userBuffer = text;
       userTurnOpen = true;
       return [{ type: "interimTranscript", speaker: "user", text: userBuffer }];
     },
 
     userFinal(chunk) {
+      const pending = resolvePendingFinal("user", chunk);
+      if (pending) return pending;
       userBuffer += chunk;
       const text = userBuffer;
       userBuffer = "";
@@ -88,7 +145,8 @@ export function createTranscriptAssembler(checkpoint?: AssemblerCheckpoint): Tra
     },
 
     assistantChunk(chunk) {
-      if (!chunk) return [];
+      if (!chunk || assistantInterrupted) return [];
+      discardExpiredBeforeNewTurn("assistant");
       const closing = closeUserTurnIfNeeded();
       assistantBuffer += chunk;
       return [
@@ -98,6 +156,9 @@ export function createTranscriptAssembler(checkpoint?: AssemblerCheckpoint): Tra
     },
 
     assistantFinal(chunk) {
+      const pending = resolvePendingFinal("assistant", chunk);
+      if (pending) return pending;
+      if (assistantInterrupted) return [];
       const closing = closeUserTurnIfNeeded();
       assistantBuffer += chunk;
       const text = assistantBuffer;
@@ -107,17 +168,42 @@ export function createTranscriptAssembler(checkpoint?: AssemblerCheckpoint): Tra
     },
 
     turnComplete() {
-      const events: TurnEvent[] = [...closeUserTurnIfNeeded()];
-      events.push({ type: "turnCompleted", speaker: "assistant" });
-      resetAll();
+      const events = closeUserTurnIfNeeded();
+      const transcriptGeneration = assistantInterrupted ? undefined : park("assistant");
+      if (assistantInterrupted) assistantBuffer = "";
+      events.push(
+        transcriptGeneration === undefined
+          ? { type: "turnCompleted", speaker: "assistant" }
+          : { type: "turnCompleted", speaker: "assistant", transcriptGeneration },
+      );
+      resetActive();
       return events;
     },
 
     interrupted(heardChars) {
+      assistantInterrupted = true;
+      if (assistantBuffer.trim()) {
+        pendingAssistant.push({
+          generation: ++nextGeneration,
+          text: assistantBuffer,
+          expired: true,
+        });
+      }
+      assistantBuffer = "";
       return [{ type: "assistantInterrupted", heardChars }];
     },
 
-    reset: resetAll,
+    expirePending(speaker, generation) {
+      const pending = pendingFor(speaker).find((item) => item.generation === generation);
+      if (pending) pending.expired = true;
+    },
+
+    reset() {
+      resetActive();
+      pendingUser.length = 0;
+      pendingAssistant.length = 0;
+      nextGeneration = 0;
+    },
 
     assistantText() {
       return assistantBuffer;

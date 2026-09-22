@@ -114,6 +114,7 @@ export interface WebTurnAdapterDeps {
   }) => void;
   onError?: (message: string) => void;
   scheduleDeadline?: TurnPorts["scheduleDeadline"];
+  expireTranscriptFinalization?: TurnPorts["expireTranscriptFinalization"];
   tokenBudget?: number;
 }
 
@@ -201,6 +202,8 @@ export function createWebTurnPorts(deps: WebTurnAdapterDeps): TurnPorts {
       ((_speaker, _turnId, fire) => {
         setTimeout(fire, FINALIZATION_DEADLINE_MS);
       }),
+
+    expireTranscriptFinalization: deps.expireTranscriptFinalization,
 
     onError: deps.onError,
   };
