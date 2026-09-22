@@ -117,6 +117,13 @@ Output:
   Organizer if you need to inspect it)
 - `build/ios/ipa/*.ipa`, the App Store-signed binary to upload
 
+When regenerating `ios/Podfile.lock`, use `pod install --repo-update` and
+review the complete diff before committing. `permission_handler_apple` must
+appear in both `PODS` and `SPEC CHECKSUMS`; verify its generated build settings
+contain `PERMISSION_MICROPHONE=1`. The pinned `path_provider_foundation` 2.6.0
+uses direct Dart/FFI calls to Foundation and has no podspec, so its absence
+from `Podfile.lock` is expected. Do not add a synthetic pod entry.
+
 Before uploading, check that no credentials were bundled:
 
 ```sh
@@ -196,6 +203,15 @@ Work through these in order:
    `~/Library/Developer/Xcode/UserData/Provisioning Profiles/*` (Xcode 16 and
    later), then rebuild.
 
+If even a simulator build fails with `resource fork, Finder information, or
+similar detritus not allowed`, inspect the affected generated bundle with
+`xattr -lr <bundle>`. A checkout under a synced Documents folder can acquire
+`com.apple.FinderInfo` metadata during builds. Use a checkout outside that
+folder and regenerate build output before retrying. Do not disable code
+signing to hide this error. On the release Mac, moving only `build` behind a
+symlink was insufficient; moving the worktree and generating fresh output
+resolved the simulator failure.
+
 ---
 
 ## 5. Background audio: capability and App Review notes
@@ -267,9 +283,10 @@ Resources phase) declares `NSPrivacyTracking = false` and collected types
 **Audio Data**, **Other User Content**, **Email Address** and **User ID**,
 all *linked to the user*, *not used for tracking*, purpose *App
 Functionality*. It declares no required-reason APIs: the app's Dart code
-calls none directly, and the plugins (`path_provider`,
-`shared_preferences` via `supabase_flutter`, `record`, `just_audio`, …) ship
-their own manifests. If App Store Connect's upload validation or the Xcode
+calls none directly. Several native plugins ship their own manifests;
+`path_provider_foundation` 2.6.0 instead uses direct Dart/FFI calls and ships
+no native plugin manifest. Do not infer complete required-reason coverage
+from the presence of plugin manifests alone. If App Store Connect's upload validation or the Xcode
 *Privacy Report* (Organizer → archive → *Generate Privacy Report*) flags a
 missing reason, add it to the app manifest then.
 
