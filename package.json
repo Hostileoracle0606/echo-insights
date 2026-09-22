@@ -6,7 +6,9 @@
   "scripts": {
     "test:retrieval-gate": "node --test scripts/retrieval-release-gate.test.mjs",
     "release:retrieval-gate": "node scripts/retrieval-release-gate.mjs",
-    "release:ios:unsigned": "node scripts/retrieval-release-gate.mjs && flutter build ios --release --no-codesign",
+    "release:ios:unsigned": "node scripts/retrieval-release-gate.mjs && node scripts/ios-build.mjs ios",
+    "release:ios:ipa": "node scripts/ios-build.mjs ipa",
+    "test:ios-build": "node --test scripts/ios-build.test.mjs",
     "dev": "vite dev",
     "build": "vite build",
     "build:dev": "vite build --mode development",

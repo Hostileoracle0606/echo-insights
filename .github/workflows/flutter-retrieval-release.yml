@@ -80,16 +80,13 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+      - name: Verify iOS build script refuses missing configuration
+        run: npm run test:ios-build
       - name: Build unsigned iOS release after retrieval passes
         env:
           SUPABASE_URL: ${{ vars.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           NOTEBOOK_RUNTIME_URL: ${{ vars.NOTEBOOK_RUNTIME_URL }}
-        run: |
-          test -n "$NOTEBOOK_RUNTIME_URL"
-          flutter build ios --release --no-codesign \
-            --dart-define="SUPABASE_URL=$SUPABASE_URL" \
-            --dart-define="SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY" \
-            --dart-define="NOTEBOOK_RUNTIME_URL=$NOTEBOOK_RUNTIME_URL"
+        run: node scripts/ios-build.mjs ios
       - name: Check build for bundled credentials
         run: node scripts/production-secrets.mjs build/ios/iphoneos/Runner.app
