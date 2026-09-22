@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
+import 'package:web_socket_channel/io.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../logic/voice_log.dart';
@@ -58,19 +59,28 @@ class GeminiLiveClient {
     required this.tools,
   });
 
+  // The ephemeral token travels in the Authorization header (auth-scheme
+  // `Token`, per the Gemini ephemeral-token docs), not an `access_token`
+  // query parameter: query strings are the part of a URL most likely to
+  // reach an intermediary's logs. (The browser client in src/ cannot set
+  // WebSocket headers and still uses the query parameter.)
   @visibleForTesting
   Uri get connectionUri => Uri.parse(
         'wss://generativelanguage.googleapis.com/ws/'
         'google.ai.generativelanguage.v1beta.GenerativeService.'
         'BidiGenerateContentConstrained',
-      ).replace(queryParameters: {'access_token': sessionToken});
+      );
+
+  @visibleForTesting
+  Map<String, String> get connectionHeaders =>
+      {'Authorization': 'Token $sessionToken'};
 
   Future<void> connect() async {
     final uri = connectionUri;
     _setupComplete = false;
     _closing = false;
     vlog('client', 'connecting (model=$model)…');
-    _channel = WebSocketChannel.connect(uri);
+    _channel = IOWebSocketChannel.connect(uri, headers: connectionHeaders);
 
     // Await the actual WebSocket handshake (the web client awaits `open` the
     // same way); otherwise a failed handshake surfaces later as silence.

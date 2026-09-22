@@ -12,11 +12,14 @@ void main() {
         tools: const [],
       );
 
-  test('connection URI uses a temporary access token, never an API key', () {
-    final uri = makeClient().connectionUri;
+  test('temporary token goes in the Authorization header, never the URL', () {
+    final client = makeClient();
+    final uri = client.connectionUri;
 
-    expect(uri.queryParameters['access_token'], 'auth_tokens/temporary token');
-    expect(uri.queryParameters.containsKey('key'), isFalse);
+    expect(client.connectionHeaders['Authorization'],
+        'Token auth_tokens/temporary token');
+    expect(uri.hasQuery, isFalse);
+    expect(uri.toString(), isNot(contains('auth_tokens')));
     expect(uri.path, endsWith('GenerativeService.BidiGenerateContentConstrained'));
   });
 
