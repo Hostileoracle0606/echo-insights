@@ -5,6 +5,8 @@ import test from "node:test";
 
 import { REQUIRED_DEFINES, flutterBuildArgs, missingDefines } from "./ios-build.mjs";
 
+const signed = { PRIVACY_POLICY_URL: "https://example.com/privacy" };
+
 const configured = {
   SUPABASE_URL: "https://example.supabase.co",
   SUPABASE_ANON_KEY: "anon-key",
@@ -46,8 +48,22 @@ test("unsigned ios build passes all three defines", () => {
   }
 });
 
+test("ipa build also requires the privacy policy URL", () => {
+  assert.deepEqual(missingDefines(configured, "ipa"), ["PRIVACY_POLICY_URL"]);
+  assert.throws(() => flutterBuildArgs("ipa", configured), /PRIVACY_POLICY_URL/);
+});
+
+test("unsigned build passes the privacy policy URL through only when set", () => {
+  assert(!flutterBuildArgs("ios", configured).some((a) => a.includes("PRIVACY_POLICY_URL")));
+  assert(
+    flutterBuildArgs("ios", { ...configured, ...signed }).includes(
+      "--dart-define=PRIVACY_POLICY_URL=https://example.com/privacy",
+    ),
+  );
+});
+
 test("ipa build uses the export options plist and forwards extra args", () => {
-  const args = flutterBuildArgs("ipa", configured, ["--build-number=7"]);
+  const args = flutterBuildArgs("ipa", { ...configured, ...signed }, ["--build-number=7"]);
   assert.deepEqual(args.slice(0, 4), [
     "build",
     "ipa",
@@ -55,7 +71,7 @@ test("ipa build uses the export options plist and forwards extra args", () => {
     "--export-options-plist=ios/ExportOptions.plist",
   ]);
   assert.equal(args.at(-1), "--build-number=7");
-  assert.equal(args.filter((a) => a.startsWith("--dart-define=")).length, 3);
+  assert.equal(args.filter((a) => a.startsWith("--dart-define=")).length, 4);
 });
 
 test("rejects an unknown build target", () => {

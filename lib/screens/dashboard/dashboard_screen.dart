@@ -9,6 +9,7 @@ import '../../providers/notebooks_provider.dart';
 import '../../providers/supabase_provider.dart';
 import '../../theme/lumen_colors.dart';
 import '../../theme/lumen_text.dart';
+import 'account_sheet.dart';
 
 // Matches the iPhone's display corner radius so the docked button's curvature
 // echoes the screen's rounded corners. Flutter exposes no API for the real
@@ -69,6 +70,7 @@ class DashboardScreen extends ConsumerWidget {
                   greeting: greeting,
                   subtitle: subtitle,
                   colors: colors,
+                  onAccount: () => showAccountSheet(context),
                 ),
                 Expanded(
                   child: isEmpty
@@ -341,11 +343,13 @@ class _AnimatedHero extends StatefulWidget {
   final String greeting;
   final String? subtitle;
   final LumenColors colors;
+  final VoidCallback onAccount;
 
   const _AnimatedHero({
     required this.greeting,
     required this.subtitle,
     required this.colors,
+    required this.onAccount,
   });
 
   @override
@@ -441,12 +445,26 @@ class _AnimatedHeroState extends State<_AnimatedHero>
     var slot = 0;
 
     final lines = <Widget>[
-      _slide(
-        _reveal(slot++, total),
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [Text('Lumen', style: eyebrowStyle), _period(eyebrowStyle)],
-        ),
+      Row(
+        children: [
+          _slide(
+            _reveal(slot++, total),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('Lumen', style: eyebrowStyle),
+                _period(eyebrowStyle),
+              ],
+            ),
+          ),
+          const Spacer(),
+          IconButton(
+            icon: const Icon(Icons.person_outline),
+            color: colors.ink,
+            tooltip: 'Account',
+            onPressed: widget.onAccount,
+          ),
+        ],
       ),
       const SizedBox(height: 16),
     ];

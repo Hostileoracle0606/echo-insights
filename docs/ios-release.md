@@ -53,7 +53,7 @@ bundled credentials. No Apple secrets live in CI.
 
 ### Configuration values
 
-The build requires three values, from the Supabase project and the `infra/`
+The build requires these values, from the Supabase project and the `infra/`
 stack; they are the same values CI uses:
 
 | Variable | What it is |
@@ -61,6 +61,7 @@ stack; they are the same values CI uses:
 | `SUPABASE_URL` | Project URL, `https://<ref>.supabase.co` |
 | `SUPABASE_ANON_KEY` | Project publishable/anon key (public by design; RLS protects data) |
 | `NOTEBOOK_RUNTIME_URL` | The `NotebookRuntimeUrl` output of the `infra/` stack (see `infra/README.md`) |
+| `PRIVACY_POLICY_URL` | The hosted privacy policy, linked from the in-app account sheet. **Required for the signed `ipa` build only**; the unsigned CI build passes it through if set. |
 
 Never put the service-role key, `GEMINI_API_KEY` or any other server secret
 here. Gemini credentials are minted per session by the backend.
@@ -78,12 +79,13 @@ flutter pub get
 export SUPABASE_URL=https://<ref>.supabase.co
 export SUPABASE_ANON_KEY=<publishable key>
 export NOTEBOOK_RUNTIME_URL=<NotebookRuntimeUrl stack output>
+export PRIVACY_POLICY_URL=https://<your policy host>/privacy
 
 npm run release:ios:ipa -- --build-name=1.0.0 --build-number=<N>
 ```
 
-`scripts/ios-build.mjs` refuses to run if any of the three variables is
-missing or empty. It names every missing one and exits nonzero **before**
+`scripts/ios-build.mjs` refuses to run if any of these variables is missing
+or empty. It names every missing one and exits nonzero **before**
 Flutter starts, so an archive with no backend cannot be produced this way.
 Do not call `flutter build ipa` directly; that skips this check, and
 `lib/main.dart` would then stop the app at launch with a `StateError` naming

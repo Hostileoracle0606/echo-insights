@@ -10,6 +10,10 @@ export const REQUIRED_DEFINES = Object.freeze([
   "NOTEBOOK_RUNTIME_URL",
 ]);
 
+// A signed App Store build must link a live privacy policy from the account
+// sheet (Guideline 5.1.1(i)). Unsigned builds pass it through when set.
+export const SIGNED_ONLY_DEFINES = Object.freeze(["PRIVACY_POLICY_URL"]);
+
 export const BUILD_TARGETS = Object.freeze({
   // Unsigned .app for CI and release smoke checks.
   ios: Object.freeze(["build", "ios", "--release", "--no-codesign"]),
@@ -22,8 +26,12 @@ export const BUILD_TARGETS = Object.freeze({
   ]),
 });
 
-export function missingDefines(env = process.env) {
-  return REQUIRED_DEFINES.filter((name) => !env[name]?.trim());
+export function requiredDefines(target) {
+  return target === "ipa" ? [...REQUIRED_DEFINES, ...SIGNED_ONLY_DEFINES] : [...REQUIRED_DEFINES];
+}
+
+export function missingDefines(env = process.env, target = "ios") {
+  return requiredDefines(target).filter((name) => !env[name]?.trim());
 }
 
 /**
@@ -37,13 +45,14 @@ export function flutterBuildArgs(target, env = process.env, extraArgs = []) {
       `unknown build target "${target}" (expected one of: ${Object.keys(BUILD_TARGETS).join(", ")})`,
     );
   }
-  const missing = missingDefines(env);
+  const missing = missingDefines(env, target);
   if (missing.length > 0) {
     throw new Error(`Missing required build configuration: ${missing.join(", ")}`);
   }
+  const defines = [...REQUIRED_DEFINES, ...SIGNED_ONLY_DEFINES].filter((name) => env[name]?.trim());
   return [
     ...base,
-    ...REQUIRED_DEFINES.map((name) => `--dart-define=${name}=${env[name].trim()}`),
+    ...defines.map((name) => `--dart-define=${name}=${env[name].trim()}`),
     ...extraArgs,
   ];
 }

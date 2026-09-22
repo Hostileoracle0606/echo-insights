@@ -24,6 +24,7 @@ class Env {
         String.fromEnvironment('SUPABASE_PUBLISHABLE_KEY'),
     'VITE_SUPABASE_PUBLISHABLE_KEY':
         String.fromEnvironment('VITE_SUPABASE_PUBLISHABLE_KEY'),
+    'PRIVACY_POLICY_URL': String.fromEnvironment('PRIVACY_POLICY_URL'),
   };
 
   static String _first(List<String> keys) {
@@ -64,6 +65,10 @@ class Env {
       );
     }
   }
+
+  /// Hosted privacy policy, linked from the account sheet. Required for
+  /// signed App Store builds by scripts/ios-build.mjs; optional otherwise.
+  static String get privacyPolicyUrl => _first(const ['PRIVACY_POLICY_URL']);
 
   static String get notebookRuntimeUrl =>
       _first(const ['NOTEBOOK_RUNTIME_URL', 'VITE_NOTEBOOK_RUNTIME_URL']);
