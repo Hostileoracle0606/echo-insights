@@ -20,6 +20,7 @@ import '../models/graph_patch.dart';
 import '../models/journal_entry.dart';
 import '../models/journal_state.dart';
 import '../services/gemini_live_client.dart';
+import '../services/mic_permission_service.dart';
 import '../services/notebook_commit_service.dart' as commit_service;
 import '../services/notebook_runtime_service.dart';
 import '../services/retrieve_memory_service.dart';
@@ -104,6 +105,9 @@ class JournalNotifier extends Notifier<JournalState> {
   int _memoryCallsThisTurn = 0;
   static const _maxMemoryCallsPerTurn = 3;
   bool _muted = false;
+  // Microphone permission was permanently denied: only Settings can fix it,
+  // so the journal screen shows a persistent route there instead of a toast.
+  bool _micBlocked = false;
   bool _agentSpeaking = false;
   Timer? _agentSpeakingTimer;
   static const _agentSpeakingIdleMs = 400;
@@ -117,6 +121,7 @@ class JournalNotifier extends Notifier<JournalState> {
   String get lastTranscript => _lastTranscript;
   List<ConversationTurn> get conversation => List.unmodifiable(_conversation);
   bool get muted => _muted;
+  bool get micBlocked => _micBlocked;
   bool get agentSpeaking => _agentSpeaking;
   int get revision => _revision;
 
@@ -220,7 +225,21 @@ class JournalNotifier extends Notifier<JournalState> {
       vlog('session', 'resuming mic suspended by an interruption');
       unawaited(mic.resume());
     }
+    if (_micBlocked) unawaited(_refreshMicPermission());
     _notifyUi();
+  }
+
+  /// After a trip to Settings, clear the blocked state if access was granted.
+  Future<void> _refreshMicPermission() async {
+    try {
+      final permission = await ref.read(micPermissionServiceProvider).status();
+      if (permission == MicPermission.granted && _micBlocked) {
+        _micBlocked = false;
+        _notifyUi();
+      }
+    } catch (error) {
+      vlog('session', 'microphone permission check failed: $error');
+    }
   }
 
   Future<T> _serializeLifecycle<T>(Future<T> Function() operation) {
@@ -812,6 +831,25 @@ class JournalNotifier extends Notifier<JournalState> {
         );
       }
 
+      // Permission comes before the live-session token is minted and before
+      // the socket opens, so a denial never burns a credential.
+      final permission =
+          await ref.read(micPermissionServiceProvider).request();
+      if (!_liveSessionGuard.isCurrent(lease)) {
+        return const NotebookTransitionResult.failure(
+          'Session start was superseded by another notebook transition.',
+        );
+      }
+      _micBlocked = permission == MicPermission.permanentlyDenied;
+      if (permission != MicPermission.granted) {
+        vlog('session', 'microphone permission ${permission.name}');
+        await _closeLiveTransportUnlocked();
+        _setStatus(SessionStatus.error);
+        return const NotebookTransitionResult.failure(
+          'Microphone permission is required to start a journal session.',
+        );
+      }
+
       final notebookId = _activeNotebookId;
       if (notebookId == null) {
         throw StateError('No active notebook is available');
@@ -973,14 +1011,6 @@ class JournalNotifier extends Notifier<JournalState> {
         reactivate: _activateAudioSession,
       );
       _mic = mic;
-      if (!await capture.hasPermission()) {
-        debugPrint('[journal] microphone permission not granted');
-        await _closeLiveTransportUnlocked();
-        _setStatus(SessionStatus.error);
-        return const NotebookTransitionResult.failure(
-          'Microphone permission is required to start a journal session.',
-        );
-      }
       if (!isCurrent()) {
         await capture.stop();
         return const NotebookTransitionResult.failure(
@@ -1225,6 +1255,10 @@ class JournalNotifier extends Notifier<JournalState> {
 
 final turnJournalServiceProvider = Provider<TurnJournalService>((ref) {
   return TurnJournalService();
+});
+
+final micPermissionServiceProvider = Provider<MicPermissionService>((ref) {
+  return const MicPermissionService();
 });
 
 final journalProvider = NotifierProvider<JournalNotifier, JournalState>(

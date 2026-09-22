@@ -9,6 +9,7 @@ import 'entity_note_sheet.dart';
 import 'graph_canvas.dart';
 import 'graph_drawer.dart';
 import 'journal_top_bar.dart';
+import 'mic_blocked_banner.dart';
 import 'voice_dock.dart';
 
 class JournalScreen extends ConsumerStatefulWidget {
@@ -59,7 +60,7 @@ class _JournalScreenState extends ConsumerState<JournalScreen> {
           .read(journalProvider.notifier)
           .enterNotebook(id, autoStart: autoStart);
       if (!mounted || widget.notebookId != id || result.succeeded) return;
-      _showTransitionError(result);
+      _reportFailure(result);
     });
   }
 
@@ -78,7 +79,14 @@ class _JournalScreenState extends ConsumerState<JournalScreen> {
     } else {
       result = await notifier.endSession();
     }
-    if (mounted && !result.succeeded) _showTransitionError(result);
+    if (mounted && !result.succeeded) _reportFailure(result);
+  }
+
+  // A permanent microphone denial has its own persistent banner with a route
+  // to Settings; a transient toast on top of it would only repeat it.
+  void _reportFailure(NotebookTransitionResult result) {
+    if (ref.read(micBlockedProvider)) return;
+    _showTransitionError(result);
   }
 
   Future<void> _leaveToDashboard() async {
@@ -133,6 +141,7 @@ class _JournalScreenState extends ConsumerState<JournalScreen> {
     final transcript = ref.watch(lastTranscriptProvider);
     final muted = ref.watch(mutedProvider);
     final agentSpeaking = ref.watch(agentSpeakingProvider);
+    final micBlocked = ref.watch(micBlockedProvider);
     final turns =
         ref.watch(conversationProvider).map(_toTurn).toList(growable: false);
     final relationCount =
@@ -168,20 +177,31 @@ class _JournalScreenState extends ConsumerState<JournalScreen> {
             child: SafeArea(
               child: Padding(
                 padding: const EdgeInsets.only(bottom: 28),
-                child: Align(
-                  alignment: Alignment.bottomCenter,
-                  child: VoiceDock(
-                    mode: _dockMode(status, agentSpeaking),
-                    transcript: transcript,
-                    muted: muted,
-                    expanded: _splitOpen,
-                    turns: turns,
-                    onMicTap: () => _toggleMic(status),
-                    onToggleSplit: () =>
-                        setState(() => _splitOpen = !_splitOpen),
-                    onMuteTap: () =>
-                        ref.read(journalProvider.notifier).toggleMute(),
-                  ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (micBlocked)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                        child: MicBlockedBanner(
+                          onOpenSettings: () => ref
+                              .read(micPermissionServiceProvider)
+                              .openSettings(),
+                        ),
+                      ),
+                    VoiceDock(
+                      mode: _dockMode(status, agentSpeaking),
+                      transcript: transcript,
+                      muted: muted,
+                      expanded: _splitOpen,
+                      turns: turns,
+                      onMicTap: () => _toggleMic(status),
+                      onToggleSplit: () =>
+                          setState(() => _splitOpen = !_splitOpen),
+                      onMuteTap: () =>
+                          ref.read(journalProvider.notifier).toggleMute(),
+                    ),
+                  ],
                 ),
               ),
             ),

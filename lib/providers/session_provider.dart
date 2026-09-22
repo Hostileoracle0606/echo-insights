@@ -27,3 +27,8 @@ final agentSpeakingProvider = Provider<bool>((ref) {
   ref.watch(journalProvider);
   return ref.watch(journalProvider.notifier).agentSpeaking;
 });
+
+final micBlockedProvider = Provider<bool>((ref) {
+  ref.watch(journalProvider);
+  return ref.watch(journalProvider.notifier).micBlocked;
+});
