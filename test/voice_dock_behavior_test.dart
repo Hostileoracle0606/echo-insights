@@ -3,11 +3,16 @@
 // the split-screen morph surfaces the conversation as bubbles.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lumen/models/upsert_activity.dart';
 import 'package:lumen/screens/journal/voice_dock.dart';
 import 'package:lumen/theme/lumen_theme.dart';
 
-Future<void> _pump(WidgetTester tester, VoiceDock dock) async {
-  await tester.binding.setSurfaceSize(const Size(402, 874));
+Future<void> _pump(
+  WidgetTester tester,
+  VoiceDock dock, {
+  Size surface = const Size(402, 874),
+}) async {
+  await tester.binding.setSurfaceSize(surface);
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(
     MaterialApp(
@@ -19,6 +24,13 @@ Future<void> _pump(WidgetTester tester, VoiceDock dock) async {
     ),
   );
   await tester.pump(const Duration(milliseconds: 16));
+}
+
+// Let morphs finish without pumpAndSettle (the pulse clock repeats forever).
+Future<void> _run(WidgetTester tester, {int frames = 60}) async {
+  for (var i = 0; i < frames; i++) {
+    await tester.pump(const Duration(milliseconds: 16));
+  }
 }
 
 void main() {
@@ -114,5 +126,207 @@ void main() {
     );
     expect(find.text('Hidden while collapsed'), findsNothing);
     await tester.pumpWidget(const SizedBox());
+  });
+
+  group('split pane live text', () {
+    testWidgets('no stale "you" bubble once Lumen has answered',
+        (tester) async {
+      // Regression: the old pane re-added the last user interim as a pending
+      // bubble whenever Lumen's reply was the last row.
+      await _pump(
+        tester,
+        VoiceDock(
+          mode: DockMode.listening,
+          expanded: true,
+          turns: const [
+            DockTurn(DockSpeaker.you, 'I met Priya at the gym.'),
+            DockTurn(DockSpeaker.lumen, 'How long has she climbed?'),
+          ],
+          onMicTap: () {},
+        ),
+      );
+      await _run(tester, frames: 40);
+      expect(find.text('I met Priya at the gym.'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('in-flight user words ride as a pending bubble',
+        (tester) async {
+      await _pump(
+        tester,
+        VoiceDock(
+          mode: DockMode.listening,
+          expanded: true,
+          turns: const [DockTurn(DockSpeaker.lumen, 'Tell me more.')],
+          liveUser: 'Almost a month',
+          onMicTap: () {},
+        ),
+      );
+      await _run(tester, frames: 40);
+      expect(find.text('Almost a month'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('Lumen streams until its final is committed', (tester) async {
+      VoiceDock dock({required bool committed}) => VoiceDock(
+            mode: DockMode.speaking,
+            expanded: true,
+            turns: [
+              const DockTurn(DockSpeaker.you, 'Hi.'),
+              if (committed) const DockTurn(DockSpeaker.lumen, 'Hello there'),
+            ],
+            liveAgent: 'Hello there',
+            liveAgentCommitted: committed,
+            onMicTap: () {},
+          );
+      await _pump(tester, dock(committed: false));
+      await _run(tester, frames: 40);
+      expect(find.text('Hello there'), findsOneWidget);
+
+      await tester.pumpWidget(MaterialApp(
+        theme: LumenTheme.light(),
+        home: Scaffold(
+          body: Align(
+            alignment: Alignment.bottomCenter,
+            child: dock(committed: true),
+          ),
+        ),
+      ));
+      await _run(tester, frames: 10);
+      // Exactly one: the committed bubble replaced the streaming one.
+      expect(find.text('Hello there'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+    });
+  });
+
+  group('rest pill (web Dynamic Island)', () {
+    testWidgets('idle pill shows no labels and no drawer', (tester) async {
+      await _pump(tester, VoiceDock(mode: DockMode.idle, onMicTap: () {}));
+      await _run(tester);
+      expect(find.text('YOU'), findsNothing);
+      expect(find.text('LISTENING'), findsNothing);
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('listening labels the flanks and opens the drawer on speech',
+        (tester) async {
+      await _pump(
+        tester,
+        VoiceDock(
+          mode: DockMode.listening,
+          liveUser: 'I met Priya at the climbing gym',
+          onMicTap: () {},
+        ),
+      );
+      await _run(tester);
+      expect(find.text('YOU'), findsOneWidget);
+      expect(find.text('LISTENING'), findsOneWidget);
+      expect(find.text('I met Priya at the climbing gym'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('connecting reads as You / Connecting', (tester) async {
+      await _pump(tester, VoiceDock(mode: DockMode.thinking, onMicTap: () {}));
+      await _run(tester);
+      expect(find.text('YOU'), findsOneWidget);
+      expect(find.text('CONNECTING'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('speaking shows Lumen\'s streaming words', (tester) async {
+      await _pump(
+        tester,
+        VoiceDock(
+          mode: DockMode.speaking,
+          liveAgent: 'That is a big moment for her.',
+          onMicTap: () {},
+        ),
+      );
+      await _run(tester);
+      expect(find.text('LUMEN'), findsOneWidget);
+      expect(find.text('SPEAKING'), findsOneWidget);
+      expect(find.text('That is a big moment for her.'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('extraction while idle reads as Mapping', (tester) async {
+      await _pump(
+        tester,
+        VoiceDock(mode: DockMode.idle, extracting: true, onMicTap: () {}),
+      );
+      await _run(tester);
+      expect(find.text('MAPPING'), findsNWidgets(2));
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('mic stays on screen centre when there is room',
+        (tester) async {
+      await _pump(
+        tester,
+        VoiceDock(
+          mode: DockMode.listening,
+          liveUser: 'Almost a month',
+          onMicTap: () {},
+        ),
+        surface: const Size(820, 1180),
+      );
+      await _run(tester);
+      final mic = tester.getCenter(find.byIcon(Icons.mic));
+      expect(mic.dx, moreOrLessEquals(820 / 2, epsilon: 0.5));
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('the shift never pushes the pill into the 16pt margin',
+        (tester) async {
+      // "YOU" vs "LISTENING" wants a rightward shift; on a phone the drawer's
+      // 340pt minimum leaves too little room to honour it fully.
+      await _pump(
+        tester,
+        VoiceDock(
+          mode: DockMode.listening,
+          liveUser: 'Maya said the Atlas demo finally feels real',
+          onMicTap: () {},
+        ),
+      );
+      await _run(tester);
+      final pill = tester.getRect(
+        find
+            .ancestor(of: find.byIcon(Icons.mic), matching: find.byType(SizedBox))
+            .last,
+      );
+      expect(pill.left, greaterThanOrEqualTo(16 - 0.5));
+      expect(pill.right, lessThanOrEqualTo(402 - 16 + 0.5));
+      // The cap engaged: the pill leans right only until its edge meets the
+      // margin, and the mic gives up exact centring instead of the margin.
+      expect(pill.right, moreOrLessEquals(402 - 16, epsilon: 0.5));
+      final mic = tester.getCenter(find.byIcon(Icons.mic));
+      expect(mic.dx, lessThan(402 / 2));
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('an upsert shows the chip above the dock', (tester) async {
+      await _pump(
+        tester,
+        VoiceDock(
+          mode: DockMode.listening,
+          activity: const UpsertActivity(
+            id: 1,
+            entityNames: ['Priya', 'Climbing gym'],
+            insertedEntities: 2,
+            updatedEntities: 0,
+            createdRelations: 1,
+          ),
+          onMicTap: () {},
+        ),
+      );
+      await _run(tester, frames: 90);
+      expect(find.text('UPSERTING'), findsOneWidget);
+      expect(find.text('Priya'), findsOneWidget);
+      expect(find.text('2 new · 0 refreshed · 1 links'), findsOneWidget);
+      final chip = tester.getCenter(find.text('UPSERTING'));
+      final mic = tester.getCenter(find.byIcon(Icons.mic));
+      expect(chip.dy, lessThan(mic.dy));
+      await tester.pumpWidget(const SizedBox());
+    });
   });
 }
