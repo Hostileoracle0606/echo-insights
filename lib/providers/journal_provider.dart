@@ -17,6 +17,7 @@ import '../logic/voice_log.dart';
 import '../models/graph_patch.dart';
 import '../models/journal_entry.dart';
 import '../models/journal_state.dart';
+import '../models/upsert_activity.dart';
 import '../services/gemini_live_client.dart';
 import '../services/notebook_commit_service.dart' as commit_service;
 import '../services/notebook_runtime_service.dart';
@@ -60,7 +61,25 @@ class JournalNotifier extends Notifier<JournalState> {
   /// One fallback per completed turn. User and assistant final transcripts can
   /// both lag provider completion, so a single shared timer is insufficient.
   final Map<String, Timer> _finalizationTimers = {};
+  // Agenda input only (buildAgenda's lastUserText) — never cleared per turn,
+  // so the UI must not read it. The dock reads the live fields below.
   String _lastTranscript = '';
+
+  // Live, replaceable display text per speaker. Cleared the way the web's
+  // use-gemini-live clears userTranscript/agentTranscript, so a finished turn
+  // can never reappear as a pending bubble.
+  String _liveUserText = '';
+  String _liveAgentText = '';
+  // True once the assistant's final transcript is committed to the
+  // conversation; the pane then hides the streaming bubble while the pill's
+  // drawer keeps showing the text until turn completion (web parity).
+  bool _liveAgentCommitted = false;
+  // Any finalized turn still waiting on extraction/commit (web: `thinking`).
+  bool _extracting = false;
+  UpsertActivity? _activity;
+  int _activitySeq = 0;
+  Timer? _activityTimer;
+  static const _activityVisibleMs = 5200;
 
   /// Shared, platform-free turn rules. Identical to the web app's reducer.
   late final TurnMachine _turnMachine = TurnMachine(
@@ -107,6 +126,11 @@ class JournalNotifier extends Notifier<JournalState> {
   int _revision = 0;
   SessionStatus get status => _status;
   String get lastTranscript => _lastTranscript;
+  String get liveUserText => _liveUserText;
+  String get liveAgentText => _liveAgentText;
+  bool get liveAgentCommitted => _liveAgentCommitted;
+  bool get extracting => _extracting;
+  UpsertActivity? get activity => _activity;
   List<ConversationTurn> get conversation => List.unmodifiable(_conversation);
   bool get muted => _muted;
   bool get agentSpeaking => _agentSpeaking;
@@ -121,6 +145,7 @@ class JournalNotifier extends Notifier<JournalState> {
       }
       _finalizationTimers.clear();
       _agentSpeakingTimer?.cancel();
+      _activityTimer?.cancel();
       unawaited(_capture?.stop());
       unawaited(_live?.close());
       unawaited(_player?.dispose());
@@ -202,6 +227,7 @@ class JournalNotifier extends Notifier<JournalState> {
   /// and are the same rules the web app runs.
   void _dispatchTurn(TurnEvent event) {
     final effects = _turnMachine.dispatch(event);
+    _trackLiveText(event);
     final durableEffects = <TurnEffect>[];
     for (final effect in effects) {
       if (effect is FlushPlayback) {
@@ -223,6 +249,50 @@ class JournalNotifier extends Notifier<JournalState> {
     _conversation
       ..clear()
       ..addAll(latest.conversation);
+    _extracting = latest.pending.isNotEmpty;
+    _notifyUi();
+  }
+
+  void _trackLiveText(TurnEvent event) {
+    switch (event) {
+      case InterimTranscript(speaker: Speaker.user, :final text):
+        _liveUserText = text;
+      case FinalTranscript(speaker: Speaker.user):
+      case TurnCompleted(speaker: Speaker.user):
+        _liveUserText = '';
+      case InterimTranscript(speaker: Speaker.assistant, :final text):
+        _liveAgentText = text;
+        _liveAgentCommitted = false;
+      case FinalTranscript(speaker: Speaker.assistant):
+        _liveAgentCommitted = true;
+      case TurnCompleted(speaker: Speaker.assistant):
+      case AssistantInterrupted():
+        _liveAgentText = '';
+        _liveAgentCommitted = false;
+      case SessionEnded():
+        _clearLiveText();
+      default:
+    }
+  }
+
+  void _clearLiveText() {
+    _liveUserText = '';
+    _liveAgentText = '';
+    _liveAgentCommitted = false;
+  }
+
+  void _showActivity(UpsertActivity? activity) {
+    if (activity == null) return;
+    _activity = activity;
+    _activityTimer?.cancel();
+    _activityTimer = Timer(
+      const Duration(milliseconds: _activityVisibleMs),
+      () {
+        _activityTimer = null;
+        _activity = null;
+        _notifyUi();
+      },
+    );
     _notifyUi();
   }
 
@@ -406,6 +476,7 @@ class JournalNotifier extends Notifier<JournalState> {
 
         // Prepare once. An unknown-outcome retry must reuse this exact envelope
         // instead of merging again against the already-optimistic local state.
+        final before = state;
         final result = merge_logic.merge(state, turn.transcript, patch);
         prepared = PreparedTurnCommit(
           expectedRevision: turn.baseRevision ?? _revision,
@@ -421,6 +492,12 @@ class JournalNotifier extends Notifier<JournalState> {
             );
         state = result.next;
         _preparedCommits[turn.turnId] = prepared;
+        _showActivity(UpsertActivity.between(
+          id: ++_activitySeq,
+          prev: before,
+          next: result.next,
+          entryId: result.entryId,
+        ));
         vlog(
             'session',
             'extract merged: ${state.entities.length} entities, '
@@ -999,6 +1076,7 @@ class JournalNotifier extends Notifier<JournalState> {
     }
     _finalizationTimers.clear();
     _clearAgentSpeaking();
+    _clearLiveText();
 
     final capture = _capture;
     final live = _live;

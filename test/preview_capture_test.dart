@@ -23,7 +23,6 @@ import 'package:lumen/screens/journal/graph_canvas.dart';
 import 'package:lumen/screens/journal/graph_drawer.dart';
 import 'package:lumen/screens/journal/journal_screen.dart';
 import 'package:lumen/screens/journal/journal_top_bar.dart';
-import 'package:lumen/screens/journal/transcript_overlay.dart';
 import 'package:lumen/screens/journal/voice_dock.dart';
 import 'package:lumen/theme/lumen_theme.dart';
 import 'package:lumen/widgets/graph_legend.dart';
@@ -335,7 +334,7 @@ void main() {
               mode: DockMode.listening,
               expanded: true,
               turns: _demoTurns,
-              transcript: 'and Maya wants Lisbon on the roadmap for the trip.',
+              liveUser: 'and Maya wants Lisbon on the roadmap for the trip.',
               onMicTap: () {},
             ),
           ),
@@ -352,21 +351,6 @@ void main() {
       height: 520,
       frames: 130,
       child: GraphCanvas(state: _graphState()),
-    );
-  });
-
-  testWidgets('TranscriptOverlay', (tester) async {
-    await _capture(
-      tester,
-      name: 'transcript-overlay',
-      width: 380,
-      height: 140,
-      settle: false,
-      child: const Center(
-        child: TranscriptOverlay(
-          text: 'Maya said the Atlas demo finally feels real.',
-        ),
-      ),
     );
   });
 
@@ -462,7 +446,7 @@ void main() {
         overrides: [
           journalProvider.overrideWith(() => _SeededJournal(_graphState())),
           sessionStatusProvider.overrideWithValue(SessionStatus.live),
-          lastTranscriptProvider.overrideWithValue(
+          liveUserTextProvider.overrideWithValue(
             '…had coffee with Maya about the Atlas launch timeline.',
           ),
         ],
@@ -538,7 +522,7 @@ void main() {
                             mode: DockMode.listening,
                             expanded: true,
                             turns: _demoTurns,
-                            transcript:
+                            liveUser:
                                 'and Maya wants Lisbon on the roadmap for the trip.',
                             onMicTap: () {},
                           ),

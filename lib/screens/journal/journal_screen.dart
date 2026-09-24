@@ -130,7 +130,11 @@ class _JournalScreenState extends ConsumerState<JournalScreen> {
   Widget build(BuildContext context) {
     final state = ref.watch(journalProvider);
     final status = ref.watch(sessionStatusProvider);
-    final transcript = ref.watch(lastTranscriptProvider);
+    final liveUser = ref.watch(liveUserTextProvider);
+    final liveAgent = ref.watch(liveAgentTextProvider);
+    final liveAgentCommitted = ref.watch(liveAgentCommittedProvider);
+    final extracting = ref.watch(extractingProvider);
+    final activity = ref.watch(upsertActivityProvider);
     final muted = ref.watch(mutedProvider);
     final agentSpeaking = ref.watch(agentSpeakingProvider);
     final turns =
@@ -172,7 +176,11 @@ class _JournalScreenState extends ConsumerState<JournalScreen> {
                   alignment: Alignment.bottomCenter,
                   child: VoiceDock(
                     mode: _dockMode(status, agentSpeaking),
-                    transcript: transcript,
+                    liveUser: liveUser,
+                    liveAgent: liveAgent,
+                    liveAgentCommitted: liveAgentCommitted,
+                    extracting: extracting,
+                    activity: activity,
                     muted: muted,
                     expanded: _splitOpen,
                     turns: turns,

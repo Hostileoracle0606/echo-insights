@@ -6,6 +6,7 @@ import 'package:lumen/models/journal_state.dart';
 import 'package:lumen/models/relation.dart';
 import 'package:lumen/providers/journal_provider.dart';
 import 'package:lumen/providers/session_provider.dart';
+import 'package:lumen/models/upsert_activity.dart';
 import 'package:lumen/screens/auth/login_screen.dart';
 import 'package:lumen/screens/auth/signup_screen.dart';
 import 'package:lumen/screens/journal/graph_canvas.dart';
@@ -30,8 +31,17 @@ class _PreviewApp extends StatelessWidget {
       'journal' => <Override>[
           journalProvider.overrideWith(_PreviewJournalNotifier.new),
           sessionStatusProvider.overrideWithValue(SessionStatus.live),
-          lastTranscriptProvider.overrideWithValue(
+          liveUserTextProvider.overrideWithValue(
             'Maya said the Atlas demo finally feels real, but I still do not know who owns the handoff.',
+          ),
+          upsertActivityProvider.overrideWithValue(
+            const UpsertActivity(
+              id: 1,
+              entityNames: ['Maya', 'Project Atlas'],
+              insertedEntities: 0,
+              updatedEntities: 2,
+              createdRelations: 1,
+            ),
           ),
         ],
       _ => const <Override>[],
@@ -144,7 +154,8 @@ class _VoiceDockPreviewState extends State<_VoiceDockPreview> {
             VoiceDock(
               mode: _mode,
               muted: _muted,
-              transcript: _transcripts[_mode],
+              liveUser: _mode == DockMode.speaking ? '' : _transcripts[_mode] ?? '',
+              liveAgent: _mode == DockMode.speaking ? _transcripts[_mode] ?? '' : '',
               onMicTap: _cycle,
               onToggleSplit: () {},
               onMuteTap: () => setState(() => _muted = !_muted),
