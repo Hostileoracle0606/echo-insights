@@ -179,4 +179,13 @@ void main() {
       expect(header.getUint32(28, Endian.little), 48000);
     });
   });
+
+  test('dispose is idempotent', () async {
+    final backend = _FakeBackend();
+    final player = PcmPlayer(backend: backend);
+    await player.init();
+    await Future.wait([player.dispose(), player.dispose()]);
+    expect(player.isDisposed, isTrue);
+    expect(backend.disposeCalls, 1);
+  });
 }

@@ -53,6 +53,17 @@ class GeminiLiveClient {
   void Function()? onSetupComplete;
   void Function(Object)? onError;
 
+  /// Gemini will close this connection soon (its connections are
+  /// time-limited). [timeLeft] is null when the server gave no parseable
+  /// duration. A warm standby replaces itself on this signal.
+  void Function(Duration? timeLeft)? onGoAway;
+
+  Completer<void> _setupDone = Completer<void>();
+
+  /// Completes when the server acknowledges setup — the point from which the
+  /// session accepts content. Reset by each [connect].
+  Future<void> get whenSetupComplete => _setupDone.future;
+
   GeminiLiveClient({
     required this.sessionToken,
     required this.model,
@@ -72,6 +83,7 @@ class GeminiLiveClient {
     final uri = connectionUri;
     _setupComplete = false;
     _closing = false;
+    if (_setupDone.isCompleted) _setupDone = Completer<void>();
     vlog('client', 'connecting (model=$model)…');
     _channel = WebSocketChannel.connect(uri);
 
@@ -205,6 +217,15 @@ class GeminiLiveClient {
   void handleServerMessage(String raw) => _onMessage(raw);
 
   static final _ratePattern = RegExp(r'rate=(\d+)');
+  static final _secondsPattern = RegExp(r'^(\d+(?:\.\d+)?)s$');
+
+  /// Parses a protobuf JSON Duration such as "12.5s".
+  static Duration? _parseProtoDuration(String value) {
+    final match = _secondsPattern.firstMatch(value.trim());
+    final seconds = double.tryParse(match?.group(1) ?? '');
+    if (seconds == null) return null;
+    return Duration(microseconds: (seconds * 1e6).round());
+  }
 
   static int _sampleRateOf(String? mimeType) {
     final match = mimeType == null ? null : _ratePattern.firstMatch(mimeType);
@@ -231,7 +252,16 @@ class GeminiLiveClient {
           'client',
           'setupComplete — session live '
               '(dropped $_framesDropped early mic frames)');
+      if (!_setupDone.isCompleted) _setupDone.complete();
       onSetupComplete?.call();
+      return;
+    }
+
+    if (msg.containsKey('goAway')) {
+      final timeLeft = (msg['goAway'] as Map?)?['timeLeft'];
+      final left = timeLeft is String ? _parseProtoDuration(timeLeft) : null;
+      vlog('client', 'goAway (timeLeft=$timeLeft)');
+      onGoAway?.call(left);
       return;
     }
 

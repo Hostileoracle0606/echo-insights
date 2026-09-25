@@ -155,7 +155,11 @@ class PcmPlayer {
     });
   }
 
+  bool get isDisposed => _disposed;
+
+  /// Idempotent: a session teardown and a failed init may both dispose.
   Future<void> dispose() {
+    if (_disposed) return _lifecycleTail;
     _generation += 1;
     _acceptingAudio = false;
     _disposed = true;

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -140,6 +141,48 @@ void main() {
     test('a missing rate means Gemini\'s 24kHz output', () {
       withAudio().handleServerMessage(audioMessage(null));
       expect(received?.rate, 24000);
+    });
+  });
+
+  group('connection lifecycle signals', () {
+    test('goAway reports the time left before Gemini closes the socket', () {
+      Duration? timeLeft;
+      var calls = 0;
+      final client = makeClient()
+        ..onGoAway = (left) {
+          calls++;
+          timeLeft = left;
+        };
+      client.handleServerMessage(jsonEncode({
+        'goAway': {'timeLeft': '12.5s'},
+      }));
+      expect(calls, 1);
+      expect(timeLeft, const Duration(milliseconds: 12500));
+    });
+
+    test('goAway without a parseable timeLeft still fires', () {
+      var fired = false;
+      Duration? timeLeft = Duration.zero;
+      final client = makeClient()
+        ..onGoAway = (left) {
+          fired = true;
+          timeLeft = left;
+        };
+      client.handleServerMessage(jsonEncode({'goAway': <String, dynamic>{}}));
+      expect(fired, isTrue);
+      expect(timeLeft, isNull);
+    });
+
+    test('setupComplete resolves whenSetupComplete', () async {
+      final client = makeClient();
+      var done = false;
+      unawaited(client.whenSetupComplete.then((_) => done = true));
+      await Future<void>.delayed(Duration.zero);
+      expect(done, isFalse);
+
+      client.handleServerMessage(jsonEncode({'setupComplete': {}}));
+      await Future<void>.delayed(Duration.zero);
+      expect(done, isTrue);
     });
   });
 }
