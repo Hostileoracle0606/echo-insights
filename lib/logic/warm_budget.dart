@@ -1,10 +1,10 @@
 /// How many warm standby sessions an idle notebook may start.
 ///
-/// Every warm-up pre-generates Lumen's opening, which costs tokens whether or
-/// not anyone taps the mic, and a standby socket has to be replaced before
-/// Gemini Live's ~10 minute connection limit. So an untouched notebook gets
-/// the first warm plus two refreshes (~27 minutes of instant start), then
-/// goes cold until the user interacts with the screen again.
+/// Every warm-up costs a runtime call (a single-use Gemini credential) and
+/// holds a Gemini Live connection, and a standby socket has to be replaced
+/// before Gemini Live's ~10 minute connection limit. So an untouched notebook
+/// gets the first warm plus two refreshes (~27 minutes of instant start),
+/// then goes cold until the user interacts with the screen again.
 class WarmBudget {
   WarmBudget({this.maxWarms = 3}) : _remaining = maxWarms;
 

@@ -1,8 +1,7 @@
-// Warm standby: everything Gemini sends before the user taps (Lumen's
-// pre-sent opening) is held back — never reaching the transcript, the turn
-// machine, or the speaker — then replayed on activation with each transcript
-// signal paced by the audio that preceded it, so words never run ahead of
-// Lumen's voice.
+// Warm standby: anything Gemini sends before the user taps is held back —
+// never reaching the transcript, the turn machine, or the speaker — then
+// replayed on activation with each transcript signal paced by the audio that
+// preceded it, so words never run ahead of Lumen's voice.
 import 'dart:typed_data';
 
 import 'package:fake_async/fake_async.dart';

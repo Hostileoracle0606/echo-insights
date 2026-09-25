@@ -49,7 +49,7 @@ class _JournalScreenState extends ConsumerState<JournalScreen>
     super.dispose();
   }
 
-  // The warm standby holds a socket and a pre-generated opening. iOS
+  // The warm standby holds a live socket and a runtime credential. iOS
   // suspends sockets in the background anyway, so release it there and
   // prepare a fresh one on return.
   @override
@@ -146,7 +146,8 @@ class _JournalScreenState extends ConsumerState<JournalScreen>
   ) {
     switch (status) {
       case SessionStatus.connecting:
-        return DockMode.thinking;
+        // A cold start plays Lumen's greeting while the socket connects.
+        return agentSpeaking ? DockMode.speaking : DockMode.thinking;
       case SessionStatus.live:
         if (agentSpeaking) return DockMode.speaking;
         // Live but Lumen's opening hasn't played yet: the mic is gated, so

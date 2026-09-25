@@ -42,15 +42,17 @@ class InterruptedSignal extends LiveSignal {
 
 /// Holds a warm session's signals until the user taps, then replays them.
 ///
-/// Before [activate], every signal is buffered: Lumen's pre-sent opening
-/// must not reach the transcript, the turn machine, extraction or the
-/// speaker unless the user actually starts the session.
+/// Before [activate], every signal is buffered: nothing a standby socket
+/// receives may reach the transcript, the turn machine, extraction or the
+/// speaker unless the user actually starts the session. (Lumen's greeting is
+/// a local clip, so a standby normally receives nothing — the gate is the
+/// guarantee, not the common path.)
 ///
 /// On [activate], buffered audio goes to the sink at once (it simply queues
 /// for playback) while every other signal is *paced*: delivered when the
 /// audio that preceded it would have finished playing. Replaying the buffer
-/// in one burst would put Lumen's whole opening on screen — and complete its
-/// turn, opening the mic — while its voice was still on the first sentence.
+/// in one burst would put a whole buffered reply on screen — and complete its
+/// turn — while its voice was still on the first sentence.
 /// Signals that arrive while the replay is still pacing queue behind it, so
 /// order is preserved; once it drains, signals pass straight through.
 class LiveSignalGate {

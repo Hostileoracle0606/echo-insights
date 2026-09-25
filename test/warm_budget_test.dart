@@ -1,7 +1,7 @@
-// Each warm-up pre-generates Lumen's opening (tokens), and a standby socket
-// must be replaced before Gemini's ~10 minute connection limit. The budget
-// caps how many openings an idle notebook can burn: the first warm plus two
-// refreshes, then cold until the user touches the screen again.
+// Each warm-up costs a runtime call and holds a Gemini Live connection, and a
+// standby socket must be replaced before Gemini's ~10 minute connection
+// limit. The budget caps warm-ups for an idle notebook: the first warm plus
+// two refreshes, then cold until the user touches the screen again.
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lumen/logic/warm_budget.dart';
 

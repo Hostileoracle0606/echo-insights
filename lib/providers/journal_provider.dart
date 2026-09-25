@@ -2,10 +2,12 @@ import 'dart:async';
 
 import 'package:audio_session/audio_session.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../audio/pcm_capture.dart';
 import '../audio/pcm_player.dart';
+import '../audio/standard_opening.dart';
 import '../logic/agenda.dart' as agenda_logic;
 import '../logic/conversation_policy.dart';
 import '../logic/live_session_guard.dart';
@@ -131,8 +133,15 @@ class JournalNotifier extends Notifier<JournalState> {
   bool _agentTurnDone = false;
 
   // The live session's opening handshake: Lumen has the floor from the tap
-  // until its opening has been heard. Null outside a session.
+  // until its greeting has been heard. Null outside a session.
   SessionOpeningCoordinator? _opening;
+
+  // Lumen's bundled greeting (loaded once), and the display-only transcript
+  // rows of greetings played in this notebook. Greetings never reach the turn
+  // machine: there is nothing in them to extract.
+  StandardOpening? _standardOpening;
+  Future<StandardOpening?>? _standardOpeningLoad;
+  final _greetingRows = <ConversationTurn>[];
 
   // Warm standby (see warmUp): a prepared session waiting for the tap.
   _PreparedLive? _warm;
@@ -157,6 +166,7 @@ class JournalNotifier extends Notifier<JournalState> {
   /// finalization, so nothing vanishes or jumps while Gemini's finals lag.
   List<TranscriptRow> get transcriptRows {
     final rows = <TranscriptRow>[
+      for (final turn in _greetingRows) (turn: turn, pending: false),
       for (final turn in conversation) (turn: turn, pending: false),
       for (final turn in inProgress) (turn: turn, pending: true),
     ];
@@ -224,7 +234,7 @@ class JournalNotifier extends Notifier<JournalState> {
         _liveAgentText = '';
       }
       if (_opening?.markOpeningHeard() ?? false) {
-        vlog('session', 'opening heard — user turn enabled');
+        vlog('session', 'greeting heard — user turn enabled');
       }
     }
     _notifyUi();
@@ -766,6 +776,7 @@ class JournalNotifier extends Notifier<JournalState> {
     final commitService = ref.read(notebookCommitServiceProvider);
     final snapshot = await commitService.getNotebookSnapshot(notebookId);
     _activeNotebookId = notebookId;
+    _greetingRows.clear();
     _revision = snapshot?.revision ?? 0;
     state = snapshot?.state ?? JournalState.empty();
     await _restoreTurnsForNotebook(notebookId);
@@ -955,6 +966,8 @@ class JournalNotifier extends Notifier<JournalState> {
       return const NotebookTransitionResult.success();
     }
     _setStatus(SessionStatus.connecting);
+    // Lumen greets every session, so the floor is Lumen's from the tap on.
+    _opening = SessionOpeningCoordinator();
 
     try {
       var prepared = _warm;
@@ -1030,6 +1043,15 @@ class JournalNotifier extends Notifier<JournalState> {
     _player = player;
     final audioSessionReady = _configureAudioSession();
     final playbackReady = _initPlayer(player);
+    final greetingReady = _loadStandardOpening();
+    if (!standby) {
+      // Cold start: greet as soon as the speaker is ready, while the socket
+      // is still connecting — the greeting covers the connection time. The
+      // mic stays gated until the greeting is heard AND the session is live.
+      unawaited(Future.wait([playbackReady, greetingReady]).then((_) {
+        if (_liveSessionGuard.isCurrent(lease)) _startGreeting();
+      }));
+    }
     final liveSession = await ref
         .read(notebookRuntimeServiceProvider)
         .startLiveSession(notebookId);
@@ -1063,7 +1085,6 @@ class JournalNotifier extends Notifier<JournalState> {
       conversationSessionId: conversationSessionId,
       live: live,
       gate: LiveSignalGate(),
-      opening: SessionOpeningCoordinator(),
     );
     bool isCurrent() => _isCurrentLiveSession(binding, live);
     void signal(LiveSignal value) {
@@ -1127,23 +1148,19 @@ class JournalNotifier extends Notifier<JournalState> {
     if (!isCurrent()) return null;
     mark('setup complete');
     final playbackOk = await playbackReady;
+    await greetingReady;
     if (!isCurrent()) return null;
     if (!playbackOk && identical(_player, player)) _player = null;
     mark(playbackOk ? 'playback ready' : 'playback unavailable');
-
-    // Lumen opens every session. Requested now, so a warm standby has the
-    // opening buffered (or streaming) by the time the user taps.
-    prepared.opening.markSetupComplete();
-    if (prepared.opening.markPlaybackAttemptFinished()) {
-      vlog('session', 'requesting Lumen opening turn');
-      live.sendText(sessionOpeningPrimer);
-    }
+    // No opening is requested from Gemini: the app plays Lumen's bundled
+    // greeting, and the system instruction says it has already been said.
     return prepared;
   }
 
-  /// The tap: the prepared session becomes the user's live session. The
-  /// buffered opening replays at once (paced by its audio) and only then is
-  /// the mic started — it stays gated until the opening has been heard.
+  /// The tap: the prepared session becomes the user's live session. Lumen's
+  /// greeting plays (if a cold start hasn't already begun it), anything the
+  /// socket sent while warm replays, and only then is the mic started — it
+  /// stays gated until the greeting has been heard.
   Future<NotebookTransitionResult> _activateUnlocked(
     _PreparedLive prepared,
   ) async {
@@ -1151,8 +1168,8 @@ class JournalNotifier extends Notifier<JournalState> {
     _warmRefreshTimer = null;
     _warm = null;
     bool isCurrent() => _isCurrentLiveSession(prepared.binding, prepared.live);
+    final opening = _opening ??= SessionOpeningCoordinator();
 
-    _opening = prepared.opening;
     _sessionStartedAt = DateTime.now();
     // A live Gemini socket and an active turn-processing session are two
     // separate states. Establish the turn-machine identity before replaying
@@ -1165,8 +1182,9 @@ class JournalNotifier extends Notifier<JournalState> {
     ));
     _setStatus(SessionStatus.live);
     vlog('timing', 'activated (${prepared.gate.buffered} signals buffered)');
+    _startGreeting();
     prepared.gate.activate((signal) {
-      if (isCurrent()) _handleSignal(signal, prepared);
+      if (isCurrent()) _handleSignal(signal);
     });
 
     final capture = PcmCapture();
@@ -1186,7 +1204,7 @@ class JournalNotifier extends Notifier<JournalState> {
       );
     }
     await capture.start((pcm) {
-      if (isCurrent() && prepared.opening.acceptsUserAudio) {
+      if (isCurrent() && opening.acceptsUserAudio) {
         prepared.live.sendAudio(pcm);
       }
     });
@@ -1200,8 +1218,66 @@ class JournalNotifier extends Notifier<JournalState> {
     return const NotebookTransitionResult.success();
   }
 
+  /// Plays Lumen's bundled greeting through this session's player, once.
+  /// Without a clip or a speaker there is nothing to wait for, so the floor
+  /// passes to the user immediately.
+  void _startGreeting() {
+    final opening = _opening;
+    if (opening == null || !opening.claimGreeting()) return;
+    final clip = _standardOpening;
+    final player = _player;
+    if (clip == null) {
+      if (opening.markOpeningHeard()) vlog('session', 'no greeting clip');
+      return;
+    }
+    final now = DateTime.now().toUtc().toIso8601String();
+    _greetingRows.add(ConversationTurn(
+      turnId: 'lumen-greeting-$now',
+      role: Speaker.assistant,
+      text: clip.text,
+      createdAt: now,
+      startedAt: now,
+    ));
+    var fed = false;
+    if (player != null) {
+      // The words ride on the pill while the voice plays and leave when it
+      // drains (the completed-turn path in _setAgentSpeaking).
+      _liveAgentText = clip.text;
+      _agentTurnDone = true;
+      for (final chunk in clip.chunks(const Duration(milliseconds: 250))) {
+        fed = player.feed(
+              chunk,
+              sampleRate: clip.sampleRate,
+              audible: !_muted,
+            ) ||
+            fed;
+      }
+    }
+    if (fed) {
+      vlog('timing', 'greeting playing (${clip.duration.inMilliseconds}ms)');
+    } else {
+      _liveAgentText = '';
+      _agentTurnDone = false;
+      if (opening.markOpeningHeard()) {
+        vlog('session', 'greeting unplayable — user turn enabled');
+      }
+    }
+    _notifyUi();
+  }
+
+  Future<StandardOpening?> _loadStandardOpening() {
+    return _standardOpeningLoad ??= StandardOpening.load(rootBundle).then(
+      (clip) => _standardOpening = clip,
+      onError: (Object error) {
+        debugPrint('[journal] greeting clip unavailable: $error');
+        _standardOpeningLoad = null;
+        return null;
+      },
+    );
+  }
+
   /// One Gemini signal, now that the session is the user's.
-  void _handleSignal(LiveSignal signal, _PreparedLive prepared) {
+  void _handleSignal(LiveSignal signal) {
     switch (signal) {
       // Meaningful transcript events, not cumulative sentence callbacks:
       // interim text is replaceable, and only a finalized, immutable
@@ -1249,13 +1325,6 @@ class JournalNotifier extends Notifier<JournalState> {
         // With a playback clock, Lumen stops "speaking" when its queued
         // audio drains — usually seconds after Gemini's turn completes.
         if (_player == null) _clearAgentSpeaking();
-        final opening = prepared.opening;
-        if (opening.markTurnComplete()) {
-          vlog('session', 'opening generated — waiting for it to be heard');
-          if (!_agentSpeaking && opening.markOpeningHeard()) {
-            vlog('session', 'opening heard — user turn enabled');
-          }
-        }
     }
   }
 
@@ -1473,7 +1542,6 @@ class _PreparedLive {
     required this.conversationSessionId,
     required this.live,
     required this.gate,
-    required this.opening,
   });
 
   final LiveSessionLease binding;
@@ -1481,7 +1549,6 @@ class _PreparedLive {
   final String conversationSessionId;
   final GeminiLiveClient live;
   final LiveSignalGate gate;
-  final SessionOpeningCoordinator opening;
 }
 
 /// One chat-pane row: a conversation turn, and whether it is still unfinished.
