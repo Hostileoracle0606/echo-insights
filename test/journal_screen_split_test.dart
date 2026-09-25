@@ -1,7 +1,7 @@
 // Stitch regression: the pill's split toggle should morph the dock open and
 // surface the provider's conversation log as ChatGPT-style turns in the panel.
 // Exercises the real JournalScreen (not a composed stand-in) so the wiring —
-// toggle -> setState -> expanded -> conversationProvider -> turns — is covered.
+// toggle -> setState -> expanded -> transcriptRowsProvider -> turns — is covered.
 import 'dart:async';
 
 import 'package:flutter/material.dart';

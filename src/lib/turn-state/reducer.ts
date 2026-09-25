@@ -1,5 +1,6 @@
 import type {
   ActiveTurn,
+  ConversationTurn,
   FinalizedTurn,
   Speaker,
   TurnEffect,
@@ -24,6 +25,24 @@ const EMPTY_STATE: TurnMachineState = {
 };
 
 const MAX_CONVERSATION = 16;
+
+/** Orders ISO-8601 instants by time (Dart checkpoints carry microseconds). */
+export function compareInstants(a: string, b: string): number {
+  const ta = Date.parse(a);
+  const tb = Date.parse(b);
+  if (Number.isNaN(ta) || Number.isNaN(tb)) return a.localeCompare(b);
+  return ta - tb;
+}
+
+/** Inserts by utterance start; ties keep finalization order. */
+function insertChronologically(
+  conversation: ConversationTurn[],
+  turn: ConversationTurn,
+): ConversationTurn[] {
+  let at = conversation.length;
+  while (at > 0 && compareInstants(conversation[at - 1].startedAt, turn.startedAt) > 0) at -= 1;
+  return [...conversation.slice(0, at), turn, ...conversation.slice(at)];
+}
 const PROVISIONAL_MIN_CHARS = 6;
 const SPEAKERS: Speaker[] = ["user", "assistant"];
 
@@ -226,10 +245,13 @@ export function createTurnMachine(deps: TurnMachineDeps, checkpoint?: TurnCheckp
       ...state,
       pending: [...state.pending, finalized],
       preview: state.preview?.turnId === turn.turnId ? null : state.preview,
-      conversation: [
-        ...state.conversation.slice(-(MAX_CONVERSATION - 1)),
-        { turnId: turn.turnId, role: turn.speaker, text, createdAt: finalized.finalizedAt },
-      ],
+      conversation: insertChronologically(state.conversation, {
+        turnId: turn.turnId,
+        role: turn.speaker,
+        text,
+        createdAt: finalized.finalizedAt,
+        startedAt: turn.startedAt,
+      }).slice(-MAX_CONVERSATION),
     };
     // The checkpoint is written BEFORE the expensive model call, so a restart
     // between here and extraction resumes instead of losing the turn.
@@ -521,6 +543,29 @@ export function createTurnMachine(deps: TurnMachineDeps, checkpoint?: TurnCheckp
   return {
     get state() {
       return state;
+    },
+    /**
+     * Utterances still being transcribed or awaiting their authoritative
+     * final, oldest first — display-only, never canonical. Merged with
+     * `conversation` by `startedAt`, nothing vanishes between "the reply
+     * started" and "the user's final arrived".
+     */
+    get inProgress(): ConversationTurn[] {
+      return [
+        state.awaiting.user,
+        state.active.user,
+        state.awaiting.assistant,
+        state.active.assistant,
+      ]
+        .filter((turn): turn is ActiveTurn => turn != null && turn.text.trim() !== "")
+        .map((turn) => ({
+          turnId: turn.turnId,
+          role: turn.speaker,
+          text: turn.text.trim(),
+          createdAt: turn.startedAt,
+          startedAt: turn.startedAt,
+        }))
+        .sort((a, b) => compareInstants(a.startedAt, b.startedAt));
     },
     dispatch: reduce,
     checkpoint: () => structuredClone({ version: 1, state, inFlight, assistantGate }),

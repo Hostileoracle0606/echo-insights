@@ -21,10 +21,10 @@ final liveAgentTextProvider = Provider<String>((ref) {
   return ref.watch(journalProvider.notifier).liveAgentText;
 });
 
-/// True once Lumen's final transcript is in [conversationProvider].
-final liveAgentCommittedProvider = Provider<bool>((ref) {
+/// Finalized and unfinished turns in the order they were spoken.
+final transcriptRowsProvider = Provider<List<TranscriptRow>>((ref) {
   ref.watch(journalProvider);
-  return ref.watch(journalProvider.notifier).liveAgentCommitted;
+  return ref.watch(journalProvider.notifier).transcriptRows;
 });
 
 /// A finalized turn is still being extracted/committed (web: "Mapping").

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../logic/turn_state.dart' show ConversationTurn, Speaker;
+import '../../logic/turn_state.dart' show Speaker;
 import '../../providers/journal_provider.dart';
 import '../../providers/session_provider.dart';
 import 'entity_note_sheet.dart';
@@ -119,11 +119,13 @@ class _JournalScreenState extends ConsumerState<JournalScreen> {
     }
   }
 
-  // The provider keeps a flat role/text log; the dock speaks in DockTurns.
-  // Anything the user said is a "you" bubble, everything else is Lumen.
-  DockTurn _toTurn(ConversationTurn turn) => DockTurn(
-        turn.role == Speaker.user ? DockSpeaker.you : DockSpeaker.lumen,
-        turn.text,
+  // The provider keeps role/text rows in spoken order; the dock speaks in
+  // DockTurns. Anything the user said is a "you" bubble, everything else is
+  // Lumen. Unfinished utterances render as pending in their own slot.
+  DockTurn _toTurn(TranscriptRow row) => DockTurn(
+        row.turn.role == Speaker.user ? DockSpeaker.you : DockSpeaker.lumen,
+        row.turn.text,
+        pending: row.pending,
       );
 
   @override
@@ -132,13 +134,12 @@ class _JournalScreenState extends ConsumerState<JournalScreen> {
     final status = ref.watch(sessionStatusProvider);
     final liveUser = ref.watch(liveUserTextProvider);
     final liveAgent = ref.watch(liveAgentTextProvider);
-    final liveAgentCommitted = ref.watch(liveAgentCommittedProvider);
     final extracting = ref.watch(extractingProvider);
     final activity = ref.watch(upsertActivityProvider);
     final muted = ref.watch(mutedProvider);
     final agentSpeaking = ref.watch(agentSpeakingProvider);
     final turns =
-        ref.watch(conversationProvider).map(_toTurn).toList(growable: false);
+        ref.watch(transcriptRowsProvider).map(_toTurn).toList(growable: false);
     final relationCount =
         state.relations.values.where((relation) => relation.isActive).length;
 
@@ -178,7 +179,6 @@ class _JournalScreenState extends ConsumerState<JournalScreen> {
                     mode: _dockMode(status, agentSpeaking),
                     liveUser: liveUser,
                     liveAgent: liveAgent,
-                    liveAgentCommitted: liveAgentCommitted,
                     extracting: extracting,
                     activity: activity,
                     muted: muted,

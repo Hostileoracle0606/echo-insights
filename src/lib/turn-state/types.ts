@@ -128,7 +128,14 @@ export interface ConversationTurn {
   turnId: string;
   role: Speaker;
   text: string;
+  /** When the turn finalized. */
   createdAt: string;
+  /**
+   * When the utterance began (its first transcript chunk). Conversation order
+   * follows this, not `createdAt`: Gemini does not order a user's final
+   * transcription before the assistant's reply.
+   */
+  startedAt: string;
 }
 
 export interface TurnMachineState {
@@ -214,6 +221,8 @@ export interface TurnMachineDeps {
 
 export interface TurnMachine {
   readonly state: TurnMachineState;
+  /** Unfinished utterances, oldest first. Display-only. */
+  readonly inProgress: ConversationTurn[];
   checkpoint: () => TurnCheckpoint;
   /** Applies one event. Returns the effects the adapter should carry out. */
   dispatch: (event: TurnEvent) => TurnEffect[];

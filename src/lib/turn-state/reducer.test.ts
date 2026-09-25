@@ -494,3 +494,55 @@ describe("durable turn processing", () => {
     expect(m.state.pending.map((t) => t.commitRequestId)).toEqual(ids);
   });
 });
+
+describe("conversation chronology", () => {
+  function started() {
+    const m = machine();
+    m.dispatch({ type: "sessionStarted", sessionId: "s1", notebookId: "nb1" });
+    return m;
+  }
+
+  it("orders turns by when they were spoken, not when they finalized", () => {
+    const m = started();
+    // The user's authoritative final lands only after Lumen's reply finalized.
+    m.dispatch({ type: "interimTranscript", speaker: "user", text: "I met Priya" });
+    m.dispatch({ type: "turnCompleted", speaker: "user" });
+    m.dispatch({ type: "interimTranscript", speaker: "assistant", text: "How lovely." });
+    m.dispatch({ type: "finalTranscript", speaker: "assistant", text: "How lovely." });
+    m.dispatch({ type: "turnCompleted", speaker: "assistant" });
+    m.dispatch({ type: "finalTranscript", speaker: "user", text: "I met Priya." });
+
+    expect(m.state.conversation.map((t) => t.role)).toEqual(["user", "assistant"]);
+    expect(m.state.conversation[0].text).toBe("I met Priya.");
+  });
+
+  it("records the utterance start on each conversation turn", () => {
+    const m = started();
+    m.dispatch({ type: "interimTranscript", speaker: "user", text: "Hello" });
+    m.dispatch({ type: "finalTranscript", speaker: "user", text: "Hello." });
+    m.dispatch({ type: "turnCompleted", speaker: "user" });
+
+    const [turn] = m.state.conversation;
+    expect(Date.parse(turn.startedAt)).toBeLessThan(Date.parse(turn.createdAt));
+  });
+
+  it("exposes a still-finalizing utterance as in progress, in its slot", () => {
+    const m = started();
+    m.dispatch({ type: "interimTranscript", speaker: "user", text: "I met Priya" });
+    m.dispatch({ type: "turnCompleted", speaker: "user" });
+    m.dispatch({ type: "interimTranscript", speaker: "assistant", text: "How" });
+
+    expect(m.inProgress.map((t) => t.role)).toEqual(["user", "assistant"]);
+    expect(m.inProgress[0].text).toBe("I met Priya");
+    expect(m.state.conversation).toEqual([]);
+  });
+
+  it("an in-progress turn leaves once it is finalized", () => {
+    const m = started();
+    m.dispatch({ type: "interimTranscript", speaker: "user", text: "Hi" });
+    m.dispatch({ type: "finalTranscript", speaker: "user", text: "Hi." });
+    m.dispatch({ type: "turnCompleted", speaker: "user" });
+    expect(m.inProgress).toEqual([]);
+    expect(m.state.conversation).toEqual([expect.objectContaining({ text: "Hi." })]);
+  });
+});

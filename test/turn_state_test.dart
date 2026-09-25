@@ -397,4 +397,64 @@ void main() {
       expect(m.state.activeUser, isNull);
     });
   });
+
+  group('conversation chronology', () {
+    TurnMachine started() {
+      final m = machine();
+      m.dispatch(const SessionStarted(sessionId: 's1', notebookId: 'nb1'));
+      return m;
+    }
+
+    test('orders turns by when they were spoken, not when they finalized', () {
+      final m = started();
+      // The user speaks first, but Gemini's authoritative final for that
+      // utterance lands only after Lumen's whole reply has finalized.
+      m.dispatch(const InterimTranscript(speaker: Speaker.user, text: 'I met Priya'));
+      m.dispatch(const TurnCompleted(speaker: Speaker.user));
+      m.dispatch(const InterimTranscript(speaker: Speaker.assistant, text: 'How lovely.'));
+      m.dispatch(const FinalTranscript(speaker: Speaker.assistant, text: 'How lovely.'));
+      m.dispatch(const TurnCompleted(speaker: Speaker.assistant));
+      m.dispatch(const FinalTranscript(speaker: Speaker.user, text: 'I met Priya.'));
+
+      expect(
+        m.state.conversation.map((t) => t.role).toList(),
+        [Speaker.user, Speaker.assistant],
+      );
+      expect(m.state.conversation.first.text, 'I met Priya.');
+    });
+
+    test('records the utterance start on each conversation turn', () {
+      final m = started();
+      m.dispatch(const InterimTranscript(speaker: Speaker.user, text: 'Hello'));
+      m.dispatch(const FinalTranscript(speaker: Speaker.user, text: 'Hello.'));
+      m.dispatch(const TurnCompleted(speaker: Speaker.user));
+
+      final turn = m.state.conversation.single;
+      expect(
+        DateTime.parse(turn.startedAt).isBefore(DateTime.parse(turn.createdAt)),
+        isTrue,
+      );
+    });
+
+    test('exposes a still-finalizing utterance as in progress, in its slot', () {
+      final m = started();
+      m.dispatch(const InterimTranscript(speaker: Speaker.user, text: 'I met Priya'));
+      m.dispatch(const TurnCompleted(speaker: Speaker.user));
+      m.dispatch(const InterimTranscript(speaker: Speaker.assistant, text: 'How'));
+
+      final inProgress = m.inProgress;
+      expect(inProgress.map((t) => t.role).toList(), [Speaker.user, Speaker.assistant]);
+      expect(inProgress.first.text, 'I met Priya');
+      expect(m.state.conversation, isEmpty);
+    });
+
+    test('an in-progress turn leaves once it is finalized', () {
+      final m = started();
+      m.dispatch(const InterimTranscript(speaker: Speaker.user, text: 'Hi'));
+      m.dispatch(const FinalTranscript(speaker: Speaker.user, text: 'Hi.'));
+      m.dispatch(const TurnCompleted(speaker: Speaker.user));
+      expect(m.inProgress, isEmpty);
+      expect(m.state.conversation.single.text, 'Hi.');
+    });
+  });
 }

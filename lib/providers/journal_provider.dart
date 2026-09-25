@@ -71,10 +71,9 @@ class JournalNotifier extends Notifier<JournalState> {
   // can never reappear as a pending bubble.
   String _liveUserText = '';
   String _liveAgentText = '';
-  // True once the assistant's final transcript is committed to the
-  // conversation; the pane then hides the streaming bubble while the pill's
-  // drawer keeps showing the text until turn completion (web parity).
-  bool _liveAgentCommitted = false;
+  // Unfinished utterances (still transcribing, or awaiting the provider's
+  // authoritative final), snapshotted with the conversation on every event.
+  final _inProgress = <ConversationTurn>[];
   // Any finalized turn still waiting on extraction/commit (web: `thinking`).
   bool _extracting = false;
   UpsertActivity? _activity;
@@ -129,10 +128,27 @@ class JournalNotifier extends Notifier<JournalState> {
   String get lastTranscript => _lastTranscript;
   String get liveUserText => _liveUserText;
   String get liveAgentText => _liveAgentText;
-  bool get liveAgentCommitted => _liveAgentCommitted;
+
+  /// The chat pane's rows: finalized turns plus unfinished utterances, in the
+  /// order they were spoken. An utterance keeps its slot from first word to
+  /// finalization, so nothing vanishes or jumps while Gemini's finals lag.
+  List<TranscriptRow> get transcriptRows {
+    final rows = <TranscriptRow>[
+      for (final turn in conversation) (turn: turn, pending: false),
+      for (final turn in inProgress) (turn: turn, pending: true),
+    ];
+    // List.sort is not guaranteed stable; break ties by original position.
+    final indexed = rows.indexed.toList()
+      ..sort((a, b) {
+        final byTime = compareInstants(a.$2.turn.startedAt, b.$2.turn.startedAt);
+        return byTime != 0 ? byTime : a.$1.compareTo(b.$1);
+      });
+    return [for (final (_, row) in indexed) row];
+  }
   bool get extracting => _extracting;
   UpsertActivity? get activity => _activity;
   List<ConversationTurn> get conversation => List.unmodifiable(_conversation);
+  List<ConversationTurn> get inProgress => List.unmodifiable(_inProgress);
   bool get muted => _muted;
   bool get agentSpeaking => _agentSpeaking;
   int get revision => _revision;
@@ -250,6 +266,9 @@ class JournalNotifier extends Notifier<JournalState> {
     _conversation
       ..clear()
       ..addAll(latest.conversation);
+    _inProgress
+      ..clear()
+      ..addAll(_turnMachine.inProgress);
     _extracting = latest.pending.isNotEmpty;
     _notifyUi();
   }
@@ -263,13 +282,9 @@ class JournalNotifier extends Notifier<JournalState> {
         _liveUserText = '';
       case InterimTranscript(speaker: Speaker.assistant, :final text):
         _liveAgentText = text;
-        _liveAgentCommitted = false;
-      case FinalTranscript(speaker: Speaker.assistant):
-        _liveAgentCommitted = true;
       case TurnCompleted(speaker: Speaker.assistant):
       case AssistantInterrupted():
         _liveAgentText = '';
-        _liveAgentCommitted = false;
       case SessionEnded():
         _clearLiveText();
       default:
@@ -279,7 +294,6 @@ class JournalNotifier extends Notifier<JournalState> {
   void _clearLiveText() {
     _liveUserText = '';
     _liveAgentText = '';
-    _liveAgentCommitted = false;
   }
 
   void _showActivity(UpsertActivity? activity) {
@@ -1198,6 +1212,9 @@ class JournalNotifier extends Notifier<JournalState> {
     return const NotebookTransitionResult.success();
   }
 }
+
+/// One chat-pane row: a conversation turn, and whether it is still unfinished.
+typedef TranscriptRow = ({ConversationTurn turn, bool pending});
 
 final turnJournalServiceProvider = Provider<TurnJournalService>((ref) {
   return TurnJournalService();

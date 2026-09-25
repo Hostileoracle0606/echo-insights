@@ -20,7 +20,10 @@ enum DockSpeaker { you, lumen }
 class DockTurn {
   final DockSpeaker speaker;
   final String text;
-  const DockTurn(this.speaker, this.text);
+
+  /// Still being transcribed — drawn faded, in its spoken slot.
+  final bool pending;
+  const DockTurn(this.speaker, this.text, {this.pending = false});
 }
 
 /// The bottom voice capsule. Two orthogonal axes of state:
@@ -50,10 +53,6 @@ class VoiceDock extends StatefulWidget {
   /// Lumen's streaming words (empty once the assistant turn completes).
   final String liveAgent;
 
-  /// Lumen's final is already in [turns]; the pane hides the streaming bubble
-  /// while the pill's drawer keeps the text until turn completion.
-  final bool liveAgentCommitted;
-
   /// A finalized turn is still being extracted ("Mapping").
   final bool extracting;
 
@@ -71,7 +70,6 @@ class VoiceDock extends StatefulWidget {
     this.mode = DockMode.idle,
     this.liveUser = '',
     this.liveAgent = '',
-    this.liveAgentCommitted = false,
     this.extracting = false,
     this.activity,
     this.muted = false,
@@ -168,8 +166,8 @@ class _VoiceDockState extends State<VoiceDock> with TickerProviderStateMixin {
       _expand.reverse();
     } else if (widget.expanded &&
         (widget.turns.length != old.turns.length ||
-            widget.liveUser != old.liveUser ||
-            widget.liveAgent != old.liveAgent)) {
+            (widget.turns.isNotEmpty &&
+                widget.turns.last.text != old.turns.last.text))) {
       _jumpToBottomSoon();
     }
   }
@@ -562,24 +560,14 @@ class _VoiceDockState extends State<VoiceDock> with TickerProviderStateMixin {
   }
 
   Widget _conversation(LumenColors colors, double maxBubble) {
+    // [turns] arrive in spoken order, unfinished utterances included as
+    // pending — each keeps its slot from first word to finalization, so the
+    // pane never reorders or drops a line while Gemini's finals lag.
     final rows = <Widget>[
       for (final turn in widget.turns)
-        _bubble(colors, turn.speaker, turn.text, maxBubble),
+        _bubble(colors, turn.speaker, turn.text, maxBubble,
+            pending: turn.pending),
     ];
-    // In-flight words ride at the bottom as pending bubbles, so the panel
-    // feels live mid-sentence. The provider clears each speaker's live text
-    // when that turn finalizes, so no text-equality de-dupe is needed (it
-    // failed as soon as Lumen's bubble became the last row).
-    final liveUser = widget.liveUser.trim();
-    if (liveUser.isNotEmpty) {
-      rows.add(
-          _bubble(colors, DockSpeaker.you, liveUser, maxBubble, pending: true));
-    }
-    final liveAgent = widget.liveAgent.trim();
-    if (liveAgent.isNotEmpty && !widget.liveAgentCommitted) {
-      rows.add(_bubble(colors, DockSpeaker.lumen, liveAgent, maxBubble,
-          pending: true));
-    }
 
     return ListView.separated(
       controller: _scroll,

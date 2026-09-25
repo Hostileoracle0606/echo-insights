@@ -128,7 +128,7 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  group('split pane live text', () {
+  group('split pane transcript', () {
     testWidgets('no stale "you" bubble once Lumen has answered',
         (tester) async {
       // Regression: the old pane re-added the last user interim as a pending
@@ -142,59 +142,69 @@ void main() {
             DockTurn(DockSpeaker.you, 'I met Priya at the gym.'),
             DockTurn(DockSpeaker.lumen, 'How long has she climbed?'),
           ],
+          liveUser: 'I met Priya at the gym',
           onMicTap: () {},
         ),
       );
       await _run(tester, frames: 40);
       expect(find.text('I met Priya at the gym.'), findsOneWidget);
+      expect(find.text('I met Priya at the gym'), findsNothing,
+          reason: 'the pane renders only the rows it is given');
       await tester.pumpWidget(const SizedBox());
     });
 
-    testWidgets('in-flight user words ride as a pending bubble',
+    testWidgets('rows render in the order given, pending ones faded',
         (tester) async {
       await _pump(
         tester,
         VoiceDock(
-          mode: DockMode.listening,
+          mode: DockMode.speaking,
           expanded: true,
-          turns: const [DockTurn(DockSpeaker.lumen, 'Tell me more.')],
-          liveUser: 'Almost a month',
+          turns: const [
+            DockTurn(DockSpeaker.you, 'I met Priya', pending: true),
+            DockTurn(DockSpeaker.lumen, 'How lovely', pending: true),
+          ],
           onMicTap: () {},
         ),
       );
       await _run(tester, frames: 40);
-      expect(find.text('Almost a month'), findsOneWidget);
+      final you = tester.getTopLeft(find.text('I met Priya'));
+      final lumen = tester.getTopLeft(find.text('How lovely'));
+      expect(you.dy, lessThan(lumen.dy), reason: 'spoken order is kept');
+      final fade = tester.widget<Opacity>(
+        find.ancestor(of: find.text('I met Priya'), matching: find.byType(Opacity)).first,
+      );
+      expect(fade.opacity, lessThan(1));
       await tester.pumpWidget(const SizedBox());
     });
 
-    testWidgets('Lumen streams until its final is committed', (tester) async {
-      VoiceDock dock({required bool committed}) => VoiceDock(
-            mode: DockMode.speaking,
+    testWidgets('a pending row firms up in place when it finalizes',
+        (tester) async {
+      VoiceDock dock({required bool pending}) => VoiceDock(
+            mode: DockMode.listening,
             expanded: true,
             turns: [
-              const DockTurn(DockSpeaker.you, 'Hi.'),
-              if (committed) const DockTurn(DockSpeaker.lumen, 'Hello there'),
+              DockTurn(DockSpeaker.you, 'I met Priya.', pending: pending),
+              const DockTurn(DockSpeaker.lumen, 'How lovely.'),
             ],
-            liveAgent: 'Hello there',
-            liveAgentCommitted: committed,
             onMicTap: () {},
           );
-      await _pump(tester, dock(committed: false));
+      await _pump(tester, dock(pending: true));
       await _run(tester, frames: 40);
-      expect(find.text('Hello there'), findsOneWidget);
+      final before = tester.getTopLeft(find.text('I met Priya.'));
 
       await tester.pumpWidget(MaterialApp(
         theme: LumenTheme.light(),
         home: Scaffold(
           body: Align(
             alignment: Alignment.bottomCenter,
-            child: dock(committed: true),
+            child: dock(pending: false),
           ),
         ),
       ));
       await _run(tester, frames: 10);
-      // Exactly one: the committed bubble replaced the streaming one.
-      expect(find.text('Hello there'), findsOneWidget);
+      expect(find.text('I met Priya.'), findsOneWidget);
+      expect(tester.getTopLeft(find.text('I met Priya.')), before);
       await tester.pumpWidget(const SizedBox());
     });
   });
