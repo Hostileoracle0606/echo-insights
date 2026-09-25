@@ -104,14 +104,23 @@ class _JournalScreenState extends ConsumerState<JournalScreen> {
 
   // Map the session lifecycle onto dock modes. Connecting reads as "thinking"
   // (booting up); a live session reads as "speaking" while Lumen's audio is
-  // playing and "listening" the rest of the time; everything else collapses
-  // to the static idle pill.
-  DockMode _dockMode(SessionStatus status, bool agentSpeaking) {
+  // still playing (the player's clock, not chunk arrival), "thinking" until
+  // Lumen's opening has been heard, and "listening" the rest of the time;
+  // everything else collapses to the static idle pill.
+  DockMode _dockMode(
+    SessionStatus status,
+    bool agentSpeaking,
+    bool openingInProgress,
+  ) {
     switch (status) {
       case SessionStatus.connecting:
         return DockMode.thinking;
       case SessionStatus.live:
-        return agentSpeaking ? DockMode.speaking : DockMode.listening;
+        if (agentSpeaking) return DockMode.speaking;
+        // Live but Lumen's opening hasn't played yet: the mic is gated, so
+        // "listening" would be a lie — keep the booting-up state.
+        if (openingInProgress) return DockMode.thinking;
+        return DockMode.listening;
       case SessionStatus.idle:
       case SessionStatus.ending:
       case SessionStatus.error:
@@ -135,6 +144,7 @@ class _JournalScreenState extends ConsumerState<JournalScreen> {
     final liveUser = ref.watch(liveUserTextProvider);
     final liveAgent = ref.watch(liveAgentTextProvider);
     final extracting = ref.watch(extractingProvider);
+    final openingInProgress = ref.watch(openingInProgressProvider);
     final activity = ref.watch(upsertActivityProvider);
     final muted = ref.watch(mutedProvider);
     final agentSpeaking = ref.watch(agentSpeakingProvider);
@@ -176,10 +186,11 @@ class _JournalScreenState extends ConsumerState<JournalScreen> {
                 child: Align(
                   alignment: Alignment.bottomCenter,
                   child: VoiceDock(
-                    mode: _dockMode(status, agentSpeaking),
+                    mode: _dockMode(status, agentSpeaking, openingInProgress),
                     liveUser: liveUser,
                     liveAgent: liveAgent,
                     extracting: extracting,
+                    openingInProgress: openingInProgress,
                     activity: activity,
                     muted: muted,
                     expanded: _splitOpen,

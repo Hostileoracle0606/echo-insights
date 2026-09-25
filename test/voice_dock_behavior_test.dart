@@ -339,4 +339,61 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     });
   });
+
+  group('opening phase (Lumen has the floor)', () {
+    testWidgets('before Lumen\'s audio: Lumen · Connecting, never You',
+        (tester) async {
+      await _pump(
+        tester,
+        VoiceDock(
+          mode: DockMode.thinking,
+          openingInProgress: true,
+          onMicTap: () {},
+        ),
+      );
+      await _run(tester);
+      expect(find.text('LUMEN'), findsOneWidget);
+      expect(find.text('CONNECTING'), findsOneWidget);
+      expect(find.text('YOU'), findsNothing);
+      expect(find.text('LISTENING'), findsNothing);
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('once the opening plays: Lumen · Speaking with its words',
+        (tester) async {
+      await _pump(
+        tester,
+        VoiceDock(
+          mode: DockMode.speaking,
+          openingInProgress: true,
+          liveAgent: 'Good to see you again.',
+          onMicTap: () {},
+        ),
+      );
+      await _run(tester);
+      expect(find.text('LUMEN'), findsOneWidget);
+      expect(find.text('SPEAKING'), findsOneWidget);
+      expect(find.text('Good to see you again.'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('a lull mid-opening still reads as Lumen, not You',
+        (tester) async {
+      // Network jitter can drain the playback queue between chunks; the
+      // opening is still Lumen's turn and the mic is still gated.
+      await _pump(
+        tester,
+        VoiceDock(
+          mode: DockMode.listening,
+          openingInProgress: true,
+          liveAgent: 'Good to see',
+          onMicTap: () {},
+        ),
+      );
+      await _run(tester);
+      expect(find.text('YOU'), findsNothing);
+      expect(find.text('LUMEN'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+    });
+  });
 }

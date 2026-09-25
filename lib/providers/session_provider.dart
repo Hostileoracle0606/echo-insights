@@ -27,6 +27,12 @@ final transcriptRowsProvider = Provider<List<TranscriptRow>>((ref) {
   return ref.watch(journalProvider.notifier).transcriptRows;
 });
 
+/// Lumen owns the floor until its session opening has been heard.
+final openingInProgressProvider = Provider<bool>((ref) {
+  ref.watch(journalProvider);
+  return ref.watch(journalProvider.notifier).openingInProgress;
+});
+
 /// A finalized turn is still being extracted/committed (web: "Mapping").
 final extractingProvider = Provider<bool>((ref) {
   ref.watch(journalProvider);

@@ -115,9 +115,22 @@ class JournalNotifier extends Notifier<JournalState> {
   int _memoryCallsThisTurn = 0;
   static const _maxMemoryCallsPerTurn = 3;
   bool _muted = false;
+  // Driven by the player's playback clock (audio still queued ahead of the
+  // listener), not by chunk arrival: Gemini streams faster than real time,
+  // so its turn completes while Lumen is still audibly talking. The 400ms
+  // arrival heuristic remains only as the fallback when playback is
+  // unavailable.
   bool _agentSpeaking = false;
   Timer? _agentSpeakingTimer;
   static const _agentSpeakingIdleMs = 400;
+
+  // Lumen's assistant turn completed while its audio was still playing; its
+  // words stay on the pill until the voice actually stops.
+  bool _agentTurnDone = false;
+
+  // The live session's opening handshake: Lumen has the floor from the tap
+  // until its opening has been heard. Null outside a session.
+  SessionOpeningCoordinator? _opening;
 
   // Optimistic-concurrency counter from the last-known server snapshot.
   // Every commit reads this fresh (at the moment it actually runs, not when
@@ -151,6 +164,11 @@ class JournalNotifier extends Notifier<JournalState> {
   List<ConversationTurn> get inProgress => List.unmodifiable(_inProgress);
   bool get muted => _muted;
   bool get agentSpeaking => _agentSpeaking;
+
+  /// Lumen owns the floor: the session is starting and its opening has not
+  /// finished playing yet. The dock shows Lumen, never "You", meanwhile —
+  /// user audio is not accepted until this clears.
+  bool get openingInProgress => _opening?.inProgress ?? false;
   int get revision => _revision;
 
   @override
@@ -181,23 +199,34 @@ class JournalNotifier extends Notifier<JournalState> {
     _notifyUi();
   }
 
-  // Marks Lumen as currently talking; cleared ~400ms after the last audio
-  // chunk (reset on every chunk) or immediately on turn-complete/session-end,
-  // whichever comes first.
-  void _markAgentSpeaking() {
-    if (!_agentSpeaking) {
-      _agentSpeaking = true;
-      _notifyUi();
+  /// The one place Lumen's speaking state changes. When the voice stops, a
+  /// completed assistant turn's words leave the pill, and a finished opening
+  /// hands the floor (and the mic) to the user.
+  void _setAgentSpeaking(bool speaking) {
+    if (_agentSpeaking == speaking) return;
+    _agentSpeaking = speaking;
+    if (!speaking) {
+      if (_agentTurnDone) {
+        _agentTurnDone = false;
+        _liveAgentText = '';
+      }
+      if (_opening?.markOpeningHeard() ?? false) {
+        vlog('session', 'opening heard — user turn enabled');
+      }
     }
+    _notifyUi();
+  }
+
+  // Fallback when there is no playback clock: talking until ~400ms after the
+  // last audio chunk (reset on every chunk), or turn-complete/session-end.
+  void _markAgentSpeaking() {
+    _setAgentSpeaking(true);
     _agentSpeakingTimer?.cancel();
     _agentSpeakingTimer = Timer(
       const Duration(milliseconds: _agentSpeakingIdleMs),
       () {
         _agentSpeakingTimer = null;
-        if (_agentSpeaking) {
-          _agentSpeaking = false;
-          _notifyUi();
-        }
+        _setAgentSpeaking(false);
       },
     );
   }
@@ -205,10 +234,7 @@ class JournalNotifier extends Notifier<JournalState> {
   void _clearAgentSpeaking() {
     _agentSpeakingTimer?.cancel();
     _agentSpeakingTimer = null;
-    if (_agentSpeaking) {
-      _agentSpeaking = false;
-      _notifyUi();
-    }
+    _setAgentSpeaking(false);
   }
 
   void _setTranscript(String text) {
@@ -282,9 +308,17 @@ class JournalNotifier extends Notifier<JournalState> {
         _liveUserText = '';
       case InterimTranscript(speaker: Speaker.assistant, :final text):
         _liveAgentText = text;
+        _agentTurnDone = false;
       case TurnCompleted(speaker: Speaker.assistant):
+        // Keep Lumen's words on the pill until the voice actually stops.
+        if (_agentSpeaking) {
+          _agentTurnDone = true;
+        } else {
+          _liveAgentText = '';
+        }
       case AssistantInterrupted():
         _liveAgentText = '';
+        _agentTurnDone = false;
       case SessionEnded():
         _clearLiveText();
       default:
@@ -294,6 +328,7 @@ class JournalNotifier extends Notifier<JournalState> {
   void _clearLiveText() {
     _liveUserText = '';
     _liveAgentText = '';
+    _agentTurnDone = false;
   }
 
   void _showActivity(UpsertActivity? activity) {
@@ -800,6 +835,8 @@ class JournalNotifier extends Notifier<JournalState> {
       return const NotebookTransitionResult.success();
     }
     final lease = _liveSessionGuard.begin();
+    // Lumen opens every session, so the floor is Lumen's from the tap on.
+    final opening = _opening = SessionOpeningCoordinator();
     _setStatus(SessionStatus.connecting);
     _sessionStartedAt = DateTime.now();
 
@@ -880,8 +917,6 @@ class JournalNotifier extends Notifier<JournalState> {
         sessionId: conversationSessionId,
       );
 
-      final opening = SessionOpeningCoordinator();
-
       late final GeminiLiveClient live;
       live = GeminiLiveClient(
         sessionToken: readySession.sessionToken,
@@ -948,10 +983,17 @@ class JournalNotifier extends Notifier<JournalState> {
             _dispatchTurn(event);
           }
         }
-        ..onAudio = (pcm) {
+        ..onAudio = (pcm, sampleRate) {
           if (!isCurrent()) return;
-          if (!_muted) _player?.feed(pcm);
-          _markAgentSpeaking();
+          // Muted audio still runs the playback clock, so the dock keeps
+          // showing that Lumen has the floor.
+          final fed = _player?.feed(
+                pcm,
+                sampleRate: sampleRate,
+                audible: !_muted,
+              ) ??
+              false;
+          if (!fed) _markAgentSpeaking();
         }
         ..onInterrupted = () {
           if (!isCurrent()) return;
@@ -966,15 +1008,20 @@ class JournalNotifier extends Notifier<JournalState> {
         }
         ..onTurnComplete = () {
           if (!isCurrent()) return;
-          if (opening.markTurnComplete()) {
-            vlog('session', 'opening complete — user turn enabled');
-          }
           _memoryCallsThisTurn = 0;
           _lastMemoryQuery = null;
           for (final event in _assembler.turnComplete()) {
             _dispatchTurn(event);
           }
-          _clearAgentSpeaking();
+          // With a playback clock, Lumen stops "speaking" when its queued
+          // audio drains — usually seconds after Gemini's turn completes.
+          if (_player == null) _clearAgentSpeaking();
+          if (opening.markTurnComplete()) {
+            vlog('session', 'opening generated — waiting for it to be heard');
+            if (!_agentSpeaking && opening.markOpeningHeard()) {
+              vlog('session', 'opening heard — user turn enabled');
+            }
+          }
         }
         ..onToolCall = (name, args) async {
           if (!isCurrent()) return const <String, dynamic>{};
@@ -1061,6 +1108,11 @@ class JournalNotifier extends Notifier<JournalState> {
           );
         }
         vlog('playback', 'agent-audio playback ready');
+        player.speaking.addListener(() {
+          if (identical(_player, player)) {
+            _setAgentSpeaking(player.speaking.value);
+          }
+        });
       } catch (error) {
         debugPrint('[journal] agent-audio playback unavailable, continuing '
             'without it: $error');
@@ -1106,6 +1158,7 @@ class JournalNotifier extends Notifier<JournalState> {
     _finalizationTimers.clear();
     _clearAgentSpeaking();
     _clearLiveText();
+    _opening = null;
 
     final capture = _capture;
     final live = _live;

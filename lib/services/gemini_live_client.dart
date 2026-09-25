@@ -4,10 +4,13 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
+import '../audio/pcm_player.dart' show geminiOutputSampleRate;
 import '../logic/voice_log.dart';
 
 typedef OnTranscript = void Function(String text, bool isFinal);
-typedef OnAudio = void Function(Uint8List pcm16);
+/// One chunk of agent PCM16 plus the rate it was produced at (from the
+/// chunk's `audio/pcm;rate=N` mime type; Gemini's 24kHz when absent).
+typedef OnAudio = void Function(Uint8List pcm16, int sampleRate);
 typedef OnToolCall = Future<Map<String, dynamic>> Function(
   String toolName,
   Map<String, dynamic> args,
@@ -201,6 +204,13 @@ class GeminiLiveClient {
   @visibleForTesting
   void handleServerMessage(String raw) => _onMessage(raw);
 
+  static final _ratePattern = RegExp(r'rate=(\d+)');
+
+  static int _sampleRateOf(String? mimeType) {
+    final match = mimeType == null ? null : _ratePattern.firstMatch(mimeType);
+    return int.tryParse(match?.group(1) ?? '') ?? geminiOutputSampleRate;
+  }
+
   void _onMessage(dynamic raw) {
     // Gemini Live delivers frames as BINARY (Uint8List / List<int>), not text.
     // Casting straight to String threw on every message, so setupComplete never
@@ -270,7 +280,7 @@ class GeminiLiveClient {
             if (_audioChunksIn == 1 || _audioChunksIn % 25 == 0) {
               vlog('client', 'gemini → audio chunk #$_audioChunksIn');
             }
-            onAudio?.call(base64.decode(b64));
+            onAudio?.call(base64.decode(b64), _sampleRateOf(mimeType));
           }
         }
       }
