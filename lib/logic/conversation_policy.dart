@@ -10,6 +10,12 @@ const followUpMaxWords = 20;
 const sentenceIdleMs = 700;
 const sentenceMinChars = 6;
 
+/// The synthetic first turn that asks Gemini to apply the session-opening
+/// policy. A system instruction configures behavior but does not itself start
+/// model generation.
+const sessionOpeningPrimer =
+    '(Session started. Follow your SESSION OPENING instructions and greet the user.)';
+
 final midSentenceTailRe = RegExp(
   r'\b(and|but|or|because|so|however|um|uh|like|well|the|a|an|to|of|in|with|for|that|while|then|though|although|since)$',
   caseSensitive: false,

@@ -10,6 +10,7 @@ import '../logic/agenda.dart' as agenda_logic;
 import '../logic/conversation_policy.dart';
 import '../logic/live_session_guard.dart';
 import '../logic/merge.dart' as merge_logic;
+import '../logic/session_opening_coordinator.dart';
 import '../logic/transcript_assembler.dart';
 import '../logic/turn_effect_queue.dart';
 import '../logic/turn_state.dart';
@@ -865,7 +866,10 @@ class JournalNotifier extends Notifier<JournalState> {
         sessionId: conversationSessionId,
       );
 
-      final live = GeminiLiveClient(
+      final opening = SessionOpeningCoordinator();
+
+      late final GeminiLiveClient live;
+      live = GeminiLiveClient(
         sessionToken: readySession.sessionToken,
         model: readySession.model,
         systemInstruction: geminiLiveSystemInstruction,
@@ -900,6 +904,12 @@ class JournalNotifier extends Notifier<JournalState> {
         ],
       );
       bool isCurrent() => _isCurrentLiveSession(binding, live);
+      void sendOpeningIfReady(bool shouldSend) {
+        if (!shouldSend || !isCurrent()) return;
+        vlog('session', 'requesting Lumen opening turn');
+        live.sendText(sessionOpeningPrimer);
+      }
+
       live
         // Meaningful transcript events, not cumulative sentence callbacks:
         // interim text is replaceable, and only a finalized, immutable
@@ -942,6 +952,9 @@ class JournalNotifier extends Notifier<JournalState> {
         }
         ..onTurnComplete = () {
           if (!isCurrent()) return;
+          if (opening.markTurnComplete()) {
+            vlog('session', 'opening complete — user turn enabled');
+          }
           _memoryCallsThisTurn = 0;
           _lastMemoryQuery = null;
           for (final event in _assembler.turnComplete()) {
@@ -974,6 +987,7 @@ class JournalNotifier extends Notifier<JournalState> {
             revision: _revision,
           ));
           _setStatus(SessionStatus.live);
+          sendOpeningIfReady(opening.markSetupComplete());
         }
         ..onError = (error) {
           if (!isCurrent()) return;
@@ -1007,7 +1021,7 @@ class JournalNotifier extends Notifier<JournalState> {
         );
       }
       await capture.start((pcm) {
-        if (isCurrent()) live.sendAudio(pcm);
+        if (isCurrent() && opening.acceptsUserAudio) live.sendAudio(pcm);
       });
       if (!isCurrent()) {
         await capture.stop();
@@ -1039,6 +1053,7 @@ class JournalNotifier extends Notifier<JournalState> {
         unawaited(player.dispose().catchError((_) {}));
         if (identical(_player, player)) _player = null;
       }
+      sendOpeningIfReady(opening.markPlaybackAttemptFinished());
       if (!isCurrent()) {
         return const NotebookTransitionResult.failure(
           'Session start was superseded by another notebook transition.',
