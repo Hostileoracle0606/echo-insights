@@ -119,10 +119,13 @@ class _VoiceDockPreview extends StatefulWidget {
 class _VoiceDockPreviewState extends State<_VoiceDockPreview> {
   DockMode _mode = DockMode.idle;
   bool _muted = false;
+  JournalView _view = JournalView.graph;
 
   static const _transcripts = <DockMode, String>{
-    DockMode.listening: '…had coffee with Maya about the Atlas launch timeline.',
-    DockMode.speaking: 'When did the Atlas launch slip — was that the Q3 review?',
+    DockMode.listening:
+        '…had coffee with Maya about the Atlas launch timeline.',
+    DockMode.speaking:
+        'When did the Atlas launch slip — was that the Q3 review?',
   };
 
   void _cycle() {
@@ -154,10 +157,13 @@ class _VoiceDockPreviewState extends State<_VoiceDockPreview> {
             VoiceDock(
               mode: _mode,
               muted: _muted,
-              liveUser: _mode == DockMode.speaking ? '' : _transcripts[_mode] ?? '',
-              liveAgent: _mode == DockMode.speaking ? _transcripts[_mode] ?? '' : '',
+              liveUser:
+                  _mode == DockMode.speaking ? '' : _transcripts[_mode] ?? '',
+              liveAgent:
+                  _mode == DockMode.speaking ? _transcripts[_mode] ?? '' : '',
               onMicTap: _cycle,
-              onToggleSplit: () {},
+              view: _view,
+              onViewChanged: (view) => setState(() => _view = view),
               onMuteTap: () => setState(() => _muted = !_muted),
             ),
             const SizedBox(height: 48),
@@ -238,7 +244,8 @@ final _previewState = JournalState(
       ],
     ),
     'brooklyn': _entity('brooklyn', 'Brooklyn', EntityType.place, mentions: 3),
-    'q3-review': _entity('q3-review', 'Q3 Review', EntityType.event, mentions: 4),
+    'q3-review':
+        _entity('q3-review', 'Q3 Review', EntityType.event, mentions: 4),
     'running': _entity('running', 'Running', EntityType.activity, mentions: 2),
     'burnout': _entity('burnout', 'Burnout', EntityType.emotion, mentions: 2),
     'ai': _entity('ai', 'AI', EntityType.concept, mentions: 3),

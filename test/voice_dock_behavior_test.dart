@@ -1,8 +1,10 @@
-// Dynamic-island (VoiceDock) behavior: verifies the dock reacts to its props —
-// mic/split/mute taps fire their callbacks, the mute icon reflects state, and
-// the split-screen morph surfaces the conversation as bubbles.
+// VoiceDock (pill E) behavior: the dock reacts to its props — mic, view,
+// mute and end taps fire their callbacks, the speaker chips show who holds
+// the floor, and the drawer carries in-flight words in graph view only.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lumen/logic/entity_highlighter.dart';
+import 'package:lumen/models/entity.dart';
 import 'package:lumen/models/upsert_activity.dart';
 import 'package:lumen/screens/journal/voice_dock.dart';
 import 'package:lumen/theme/lumen_theme.dart';
@@ -42,19 +44,52 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('tapping the split toggle fires onToggleSplit', (tester) async {
-    var taps = 0;
-    await _pump(
-      tester,
-      VoiceDock(
-        mode: DockMode.idle,
-        onMicTap: () {},
-        onToggleSplit: () => taps++,
-      ),
-    );
-    await tester.tap(find.byIcon(Icons.splitscreen));
-    expect(taps, 1);
-    await tester.pumpWidget(const SizedBox());
+  group('view switch', () {
+    testWidgets('the transcript button asks for the transcript view',
+        (tester) async {
+      final asked = <JournalView>[];
+      await _pump(
+        tester,
+        VoiceDock(onMicTap: () {}, onViewChanged: asked.add),
+      );
+      await tester.tap(find.byIcon(Icons.article_outlined));
+      // Already on the graph: tapping it again is a no-op.
+      await tester.tap(find.byIcon(Icons.hub_outlined));
+      expect(asked, [JournalView.transcript]);
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('the active view is marked selected', (tester) async {
+      await _pump(
+        tester,
+        VoiceDock(
+          view: JournalView.transcript,
+          onMicTap: () {},
+          onViewChanged: (_) {},
+        ),
+      );
+      bool selected(String label) => tester
+          .widget<Semantics>(find.byWidgetPredicate(
+              (w) => w is Semantics && w.properties.label == label))
+          .properties
+          .selected!;
+      expect(selected('Transcript view'), isTrue);
+      expect(selected('Graph view'), isFalse);
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('the mic sits on the dock centre line', (tester) async {
+      for (final width in [402.0, 820.0]) {
+        await _pump(
+          tester,
+          VoiceDock(mode: DockMode.listening, onMicTap: () {}),
+          surface: Size(width, 874),
+        );
+        final mic = tester.getCenter(find.byIcon(Icons.mic));
+        expect(mic.dx, moreOrLessEquals(width / 2, epsilon: 0.5));
+      }
+      await tester.pumpWidget(const SizedBox());
+    });
   });
 
   testWidgets('volume reflects mute state and fires onMuteTap', (tester) async {
@@ -90,135 +125,37 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('expanded dock surfaces the conversation as bubbles',
+  testWidgets('end fires onEndTap, and is inert without a session',
       (tester) async {
+    var ends = 0;
+    await _pump(tester, VoiceDock(onMicTap: () {}));
+    await tester.tap(find.byIcon(Icons.stop_circle_outlined));
     await _pump(
       tester,
       VoiceDock(
         mode: DockMode.listening,
-        expanded: true,
-        turns: const [
-          DockTurn(DockSpeaker.you, 'Had coffee with Maya.'),
-          DockTurn(DockSpeaker.lumen, 'When was the Atlas launch?'),
-        ],
         onMicTap: () {},
+        onEndTap: () => ends++,
       ),
     );
-    // Let the (repeating-pulse) dock lay out; don't pumpAndSettle.
-    for (var i = 0; i < 40; i++) {
-      await tester.pump(const Duration(milliseconds: 16));
-    }
-    expect(find.text('Had coffee with Maya.'), findsOneWidget);
-    expect(find.text('When was the Atlas launch?'), findsOneWidget);
-    // The pinned controls remain reachable while expanded.
-    expect(find.byIcon(Icons.mic), findsOneWidget);
+    await tester.tap(find.byIcon(Icons.stop_circle_outlined));
+    expect(ends, 1);
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('collapsed dock hides transcript turns', (tester) async {
-    await _pump(
-      tester,
-      VoiceDock(
-        mode: DockMode.idle,
-        turns: const [DockTurn(DockSpeaker.you, 'Hidden while collapsed')],
-        onMicTap: () {},
-      ),
-    );
-    expect(find.text('Hidden while collapsed'), findsNothing);
-    await tester.pumpWidget(const SizedBox());
-  });
-
-  group('split pane transcript', () {
-    testWidgets('no stale "you" bubble once Lumen has answered',
-        (tester) async {
-      // Regression: the old pane re-added the last user interim as a pending
-      // bubble whenever Lumen's reply was the last row.
-      await _pump(
-        tester,
-        VoiceDock(
-          mode: DockMode.listening,
-          expanded: true,
-          turns: const [
-            DockTurn(DockSpeaker.you, 'I met Priya at the gym.'),
-            DockTurn(DockSpeaker.lumen, 'How long has she climbed?'),
-          ],
-          liveUser: 'I met Priya at the gym',
-          onMicTap: () {},
-        ),
-      );
-      await _run(tester, frames: 40);
-      expect(find.text('I met Priya at the gym.'), findsOneWidget);
-      expect(find.text('I met Priya at the gym'), findsNothing,
-          reason: 'the pane renders only the rows it is given');
-      await tester.pumpWidget(const SizedBox());
-    });
-
-    testWidgets('rows render in the order given, pending ones faded',
-        (tester) async {
-      await _pump(
-        tester,
-        VoiceDock(
-          mode: DockMode.speaking,
-          expanded: true,
-          turns: const [
-            DockTurn(DockSpeaker.you, 'I met Priya', pending: true),
-            DockTurn(DockSpeaker.lumen, 'How lovely', pending: true),
-          ],
-          onMicTap: () {},
-        ),
-      );
-      await _run(tester, frames: 40);
-      final you = tester.getTopLeft(find.text('I met Priya'));
-      final lumen = tester.getTopLeft(find.text('How lovely'));
-      expect(you.dy, lessThan(lumen.dy), reason: 'spoken order is kept');
-      final fade = tester.widget<Opacity>(
-        find.ancestor(of: find.text('I met Priya'), matching: find.byType(Opacity)).first,
-      );
-      expect(fade.opacity, lessThan(1));
-      await tester.pumpWidget(const SizedBox());
-    });
-
-    testWidgets('a pending row firms up in place when it finalizes',
-        (tester) async {
-      VoiceDock dock({required bool pending}) => VoiceDock(
-            mode: DockMode.listening,
-            expanded: true,
-            turns: [
-              DockTurn(DockSpeaker.you, 'I met Priya.', pending: pending),
-              const DockTurn(DockSpeaker.lumen, 'How lovely.'),
-            ],
-            onMicTap: () {},
-          );
-      await _pump(tester, dock(pending: true));
-      await _run(tester, frames: 40);
-      final before = tester.getTopLeft(find.text('I met Priya.'));
-
-      await tester.pumpWidget(MaterialApp(
-        theme: LumenTheme.light(),
-        home: Scaffold(
-          body: Align(
-            alignment: Alignment.bottomCenter,
-            child: dock(pending: false),
-          ),
-        ),
-      ));
-      await _run(tester, frames: 10);
-      expect(find.text('I met Priya.'), findsOneWidget);
-      expect(tester.getTopLeft(find.text('I met Priya.')), before);
-      await tester.pumpWidget(const SizedBox());
-    });
-  });
-
-  group('rest pill (web Dynamic Island)', () {
-    testWidgets('idle pill shows no labels and no drawer', (tester) async {
+  group('speaker chips', () {
+    testWidgets('idle: both chips at rest, no status', (tester) async {
       await _pump(tester, VoiceDock(mode: DockMode.idle, onMicTap: () {}));
       await _run(tester);
-      expect(find.text('YOU'), findsNothing);
-      expect(find.text('LISTENING'), findsNothing);
+      expect(find.text('You'), findsOneWidget);
+      expect(find.text('Lumen'), findsOneWidget);
+      for (final s in ['Listening', 'Speaking', 'Connecting', 'Mapping']) {
+        expect(find.text(s), findsNothing);
+      }
       await tester.pumpWidget(const SizedBox());
     });
 
-    testWidgets('listening labels the flanks and opens the drawer on speech',
+    testWidgets('listening lights You and opens the drawer on speech',
         (tester) async {
       await _pump(
         tester,
@@ -229,21 +166,20 @@ void main() {
         ),
       );
       await _run(tester);
-      expect(find.text('YOU'), findsOneWidget);
-      expect(find.text('LISTENING'), findsOneWidget);
+      expect(find.text('Listening'), findsOneWidget);
       expect(find.text('I met Priya at the climbing gym'), findsOneWidget);
       await tester.pumpWidget(const SizedBox());
     });
 
-    testWidgets('connecting reads as You / Connecting', (tester) async {
+    testWidgets('connecting reads as You · Connecting', (tester) async {
       await _pump(tester, VoiceDock(mode: DockMode.thinking, onMicTap: () {}));
       await _run(tester);
-      expect(find.text('YOU'), findsOneWidget);
-      expect(find.text('CONNECTING'), findsOneWidget);
+      expect(find.text('Connecting'), findsOneWidget);
       await tester.pumpWidget(const SizedBox());
     });
 
-    testWidgets('speaking shows Lumen\'s streaming words', (tester) async {
+    testWidgets('speaking lights Lumen with its streaming words',
+        (tester) async {
       await _pump(
         tester,
         VoiceDock(
@@ -253,8 +189,8 @@ void main() {
         ),
       );
       await _run(tester);
-      expect(find.text('LUMEN'), findsOneWidget);
-      expect(find.text('SPEAKING'), findsOneWidget);
+      expect(find.text('Speaking'), findsOneWidget);
+      expect(find.text('Listening'), findsNothing);
       expect(find.text('That is a big moment for her.'), findsOneWidget);
       await tester.pumpWidget(const SizedBox());
     });
@@ -265,79 +201,77 @@ void main() {
         VoiceDock(mode: DockMode.idle, extracting: true, onMicTap: () {}),
       );
       await _run(tester);
-      expect(find.text('MAPPING'), findsNWidgets(2));
+      expect(find.text('Mapping'), findsOneWidget);
       await tester.pumpWidget(const SizedBox());
     });
+  });
 
-    testWidgets('mic stays on screen centre when there is room',
+  group('drawer', () {
+    testWidgets('stays shut in transcript view — the page is the transcript',
         (tester) async {
       await _pump(
         tester,
         VoiceDock(
           mode: DockMode.listening,
-          liveUser: 'Almost a month',
-          onMicTap: () {},
-        ),
-        surface: const Size(820, 1180),
-      );
-      await _run(tester);
-      final mic = tester.getCenter(find.byIcon(Icons.mic));
-      expect(mic.dx, moreOrLessEquals(820 / 2, epsilon: 0.5));
-      await tester.pumpWidget(const SizedBox());
-    });
-
-    testWidgets('the shift never pushes the pill into the 16pt margin',
-        (tester) async {
-      // "YOU" vs "LISTENING" wants a rightward shift; on a phone the drawer's
-      // 340pt minimum leaves too little room to honour it fully.
-      await _pump(
-        tester,
-        VoiceDock(
-          mode: DockMode.listening,
-          liveUser: 'Maya said the Atlas demo finally feels real',
+          view: JournalView.transcript,
+          liveUser: 'Words that belong on the page',
           onMicTap: () {},
         ),
       );
       await _run(tester);
-      final pill = tester.getRect(
-        find
-            .ancestor(of: find.byIcon(Icons.mic), matching: find.byType(SizedBox))
-            .last,
-      );
-      expect(pill.left, greaterThanOrEqualTo(16 - 0.5));
-      expect(pill.right, lessThanOrEqualTo(402 - 16 + 0.5));
-      // The cap engaged: the pill leans right only until its edge meets the
-      // margin, and the mic gives up exact centring instead of the margin.
-      expect(pill.right, moreOrLessEquals(402 - 16, epsilon: 0.5));
-      final mic = tester.getCenter(find.byIcon(Icons.mic));
-      expect(mic.dx, lessThan(402 / 2));
+      expect(find.text('Listening'), findsOneWidget);
+      expect(find.text('Words that belong on the page'), findsNothing);
       await tester.pumpWidget(const SizedBox());
     });
 
-    testWidgets('an upsert shows the chip above the dock', (tester) async {
+    testWidgets('marks known entities in their graph colour', (tester) async {
       await _pump(
         tester,
         VoiceDock(
           mode: DockMode.listening,
-          activity: const UpsertActivity(
-            id: 1,
-            entityNames: ['Priya', 'Climbing gym'],
-            insertedEntities: 2,
-            updatedEntities: 0,
-            createdRelations: 1,
-          ),
+          liveUser: 'Coffee with Maya today',
+          terms: const [HighlightTerm('Maya', EntityType.person)],
           onMicTap: () {},
         ),
       );
-      await _run(tester, frames: 90);
-      expect(find.text('UPSERTING'), findsOneWidget);
-      expect(find.text('Priya'), findsOneWidget);
-      expect(find.text('2 new · 0 refreshed · 1 links'), findsOneWidget);
-      final chip = tester.getCenter(find.text('UPSERTING'));
-      final mic = tester.getCenter(find.byIcon(Icons.mic));
-      expect(chip.dy, lessThan(mic.dy));
+      await _run(tester);
+      final text = tester.widget<Text>(find.text('Coffee with Maya today'));
+      final spans = (text.textSpan! as TextSpan).children!.cast<TextSpan>();
+      final maya = spans.singleWhere((s) => s.text == 'Maya');
+      expect(maya.style?.backgroundColor, isNotNull);
+      expect(
+        spans.where((s) => s.text != 'Maya').every(
+              (s) => s.style?.backgroundColor == null,
+            ),
+        isTrue,
+      );
       await tester.pumpWidget(const SizedBox());
     });
+  });
+
+  testWidgets('an upsert shows the chip above the dock', (tester) async {
+    await _pump(
+      tester,
+      VoiceDock(
+        mode: DockMode.listening,
+        activity: const UpsertActivity(
+          id: 1,
+          entityNames: ['Priya', 'Climbing gym'],
+          insertedEntities: 2,
+          updatedEntities: 0,
+          createdRelations: 1,
+        ),
+        onMicTap: () {},
+      ),
+    );
+    await _run(tester, frames: 90);
+    expect(find.text('UPSERTING'), findsOneWidget);
+    expect(find.text('Priya'), findsOneWidget);
+    expect(find.text('2 new · 0 refreshed · 1 links'), findsOneWidget);
+    final chip = tester.getCenter(find.text('UPSERTING'));
+    final mic = tester.getCenter(find.byIcon(Icons.mic));
+    expect(chip.dy, lessThan(mic.dy));
+    await tester.pumpWidget(const SizedBox());
   });
 
   group('opening phase (Lumen has the floor)', () {
@@ -352,10 +286,13 @@ void main() {
         ),
       );
       await _run(tester);
-      expect(find.text('LUMEN'), findsOneWidget);
-      expect(find.text('CONNECTING'), findsOneWidget);
-      expect(find.text('YOU'), findsNothing);
-      expect(find.text('LISTENING'), findsNothing);
+      expect(find.text('Connecting'), findsOneWidget);
+      expect(find.text('Listening'), findsNothing);
+      // The one "Connecting" is Lumen's: it sits right of the mic.
+      expect(
+        tester.getCenter(find.text('Connecting')).dx,
+        greaterThan(tester.getCenter(find.byIcon(Icons.mic)).dx),
+      );
       await tester.pumpWidget(const SizedBox());
     });
 
@@ -371,8 +308,7 @@ void main() {
         ),
       );
       await _run(tester);
-      expect(find.text('LUMEN'), findsOneWidget);
-      expect(find.text('SPEAKING'), findsOneWidget);
+      expect(find.text('Speaking'), findsOneWidget);
       expect(find.text('Good to see you again.'), findsOneWidget);
       await tester.pumpWidget(const SizedBox());
     });
@@ -391,8 +327,8 @@ void main() {
         ),
       );
       await _run(tester);
-      expect(find.text('YOU'), findsNothing);
-      expect(find.text('LUMEN'), findsOneWidget);
+      expect(find.text('Listening'), findsNothing);
+      expect(find.text('Connecting'), findsOneWidget);
       await tester.pumpWidget(const SizedBox());
     });
   });

@@ -1,7 +1,8 @@
-// Stitch regression: the pill's split toggle should morph the dock open and
-// surface the provider's conversation log as ChatGPT-style turns in the panel.
+// Stitch regression: the dock's transcript button should turn the screen over
+// to the transcript page (graph behind it), and the graph button back again.
 // Exercises the real JournalScreen (not a composed stand-in) so the wiring —
-// toggle -> setState -> expanded -> transcriptRowsProvider -> turns — is covered.
+// view button -> page transition -> transcriptRowsProvider -> turns — is
+// covered.
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -11,7 +12,9 @@ import 'package:go_router/go_router.dart';
 import 'package:lumen/logic/turn_state.dart';
 import 'package:lumen/models/journal_state.dart';
 import 'package:lumen/providers/journal_provider.dart';
+import 'package:lumen/screens/journal/graph_canvas.dart';
 import 'package:lumen/screens/journal/journal_screen.dart';
+import 'package:lumen/screens/journal/transcript_page.dart';
 import 'package:lumen/theme/lumen_theme.dart';
 
 class _SeededJournal extends JournalNotifier {
@@ -50,9 +53,9 @@ class _LifecycleJournal extends JournalNotifier {
 }
 
 void main() {
-  testWidgets('split toggle morphs the dock open and shows the conversation',
+  testWidgets('the transcript button turns the page to the conversation',
       (tester) async {
-    // Phone-portrait surface so the dock sizes from a real screen, not the
+    // Phone-portrait surface so the page sizes from a real screen, not the
     // default 800x600 test window.
     await tester.binding.setSurfaceSize(const Size(402, 874));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -86,27 +89,43 @@ void main() {
     );
     await tester.pump(const Duration(milliseconds: 16));
 
-    // Collapsed: the dock is a rest pill, the transcript isn't mounted, but the
-    // pill's split toggle is present and ready.
-    expect(find.byIcon(Icons.splitscreen), findsOneWidget);
+    // Graph view: the transcript page is not mounted.
+    expect(find.byType(TranscriptPage), findsNothing);
     expect(
       find.text('Had coffee with Maya about the Atlas launch.'),
       findsNothing,
     );
 
-    // Tap the toggle, then hand-drive the 520ms morph. pumpAndSettle would hang
-    // on GraphCanvas's perpetual force-sim ticker, so step frames instead.
-    await tester.tap(find.byIcon(Icons.splitscreen));
+    // Hand-drive the 580ms transition. pumpAndSettle would hang on
+    // GraphCanvas's perpetual force-sim ticker, so step frames instead.
+    await tester.tap(find.byIcon(Icons.article_outlined));
     for (var i = 0; i < 45; i++) {
       await tester.pump(const Duration(milliseconds: 16));
     }
 
-    // Expanded: the seeded log now renders as bubbles in the panel.
     expect(
       find.text('Had coffee with Maya about the Atlas launch.'),
       findsOneWidget,
     );
     expect(find.text('When did the Atlas launch slip?'), findsOneWidget);
+    // The page covers the graph fully, so the graph stops painting.
+    expect(
+      find.ancestor(
+        of: find.byType(GraphCanvas, skipOffstage: false),
+        matching: find.byWidgetPredicate(
+          (w) => w is Offstage && w.offstage,
+          skipOffstage: false,
+        ),
+      ),
+      findsOneWidget,
+    );
+
+    // And back: the page drops away and unmounts.
+    await tester.tap(find.byIcon(Icons.hub_outlined));
+    for (var i = 0; i < 40; i++) {
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    expect(find.byType(TranscriptPage), findsNothing);
 
     // Unmount so the GraphCanvas ticker disposes before the test ends.
     await tester.pumpWidget(const SizedBox());
