@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../logic/turn_state.dart' show ConversationTurn, Speaker;
+import '../../logic/turn_state.dart' show Speaker;
 import '../../providers/journal_provider.dart';
 import '../../providers/session_provider.dart';
 import 'entity_note_sheet.dart';
@@ -23,7 +26,8 @@ class JournalScreen extends ConsumerStatefulWidget {
   ConsumerState<JournalScreen> createState() => _JournalScreenState();
 }
 
-class _JournalScreenState extends ConsumerState<JournalScreen> {
+class _JournalScreenState extends ConsumerState<JournalScreen>
+    with WidgetsBindingObserver {
   // The split-screen transcript panel. The dock's toggle and the dock morph
   // share this one flag, so it lives at the screen rather than inside the dock.
   bool _splitOpen = false;
@@ -35,7 +39,32 @@ class _JournalScreenState extends ConsumerState<JournalScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _scheduleNotebookEntry();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  // The warm standby holds a live socket and a runtime credential. iOS
+  // suspends sockets in the background anyway, so release it there and
+  // prepare a fresh one on return.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState lifecycle) {
+    final notifier = ref.read(journalProvider.notifier);
+    switch (lifecycle) {
+      case AppLifecycleState.resumed:
+        notifier.noteInteraction();
+      case AppLifecycleState.paused:
+      case AppLifecycleState.hidden:
+        unawaited(notifier.coolDown());
+      case AppLifecycleState.inactive:
+      case AppLifecycleState.detached:
+        break;
+    }
   }
 
   @override
@@ -71,6 +100,9 @@ class _JournalScreenState extends ConsumerState<JournalScreen> {
   }
 
   Future<void> _toggleMic(SessionStatus status) async {
+    // The tap registers before any network work: a light tick now, and the
+    // dock morphs to "Lumen · Connecting" in the same frame.
+    unawaited(HapticFeedback.lightImpact());
     final notifier = ref.read(journalProvider.notifier);
     late final NotebookTransitionResult result;
     if (status == SessionStatus.idle || status == SessionStatus.error) {
@@ -104,14 +136,24 @@ class _JournalScreenState extends ConsumerState<JournalScreen> {
 
   // Map the session lifecycle onto dock modes. Connecting reads as "thinking"
   // (booting up); a live session reads as "speaking" while Lumen's audio is
-  // playing and "listening" the rest of the time; everything else collapses
-  // to the static idle pill.
-  DockMode _dockMode(SessionStatus status, bool agentSpeaking) {
+  // still playing (the player's clock, not chunk arrival), "thinking" until
+  // Lumen's opening has been heard, and "listening" the rest of the time;
+  // everything else collapses to the static idle pill.
+  DockMode _dockMode(
+    SessionStatus status,
+    bool agentSpeaking,
+    bool openingInProgress,
+  ) {
     switch (status) {
       case SessionStatus.connecting:
-        return DockMode.thinking;
+        // A cold start plays Lumen's greeting while the socket connects.
+        return agentSpeaking ? DockMode.speaking : DockMode.thinking;
       case SessionStatus.live:
-        return agentSpeaking ? DockMode.speaking : DockMode.listening;
+        if (agentSpeaking) return DockMode.speaking;
+        // Live but Lumen's opening hasn't played yet: the mic is gated, so
+        // "listening" would be a lie — keep the booting-up state.
+        if (openingInProgress) return DockMode.thinking;
+        return DockMode.listening;
       case SessionStatus.idle:
       case SessionStatus.ending:
       case SessionStatus.error:
@@ -119,11 +161,13 @@ class _JournalScreenState extends ConsumerState<JournalScreen> {
     }
   }
 
-  // The provider keeps a flat role/text log; the dock speaks in DockTurns.
-  // Anything the user said is a "you" bubble, everything else is Lumen.
-  DockTurn _toTurn(ConversationTurn turn) => DockTurn(
-        turn.role == Speaker.user ? DockSpeaker.you : DockSpeaker.lumen,
-        turn.text,
+  // The provider keeps role/text rows in spoken order; the dock speaks in
+  // DockTurns. Anything the user said is a "you" bubble, everything else is
+  // Lumen. Unfinished utterances render as pending in their own slot.
+  DockTurn _toTurn(TranscriptRow row) => DockTurn(
+        row.turn.role == Speaker.user ? DockSpeaker.you : DockSpeaker.lumen,
+        row.turn.text,
+        pending: row.pending,
       );
 
   @override
@@ -132,69 +176,76 @@ class _JournalScreenState extends ConsumerState<JournalScreen> {
     final status = ref.watch(sessionStatusProvider);
     final liveUser = ref.watch(liveUserTextProvider);
     final liveAgent = ref.watch(liveAgentTextProvider);
-    final liveAgentCommitted = ref.watch(liveAgentCommittedProvider);
     final extracting = ref.watch(extractingProvider);
+    final openingInProgress = ref.watch(openingInProgressProvider);
     final activity = ref.watch(upsertActivityProvider);
     final muted = ref.watch(mutedProvider);
     final agentSpeaking = ref.watch(agentSpeakingProvider);
     final turns =
-        ref.watch(conversationProvider).map(_toTurn).toList(growable: false);
+        ref.watch(transcriptRowsProvider).map(_toTurn).toList(growable: false);
     final relationCount =
         state.relations.values.where((relation) => relation.isActive).length;
 
-    return Scaffold(
-      key: _scaffoldKey,
-      drawer: GraphDrawer(onEntityTap: _openEntity),
-      body: Stack(
-        fit: StackFit.expand,
-        children: [
-          GraphCanvas(state: state),
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            child: SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                child: JournalTopBar(
-                  entityCount: state.entities.length,
-                  relationCount: relationCount,
-                  onMenuTap: () => _scaffoldKey.currentState?.openDrawer(),
-                  onHomeTap: _leaving ? null : _leaveToDashboard,
-                ),
-              ),
-            ),
-          ),
-          Positioned(
-            bottom: 0,
-            left: 0,
-            right: 0,
-            child: SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.only(bottom: 28),
-                child: Align(
-                  alignment: Alignment.bottomCenter,
-                  child: VoiceDock(
-                    mode: _dockMode(status, agentSpeaking),
-                    liveUser: liveUser,
-                    liveAgent: liveAgent,
-                    liveAgentCommitted: liveAgentCommitted,
-                    extracting: extracting,
-                    activity: activity,
-                    muted: muted,
-                    expanded: _splitOpen,
-                    turns: turns,
-                    onMicTap: () => _toggleMic(status),
-                    onToggleSplit: () =>
-                        setState(() => _splitOpen = !_splitOpen),
-                    onMuteTap: () =>
-                        ref.read(journalProvider.notifier).toggleMute(),
+    // Any touch means someone is here: refill the warm-up budget so a notebook
+    // that went cold while idle is ready again by the time they reach the mic.
+    return Listener(
+      behavior: HitTestBehavior.translucent,
+      onPointerDown: (_) =>
+          ref.read(journalProvider.notifier).noteInteraction(),
+      child: Scaffold(
+        key: _scaffoldKey,
+        drawer: GraphDrawer(onEntityTap: _openEntity),
+        body: Stack(
+          fit: StackFit.expand,
+          children: [
+            GraphCanvas(state: state),
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                  child: JournalTopBar(
+                    entityCount: state.entities.length,
+                    relationCount: relationCount,
+                    onMenuTap: () => _scaffoldKey.currentState?.openDrawer(),
+                    onHomeTap: _leaving ? null : _leaveToDashboard,
                   ),
                 ),
               ),
             ),
-          ),
-        ],
+            Positioned(
+              bottom: 0,
+              left: 0,
+              right: 0,
+              child: SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: 28),
+                  child: Align(
+                    alignment: Alignment.bottomCenter,
+                    child: VoiceDock(
+                      mode: _dockMode(status, agentSpeaking, openingInProgress),
+                      liveUser: liveUser,
+                      liveAgent: liveAgent,
+                      extracting: extracting,
+                      openingInProgress: openingInProgress,
+                      activity: activity,
+                      muted: muted,
+                      expanded: _splitOpen,
+                      turns: turns,
+                      onMicTap: () => _toggleMic(status),
+                      onToggleSplit: () =>
+                          setState(() => _splitOpen = !_splitOpen),
+                      onMuteTap: () =>
+                          ref.read(journalProvider.notifier).toggleMute(),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

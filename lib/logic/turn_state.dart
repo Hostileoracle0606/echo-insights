@@ -214,12 +214,30 @@ class ConversationTurn {
     required this.role,
     required this.text,
     required this.createdAt,
-  });
+    String? startedAt,
+  }) : startedAt = startedAt ?? createdAt;
 
   final String turnId;
   final Speaker role;
   final String text;
+
+  /// When the turn finalized.
   final String createdAt;
+
+  /// When the utterance began (its first transcript chunk). Conversation order
+  /// follows this, not [createdAt]: Gemini does not order a user's final
+  /// transcription before the assistant's reply, so finalization order can
+  /// put an answer above the line it answers.
+  final String startedAt;
+}
+
+/// Orders ISO-8601 instants by time. Parsed rather than string-compared: the
+/// web port writes millisecond precision and Dart writes microseconds.
+int compareInstants(String a, String b) {
+  final da = DateTime.tryParse(a);
+  final db = DateTime.tryParse(b);
+  if (da == null || db == null) return a.compareTo(b);
+  return da.compareTo(db);
 }
 
 // ─── Events ────────────────────────────────────────────────────────────────
@@ -597,12 +615,20 @@ class TurnMachine {
       state.previewTurnId = null;
       state.previewEntityNames = null;
     }
-    state.conversation.add(ConversationTurn(
+    final spoken = ConversationTurn(
       turnId: turn.turnId,
       role: turn.speaker,
       text: text,
       createdAt: finalized.finalizedAt,
-    ));
+      startedAt: turn.startedAt,
+    );
+    // Insert by utterance start; ties keep finalization order.
+    var at = state.conversation.length;
+    while (at > 0 &&
+        compareInstants(state.conversation[at - 1].startedAt, spoken.startedAt) > 0) {
+      at -= 1;
+    }
+    state.conversation.insert(at, spoken);
     if (state.conversation.length > _maxConversation) {
       state.conversation.removeRange(0, state.conversation.length - _maxConversation);
     }
@@ -610,6 +636,32 @@ class TurnMachine {
     // between here and extraction resumes instead of losing the turn.
     effects.add(PersistTurn(turn: finalized));
     return [...effects, ..._driveQueue()];
+  }
+
+  /// Utterances still being transcribed or awaiting their authoritative final,
+  /// oldest first — display-only, never canonical. A consumer merging these
+  /// with [TurnMachineState.conversation] by [ConversationTurn.startedAt] gets
+  /// the conversation in the order it was spoken, with nothing vanishing
+  /// between "the reply started" and "the user's final arrived".
+  List<ConversationTurn> get inProgress {
+    final turns = <ConversationTurn>[
+      for (final turn in [
+        state.awaitingUser,
+        state.activeUser,
+        state.awaitingAssistant,
+        state.activeAssistant,
+      ])
+        if (turn != null && turn.text.trim().isNotEmpty)
+          ConversationTurn(
+            turnId: turn.turnId,
+            role: turn.speaker,
+            text: turn.text.trim(),
+            createdAt: turn.startedAt,
+            startedAt: turn.startedAt,
+          ),
+    ];
+    turns.sort((a, b) => compareInstants(a.startedAt, b.startedAt));
+    return turns;
   }
 
   List<TurnEffect> dispatch(TurnEvent event) {

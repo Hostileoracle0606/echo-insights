@@ -63,7 +63,7 @@ void main() {
       ..onAgentTranscript = (t, f) {
         agent.write(t);
       }
-      ..onAudio = (_) {
+      ..onAudio = (_, __) {
         audioChunks++;
       }
       ..onTurnComplete = () {

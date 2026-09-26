@@ -20,7 +20,10 @@ enum DockSpeaker { you, lumen }
 class DockTurn {
   final DockSpeaker speaker;
   final String text;
-  const DockTurn(this.speaker, this.text);
+
+  /// Still being transcribed — drawn faded, in its spoken slot.
+  final bool pending;
+  const DockTurn(this.speaker, this.text, {this.pending = false});
 }
 
 /// The bottom voice capsule. Two orthogonal axes of state:
@@ -50,12 +53,13 @@ class VoiceDock extends StatefulWidget {
   /// Lumen's streaming words (empty once the assistant turn completes).
   final String liveAgent;
 
-  /// Lumen's final is already in [turns]; the pane hides the streaming bubble
-  /// while the pill's drawer keeps the text until turn completion.
-  final bool liveAgentCommitted;
-
   /// A finalized turn is still being extracted ("Mapping").
   final bool extracting;
+
+  /// Lumen owns the floor: the session is opening and Lumen's opening has
+  /// not finished playing. The labels read Lumen, never You — the mic is not
+  /// accepting speech yet.
+  final bool openingInProgress;
 
   /// The latest graph upsert, shown as a chip above the dock.
   final UpsertActivity? activity;
@@ -71,8 +75,8 @@ class VoiceDock extends StatefulWidget {
     this.mode = DockMode.idle,
     this.liveUser = '',
     this.liveAgent = '',
-    this.liveAgentCommitted = false,
     this.extracting = false,
+    this.openingInProgress = false,
     this.activity,
     this.muted = false,
     this.expanded = false,
@@ -168,8 +172,8 @@ class _VoiceDockState extends State<VoiceDock> with TickerProviderStateMixin {
       _expand.reverse();
     } else if (widget.expanded &&
         (widget.turns.length != old.turns.length ||
-            widget.liveUser != old.liveUser ||
-            widget.liveAgent != old.liveAgent)) {
+            (widget.turns.isNotEmpty &&
+                widget.turns.last.text != old.turns.last.text))) {
       _jumpToBottomSoon();
     }
   }
@@ -261,6 +265,7 @@ class _VoiceDockState extends State<VoiceDock> with TickerProviderStateMixin {
   bool get _ready => widget.mode != DockMode.thinking;
 
   ({String name, bool pulse})? get _leftLabel {
+    if (widget.openingInProgress) return (name: 'Lumen', pulse: _speaking);
     if (_speaking || widget.liveAgent.isNotEmpty) {
       return (name: 'Lumen', pulse: _speaking);
     }
@@ -271,6 +276,8 @@ class _VoiceDockState extends State<VoiceDock> with TickerProviderStateMixin {
 
   ({String name, bool pulse})? get _rightLabel {
     if (_speaking) return (name: 'Speaking', pulse: true);
+    // Before (or between chunks of) the opening: still connecting to Lumen.
+    if (widget.openingInProgress) return (name: 'Connecting', pulse: false);
     if (_listening) {
       return (name: _ready ? 'Listening' : 'Connecting', pulse: _ready);
     }
@@ -279,11 +286,18 @@ class _VoiceDockState extends State<VoiceDock> with TickerProviderStateMixin {
   }
 
   bool get _islandExpanded =>
-      _listening || _speaking || widget.liveAgent.isNotEmpty || widget.extracting;
+      _listening ||
+      _speaking ||
+      widget.liveAgent.isNotEmpty ||
+      widget.extracting ||
+      widget.openingInProgress;
 
-  bool get _drawerOpen =>
-      (_speaking && widget.liveAgent.isNotEmpty) ||
-      (_listening && widget.liveUser.isNotEmpty);
+  // During the opening the user's mic is gated, so only Lumen's words can
+  // open the drawer — and they stay through a mid-opening lull.
+  bool get _drawerOpen => widget.openingInProgress
+      ? widget.liveAgent.isNotEmpty
+      : (_speaking && widget.liveAgent.isNotEmpty) ||
+          (_listening && widget.liveUser.isNotEmpty);
 
   Widget _restDock(
     BuildContext context,
@@ -329,7 +343,9 @@ class _VoiceDockState extends State<VoiceDock> with TickerProviderStateMixin {
     }
     _restW = _clusterW + leftCol + rightCol;
 
-    final drawerText = _speaking ? widget.liveAgent : widget.liveUser;
+    final drawerText = _speaking || widget.openingInProgress
+        ? widget.liveAgent
+        : widget.liveUser;
 
     // One tween drives both flank columns, so pill width, flank widths and
     // the mic-pinning shift always agree mid-animation (separate implicit
@@ -562,24 +578,14 @@ class _VoiceDockState extends State<VoiceDock> with TickerProviderStateMixin {
   }
 
   Widget _conversation(LumenColors colors, double maxBubble) {
+    // [turns] arrive in spoken order, unfinished utterances included as
+    // pending — each keeps its slot from first word to finalization, so the
+    // pane never reorders or drops a line while Gemini's finals lag.
     final rows = <Widget>[
       for (final turn in widget.turns)
-        _bubble(colors, turn.speaker, turn.text, maxBubble),
+        _bubble(colors, turn.speaker, turn.text, maxBubble,
+            pending: turn.pending),
     ];
-    // In-flight words ride at the bottom as pending bubbles, so the panel
-    // feels live mid-sentence. The provider clears each speaker's live text
-    // when that turn finalizes, so no text-equality de-dupe is needed (it
-    // failed as soon as Lumen's bubble became the last row).
-    final liveUser = widget.liveUser.trim();
-    if (liveUser.isNotEmpty) {
-      rows.add(
-          _bubble(colors, DockSpeaker.you, liveUser, maxBubble, pending: true));
-    }
-    final liveAgent = widget.liveAgent.trim();
-    if (liveAgent.isNotEmpty && !widget.liveAgentCommitted) {
-      rows.add(_bubble(colors, DockSpeaker.lumen, liveAgent, maxBubble,
-          pending: true));
-    }
 
     return ListView.separated(
       controller: _scroll,

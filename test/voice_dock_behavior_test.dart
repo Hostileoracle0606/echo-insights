@@ -128,7 +128,7 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  group('split pane live text', () {
+  group('split pane transcript', () {
     testWidgets('no stale "you" bubble once Lumen has answered',
         (tester) async {
       // Regression: the old pane re-added the last user interim as a pending
@@ -142,59 +142,69 @@ void main() {
             DockTurn(DockSpeaker.you, 'I met Priya at the gym.'),
             DockTurn(DockSpeaker.lumen, 'How long has she climbed?'),
           ],
+          liveUser: 'I met Priya at the gym',
           onMicTap: () {},
         ),
       );
       await _run(tester, frames: 40);
       expect(find.text('I met Priya at the gym.'), findsOneWidget);
+      expect(find.text('I met Priya at the gym'), findsNothing,
+          reason: 'the pane renders only the rows it is given');
       await tester.pumpWidget(const SizedBox());
     });
 
-    testWidgets('in-flight user words ride as a pending bubble',
+    testWidgets('rows render in the order given, pending ones faded',
         (tester) async {
       await _pump(
         tester,
         VoiceDock(
-          mode: DockMode.listening,
+          mode: DockMode.speaking,
           expanded: true,
-          turns: const [DockTurn(DockSpeaker.lumen, 'Tell me more.')],
-          liveUser: 'Almost a month',
+          turns: const [
+            DockTurn(DockSpeaker.you, 'I met Priya', pending: true),
+            DockTurn(DockSpeaker.lumen, 'How lovely', pending: true),
+          ],
           onMicTap: () {},
         ),
       );
       await _run(tester, frames: 40);
-      expect(find.text('Almost a month'), findsOneWidget);
+      final you = tester.getTopLeft(find.text('I met Priya'));
+      final lumen = tester.getTopLeft(find.text('How lovely'));
+      expect(you.dy, lessThan(lumen.dy), reason: 'spoken order is kept');
+      final fade = tester.widget<Opacity>(
+        find.ancestor(of: find.text('I met Priya'), matching: find.byType(Opacity)).first,
+      );
+      expect(fade.opacity, lessThan(1));
       await tester.pumpWidget(const SizedBox());
     });
 
-    testWidgets('Lumen streams until its final is committed', (tester) async {
-      VoiceDock dock({required bool committed}) => VoiceDock(
-            mode: DockMode.speaking,
+    testWidgets('a pending row firms up in place when it finalizes',
+        (tester) async {
+      VoiceDock dock({required bool pending}) => VoiceDock(
+            mode: DockMode.listening,
             expanded: true,
             turns: [
-              const DockTurn(DockSpeaker.you, 'Hi.'),
-              if (committed) const DockTurn(DockSpeaker.lumen, 'Hello there'),
+              DockTurn(DockSpeaker.you, 'I met Priya.', pending: pending),
+              const DockTurn(DockSpeaker.lumen, 'How lovely.'),
             ],
-            liveAgent: 'Hello there',
-            liveAgentCommitted: committed,
             onMicTap: () {},
           );
-      await _pump(tester, dock(committed: false));
+      await _pump(tester, dock(pending: true));
       await _run(tester, frames: 40);
-      expect(find.text('Hello there'), findsOneWidget);
+      final before = tester.getTopLeft(find.text('I met Priya.'));
 
       await tester.pumpWidget(MaterialApp(
         theme: LumenTheme.light(),
         home: Scaffold(
           body: Align(
             alignment: Alignment.bottomCenter,
-            child: dock(committed: true),
+            child: dock(pending: false),
           ),
         ),
       ));
       await _run(tester, frames: 10);
-      // Exactly one: the committed bubble replaced the streaming one.
-      expect(find.text('Hello there'), findsOneWidget);
+      expect(find.text('I met Priya.'), findsOneWidget);
+      expect(tester.getTopLeft(find.text('I met Priya.')), before);
       await tester.pumpWidget(const SizedBox());
     });
   });
@@ -326,6 +336,63 @@ void main() {
       final chip = tester.getCenter(find.text('UPSERTING'));
       final mic = tester.getCenter(find.byIcon(Icons.mic));
       expect(chip.dy, lessThan(mic.dy));
+      await tester.pumpWidget(const SizedBox());
+    });
+  });
+
+  group('opening phase (Lumen has the floor)', () {
+    testWidgets('before Lumen\'s audio: Lumen · Connecting, never You',
+        (tester) async {
+      await _pump(
+        tester,
+        VoiceDock(
+          mode: DockMode.thinking,
+          openingInProgress: true,
+          onMicTap: () {},
+        ),
+      );
+      await _run(tester);
+      expect(find.text('LUMEN'), findsOneWidget);
+      expect(find.text('CONNECTING'), findsOneWidget);
+      expect(find.text('YOU'), findsNothing);
+      expect(find.text('LISTENING'), findsNothing);
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('once the opening plays: Lumen · Speaking with its words',
+        (tester) async {
+      await _pump(
+        tester,
+        VoiceDock(
+          mode: DockMode.speaking,
+          openingInProgress: true,
+          liveAgent: 'Good to see you again.',
+          onMicTap: () {},
+        ),
+      );
+      await _run(tester);
+      expect(find.text('LUMEN'), findsOneWidget);
+      expect(find.text('SPEAKING'), findsOneWidget);
+      expect(find.text('Good to see you again.'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('a lull mid-opening still reads as Lumen, not You',
+        (tester) async {
+      // Network jitter can drain the playback queue between chunks; the
+      // opening is still Lumen's turn and the mic is still gated.
+      await _pump(
+        tester,
+        VoiceDock(
+          mode: DockMode.listening,
+          openingInProgress: true,
+          liveAgent: 'Good to see',
+          onMicTap: () {},
+        ),
+      );
+      await _run(tester);
+      expect(find.text('YOU'), findsNothing);
+      expect(find.text('LUMEN'), findsOneWidget);
       await tester.pumpWidget(const SizedBox());
     });
   });

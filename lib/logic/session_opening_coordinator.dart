@@ -1,43 +1,30 @@
-/// Coordinates the one-time model opening that precedes user audio.
+/// Lumen's greeting owns the floor at the start of every session.
 ///
-/// Gemini needs both an acknowledged setup and an initialized (or explicitly
-/// unavailable) playback path before Lumen can safely begin speaking. The
-/// first model turn then owns the floor until it completes.
+/// The greeting is a bundled clip played locally (see StandardOpening), so
+/// there is no model turn to request. The mic stays gated until the greeting
+/// has been *heard* — its audio drained — or until it's clear it can't play.
 class SessionOpeningCoordinator {
-  bool _setupComplete = false;
-  bool _playbackAttemptFinished = false;
-  bool _openingSent = false;
-  bool _openingComplete = false;
+  bool _greetingClaimed = false;
+  bool _heard = false;
 
-  bool get acceptsUserAudio => _openingComplete;
+  bool get acceptsUserAudio => _heard;
 
-  /// Returns true exactly once, when setup and playback are both ready.
-  bool markSetupComplete() {
-    _setupComplete = true;
-    return _claimOpeningIfReady();
-  }
+  /// Lumen has the floor: the greeting is pending or playing.
+  bool get inProgress => !_heard;
 
-  /// Returns true exactly once, when setup and playback are both ready.
-  bool markPlaybackAttemptFinished() {
-    _playbackAttemptFinished = true;
-    return _claimOpeningIfReady();
-  }
-
-  /// Opens the user-audio gate when the model's opening turn completes.
-  ///
-  /// Returns true only for that transition. Turn completions received before
-  /// the opening was requested, or after it already completed, are ignored.
-  bool markTurnComplete() {
-    if (!_openingSent || _openingComplete) return false;
-    _openingComplete = true;
+  /// True exactly once, for whoever gets to start the greeting — and never
+  /// after the floor has already passed to the user.
+  bool claimGreeting() {
+    if (_greetingClaimed || _heard) return false;
+    _greetingClaimed = true;
     return true;
   }
 
-  bool _claimOpeningIfReady() {
-    if (!_setupComplete || !_playbackAttemptFinished || _openingSent) {
-      return false;
-    }
-    _openingSent = true;
+  /// The greeting finished playing (or cannot play). Returns true only for
+  /// the transition that opens the mic.
+  bool markOpeningHeard() {
+    if (_heard) return false;
+    _heard = true;
     return true;
   }
 }
