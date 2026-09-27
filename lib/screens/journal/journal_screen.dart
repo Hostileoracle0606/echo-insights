@@ -41,6 +41,13 @@ class _JournalScreenState extends ConsumerState<JournalScreen>
     duration: const Duration(milliseconds: 580),
     reverseDuration: const Duration(milliseconds: 420),
   );
+  // The page's slide curve, built once: a CurvedAnimation registers a status
+  // listener on [_page], so it must be disposed rather than rebuilt per frame.
+  late final CurvedAnimation _slide = CurvedAnimation(
+    parent: _page,
+    curve: const Interval(60 / 580, 1, curve: Cubic(0.2, 0.9, 0.1, 1)),
+    reverseCurve: Curves.easeInCubic,
+  );
   bool _leaving = false;
 
   // Highlight terms, rebuilt only when the graph's entity map changes.
@@ -60,6 +67,7 @@ class _JournalScreenState extends ConsumerState<JournalScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _slide.dispose();
     _page.dispose();
     super.dispose();
   }
@@ -250,11 +258,7 @@ class _JournalScreenState extends ConsumerState<JournalScreen>
   // The transcript rises from under the dock like a page turned up: a
   // decelerating slide with its top corners squaring off as it lands.
   Widget _transcriptLayer(Widget page) {
-    final slide = CurvedAnimation(
-      parent: _page,
-      curve: const Interval(60 / 580, 1, curve: Cubic(0.2, 0.9, 0.1, 1)),
-      reverseCurve: Curves.easeInCubic,
-    );
+    final slide = _slide;
     return AnimatedBuilder(
       animation: _page,
       child: page,

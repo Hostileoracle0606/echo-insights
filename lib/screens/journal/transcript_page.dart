@@ -213,7 +213,7 @@ class _TranscriptPageState extends State<TranscriptPage> {
 
 /// Entrance stagger: rank 0 (the newest turn) leads, each older one follows
 /// 40ms behind, riding the page transition's own clock.
-class _Staggered extends StatelessWidget {
+class _Staggered extends StatefulWidget {
   final Animation<double> entrance;
   final int rank;
   final Widget child;
@@ -225,21 +225,53 @@ class _Staggered extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  State<_Staggered> createState() => _StaggeredState();
+}
+
+// Stateful so the CurvedAnimation is built once and disposed: each one
+// registers a status listener on the shared page controller, and building
+// them per frame would pile listeners onto it for the screen's lifetime.
+class _StaggeredState extends State<_Staggered> {
+  late CurvedAnimation _t;
+  late Animation<Offset> _slide;
+
+  @override
+  void initState() {
+    super.initState();
+    _curve();
+  }
+
+  @override
+  void didUpdateWidget(covariant _Staggered old) {
+    super.didUpdateWidget(old);
+    if (old.entrance != widget.entrance || old.rank != widget.rank) {
+      _t.dispose();
+      _curve();
+    }
+  }
+
+  void _curve() {
     // The page transition runs ~580ms; turns start at ~200ms, 320ms each.
-    final start = (0.34 + rank * 0.07).clamp(0.0, 0.8);
+    final start = (0.34 + widget.rank * 0.07).clamp(0.0, 0.8);
     final end = (start + 0.55).clamp(0.0, 1.0);
-    final t = CurvedAnimation(
-      parent: entrance,
+    _t = CurvedAnimation(
+      parent: widget.entrance,
       curve: Interval(start, end, curve: Curves.easeOut),
     );
+    _slide = Tween(begin: const Offset(0, 0.12), end: Offset.zero).animate(_t);
+  }
+
+  @override
+  void dispose() {
+    _t.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return FadeTransition(
-      opacity: t,
-      child: SlideTransition(
-        position:
-            Tween(begin: const Offset(0, 0.12), end: Offset.zero).animate(t),
-        child: child,
-      ),
+      opacity: _t,
+      child: SlideTransition(position: _slide, child: widget.child),
     );
   }
 }
@@ -387,11 +419,9 @@ class _Empty extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return FadeTransition(
-      opacity: CurvedAnimation(
-        parent: entrance,
-        curve: const Interval(0.4, 1, curve: Curves.easeOut),
-      ),
+    return _Staggered(
+      entrance: entrance,
+      rank: 1,
       child: Center(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 48),

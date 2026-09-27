@@ -21,6 +21,22 @@ List<HighlightTerm> termsForEntities(Iterable<Entity> entities) => [
         if (e.name.trim().length >= 2) HighlightTerm(e.name.trim(), e.type),
     ];
 
+// Compiled once per distinct term: highlightRuns runs for every visible turn
+// on every transcript chunk, and recompiling each entity's pattern there
+// dominated its cost in large notebooks.
+final Map<String, RegExp> _patterns = {};
+
+RegExp _patternFor(String term) {
+  final cached = _patterns[term];
+  if (cached != null) return cached;
+  if (_patterns.length > 4096) _patterns.clear();
+  return _patterns[term] = RegExp(
+    '(?<![\\p{L}\\p{N}])${RegExp.escape(term)}(?![\\p{L}\\p{N}])',
+    caseSensitive: false,
+    unicode: true,
+  );
+}
+
 /// Splits [text] into runs, marking every whole-word, case-insensitive
 /// mention of a term. Where mentions overlap the longest term wins, so
 /// "Tidepool launch" beats "Tidepool". Joining the runs gives back [text].
@@ -31,12 +47,7 @@ List<TextRun> highlightRuns(String text, Iterable<HighlightTerm> terms) {
   final taken = List<bool>.filled(text.length, false);
   final hits = <({int start, int end, EntityType type})>[];
   for (final term in sorted) {
-    final pattern = RegExp(
-      '(?<![\\p{L}\\p{N}])${RegExp.escape(term.text)}(?![\\p{L}\\p{N}])',
-      caseSensitive: false,
-      unicode: true,
-    );
-    for (final m in pattern.allMatches(text)) {
+    for (final m in _patternFor(term.text).allMatches(text)) {
       var free = true;
       for (var i = m.start; i < m.end; i++) {
         if (taken[i]) {
