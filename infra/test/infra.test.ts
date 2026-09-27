@@ -43,6 +43,8 @@ test("exposes authenticated live-session and graph-extraction routes", () => {
     AuthorizationType: "CUSTOM",
     RouteKey: "POST /v1/notebooks/{notebookId}/extractions",
   });
+  template.resourceCountIs("AWS::ApiGatewayV2::Authorizer", 1);
+  template.resourceCountIs("AWS::ApiGatewayV2::Route", 3);
   template.hasResourceProperties("AWS::ApiGatewayV2::Stage", {
     StageName: "$default",
     AutoDeploy: true,
@@ -77,6 +79,34 @@ test("retains a server-side extraction retry cache", () => {
         AttributeName: "expiresAt",
         Enabled: true,
       },
+    },
+  });
+});
+
+test("exposes a user-scoped live-session route on the same broker and authorizer", () => {
+  const template = synthesizeTemplate();
+
+  const routes = Object.values(template.findResources("AWS::ApiGatewayV2::Route")) as Array<{
+    Properties: Record<string, unknown>;
+  }>;
+  const userRoute = routes.find(
+    (route) => route.Properties.RouteKey === "POST /v1/live-sessions",
+  );
+  const notebookRoute = routes.find(
+    (route) => route.Properties.RouteKey === "POST /v1/notebooks/{notebookId}/live-sessions",
+  );
+
+  expect(userRoute).toBeDefined();
+  expect(userRoute!.Properties.AuthorizationType).toBe("CUSTOM");
+  expect(userRoute!.Properties.AuthorizerId).toEqual(notebookRoute!.Properties.AuthorizerId);
+  expect(userRoute!.Properties.Target).toEqual(notebookRoute!.Properties.Target);
+
+  template.hasResourceProperties("AWS::Lambda::Function", {
+    Description: "Issues short-lived, constrained Gemini Live credentials",
+    Environment: {
+      Variables: Match.objectLike({
+        LIVE_SESSION_START_WINDOW_SECONDS: "600",
+      }),
     },
   });
 });

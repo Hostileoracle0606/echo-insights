@@ -8,20 +8,52 @@ Segment 1 creates:
 - an Amazon Secrets Manager entry for the permanent Gemini credential;
 - an Amazon Lambda authorizer that asks Supabase to validate the user's current
   sign-in token;
-- an Amazon Lambda credential broker that checks notebook access and requests a
-  one-use Gemini Live credential;
+- an Amazon Lambda credential broker that requests a one-use Gemini Live
+  credential, either for a notebook the user can access or for the signed-in
+  user alone;
 - an Amazon Lambda graph extractor that calls Gemini without exposing the
   permanent credential;
 - a retained DynamoDB claim store with leases and canonical results for
   idempotent extraction retries;
-- two protected Amazon API Gateway routes; and
+- three protected Amazon API Gateway routes; and
 - a default gateway stage limited to 10 requests per second with bursts of 20.
 
-The route is:
+The routes are:
+
+`POST /v1/live-sessions`
 
 `POST /v1/notebooks/{notebookId}/live-sessions`
 
 `POST /v1/notebooks/{notebookId}/extractions`
+
+Both live-session routes use the same authorizer and return the same kind of
+token: one use, a 30-minute life, limited to the configured Gemini Live model
+and audio output. They differ in two ways:
+
+- `POST /v1/live-sessions` is user-scoped. It skips the notebook lookup, because
+  the authorizer has already proved who the user is, so a signed-in client can
+  hold a token before any notebook is open. Its start window (how long the
+  client has to open the Gemini connection) comes from
+  `LIVE_SESSION_START_WINDOW_SECONDS` on the broker: default 600, clamped to
+  60–1800 seconds and never beyond the token's life.
+- `POST /v1/notebooks/{notebookId}/live-sessions` first checks that the notebook
+  exists and belongs to the user, and keeps its 60-second start window, so the
+  web client is unchanged.
+
+A successful response from either route looks like:
+
+```json
+{
+  "status": "ready",
+  "sessionToken": "auth_tokens/…",
+  "expiresAt": "2026-09-06T16:30:00.000Z",
+  "newSessionExpiresAt": "2026-09-06T16:10:00.000Z",
+  "model": "gemini-3.1-flash-live-preview"
+}
+```
+
+`newSessionExpiresAt` is when the start window closes; clients should fetch a
+fresh token before then.
 
 ## Local checks
 
@@ -48,6 +80,9 @@ The deployment output named `NotebookRuntimeUrl` becomes:
 
 - `VITE_NOTEBOOK_RUNTIME_URL` for the web build; and
 - `NOTEBOOK_RUNTIME_URL` for the Flutter build.
+
+The user-scoped route lives on the same API, so these values stay the same
+base URL when it is added; clients append `/v1/live-sessions` themselves.
 
 Do not deploy until the owner is ready to enter the permanent credential and
 update both client build configurations. The live-session broker returns a

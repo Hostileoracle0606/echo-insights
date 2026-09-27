@@ -65,6 +65,7 @@ export class InfraStack extends cdk.Stack {
         ...sharedEnvironment,
         GEMINI_SECRET_ARN: geminiApiKey.secretArn,
         GEMINI_LIVE_MODEL: "gemini-3.1-flash-live-preview",
+        LIVE_SESSION_START_WINDOW_SECONDS: "600",
       },
       reservedConcurrentExecutions: 20,
     });
@@ -116,14 +117,24 @@ export class InfraStack extends cdk.Stack {
       },
     );
 
+    const liveSessionIntegration = new integrations.HttpLambdaIntegration(
+      "LiveSessionIntegration",
+      liveSessionBroker,
+    );
+
     api.addRoutes({
       path: "/v1/notebooks/{notebookId}/live-sessions",
       methods: [apigatewayv2.HttpMethod.POST],
       authorizer,
-      integration: new integrations.HttpLambdaIntegration(
-        "LiveSessionIntegration",
-        liveSessionBroker,
-      ),
+      integration: liveSessionIntegration,
+    });
+
+    // User-scoped: lets a signed-in client hold a token before any notebook opens.
+    api.addRoutes({
+      path: "/v1/live-sessions",
+      methods: [apigatewayv2.HttpMethod.POST],
+      authorizer,
+      integration: liveSessionIntegration,
     });
 
     api.addRoutes({
