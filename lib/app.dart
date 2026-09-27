@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'providers/auth_provider.dart';
+import 'providers/voice_services_provider.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/auth/signup_screen.dart';
 import 'screens/dashboard/dashboard_screen.dart';
@@ -53,6 +54,8 @@ class LumenApp extends ConsumerWidget {
       debugShowCheckedModeBanner: false,
       theme: LumenTheme.light(),
       routerConfig: router,
+      builder: (context, child) =>
+          VoiceServicesScope(child: child ?? const SizedBox.shrink()),
     );
   }
 }

@@ -1,10 +1,11 @@
 import 'dart:async';
 
-import 'package:audio_session/audio_session.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../audio/audio_output.dart';
+import '../audio/audio_session_config.dart';
 import '../audio/pcm_capture.dart';
 import '../audio/pcm_player.dart';
 import '../audio/standard_opening.dart';
@@ -29,6 +30,7 @@ import '../services/notebook_runtime_service.dart';
 import '../services/retrieve_memory_service.dart';
 import '../services/turn_journal_service.dart';
 import 'supabase_provider.dart';
+import 'voice_services_provider.dart';
 
 enum SessionStatus { idle, connecting, live, ending, error }
 
@@ -58,7 +60,9 @@ const String extractorVersion = 'gemini/extract_graph/v2';
 class JournalNotifier extends Notifier<JournalState> {
   GeminiLiveClient? _live;
   PcmCapture? _capture;
+  // The app-level player (AudioOutput), attached while a session uses it.
   PcmPlayer? _player;
+  VoidCallback? _speakingListener;
   final LiveSessionGuard _liveSessionGuard = LiveSessionGuard();
   Future<void> _lifecycleTail = Future<void>.value();
   int _lifecycleIntent = 0;
@@ -206,7 +210,9 @@ class JournalNotifier extends Notifier<JournalState> {
       _warm?.gate.dispose();
       unawaited(_capture?.stop());
       unawaited(_live?.close());
-      unawaited(_player?.dispose());
+      final player = _player;
+      _detachPlayer();
+      if (player != null) unawaited(_releasePlayer(player));
     });
     return JournalState.empty();
   }
@@ -1036,13 +1042,11 @@ class JournalNotifier extends Notifier<JournalState> {
     }
 
     // Agent-audio playback is optional (the session still captures voice and
-    // builds the graph without it), and its init can stall for minutes on
-    // the simulator (just_audio / AVFoundation -11800) — so it runs in
-    // parallel, timeout-capped and non-fatal, never in front of the socket.
-    final player = PcmPlayer();
-    _player = player;
-    final audioSessionReady = _configureAudioSession();
-    final playbackReady = _initPlayer(player);
+    // builds the graph without it). The app-level player was started at
+    // sign-in; waiting for it is timeout-capped and runs in parallel, never
+    // in front of the socket.
+    final audioSessionReady = configureVoiceAudioSession();
+    final playbackReady = _attachPlayer(ref.read(audioOutputProvider));
     final greetingReady = _loadStandardOpening();
     if (!standby) {
       // Cold start: greet as soon as the speaker is ready, while the socket
@@ -1052,10 +1056,7 @@ class JournalNotifier extends Notifier<JournalState> {
         if (_liveSessionGuard.isCurrent(lease)) _startGreeting();
       }));
     }
-    final liveSession = await ref
-        .read(notebookRuntimeServiceProvider)
-        .startLiveSession(notebookId);
-    mark('credential');
+    final liveSession = await _takeCredential(notebookId, mark);
     await audioSessionReady;
     if (!_liveSessionGuard.isCurrent(lease)) return null;
     if (liveSession is LiveSessionRejected) {
@@ -1150,7 +1151,6 @@ class JournalNotifier extends Notifier<JournalState> {
     final playbackOk = await playbackReady;
     await greetingReady;
     if (!isCurrent()) return null;
-    if (!playbackOk && identical(_player, player)) _player = null;
     mark(playbackOk ? 'playback ready' : 'playback unavailable');
     // No opening is requested from Gemini: the app plays Lumen's bundled
     // greeting, and the system instruction says it has already been said.
@@ -1328,45 +1328,67 @@ class JournalNotifier extends Notifier<JournalState> {
     }
   }
 
-  // Configure the shared iOS audio session for simultaneous playback AND
-  // recording before any audio component starts. Without this, just_audio
-  // sets a playback-only category and the record plugin (which doesn't
-  // manage the session by default) taps a mic the session can't record
-  // from — the classic "dock listens, hears nothing" failure on device.
-  Future<void> _configureAudioSession() async {
-    try {
-      final session = await AudioSession.instance;
-      await session.configure(AudioSessionConfiguration(
-        avAudioSessionCategory: AVAudioSessionCategory.playAndRecord,
-        avAudioSessionCategoryOptions:
-            AVAudioSessionCategoryOptions.defaultToSpeaker |
-                AVAudioSessionCategoryOptions.allowBluetooth,
-        avAudioSessionMode: AVAudioSessionMode.spokenAudio,
-      ));
-    } catch (error) {
-      debugPrint('[journal] audio session config unavailable: $error');
+  /// The user's held token (fetched at sign-in), or — when none can be had,
+  /// e.g. the user-scoped route isn't deployed yet — one from the notebook's
+  /// own route.
+  Future<LiveSessionOutcome> _takeCredential(
+    String notebookId,
+    void Function(String stage) mark,
+  ) async {
+    final held = await ref.read(liveCredentialsProvider).take();
+    if (held != null) {
+      mark('credential (held)');
+      return held;
+    }
+    final outcome = await ref
+        .read(notebookRuntimeServiceProvider)
+        .startLiveSession(notebookId);
+    mark('credential (notebook route)');
+    return outcome;
+  }
+
+  /// Attaches the app-level player and wires its playback clock to the dock.
+  /// False when playback is unavailable (the session continues without it).
+  Future<bool> _attachPlayer(AudioOutput output) async {
+    final player = await output.whenReady();
+    if (player == null || player.isDisposed) {
+      debugPrint('[journal] agent-audio playback unavailable, continuing '
+          'without it');
+      return false;
+    }
+    if (identical(_player, player)) return true;
+    _detachPlayer();
+    void listener() {
+      if (identical(_player, player)) {
+        _setAgentSpeaking(player.speaking.value);
+      }
+    }
+
+    player.speaking.addListener(listener);
+    _player = player;
+    _speakingListener = listener;
+    vlog('playback', 'agent-audio playback attached');
+    return true;
+  }
+
+  void _detachPlayer() {
+    final player = _player;
+    final listener = _speakingListener;
+    _player = null;
+    _speakingListener = null;
+    if (player != null && listener != null && !player.isDisposed) {
+      player.speaking.removeListener(listener);
     }
   }
 
-  /// Initializes [player] and wires its playback clock to the dock. False
-  /// (and the player disposed) when playback is unavailable.
-  Future<bool> _initPlayer(PcmPlayer player) async {
+  /// Silences what this session queued; the player itself belongs to the
+  /// app and stays up for the next session. Never waits long: a stalled
+  /// backend must not hold up a session ending.
+  Future<void> _releasePlayer(PcmPlayer player) async {
     try {
-      await player.init().timeout(const Duration(seconds: 5));
-      // A failed start may have torn the session down mid-init.
-      if (player.isDisposed) return false;
-      player.speaking.addListener(() {
-        if (identical(_player, player)) {
-          _setAgentSpeaking(player.speaking.value);
-        }
-      });
-      vlog('playback', 'agent-audio playback ready');
-      return true;
+      await player.flush().timeout(const Duration(seconds: 2));
     } catch (error) {
-      debugPrint('[journal] agent-audio playback unavailable, continuing '
-          'without it: $error');
-      unawaited(player.dispose().catchError((_) {}));
-      return false;
+      vlog('playback', 'player flush incomplete: $error');
     }
   }
 
@@ -1432,7 +1454,7 @@ class JournalNotifier extends Notifier<JournalState> {
     final player = _player;
     _capture = null;
     _live = null;
-    _player = null;
+    _detachPlayer();
 
     try {
       await capture?.stop();
@@ -1446,12 +1468,7 @@ class JournalNotifier extends Notifier<JournalState> {
       vlog('session', 'live transport shutdown failed: $error');
       debugPrintStack(stackTrace: stack);
     }
-    try {
-      await player?.dispose();
-    } catch (error, stack) {
-      vlog('playback', 'player shutdown failed: $error');
-      debugPrintStack(stackTrace: stack);
-    }
+    if (player != null) await _releasePlayer(player);
     _assembler.reset();
   }
 
