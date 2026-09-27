@@ -10,6 +10,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lumen/logic/entity_highlighter.dart';
 import 'package:lumen/models/entity.dart';
 import 'package:lumen/models/journal_state.dart';
 import 'package:lumen/models/notebook.dart';
@@ -23,7 +24,9 @@ import 'package:lumen/screens/journal/graph_canvas.dart';
 import 'package:lumen/screens/journal/graph_drawer.dart';
 import 'package:lumen/screens/journal/journal_screen.dart';
 import 'package:lumen/screens/journal/journal_top_bar.dart';
+import 'package:lumen/screens/journal/transcript_page.dart';
 import 'package:lumen/screens/journal/voice_dock.dart';
+import 'package:lumen/theme/lumen_colors.dart';
 import 'package:lumen/theme/lumen_theme.dart';
 import 'package:lumen/widgets/graph_legend.dart';
 
@@ -108,7 +111,7 @@ Future<void> _capture(
     await tester.pumpAndSettle();
   } else {
     // Animated widget (repeating controller): advance to a mid-cycle frame
-    // where the goo blobs bulge; don't pumpAndSettle (it never settles).
+    // where the mic ring is mid-pulse; don't pumpAndSettle (it never settles).
     await tester.pump(const Duration(milliseconds: 1100));
   }
   await _writeBoundaryPng(tester, key, name);
@@ -168,14 +171,28 @@ JournalState _graphState() {
 }
 
 // A short rolling conversation whose entities match the seeded graph.
-const _demoTurns = <DockTurn>[
-  DockTurn(DockSpeaker.you, 'Had coffee with Maya about the Atlas launch timeline.'),
-  DockTurn(DockSpeaker.lumen,
-      'When did the Atlas launch slip — was that around the Q3 review?'),
-  DockTurn(DockSpeaker.you,
-      "Yeah, Q3. Timeline's tight but Maya's relieved it finally feels real."),
-  DockTurn(DockSpeaker.lumen,
-      "Got it. I've linked Maya to Atlas and noted the relief around Q3."),
+final _demoTurns = <TranscriptTurn>[
+  TranscriptTurn(
+      DockSpeaker.you, 'Had coffee with Maya about the Atlas launch timeline.',
+      id: 'd0', at: DateTime(2026, 9, 25, 9, 41)),
+  TranscriptTurn(DockSpeaker.lumen,
+      'When did the Atlas launch slip — was that around the Q3 review?',
+      id: 'd1', at: DateTime(2026, 9, 25, 9, 42)),
+  TranscriptTurn(DockSpeaker.you,
+      "Yeah, Q3. Timeline's tight but Maya's relieved it finally feels real.",
+      id: 'd2', at: DateTime(2026, 9, 25, 9, 42)),
+  TranscriptTurn(DockSpeaker.lumen,
+      "Got it. I've linked Maya to Atlas and noted the relief around Q3.",
+      id: 'd3', at: DateTime(2026, 9, 25, 9, 43)),
+];
+
+const _demoTerms = [
+  HighlightTerm('Maya', EntityType.person),
+  HighlightTerm('Atlas launch', EntityType.project),
+  HighlightTerm('Atlas', EntityType.project),
+  HighlightTerm('Lisbon', EntityType.place),
+  HighlightTerm('relief', EntityType.emotion),
+  HighlightTerm('Q3 review', EntityType.event),
 ];
 
 // A spread of notebooks across the time groups for the dashboard capture.
@@ -262,21 +279,20 @@ void main() {
       tester,
       name: 'voice-dock-idle',
       width: 360,
-      height: 150,
+      height: 170,
       child: Center(
         child: VoiceDock(mode: DockMode.idle, onMicTap: () {}),
       ),
     );
   });
 
-  // Collapsed voice-active dock: just the living goo pill now — the transcript
-  // moved into the split panel, so there's no inline drawer anymore.
+  // Listening, no words yet: the You chip lit and the amber mic ring pulsing.
   testWidgets('VoiceDock listening', (tester) async {
     await _capture(
       tester,
       name: 'voice-dock-listening',
-      width: 320,
-      height: 130,
+      width: 360,
+      height: 170,
       settle: false,
       child: Center(
         child: VoiceDock(mode: DockMode.listening, onMicTap: () {}),
@@ -284,14 +300,14 @@ void main() {
     );
   });
 
-  // Same goo silhouette as listening, but Lumen is talking rather than
-  // recording: the amber mic-pulse ring is absent (compare to "listening").
+  // Lumen is talking rather than recording: the Lumen chip lit, and the
+  // amber mic-pulse ring absent (compare to "listening").
   testWidgets('VoiceDock speaking', (tester) async {
     await _capture(
       tester,
       name: 'voice-dock-speaking',
-      width: 320,
-      height: 130,
+      width: 360,
+      height: 170,
       settle: false,
       child: Center(
         child: VoiceDock(mode: DockMode.speaking, onMicTap: () {}),
@@ -299,15 +315,15 @@ void main() {
     );
   });
 
-  // Connecting: static paper pill (like idle), but the mic fill breathes a
-  // slow, dim pulse — "booting up," distinct from both idle (static) and
-  // listening/speaking (living goo).
+  // Connecting: the You chip reads Connecting and the mic fill breathes a
+  // slow, dim pulse — "booting up," distinct from idle (static) and
+  // listening (ring).
   testWidgets('VoiceDock thinking', (tester) async {
     await _capture(
       tester,
       name: 'voice-dock-thinking',
-      width: 320,
-      height: 130,
+      width: 360,
+      height: 170,
       settle: false,
       child: Center(
         child: VoiceDock(mode: DockMode.thinking, onMicTap: () {}),
@@ -315,14 +331,14 @@ void main() {
     );
   });
 
-  // The split-screen panel: the dock morphed open, ChatGPT-style transcript
-  // above the pinned controls, the in-flight line riding at the bottom.
-  testWidgets('VoiceDock expanded', (tester) async {
+  // Graph view, someone speaking: the drawer opens between the dock's tiers
+  // with the in-flight words, entities marked in their graph colours.
+  testWidgets('VoiceDock drawer', (tester) async {
     await _capture(
       tester,
-      name: 'voice-dock-expanded',
+      name: 'voice-dock-drawer',
       width: 402,
-      height: 720,
+      height: 260,
       settle: false,
       child: MediaQuery(
         data: const MediaQueryData(size: Size(402, 874)),
@@ -332,11 +348,50 @@ void main() {
             padding: const EdgeInsets.only(bottom: 28),
             child: VoiceDock(
               mode: DockMode.listening,
-              expanded: true,
-              turns: _demoTurns,
+              terms: _demoTerms,
               liveUser: 'and Maya wants Lisbon on the roadmap for the trip.',
               onMicTap: () {},
             ),
+          ),
+        ),
+      ),
+    );
+  });
+
+  // Transcript view: the whole conversation as a rolling page, the dock
+  // floating over it with the page button marked.
+  testWidgets('TranscriptPage', (tester) async {
+    await _capture(
+      tester,
+      name: 'transcript-page',
+      width: 402,
+      height: 874,
+      settle: false,
+      child: MediaQuery(
+        data: const MediaQueryData(size: Size(402, 874)),
+        child: ColoredBox(
+          color: LumenColors.light.paper,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              TranscriptPage(
+                turns: _demoTurns,
+                terms: _demoTerms,
+                topInset: 60,
+                bottomInset: 164,
+              ),
+              Align(
+                alignment: Alignment.bottomCenter,
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: 28),
+                  child: VoiceDock(
+                    mode: DockMode.speaking,
+                    view: JournalView.transcript,
+                    onMicTap: () {},
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -471,11 +526,9 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  // The split-screen open, composed the way the stitch will arrange it: warm
-  // graph in the top half, transcript panel filling the bottom, the pill's
-  // split toggle engaged. Built locally (not the real JournalScreen) since the
-  // parent wiring is the next, separate pass.
-  testWidgets('Split screen in context', (tester) async {
+  // Graph view in context: the warm graph behind, the dock's drawer open with
+  // the in-flight words between its tiers.
+  testWidgets('Graph with drawer in context', (tester) async {
     // Phone-portrait surface so the SizedBox isn't squashed by the default
     // 800x600 test window (tight constraints would otherwise win).
     await tester.binding.setSurfaceSize(const Size(402, 874));
@@ -520,8 +573,7 @@ void main() {
                           alignment: Alignment.bottomCenter,
                           child: VoiceDock(
                             mode: DockMode.listening,
-                            expanded: true,
-                            turns: _demoTurns,
+                            terms: _demoTerms,
                             liveUser:
                                 'and Maya wants Lisbon on the roadmap for the trip.',
                             onMicTap: () {},
@@ -540,7 +592,7 @@ void main() {
     for (var i = 0; i < 130; i++) {
       await tester.pump(const Duration(milliseconds: 16));
     }
-    await _writeBoundaryPng(tester, key, 'split-screen', pixelRatio: 2);
+    await _writeBoundaryPng(tester, key, 'graph-with-drawer', pixelRatio: 2);
     await tester.pumpWidget(const SizedBox());
   });
 }
