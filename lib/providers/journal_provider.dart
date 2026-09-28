@@ -13,13 +13,13 @@ import '../logic/agenda.dart' as agenda_logic;
 import '../logic/conversation_policy.dart';
 import '../logic/live_session_guard.dart';
 import '../logic/live_signal_gate.dart';
+import '../logic/resume_context.dart';
 import '../logic/merge.dart' as merge_logic;
 import '../logic/session_opening_coordinator.dart';
 import '../logic/transcript_assembler.dart';
 import '../logic/turn_effect_queue.dart';
 import '../logic/turn_state.dart';
 import '../logic/voice_log.dart';
-import '../logic/warm_budget.dart';
 import '../models/graph_patch.dart';
 import '../models/journal_entry.dart';
 import '../models/journal_state.dart';
@@ -32,7 +32,7 @@ import '../services/turn_journal_service.dart';
 import 'supabase_provider.dart';
 import 'voice_services_provider.dart';
 
-enum SessionStatus { idle, connecting, live, ending, error }
+enum SessionStatus { idle, connecting, live, paused, ending, error }
 
 class NotebookTransitionResult {
   const NotebookTransitionResult._(this.succeeded, [this.message]);
@@ -59,7 +59,7 @@ const String extractorVersion = 'gemini/extract_graph/v2';
 
 class JournalNotifier extends Notifier<JournalState> {
   GeminiLiveClient? _live;
-  PcmCapture? _capture;
+  MicCapture? _capture;
   // The app-level player (AudioOutput), attached while a session uses it.
   PcmPlayer? _player;
   VoidCallback? _speakingListener;
@@ -147,14 +147,6 @@ class JournalNotifier extends Notifier<JournalState> {
   Future<StandardOpening?>? _standardOpeningLoad;
   final _greetingRows = <ConversationTurn>[];
 
-  // Warm standby (see warmUp): a prepared session waiting for the tap.
-  _PreparedLive? _warm;
-  Timer? _warmRefreshTimer;
-  bool _warmQueued = false;
-  DateTime? _lastWarmFailureAt;
-  final WarmBudget _warmBudget = WarmBudget();
-  static const _warmRetryBackoff = Duration(seconds: 30);
-
   // Optimistic-concurrency counter from the last-known server snapshot.
   // Every commit reads this fresh (at the moment it actually runs, not when
   // it was queued) and a committed response updates it — see
@@ -192,8 +184,15 @@ class JournalNotifier extends Notifier<JournalState> {
   /// Lumen owns the floor: the session is starting and its opening has not
   /// finished playing yet. The dock shows Lumen, never "You", meanwhile —
   /// user audio is not accepted until this clears.
-  bool get openingInProgress =>
-      _status == SessionStatus.connecting || (_opening?.inProgress ?? false);
+  bool get openingInProgress {
+    final opening = _opening;
+    // Continuing a conversation, the user has the floor from the tap (the
+    // mic records while Lumen connects).
+    if (_status == SessionStatus.connecting) {
+      return !(opening?.acceptsUserAudio ?? false);
+    }
+    return opening?.inProgress ?? false;
+  }
   int get revision => _revision;
 
   @override
@@ -206,8 +205,7 @@ class JournalNotifier extends Notifier<JournalState> {
       _finalizationTimers.clear();
       _agentSpeakingTimer?.cancel();
       _activityTimer?.cancel();
-      _warmRefreshTimer?.cancel();
-      _warm?.gate.dispose();
+      _session?.gate.dispose();
       unawaited(_capture?.stop());
       unawaited(_live?.close());
       final player = _player;
@@ -838,8 +836,6 @@ class JournalNotifier extends Notifier<JournalState> {
       }
 
       if (autoStart) return _startSessionUnlocked();
-      // Queued behind this transition, so the caller isn't kept waiting.
-      unawaited(warmUp());
       return const NotebookTransitionResult.success();
     });
   }
@@ -851,8 +847,8 @@ class JournalNotifier extends Notifier<JournalState> {
   Future<NotebookTransitionResult> startSession() {
     final intent = ++_lifecycleIntent;
     // Instant feedback: the dock shows "Lumen · Connecting" on the tap
-    // itself, even while a warm-up or another lifecycle step finishes ahead
-    // of this request in the serialized queue.
+    // itself, even while another lifecycle step finishes ahead of this
+    // request in the serialized queue.
     if (_status == SessionStatus.idle || _status == SessionStatus.error) {
       _setStatus(SessionStatus.connecting);
     }
@@ -871,149 +867,167 @@ class JournalNotifier extends Notifier<JournalState> {
     });
   }
 
-  // ─── Warm standby ─────────────────────────────────────────────────────────
+  // ─── Session lifecycle (plan: Flow 3) ─────────────────────────────────────
   //
-  // With a notebook open and no session running, everything a session needs
-  // except the microphone is prepared ahead of the tap: audio session, the
-  // runtime's single-use Gemini credential, the socket and its setup, the
-  // player — and Lumen's opening is requested and buffered. The tap then
-  // only starts capture and replays the buffered opening. Nothing from a
-  // standby reaches the transcript, the turn machine or the speaker unless
-  // the user taps; the mic is never opened by a warm-up.
+  //   IDLE ─tap→ CONNECTING (the mic records from the tap) ─→ LIVE
+  //   LIVE ─tap→ PAUSED (mic closed, stream end sent, socket kept) ─tap→ LIVE
+  //   LIVE/PAUSED ─End→ ENDING → IDLE; the notebook stays open, resumable.
+  //
+  // A goAway or dropped socket reconnects by resumption handle without
+  // changing state ([reconnecting] shows it). Nothing here creates a
+  // notebook: sessions run only in the notebook the user opened.
 
-  /// Prepares a standby session for the open notebook, if none is ready.
-  Future<void> warmUp() {
-    if (_warmQueued) return Future.value();
-    _warmQueued = true;
-    return _serializeLifecycle(_warmUnlocked);
-  }
-
-  /// Releases a standby session (e.g. the app went to the background).
-  Future<void> coolDown() => _serializeLifecycle(() async {
-        if (_warm != null && _status == SessionStatus.idle) {
-          vlog('warm', 'cooling down standby session');
-          await _closeLiveTransportUnlocked();
+  /// The mic pauses: capture stops and Gemini is told the stream ended, but
+  /// the connection (and its context) stays for an instant resume.
+  Future<void> pauseMic() => _serializeLifecycle(() async {
+        if (_status != SessionStatus.live) return;
+        _setStatus(SessionStatus.paused);
+        _live?.sendAudioStreamEnd();
+        try {
+          await _capture?.stop();
+        } catch (error) {
+          vlog('session', 'mic pause failed: $error');
         }
+        vlog('session', 'mic paused');
       });
 
-  /// The user touched the screen: refill the warm-up budget, and re-warm if
-  /// the notebook went cold while idle.
-  void noteInteraction() {
-    _warmBudget.refill();
-    if (_warm == null &&
-        _status == SessionStatus.idle &&
-        _activeNotebookId != null) {
-      unawaited(warmUp());
-    }
-  }
+  /// The mic resumes on the same connection, reconnecting by handle first
+  /// if the connection lapsed while paused.
+  Future<NotebookTransitionResult> resumeMic() => _serializeLifecycle(() async {
+        if (_status != SessionStatus.paused) {
+          return const NotebookTransitionResult.success();
+        }
+        final session = _session;
+        final capture = _capture;
+        if (session == null ||
+            capture == null ||
+            !_isCurrentLiveSession(session.binding, session.live)) {
+          // Nothing to resume: start afresh (context is seeded again).
+          await _closeLiveTransportUnlocked();
+          return _startSessionUnlocked();
+        }
+        _setStatus(SessionStatus.live);
+        try {
+          await capture.start((pcm) => _onMicFrame(session.binding, pcm));
+        } catch (error) {
+          vlog('session', 'mic resume failed: $error');
+          _setStatus(SessionStatus.paused);
+          return const NotebookTransitionResult.failure(
+            'The microphone could not restart. Try again.',
+          );
+        }
+        vlog('session', 'mic resumed');
+        if (_connectionLapsed) unawaited(_reconnect(session, 'resumed'));
+        return const NotebookTransitionResult.success();
+      });
 
-  Future<void> _warmUnlocked() async {
-    _warmQueued = false;
-    if (_warm != null || _activeNotebookId == null) return;
-    // A tap may already be waiting behind this warm-up (status connecting);
-    // warming is still the fastest route to it, so only a running or ending
-    // session stops us.
-    if (_status != SessionStatus.idle && _status != SessionStatus.connecting) {
-      return;
-    }
-    final failedAt = _lastWarmFailureAt;
-    if (failedAt != null &&
-        DateTime.now().difference(failedAt) < _warmRetryBackoff) {
-      return;
-    }
-    if (!_warmBudget.tryConsume()) {
-      vlog('warm', 'budget spent — cold until the user interacts');
-      return;
-    }
-    final lease = _liveSessionGuard.begin();
-    try {
-      final prepared = await _prepareLiveUnlocked(lease, standby: true);
-      if (prepared == null) return;
-      _warm = prepared;
-      _lastWarmFailureAt = null;
-      _warmRefreshTimer?.cancel();
-      _warmRefreshTimer =
-          Timer(WarmBudget.refreshAfter, () => _refreshWarm(prepared));
-      vlog('warm', 'standby ready');
-    } catch (error) {
-      vlog('warm', 'standby failed, staying cold: $error');
-      _lastWarmFailureAt = DateTime.now();
-      if (_liveSessionGuard.isCurrent(lease)) {
-        await _closeLiveTransportUnlocked();
+  /// Ends the voice session. The notebook stays open, and the next tap
+  /// continues its conversation.
+  Future<NotebookTransitionResult> endSession() {
+    final intent = ++_lifecycleIntent;
+    _liveSessionGuard.invalidate();
+    return _serializeLifecycle(() async {
+      if (intent != _lifecycleIntent) {
+        return const NotebookTransitionResult.failure(
+          'Session end was superseded by a newer request.',
+        );
       }
+      if (_status == SessionStatus.idle) {
+        return const NotebookTransitionResult.success();
+      }
+      _setStatus(SessionStatus.ending);
+      await _closeLiveTransportUnlocked();
+      _dispatchTurn(const SessionEnded());
+      _setStatus(SessionStatus.idle);
+      return const NotebookTransitionResult.success();
+    });
+  }
+
+  /// A previous connection lapsed (goAway or drop) while paused; resuming
+  /// reconnects first.
+  bool _connectionLapsed = false;
+
+  /// A reconnect by resumption handle is in progress.
+  bool _reconnecting = false;
+  bool get reconnecting => _reconnecting;
+
+  /// The session the user is in (null while idle or connecting).
+  _PreparedLive? _session;
+
+  // Mic audio captured before the socket exists (the credential is still
+  // being taken). Handed to the client, which buffers it until it may send.
+  final List<Uint8List> _preconnectAudio = [];
+  int _preconnectBytes = 0;
+
+  void _onMicFrame(LiveSessionLease lease, Uint8List pcm) {
+    if (!_liveSessionGuard.isCurrent(lease)) return;
+    if (_status == SessionStatus.paused) return;
+    // Lumen's greeting has the floor on a new notebook's first session.
+    if (!(_opening?.acceptsUserAudio ?? false)) return;
+    final live = _live;
+    if (live != null) {
+      live.sendAudio(pcm);
+      return;
     }
-  }
-
-  /// Replaces a standby before Gemini closes it (timer or goAway).
-  void _refreshWarm(_PreparedLive standby) {
-    unawaited(_serializeLifecycle(() async {
-      if (!identical(_warm, standby) || _status != SessionStatus.idle) return;
-      vlog('warm', 'refreshing standby session');
-      await _closeLiveTransportUnlocked();
-      await _warmUnlocked();
-    }));
-  }
-
-  /// Drops a standby whose socket failed. No error is shown — the user never
-  /// asked for this session; the next tap simply takes the cold path.
-  void _discardFailedWarm(_PreparedLive standby, Object error) {
-    vlog('warm', 'standby dropped: $error');
-    unawaited(_serializeLifecycle(() async {
-      if (!identical(_warm, standby) || _status != SessionStatus.idle) return;
-      _lastWarmFailureAt = DateTime.now();
-      await _closeLiveTransportUnlocked();
-    }));
+    _preconnectAudio.add(pcm);
+    _preconnectBytes += pcm.length;
+    while (_preconnectBytes > GeminiLiveClient.maxPendingAudioBytes) {
+      _preconnectBytes -= _preconnectAudio.removeAt(0).length;
+    }
   }
 
   // ─── Session start ────────────────────────────────────────────────────────
 
   Future<NotebookTransitionResult> _startSessionUnlocked() async {
-    if (_status == SessionStatus.live) {
+    if (_status == SessionStatus.live || _status == SessionStatus.paused) {
       return const NotebookTransitionResult.success();
     }
+    final notebookId = _activeNotebookId;
+    if (notebookId == null) {
+      _setStatus(SessionStatus.idle);
+      return const NotebookTransitionResult.failure(
+        'Open a notebook to start a session.',
+      );
+    }
     _setStatus(SessionStatus.connecting);
-    // Lumen greets every session, so the floor is Lumen's from the tap on.
-    _opening = SessionOpeningCoordinator();
+    // A notebook with earlier conversation continues it: no greeting, the
+    // earlier turns go to Gemini as context, and the user has the floor
+    // from the tap. A new notebook opens with Lumen's greeting.
+    final continuing = continuesConversation(
+      conversation: _conversation,
+      entries: state.entries,
+    );
+    final opening = _opening = SessionOpeningCoordinator();
+    if (continuing) opening.markOpeningHeard();
+    final lease = _liveSessionGuard.begin();
 
     try {
-      var prepared = _warm;
-      if (prepared != null &&
-          !_isCurrentLiveSession(prepared.binding, prepared.live)) {
-        await _closeLiveTransportUnlocked();
-        prepared = null;
+      vlog(
+          'session',
+          'notebook=$notebookId (${state.entities.length} entities, '
+              '${continuing ? 'continuing' : 'new conversation'})');
+      final capture = ref.read(micCaptureFactoryProvider)();
+      if (!await capture.hasPermission()) {
+        debugPrint('[journal] microphone permission not granted');
+        _setStatus(SessionStatus.error);
+        return const NotebookTransitionResult.failure(
+          'Microphone permission is required to start a journal session.',
+        );
       }
-      if (prepared != null) {
-        vlog('timing', 'tap → warm standby, activating');
-      } else {
-        final lease = _liveSessionGuard.begin();
-        // Continue the notebook the dashboard opened (already loaded — no
-        // reload on the critical path); otherwise fall back to the user's
-        // active notebook, creating one if needed.
-        if (_activeNotebookId == null) {
-          final service = ref.read(supabaseServiceProvider);
-          final notebook = await service.ensureActiveNotebook();
-          if (!_liveSessionGuard.isCurrent(lease)) {
-            return const NotebookTransitionResult.failure(
-              'Session start was superseded by another notebook transition.',
-            );
-          }
-          if (notebook == null) {
-            throw StateError('No active notebook is available');
-          }
-          await _loadNotebookUnlocked(notebook.id);
-        }
-        vlog(
-            'session',
-            'notebook=$_activeNotebookId '
-                '(${state.entities.length} entities loaded)');
-        prepared = await _prepareLiveUnlocked(lease, standby: false);
-        if (prepared == null) {
-          return const NotebookTransitionResult.failure(
-            'Session start was superseded by another notebook transition.',
-          );
-        }
-      }
-      return await _activateUnlocked(prepared);
+      if (!_liveSessionGuard.isCurrent(lease)) return _superseded;
+      // Record from the tap (the pre-connect buffer): nothing said while
+      // Lumen connects is lost.
+      _preconnectAudio.clear();
+      _preconnectBytes = 0;
+      _capture = capture;
+      await capture.start((pcm) => _onMicFrame(lease, pcm));
+      if (!_liveSessionGuard.isCurrent(lease)) return _superseded;
+      vlog('session', 'mic capture started');
+
+      final prepared =
+          await _prepareLiveUnlocked(lease, continuing: continuing);
+      if (prepared == null) return _superseded;
+      return await _activateUnlocked(prepared, continuing: continuing);
     } catch (error, stack) {
       debugPrint('[journal] startSession failed: $error\n$stack');
       await _closeLiveTransportUnlocked();
@@ -1024,17 +1038,20 @@ class JournalNotifier extends Notifier<JournalState> {
     }
   }
 
-  /// Everything a session needs except the microphone. Independent steps run
-  /// in parallel; the socket needs the runtime's credential first. Returns
-  /// null when a newer lifecycle request superseded this one.
+  static const _superseded = NotebookTransitionResult.failure(
+    'Session start was superseded by another notebook transition.',
+  );
+
+  /// Everything a session needs besides the mic. Independent steps run in
+  /// parallel; the socket needs the credential first. Returns null when a
+  /// newer lifecycle request superseded this one.
   Future<_PreparedLive?> _prepareLiveUnlocked(
     LiveSessionLease lease, {
-    required bool standby,
+    required bool continuing,
   }) async {
     final clock = Stopwatch()..start();
     void mark(String stage) =>
-        vlog('timing', '${standby ? 'warm' : 'cold'} $stage '
-            '+${clock.elapsedMilliseconds}ms');
+        vlog('timing', '$stage +${clock.elapsedMilliseconds}ms');
 
     final notebookId = _activeNotebookId;
     if (notebookId == null) {
@@ -1047,11 +1064,12 @@ class JournalNotifier extends Notifier<JournalState> {
     // in front of the socket.
     final audioSessionReady = configureVoiceAudioSession();
     final playbackReady = _attachPlayer(ref.read(audioOutputProvider));
-    final greetingReady = _loadStandardOpening();
-    if (!standby) {
-      // Cold start: greet as soon as the speaker is ready, while the socket
-      // is still connecting — the greeting covers the connection time. The
-      // mic stays gated until the greeting is heard AND the session is live.
+    final greetingReady =
+        continuing ? Future<StandardOpening?>.value() : _loadStandardOpening();
+    if (!continuing) {
+      // Greet as soon as the speaker is ready, while the socket is still
+      // connecting — the greeting covers the connection time. The mic stays
+      // gated until the greeting is heard.
       unawaited(Future.wait([playbackReady, greetingReady]).then((_) {
         if (_liveSessionGuard.isCurrent(lease)) _startGreeting();
       }));
@@ -1073,12 +1091,9 @@ class JournalNotifier extends Notifier<JournalState> {
       sessionId: conversationSessionId,
     );
 
-    final live = GeminiLiveClient(
+    final live = ref.read(liveClientFactoryProvider)(
       sessionToken: readySession.sessionToken,
       model: readySession.model,
-      systemInstruction: geminiLiveSystemInstruction,
-      voice: 'Aoede',
-      tools: _liveTools,
     );
     final prepared = _PreparedLive(
       binding: binding,
@@ -1086,6 +1101,7 @@ class JournalNotifier extends Notifier<JournalState> {
       conversationSessionId: conversationSessionId,
       live: live,
       gate: LiveSignalGate(),
+      tokenExpiresAt: readySession.expiresAt,
     );
     bool isCurrent() => _isCurrentLiveSession(binding, live);
     void signal(LiveSignal value) {
@@ -1093,8 +1109,6 @@ class JournalNotifier extends Notifier<JournalState> {
     }
 
     live
-      // Every content signal goes through the gate: held while warm, paced
-      // replay on activation, then straight through.
       ..onTranscript = (chunk, isFinal) {
         signal(UserTranscript(chunk, isFinal));
       }
@@ -1110,7 +1124,6 @@ class JournalNotifier extends Notifier<JournalState> {
       ..onTurnComplete = () {
         signal(const TurnCompleteSignal());
       }
-      // Tool calls need answers now, warm or not; they only read the graph.
       ..onToolCall = (name, args) async {
         if (!isCurrent()) return const <String, dynamic>{};
         Map<String, dynamic> result;
@@ -1125,24 +1138,27 @@ class JournalNotifier extends Notifier<JournalState> {
         return result;
       }
       ..onGoAway = (timeLeft) {
-        if (!isCurrent()) return;
-        if (!prepared.gate.isActivated) {
-          _refreshWarm(prepared);
-        } else {
-          vlog('session', 'Gemini will close this session in $timeLeft');
-        }
+        if (!isCurrent() || !identical(_session, prepared)) return;
+        vlog('session', 'Gemini will close this connection in $timeLeft');
+        unawaited(_reconnect(prepared, 'goAway'));
       }
       ..onError = (error) {
-        if (!isCurrent()) return;
-        // A standby nobody asked for fails quietly; the next tap goes cold.
-        if (standby && !prepared.gate.isActivated) {
-          _discardFailedWarm(prepared, error);
-          return;
-        }
-        debugPrint('[journal] Gemini Live error: $error');
-        _setStatus(SessionStatus.error);
+        // Errors while connecting surface through the awaited setup; a
+        // reconnect handles its own attempts.
+        if (!isCurrent() || !identical(_session, prepared)) return;
+        if (_reconnecting) return;
+        vlog('session', 'connection lost: $error');
+        unawaited(_reconnect(prepared, 'connection lost'));
       };
     _live = live;
+
+    // Continuing: earlier turns go first, then what the user already said.
+    if (continuing) live.holdInput();
+    for (final pcm in _preconnectAudio) {
+      live.sendAudio(pcm);
+    }
+    _preconnectAudio.clear();
+    _preconnectBytes = 0;
 
     await live.connect();
     await live.whenSetupComplete.timeout(const Duration(seconds: 8));
@@ -1152,28 +1168,23 @@ class JournalNotifier extends Notifier<JournalState> {
     await greetingReady;
     if (!isCurrent()) return null;
     mark(playbackOk ? 'playback ready' : 'playback unavailable');
-    // No opening is requested from Gemini: the app plays Lumen's bundled
-    // greeting, and the system instruction says it has already been said.
     return prepared;
   }
 
-  /// The tap: the prepared session becomes the user's live session. Lumen's
-  /// greeting plays (if a cold start hasn't already begun it), anything the
-  /// socket sent while warm replays, and only then is the mic started — it
-  /// stays gated until the greeting has been heard.
+  /// The prepared session becomes the user's live session: the turn machine
+  /// learns its identity, signals start flowing, and — when continuing —
+  /// the earlier conversation is sent ahead of the buffered mic audio.
   Future<NotebookTransitionResult> _activateUnlocked(
-    _PreparedLive prepared,
-  ) async {
-    _warmRefreshTimer?.cancel();
-    _warmRefreshTimer = null;
-    _warm = null;
+    _PreparedLive prepared, {
+    required bool continuing,
+  }) async {
     bool isCurrent() => _isCurrentLiveSession(prepared.binding, prepared.live);
-    final opening = _opening ??= SessionOpeningCoordinator();
-
+    _session = prepared;
+    _connectionLapsed = false;
     _sessionStartedAt = DateTime.now();
     // A live Gemini socket and an active turn-processing session are two
-    // separate states. Establish the turn-machine identity before replaying
-    // anything so transcripts can be finalized, extracted, and committed
+    // separate states. Establish the turn-machine identity before anything
+    // arrives so transcripts can be finalized, extracted, and committed
     // against the loaded notebook revision.
     _dispatchTurn(SessionStarted(
       sessionId: prepared.conversationSessionId,
@@ -1181,41 +1192,84 @@ class JournalNotifier extends Notifier<JournalState> {
       revision: _revision,
     ));
     _setStatus(SessionStatus.live);
-    vlog('timing', 'activated (${prepared.gate.buffered} signals buffered)');
-    _startGreeting();
+    if (!continuing) _startGreeting();
     prepared.gate.activate((signal) {
       if (isCurrent()) _handleSignal(signal);
     });
-
-    final capture = PcmCapture();
-    _capture = capture;
-    if (!await capture.hasPermission()) {
-      debugPrint('[journal] microphone permission not granted');
-      await _closeLiveTransportUnlocked();
-      _setStatus(SessionStatus.error);
-      return const NotebookTransitionResult.failure(
-        'Microphone permission is required to start a journal session.',
+    if (continuing) {
+      prepared.live.sendHistory(
+        resumeContext(conversation: _conversation, entries: state.entries),
+        note: resumeNote,
       );
+      prepared.live.releaseInput();
     }
-    if (!isCurrent()) {
-      await capture.stop();
-      return const NotebookTransitionResult.failure(
-        'Session start was superseded by another notebook transition.',
-      );
-    }
-    await capture.start((pcm) {
-      if (isCurrent() && opening.acceptsUserAudio) {
-        prepared.live.sendAudio(pcm);
-      }
-    });
-    if (!isCurrent()) {
-      await capture.stop();
-      return const NotebookTransitionResult.failure(
-        'Session start was superseded by another notebook transition.',
-      );
-    }
-    vlog('session', 'mic capture started');
+    vlog('timing', 'live');
     return const NotebookTransitionResult.success();
+  }
+
+  /// Reconnects [session] by its resumption handle: the same token while it
+  /// can still start a connection (within its 30 min life), otherwise a
+  /// fresh one. Context stays on Gemini's side, so nothing is re-sent. While
+  /// paused, it only marks the connection lapsed; resuming reconnects.
+  Future<void> _reconnect(_PreparedLive session, String reason) async {
+    bool isCurrent() => _isCurrentLiveSession(session.binding, session.live) &&
+        identical(_session, session);
+    if (_reconnecting || !isCurrent()) return;
+    final live = session.live;
+    if (_status == SessionStatus.paused) {
+      vlog('session', 'connection lapsed while paused ($reason)');
+      _connectionLapsed = true;
+      await live.close();
+      return;
+    }
+    if (live.resumptionHandle == null) {
+      debugPrint('[journal] Gemini Live error without a resumption handle: '
+          '$reason');
+      _setStatus(SessionStatus.error);
+      return;
+    }
+    _reconnecting = true;
+    _notifyUi();
+    vlog('session', 'reconnecting by handle ($reason)');
+    try {
+      for (var attempt = 0; attempt < 3; attempt++) {
+        if (!isCurrent()) return;
+        if (attempt > 0) {
+          await Future<void>.delayed(Duration(milliseconds: 500 << attempt));
+          if (!isCurrent()) return;
+        }
+        try {
+          String? token;
+          final tokenUsable = DateTime.now()
+              .add(const Duration(minutes: 1))
+              .isBefore(session.tokenExpiresAt);
+          if (attempt > 0 || !tokenUsable) {
+            final outcome =
+                await _takeCredential(session.notebookId, (stage) {});
+            if (outcome is! LiveSessionReady) {
+              throw StateError('no token for reconnect');
+            }
+            token = outcome.sessionToken;
+            session.tokenExpiresAt = outcome.expiresAt;
+          }
+          if (!isCurrent()) return;
+          await live.reconnect(sessionToken: token);
+          await live.whenSetupComplete.timeout(const Duration(seconds: 8));
+          _connectionLapsed = false;
+          vlog('session', 'reconnected (attempt ${attempt + 1})');
+          return;
+        } catch (error) {
+          vlog('session', 'reconnect attempt ${attempt + 1} failed: $error');
+        }
+      }
+      if (isCurrent()) {
+        debugPrint('[journal] Gemini Live could not reconnect');
+        _setStatus(SessionStatus.error);
+      }
+    } finally {
+      _reconnecting = false;
+      _notifyUi();
+    }
   }
 
   /// Plays Lumen's bundled greeting through this session's player, once.
@@ -1392,7 +1446,7 @@ class JournalNotifier extends Notifier<JournalState> {
     }
   }
 
-  static const _liveTools = [
+  static const liveTools = [
     {
       'function_declarations': [
         {
@@ -1444,10 +1498,11 @@ class JournalNotifier extends Notifier<JournalState> {
     _clearAgentSpeaking();
     _clearLiveText();
     _opening = null;
-    _warmRefreshTimer?.cancel();
-    _warmRefreshTimer = null;
-    _warm?.gate.dispose();
-    _warm = null;
+    _session?.gate.dispose();
+    _session = null;
+    _connectionLapsed = false;
+    _preconnectAudio.clear();
+    _preconnectBytes = 0;
 
     final capture = _capture;
     final live = _live;
@@ -1490,8 +1545,6 @@ class JournalNotifier extends Notifier<JournalState> {
       return _leaveNotebookUnlocked();
     });
   }
-
-  Future<NotebookTransitionResult> endSession() => leaveNotebook();
 
   Future<NotebookTransitionResult> _leaveNotebookUnlocked() async {
     final notebookId = _activeNotebookId;
@@ -1550,8 +1603,8 @@ class JournalNotifier extends Notifier<JournalState> {
   }
 }
 
-/// A connected, set-up Gemini session: a warm standby until [gate] is
-/// activated, then the user's live session.
+/// A connected, set-up Gemini session. Its [gate] passes signals through
+/// once the session is activated.
 class _PreparedLive {
   _PreparedLive({
     required this.binding,
@@ -1559,6 +1612,7 @@ class _PreparedLive {
     required this.conversationSessionId,
     required this.live,
     required this.gate,
+    required this.tokenExpiresAt,
   });
 
   final LiveSessionLease binding;
@@ -1566,7 +1620,32 @@ class _PreparedLive {
   final String conversationSessionId;
   final GeminiLiveClient live;
   final LiveSignalGate gate;
+
+  /// When [live]'s token stops working; a reconnect after that takes a
+  /// fresh one.
+  DateTime tokenExpiresAt;
 }
+
+/// Makes the session's microphone; tests substitute a fake.
+final micCaptureFactoryProvider = Provider<MicCapture Function()>(
+  (ref) => PcmCapture.new,
+);
+
+/// Makes the session's Gemini Live client; tests substitute a fake socket.
+final liveClientFactoryProvider = Provider<
+    GeminiLiveClient Function({
+      required String sessionToken,
+      required String model,
+    })>(
+  (ref) => ({required String sessionToken, required String model}) =>
+      GeminiLiveClient(
+        sessionToken: sessionToken,
+        model: model,
+        systemInstruction: geminiLiveSystemInstruction,
+        voice: 'Aoede',
+        tools: JournalNotifier.liveTools,
+      ),
+);
 
 /// One chat-pane row: a conversation turn, and whether it is still unfinished.
 typedef TranscriptRow = ({ConversationTurn turn, bool pending});

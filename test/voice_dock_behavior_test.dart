@@ -332,4 +332,39 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     });
   });
+
+  group('paused and reconnecting', () {
+    testWidgets('a paused mic reads "You · Paused" with a muted mic icon',
+        (tester) async {
+      var taps = 0;
+      await _pump(
+        tester,
+        VoiceDock(mode: DockMode.idle, paused: true, onMicTap: () => taps++),
+      );
+      await _run(tester);
+
+      expect(find.text('Paused'), findsOneWidget);
+      expect(find.byIcon(Icons.mic_off), findsOneWidget);
+      await tester.tap(find.byIcon(Icons.mic_off));
+      expect(taps, 1, reason: 'the same button resumes');
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('a reconnect reads "Lumen · Reconnecting" over listening',
+        (tester) async {
+      await _pump(
+        tester,
+        VoiceDock(
+          mode: DockMode.listening,
+          reconnecting: true,
+          onMicTap: () {},
+        ),
+      );
+      await _run(tester);
+
+      expect(find.text('Reconnecting'), findsOneWidget);
+      expect(find.text('Listening'), findsNothing);
+      await tester.pumpWidget(const SizedBox());
+    });
+  });
 }

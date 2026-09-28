@@ -48,6 +48,12 @@ class VoiceDock extends StatefulWidget {
   /// accepting speech yet.
   final bool openingInProgress;
 
+  /// The mic is paused mid-session; the next mic tap resumes it.
+  final bool paused;
+
+  /// The connection is being restored; the conversation keeps its context.
+  final bool reconnecting;
+
   /// The latest graph upsert, shown as a chip above the dock.
   final UpsertActivity? activity;
   final bool muted;
@@ -69,6 +75,8 @@ class VoiceDock extends StatefulWidget {
     this.liveAgent = '',
     this.extracting = false,
     this.openingInProgress = false,
+    this.paused = false,
+    this.reconnecting = false,
     this.activity,
     this.muted = false,
     this.view = JournalView.graph,
@@ -132,15 +140,20 @@ class _VoiceDockState extends State<VoiceDock>
   bool get _speaking => widget.mode == DockMode.speaking;
 
   bool get _lumenHolds =>
-      widget.openingInProgress || _speaking || widget.liveAgent.isNotEmpty;
-  bool get _youHold => !_lumenHolds && _listening;
+      widget.reconnecting ||
+      widget.openingInProgress ||
+      _speaking ||
+      widget.liveAgent.isNotEmpty;
+  bool get _youHold => !_lumenHolds && (_listening || widget.paused);
 
   String? get _youStatus {
     if (!_youHold) return null;
+    if (widget.paused) return 'Paused';
     return widget.mode == DockMode.thinking ? 'Connecting' : 'Listening';
   }
 
   String? get _lumenStatus {
+    if (widget.reconnecting) return 'Reconnecting';
     if (_speaking) return 'Speaking';
     if (widget.openingInProgress) return 'Connecting';
     if (widget.liveAgent.isNotEmpty) return 'Speaking';
@@ -344,7 +357,11 @@ class _VoiceDockState extends State<VoiceDock>
                           : colors.amber,
                       shape: BoxShape.circle,
                     ),
-                    child: const Icon(Icons.mic, size: 18, color: Colors.white),
+                    child: Icon(
+                      widget.paused ? Icons.mic_off : Icons.mic,
+                      size: 18,
+                      color: Colors.white,
+                    ),
                   ),
                 ),
               ),

@@ -3,6 +3,19 @@
 Date: 2026-09-27 (revised after market research). Branch:
 `feat/voice-session-lifecycle`, off `main` at `4d9843f`.
 
+## Status
+
+| Phase | State |
+| --- | --- |
+| 0 | Done and deployed (`ca-central-1`); `POST /v1/live-sessions` live |
+| 1 | Done: `LiveCredentials`, `AudioOutput`, `VoiceServicesScope` |
+| 2 | Done: resumption, compression, voice detection, pre-connect buffer, pause/resume, context seeding, echo cancellation, dock states; warm standby removed |
+| 3 | Not started |
+
+Until Phase 3, reopened notebooks have no local transcript (the device keeps
+only turns still being saved), so Phase 2 seeds context from this run's turns
+or, failing that, the notebook's saved journal entries.
+
 ## Goals
 
 1. **Credentials once per sign-in, not per notebook.** The AWS credential

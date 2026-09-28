@@ -115,6 +115,12 @@ class _VoiceServicesScopeState extends ConsumerState<VoiceServicesScope>
     ref.listen(authProvider, (_, next) {
       _signedInChanged(next.valueOrNull != null);
     });
-    return widget.child;
+    // Any touch means someone is here: keep the held token fresh (refreshes
+    // stop after a stretch without activity).
+    return Listener(
+      behavior: HitTestBehavior.translucent,
+      onPointerDown: (_) => _binding?.credentials.noteActivity(),
+      child: widget.child,
+    );
   }
 }
