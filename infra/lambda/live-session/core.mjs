@@ -143,9 +143,13 @@ export function createLiveSessionHandler({
             uses: 1,
             expireTime,
             newSessionExpireTime,
-            liveConnectConstraints: {
+            // REST uses the setup message, unlike the SDK's
+            // liveConnectConstraints. Lock only these fields so the client's
+            // instructions, voice, tools and transcription settings survive.
+            fieldMask: "model,generationConfig.responseModalities",
+            bidiGenerateContentSetup: {
               model: `models/${model}`,
-              config: { responseModalities: ["AUDIO"] },
+              generationConfig: { responseModalities: ["AUDIO"] },
             },
           }),
           signal: AbortSignal.timeout(5000),

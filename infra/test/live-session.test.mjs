@@ -114,9 +114,10 @@ test("returns a constrained one-use live credential for an owned notebook", asyn
     uses: 1,
     expireTime: "2026-09-06T16:30:00.000Z",
     newSessionExpireTime: "2026-09-06T16:01:00.000Z",
-    liveConnectConstraints: {
+    fieldMask: "model,generationConfig.responseModalities",
+    bidiGenerateContentSetup: {
       model: "models/gemini-3.1-flash-live-preview",
-      config: { responseModalities: ["AUDIO"] },
+      generationConfig: { responseModalities: ["AUDIO"] },
     },
   });
   assert.equal(response.body.includes("permanent-test-key"), false);
@@ -194,9 +195,10 @@ test("user route mints the same constrained token without a notebook lookup", as
     uses: 1,
     expireTime: "2026-09-06T16:30:00.000Z",
     newSessionExpireTime: "2026-09-06T16:10:00.000Z",
-    liveConnectConstraints: {
+    fieldMask: "model,generationConfig.responseModalities",
+    bidiGenerateContentSetup: {
       model: "models/gemini-3.1-flash-live-preview",
-      config: { responseModalities: ["AUDIO"] },
+      generationConfig: { responseModalities: ["AUDIO"] },
     },
   });
   assert.equal(response.body.includes("permanent-test-key"), false);
