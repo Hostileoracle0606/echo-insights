@@ -32,9 +32,36 @@ export class InfraStack extends cdk.Stack {
     });
     const webOrigin = new cdk.CfnParameter(this, "WebOrigin", {
       type: "String",
-      description: "Exact Cloudflare-hosted web origin allowed to call the runtime",
-      allowedPattern: "https?://[^/]+",
+      description: "Optional web origin; leave empty for a native-only deployment",
+      allowedPattern: "^$|https?://[^/]+",
+      default: "",
     });
+    const hasWebOrigin = new cdk.CfnCondition(this, "HasWebOrigin", {
+      expression: cdk.Fn.conditionNot(cdk.Fn.conditionEquals(webOrigin.valueAsString, "")),
+    });
+    // Accounts with a low Lambda concurrency quota cannot reserve capacity,
+    // so the reservation is opt-in.
+    const workerReservedConcurrency = new cdk.CfnParameter(this, "WorkerReservedConcurrency", {
+      type: "Number",
+      description: "Reservation per worker; zero uses account shared concurrency",
+      default: 0,
+      minValue: 0,
+    });
+    const hasWorkerReservation = new cdk.CfnCondition(this, "HasWorkerReservation", {
+      expression: cdk.Fn.conditionNot(
+        cdk.Fn.conditionEquals(workerReservedConcurrency.valueAsNumber, 0),
+      ),
+    });
+    const reserveConcurrency = (fn: lambda.Function) => {
+      (fn.node.defaultChild as lambda.CfnFunction).reservedConcurrentExecutions =
+        cdk.Token.asNumber(
+          cdk.Fn.conditionIf(
+            hasWorkerReservation.logicalId,
+            workerReservedConcurrency.valueAsNumber,
+            cdk.Aws.NO_VALUE,
+          ),
+        );
+    };
 
     const sharedEnvironment = {
       SUPABASE_URL: supabaseUrl.valueAsString,
@@ -67,8 +94,8 @@ export class InfraStack extends cdk.Stack {
         GEMINI_LIVE_MODEL: "gemini-3.1-flash-live-preview",
         LIVE_SESSION_START_WINDOW_SECONDS: "600",
       },
-      reservedConcurrentExecutions: 20,
     });
+    reserveConcurrency(liveSessionBroker);
     geminiApiKey.grantRead(liveSessionBroker);
 
     const extractionCache = new dynamodb.Table(this, "GraphExtractionCache", {
@@ -91,8 +118,8 @@ export class InfraStack extends cdk.Stack {
         GEMINI_EXTRACTION_MODEL: "gemini-2.5-flash",
         EXTRACTION_CACHE_TABLE_NAME: extractionCache.tableName,
       },
-      reservedConcurrentExecutions: 20,
     });
+    reserveConcurrency(graphExtractor);
     geminiApiKey.grantRead(graphExtractor);
     extractionCache.grantReadWriteData(graphExtractor);
 
@@ -106,6 +133,19 @@ export class InfraStack extends cdk.Stack {
         allowMethods: [apigatewayv2.CorsHttpMethod.OPTIONS, apigatewayv2.CorsHttpMethod.POST],
         maxAge: cdk.Duration.hours(1),
       },
+    });
+    // CORS only for a web deployment; the native app doesn't need it.
+    (api.node.defaultChild as apigatewayv2.CfnApi).addPropertyOverride("CorsConfiguration", {
+      "Fn::If": [
+        hasWebOrigin.logicalId,
+        {
+          AllowHeaders: ["authorization", "content-type"],
+          AllowMethods: ["OPTIONS", "POST"],
+          AllowOrigins: [webOrigin.valueAsString],
+          MaxAge: 3600,
+        },
+        { Ref: "AWS::NoValue" },
+      ],
     });
 
     const authorizer = new authorizers.HttpLambdaAuthorizer(

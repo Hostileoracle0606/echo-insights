@@ -69,7 +69,11 @@ Deployment requires these public configuration values:
 
 - `SupabaseUrl`
 - `SupabasePublishableKey`
-- `WebOrigin`, the exact Cloudflare-hosted origin allowed to call the route
+- `WebOrigin` (optional), the exact Cloudflare-hosted origin allowed to call
+  the routes; leave it empty for a native-only deployment, which turns CORS off
+- `WorkerReservedConcurrency` (optional, default 0), reserved concurrency for
+  each worker Lambda; 0 uses the account's shared pool, which accounts with a
+  low concurrency quota need
 
 The permanent Gemini credential is deliberately not a deployment parameter and
 must never appear in a command committed to the repository. After deployment,

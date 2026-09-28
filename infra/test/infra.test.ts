@@ -110,3 +110,26 @@ test("exposes a user-scoped live-session route on the same broker and authorizer
     },
   });
 });
+
+test("keeps the web origin and worker reservations optional", () => {
+  const template = synthesizeTemplate();
+
+  template.hasParameter("WebOrigin", { Default: "", AllowedPattern: "^$|https?://[^/]+" });
+  template.hasParameter("WorkerReservedConcurrency", { Type: "Number", Default: 0, MinValue: 0 });
+  template.hasCondition("HasWebOrigin", Match.anyValue());
+  template.hasCondition("HasWorkerReservation", Match.anyValue());
+  template.hasResourceProperties("AWS::ApiGatewayV2::Api", {
+    CorsConfiguration: { "Fn::If": ["HasWebOrigin", Match.anyValue(), { Ref: "AWS::NoValue" }] },
+  });
+  const reservation = {
+    "Fn::If": ["HasWorkerReservation", { Ref: "WorkerReservedConcurrency" }, { Ref: "AWS::NoValue" }],
+  };
+  template.hasResourceProperties("AWS::Lambda::Function", {
+    Description: "Issues short-lived, constrained Gemini Live credentials",
+    ReservedConcurrentExecutions: reservation,
+  });
+  template.hasResourceProperties("AWS::Lambda::Function", {
+    Description: "Extracts validated graph patches without exposing Gemini credentials",
+    ReservedConcurrentExecutions: reservation,
+  });
+});
