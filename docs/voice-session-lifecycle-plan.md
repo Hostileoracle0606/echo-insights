@@ -10,11 +10,11 @@ Date: 2026-09-27 (revised after market research). Branch:
 | 0 | Done and deployed (`ca-central-1`); `POST /v1/live-sessions` live |
 | 1 | Done: `LiveCredentials`, `AudioOutput`, `VoiceServicesScope` |
 | 2 | Done: resumption, compression, voice detection, pre-connect buffer, pause/resume, context seeding, echo cancellation, dock states; warm standby removed |
-| 3 | Not started |
+| 3 | Done in code: `conversation_turns` (migration `20260928000000`), saved at finalization and loaded on open; new notebooks open behind "Lumen is joining…" with a 10 s timeout, Retry and "Open without voice"; old notebooks open idle with their transcript. The migration still has to be applied to the Supabase project |
 
-Until Phase 3, reopened notebooks have no local transcript (the device keeps
-only turns still being saved), so Phase 2 seeds context from this run's turns
-or, failing that, the notebook's saved journal entries.
+Context for a continued conversation comes from the saved transcript plus
+this run's turns, falling back to the notebook's journal entries for
+notebooks from before `conversation_turns` existed.
 
 ## Goals
 

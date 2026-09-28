@@ -34,6 +34,11 @@ import 'voice_services_provider.dart';
 
 enum SessionStatus { idle, connecting, live, paused, ending, error }
 
+/// Lumen joining a new notebook as it opens (plan: Flow 2). The page waits
+/// behind a loader while [joining]; [failed] offers Retry or opening
+/// without voice.
+enum JoiningPhase { none, joining, failed }
+
 class NotebookTransitionResult {
   const NotebookTransitionResult._(this.succeeded, [this.message]);
 
@@ -116,6 +121,18 @@ class JournalNotifier extends Notifier<JournalState> {
   String? _restoredNotebookId;
 
   final _conversation = <ConversationTurn>[];
+
+  // The notebook's saved conversation from earlier sessions (server-side),
+  // shown before this run's turns and used as context when continuing.
+  final _history = <ConversationTurn>[];
+  // Turns already saved (or loaded) for the active notebook.
+  final Set<String> _savedTurnIds = {};
+  DateTime? _saveRetryAfter;
+
+  JoiningPhase _joining = JoiningPhase.none;
+  Timer? _joiningTimer;
+  JoiningPhase get joining => _joining;
+
   String? _activeNotebookId;
   SessionStatus _status = SessionStatus.idle;
   DateTime? _sessionStartedAt;
@@ -161,7 +178,10 @@ class JournalNotifier extends Notifier<JournalState> {
   /// order they were spoken. An utterance keeps its slot from first word to
   /// finalization, so nothing vanishes or jumps while Gemini's finals lag.
   List<TranscriptRow> get transcriptRows {
+    final current = {for (final turn in _conversation) turn.turnId};
     final rows = <TranscriptRow>[
+      for (final turn in _history)
+        if (!current.contains(turn.turnId)) (turn: turn, pending: false),
       for (final turn in _greetingRows) (turn: turn, pending: false),
       for (final turn in conversation) (turn: turn, pending: false),
       for (final turn in inProgress) (turn: turn, pending: true),
@@ -205,6 +225,7 @@ class JournalNotifier extends Notifier<JournalState> {
       _finalizationTimers.clear();
       _agentSpeakingTimer?.cancel();
       _activityTimer?.cancel();
+      _joiningTimer?.cancel();
       _session?.gate.dispose();
       unawaited(_capture?.stop());
       unawaited(_live?.close());
@@ -319,12 +340,53 @@ class JournalNotifier extends Notifier<JournalState> {
     _conversation
       ..clear()
       ..addAll(latest.conversation);
+    _saveNewTurns(latest.notebookId);
     _inProgress
       ..clear()
       ..addAll(_turnMachine.inProgress);
     _extracting = latest.pending.isNotEmpty;
     _notifyUi();
   }
+
+  /// Saves each newly finalized turn (both speakers) to the notebook's
+  /// server-side transcript, once. A failed save is retried on a later
+  /// change, at most every 30 s.
+  void _saveNewTurns(String? notebookId) {
+    if (notebookId == null || notebookId != _activeNotebookId) return;
+    final retryAfter = _saveRetryAfter;
+    if (retryAfter != null && DateTime.now().isBefore(retryAfter)) return;
+    for (final turn in _conversation) {
+      if (!_savedTurnIds.add(turn.turnId)) continue;
+      unawaited(_saveTurn(notebookId, turn));
+    }
+  }
+
+  Future<void> _saveTurn(String notebookId, ConversationTurn turn) async {
+    try {
+      await ref.read(transcriptStoreProvider).save(notebookId, turn);
+    } catch (error) {
+      vlog('session', 'transcript save failed, will retry: $error');
+      if (notebookId == _activeNotebookId) {
+        _savedTurnIds.remove(turn.turnId);
+        _saveRetryAfter = DateTime.now().add(const Duration(seconds: 30));
+      }
+    }
+  }
+
+  /// Earlier turns first, then this run's (without the ones already saved).
+  List<ConversationTurn> get _earlierConversation {
+    final saved = {for (final turn in _history) turn.turnId};
+    return [
+      ..._history,
+      for (final turn in _conversation)
+        if (!saved.contains(turn.turnId)) turn,
+    ];
+  }
+
+  bool get _continuesConversation => continuesConversation(
+        conversation: _earlierConversation,
+        entries: state.entries,
+      );
 
   void _trackLiveText(TurnEvent event) {
     switch (event) {
@@ -781,9 +843,32 @@ class JournalNotifier extends Notifier<JournalState> {
     final snapshot = await commitService.getNotebookSnapshot(notebookId);
     _activeNotebookId = notebookId;
     _greetingRows.clear();
+    _history
+      ..clear()
+      ..addAll(await _loadHistory(notebookId));
+    _savedTurnIds
+      ..clear()
+      ..addAll(_history.map((turn) => turn.turnId));
+    _saveRetryAfter = null;
     _revision = snapshot?.revision ?? 0;
     state = snapshot?.state ?? JournalState.empty();
     await _restoreTurnsForNotebook(notebookId);
+  }
+
+  /// The saved conversation, or none if it can't be read right now (the
+  /// notebook still opens; a session then starts without that context).
+  Future<List<ConversationTurn>> _loadHistory(String notebookId) async {
+    try {
+      final turns = await ref
+          .read(transcriptStoreProvider)
+          .load(notebookId)
+          .timeout(const Duration(seconds: 5));
+      vlog('session', 'loaded ${turns.length} saved turns');
+      return turns;
+    } catch (error) {
+      vlog('session', 'saved transcript unavailable: $error');
+      return const [];
+    }
   }
 
   /// Safely leaves the current notebook before loading another one.
@@ -818,7 +903,8 @@ class JournalNotifier extends Notifier<JournalState> {
         }
       }
 
-      if (_activeNotebookId != notebookId) {
+      final opening = _activeNotebookId != notebookId;
+      if (opening) {
         try {
           await _loadNotebookUnlocked(notebookId);
         } catch (error, stack) {
@@ -835,9 +921,70 @@ class JournalNotifier extends Notifier<JournalState> {
         }
       }
 
-      if (autoStart) return _startSessionUnlocked();
+      // A new notebook opens with Lumen (greeting and all); one with an
+      // earlier conversation opens quietly on its graph and transcript.
+      if ((opening || autoStart) && !_continuesConversation) {
+        return _openWithLumenUnlocked();
+      }
       return const NotebookTransitionResult.success();
     });
+  }
+
+  /// Starts the session behind the "Lumen is joining…" loader. After
+  /// [openingTimeoutProvider] without going live, the attempt is dropped and
+  /// the page offers Retry or opening without voice.
+  Future<NotebookTransitionResult> _openWithLumenUnlocked() async {
+    _setJoining(JoiningPhase.joining);
+    _joiningTimer?.cancel();
+    _joiningTimer = Timer(ref.read(openingTimeoutProvider), () {
+      _joiningTimer = null;
+      if (_joining != JoiningPhase.joining) return;
+      vlog('session', 'Lumen did not join in time');
+      _setJoining(JoiningPhase.failed);
+      unawaited(endSession());
+    });
+    final result = await _startSessionUnlocked();
+    _joiningTimer?.cancel();
+    _joiningTimer = null;
+    if (_joining == JoiningPhase.joining) {
+      _setJoining(_status == SessionStatus.live
+          ? JoiningPhase.none
+          : JoiningPhase.failed);
+    }
+    return result;
+  }
+
+  void _setJoining(JoiningPhase phase) {
+    if (_joining == phase) return;
+    _joining = phase;
+    _notifyUi();
+  }
+
+  /// Retry from the join-failed banner.
+  Future<NotebookTransitionResult> retryJoining() {
+    final intent = ++_lifecycleIntent;
+    _setJoining(JoiningPhase.joining);
+    if (_status == SessionStatus.idle || _status == SessionStatus.error) {
+      _setStatus(SessionStatus.connecting);
+    }
+    return _serializeLifecycle(() {
+      if (intent != _lifecycleIntent) {
+        return Future.value(const NotebookTransitionResult.failure(
+          'Session start was superseded by a newer request.',
+        ));
+      }
+      if (_status == SessionStatus.error) _setStatus(SessionStatus.idle);
+      return _openWithLumenUnlocked();
+    });
+  }
+
+  /// "Open without voice" from the join-failed banner: the notebook stays
+  /// open, and the mic starts a session whenever the user wants one.
+  Future<void> openWithoutVoice() async {
+    _joiningTimer?.cancel();
+    _joiningTimer = null;
+    _setJoining(JoiningPhase.none);
+    if (_status != SessionStatus.idle) await endSession();
   }
 
   /// Backwards-compatible safe entry point for callers that only load.
@@ -926,6 +1073,7 @@ class JournalNotifier extends Notifier<JournalState> {
   Future<NotebookTransitionResult> endSession() {
     final intent = ++_lifecycleIntent;
     _liveSessionGuard.invalidate();
+    _abortConnecting();
     return _serializeLifecycle(() async {
       if (intent != _lifecycleIntent) {
         return const NotebookTransitionResult.failure(
@@ -935,12 +1083,23 @@ class JournalNotifier extends Notifier<JournalState> {
       if (_status == SessionStatus.idle) {
         return const NotebookTransitionResult.success();
       }
+      if (_joining == JoiningPhase.joining) _setJoining(JoiningPhase.none);
       _setStatus(SessionStatus.ending);
       await _closeLiveTransportUnlocked();
       _dispatchTurn(const SessionEnded());
       _setStatus(SessionStatus.idle);
       return const NotebookTransitionResult.success();
     });
+  }
+
+  /// A superseded start may still be waiting for its setup ack (up to 8 s),
+  /// holding the lifecycle queue. Closing the half-open connection ends
+  /// that wait at once, so what comes next (End, Retry) isn't kept waiting.
+  void _abortConnecting() {
+    final live = _live;
+    if (live != null && _status == SessionStatus.connecting) {
+      unawaited(live.close());
+    }
   }
 
   /// A previous connection lapsed (goAway or drop) while paused; resuming
@@ -993,10 +1152,7 @@ class JournalNotifier extends Notifier<JournalState> {
     // A notebook with earlier conversation continues it: no greeting, the
     // earlier turns go to Gemini as context, and the user has the floor
     // from the tap. A new notebook opens with Lumen's greeting.
-    final continuing = continuesConversation(
-      conversation: _conversation,
-      entries: state.entries,
-    );
+    final continuing = _continuesConversation;
     final opening = _opening = SessionOpeningCoordinator();
     if (continuing) opening.markOpeningHeard();
     final lease = _liveSessionGuard.begin();
@@ -1029,6 +1185,9 @@ class JournalNotifier extends Notifier<JournalState> {
       if (prepared == null) return _superseded;
       return await _activateUnlocked(prepared, continuing: continuing);
     } catch (error, stack) {
+      // Superseded (End, Retry, another notebook): whoever superseded it
+      // cleans up; this attempt is not an error.
+      if (!_liveSessionGuard.isCurrent(lease)) return _superseded;
       debugPrint('[journal] startSession failed: $error\n$stack');
       await _closeLiveTransportUnlocked();
       _setStatus(SessionStatus.error);
@@ -1198,7 +1357,10 @@ class JournalNotifier extends Notifier<JournalState> {
     });
     if (continuing) {
       prepared.live.sendHistory(
-        resumeContext(conversation: _conversation, entries: state.entries),
+        resumeContext(
+          conversation: _earlierConversation,
+          entries: state.entries,
+        ),
         note: resumeNote,
       );
       prepared.live.releaseInput();
@@ -1534,6 +1696,7 @@ class JournalNotifier extends Notifier<JournalState> {
     // rejected immediately while it waits for an in-progress start operation.
     final intent = ++_lifecycleIntent;
     _liveSessionGuard.invalidate();
+    _abortConnecting();
     return _serializeLifecycle(() {
       if (intent != _lifecycleIntent) {
         return Future.value(
@@ -1595,6 +1758,11 @@ class JournalNotifier extends Notifier<JournalState> {
     _sessionStartedAt = null;
     _activeNotebookId = null;
     _restoredNotebookId = null;
+    _history.clear();
+    _savedTurnIds.clear();
+    _joiningTimer?.cancel();
+    _joiningTimer = null;
+    _joining = JoiningPhase.none;
     _lastTranscript = '';
     _lastMemoryQuery = null;
     _memoryCallsThisTurn = 0;
@@ -1625,6 +1793,11 @@ class _PreparedLive {
   /// fresh one.
   DateTime tokenExpiresAt;
 }
+
+/// How long a new notebook waits for Lumen to join before offering Retry.
+final openingTimeoutProvider = Provider<Duration>(
+  (ref) => const Duration(seconds: 10),
+);
 
 /// Makes the session's microphone; tests substitute a fake.
 final micCaptureFactoryProvider = Provider<MicCapture Function()>(

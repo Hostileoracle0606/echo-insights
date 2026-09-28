@@ -9,6 +9,7 @@ import 'package:lumen/audio/audio_output.dart';
 import 'package:lumen/audio/pcm_capture.dart';
 import 'package:lumen/audio/pcm_player.dart';
 import 'package:lumen/logic/resume_context.dart';
+import 'package:lumen/logic/turn_state.dart';
 import 'package:lumen/models/journal_entry.dart';
 import 'package:lumen/models/journal_state.dart';
 import 'package:lumen/providers/journal_provider.dart';
@@ -19,6 +20,7 @@ import 'package:lumen/services/live_credentials.dart';
 import 'package:lumen/services/notebook_commit_service.dart';
 import 'package:lumen/services/notebook_runtime_service.dart';
 import 'package:lumen/services/supabase_service.dart';
+import 'package:lumen/services/transcript_store.dart';
 import 'package:lumen/services/turn_journal_service.dart';
 
 import 'support/fake_live_socket.dart';
@@ -77,11 +79,31 @@ class _FakeCommits implements NotebookCommitService {
 
 class _FakeTurnJournal implements TurnJournalService {
   @override
+  Future<void> persistTurn(FinalizedTurn turn) async {}
+
+  @override
+  Future<void> forgetTurn({required String notebookId, required String turnId}) async {}
+
+  @override
   Future<List<TurnJournalCheckpoint>> loadCheckpoints(String notebookId) async =>
       const [];
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _FakeTranscripts implements TranscriptStore {
+  _FakeTranscripts(this.turns);
+  final List<ConversationTurn> turns;
+  final saved = <ConversationTurn>[];
+
+  @override
+  Future<List<ConversationTurn>> load(String notebookId, {int limit = 500}) async =>
+      turns;
+
+  @override
+  Future<void> save(String notebookId, ConversationTurn turn) async =>
+      saved.add(turn);
 }
 
 class _NoNotebookInserts implements SupabaseService {
@@ -91,7 +113,11 @@ class _NoNotebookInserts implements SupabaseService {
 }
 
 class _Harness {
-  _Harness({JournalState? state}) {
+  _Harness({
+    JournalState? state,
+    List<ConversationTurn> history = const [],
+    Duration openingTimeout = const Duration(seconds: 10),
+  }) : transcripts = _FakeTranscripts(history) {
     credentials = LiveCredentials(fetch: () async {
       tokensMinted += 1;
       final now = DateTime.now();
@@ -106,6 +132,8 @@ class _Harness {
       notebookCommitServiceProvider
           .overrideWithValue(_FakeCommits(state ?? JournalState.empty())),
       turnJournalServiceProvider.overrideWithValue(_FakeTurnJournal()),
+      transcriptStoreProvider.overrideWithValue(transcripts),
+      openingTimeoutProvider.overrideWithValue(openingTimeout),
       supabaseServiceProvider.overrideWithValue(_NoNotebookInserts()),
       liveCredentialsProvider.overrideWithValue(credentials),
       audioOutputProvider.overrideWithValue(
@@ -131,6 +159,7 @@ class _Harness {
     credentials.start();
   }
 
+  final _FakeTranscripts transcripts;
   late final ProviderContainer container;
   late final LiveCredentials credentials;
   final mic = _FakeMic();
@@ -187,13 +216,17 @@ void main() {
     expect(h.mic.starts, 0);
   });
 
-  test('a new notebook greets and sends no earlier context', () async {
+  test('a new notebook opens with Lumen joining, then greets', () async {
     h = _Harness();
-    await h.journal.enterNotebook(_notebookId);
 
-    final result = await h.startLive();
+    final entering = h.journal.enterNotebook(_notebookId);
+    await h.waitForSocket(1);
+    expect(h.journal.joining, JoiningPhase.joining);
+    h.socket.serverSends({'setupComplete': <String, dynamic>{}});
+    final result = await entering;
 
     expect(result.succeeded, isTrue);
+    expect(h.journal.joining, JoiningPhase.none);
     expect(h.journal.status, SessionStatus.live);
     expect(h.socket.kindsAfterSetup, isNot(contains('client_content')));
     expect(
@@ -341,5 +374,128 @@ void main() {
     expect(again.succeeded, isTrue);
     expect(h.sockets, hasLength(2));
     expect(h.socket.kindsAfterSetup.first, 'client_content');
+  });
+
+  test('an old notebook opens quietly with its saved conversation', () async {
+    h = _Harness(history: const [
+      ConversationTurn(
+        turnId: 'saved-1',
+        role: Speaker.user,
+        text: 'I met Maya.',
+        createdAt: '2026-09-20T12:00:00.000Z',
+      ),
+      ConversationTurn(
+        turnId: 'saved-2',
+        role: Speaker.assistant,
+        text: 'How did it go?',
+        createdAt: '2026-09-20T12:00:05.000Z',
+      ),
+    ]);
+
+    final entered = await h.journal.enterNotebook(_notebookId);
+
+    expect(entered.succeeded, isTrue);
+    expect(h.journal.status, SessionStatus.idle, reason: 'nothing auto-starts');
+    expect(h.journal.joining, JoiningPhase.none);
+    expect(h.sockets, isEmpty);
+    expect(
+      [for (final row in h.journal.transcriptRows) row.turn.text],
+      ['I met Maya.', 'How did it go?'],
+    );
+
+    await h.startLive();
+    final context = h.socket.sent[1]['client_content'] as Map;
+    expect(
+      [
+        for (final turn in context['turns'] as List)
+          ((turn as Map)['role'], ((turn['parts'] as List).single as Map)['text']),
+      ],
+      [
+        ('user', 'I met Maya.'),
+        ('model', 'How did it go?'),
+        ('user', resumeNote),
+      ],
+    );
+  });
+
+  test('finalized turns from both speakers are saved once', () async {
+    h = _Harness(
+      state: JournalState.empty().copyWith(entries: [_entry('Earlier.')]),
+    );
+    await h.journal.enterNotebook(_notebookId);
+    await h.startLive();
+
+    h.socket
+      ..serverSends({
+        'serverContent': {
+          'inputTranscription': {'text': 'I finished the Atlas draft.', 'finished': true},
+        },
+      })
+      ..serverSends({
+        'serverContent': {
+          'outputTranscription': {'text': 'How does it feel?', 'finished': true},
+        },
+      })
+      ..serverSends({
+        'serverContent': {'turnComplete': true},
+      });
+    for (var i = 0; i < 50 && h.transcripts.saved.length < 2; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+    }
+
+    expect(
+      [for (final turn in h.transcripts.saved) (turn.role, turn.text)],
+      [
+        (Speaker.user, 'I finished the Atlas draft.'),
+        (Speaker.assistant, 'How does it feel?'),
+      ],
+    );
+    // Later changes don't save them again.
+    h.journal.toggleMute();
+    h.socket.serverSends({'serverContent': {'turnComplete': true}});
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    expect(h.transcripts.saved, hasLength(2));
+  });
+
+  test('Lumen not joining in time offers Retry, which can then succeed',
+      () async {
+    h = _Harness(openingTimeout: const Duration(milliseconds: 50));
+
+    final entering = h.journal.enterNotebook(_notebookId);
+    await h.waitForSocket(1);
+    // No setup ack: the attempt times out.
+    await entering;
+    for (var i = 0; i < 50 && h.journal.status != SessionStatus.idle; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+    }
+    expect(h.journal.joining, JoiningPhase.failed);
+    expect(h.journal.status, SessionStatus.idle);
+    expect(h.sockets.single.sinkImpl.closed, isTrue);
+
+    final retrying = h.journal.retryJoining();
+    await h.waitForSocket(2);
+    expect(h.journal.joining, JoiningPhase.joining);
+    h.socket.serverSends({'setupComplete': <String, dynamic>{}});
+    expect((await retrying).succeeded, isTrue);
+    expect(h.journal.joining, JoiningPhase.none);
+    expect(h.journal.status, SessionStatus.live);
+  });
+
+  test('"Open without voice" drops the banner and leaves the mic idle',
+      () async {
+    h = _Harness(openingTimeout: const Duration(milliseconds: 50));
+
+    final entering = h.journal.enterNotebook(_notebookId);
+    await h.waitForSocket(1);
+    await entering;
+    for (var i = 0; i < 50 && h.journal.joining != JoiningPhase.failed; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+    }
+
+    await h.journal.openWithoutVoice();
+
+    expect(h.journal.joining, JoiningPhase.none);
+    expect(h.journal.status, SessionStatus.idle);
+    expect(h.mic.recording, isFalse);
   });
 }

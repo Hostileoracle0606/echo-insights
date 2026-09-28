@@ -517,6 +517,8 @@ class GeminiLiveClient {
   Future<void> _closeChannel() async {
     _closing = true;
     _setupComplete = false;
+    // Anyone still waiting for this connection's setup stops waiting now.
+    _failSetup(StateError('Gemini Live connection closed'));
     final sub = _sub;
     final channel = _channel;
     _sub = null;

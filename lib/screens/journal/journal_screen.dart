@@ -16,6 +16,7 @@ import 'entity_note_sheet.dart';
 import 'graph_canvas.dart';
 import 'graph_drawer.dart';
 import 'journal_top_bar.dart';
+import 'lumen_joining.dart';
 import 'transcript_page.dart';
 import 'voice_dock.dart';
 
@@ -109,6 +110,8 @@ class _JournalScreenState extends ConsumerState<JournalScreen>
           .read(journalProvider.notifier)
           .enterNotebook(id, autoStart: autoStart);
       if (!mounted || widget.notebookId != id || result.succeeded) return;
+      // Lumen failing to join has its own banner with Retry.
+      if (ref.read(joiningPhaseProvider) != JoiningPhase.none) return;
       _showTransitionError(result);
     });
   }
@@ -141,6 +144,11 @@ class _JournalScreenState extends ConsumerState<JournalScreen>
         return;
     }
     if (mounted && !result.succeeded) _showTransitionError(result);
+  }
+
+  Future<void> _retryJoining() async {
+    unawaited(HapticFeedback.lightImpact());
+    await ref.read(journalProvider.notifier).retryJoining();
   }
 
   Future<void> _endSession() async {
@@ -311,6 +319,7 @@ class _JournalScreenState extends ConsumerState<JournalScreen>
     final muted = ref.watch(mutedProvider);
     final agentSpeaking = ref.watch(agentSpeakingProvider);
     final reconnecting = ref.watch(reconnectingProvider);
+    final joining = ref.watch(joiningPhaseProvider);
     final turns =
         ref.watch(transcriptRowsProvider).map(_toTurn).toList(growable: false);
     final terms = _termsFor(state.entities);
@@ -398,6 +407,33 @@ class _JournalScreenState extends ConsumerState<JournalScreen>
                 ),
               ),
             ),
+            // A new notebook waits for Lumen behind this cover.
+            IgnorePointer(
+              ignoring: joining != JoiningPhase.joining,
+              child: AnimatedOpacity(
+                opacity: joining == JoiningPhase.joining ? 1 : 0,
+                duration: const Duration(milliseconds: 320),
+                curve: Curves.easeOut,
+                child: const LumenJoiningCover(),
+              ),
+            ),
+            if (joining == JoiningPhase.failed)
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: SafeArea(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 68, 16, 0),
+                    child: LumenJoinFailedBanner(
+                      onRetry: _retryJoining,
+                      onOpenWithoutVoice: () => unawaited(
+                        ref.read(journalProvider.notifier).openWithoutVoice(),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
           ],
         ),
       ),
