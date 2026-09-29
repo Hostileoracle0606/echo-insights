@@ -17,22 +17,42 @@ typedef OnToolCall = Future<Map<String, dynamic>> Function(
 );
 typedef OnTurnComplete = void Function();
 
+/// One earlier turn sent as context when a conversation continues.
+typedef HistoryTurn = ({bool fromUser, String text});
+
+/// Opens the socket; tests substitute a fake.
+typedef LiveChannelFactory = WebSocketChannel Function(Uri uri);
+
 class GeminiLiveClient {
-  final String sessionToken;
+  /// The Gemini token the next [connect] uses. A reconnect may swap in a
+  /// fresh one once the old token can no longer start a connection.
+  String sessionToken;
   final String model;
   final String systemInstruction;
   final String voice;
   final List<Map<String, dynamic>> tools;
 
+  /// Silence that ends the user's turn (Gemini recommends 500–800 ms).
+  final Duration silenceToEndTurn;
+  final LiveChannelFactory _channelFactory;
+
   WebSocketChannel? _channel;
   StreamSubscription<dynamic>? _sub;
 
   // Protocol state. Gemini Live rejects realtime input sent before the server
-  // acks setup — [sendAudio] drops frames until [_setupComplete]. [_closing]
-  // marks a client-initiated close so [connect]'s onDone doesn't report it.
+  // acks setup, so [sendAudio] buffers frames until [_setupComplete] (and
+  // while input is held — see [holdInput]). [_closing] marks a
+  // client-initiated close so [connect]'s onDone doesn't report it.
   bool _setupComplete = false;
   bool _closing = false;
+  bool _inputHeld = false;
+  final List<Uint8List> _pendingAudio = [];
+  int _pendingBytes = 0;
   int _framesDropped = 0;
+  String? _resumptionHandle;
+
+  /// Pre-setup audio kept at most (16 kHz PCM16 mono: 32 000 B/s → 15 s).
+  static const maxPendingAudioBytes = 32000 * 15;
   int _framesSent = 0;
   int _audioChunksIn = 0;
 
@@ -58,7 +78,22 @@ class GeminiLiveClient {
   /// duration. A warm standby replaces itself on this signal.
   void Function(Duration? timeLeft)? onGoAway;
 
-  Completer<void> _setupDone = Completer<void>();
+  Completer<void> _setupDone = _newSetupCompleter();
+
+  static Completer<void> _newSetupCompleter() {
+    final completer = Completer<void>();
+    // A socket that dies before setup fails this future; nobody may be
+    // listening yet, and that must not surface as an unhandled error.
+    completer.future.ignore();
+    return completer;
+  }
+
+  /// The latest handle Gemini issued for resuming this conversation, with
+  /// its context, on a new connection. Null until the server sends one.
+  String? get resumptionHandle => _resumptionHandle;
+
+  /// Audio waiting for setup (or for [releaseInput]), in bytes.
+  int get pendingAudioBytes => _pendingBytes;
 
   /// Completes when the server acknowledges setup — the point from which the
   /// session accepts content. Reset by each [connect].
@@ -70,7 +105,11 @@ class GeminiLiveClient {
     required this.systemInstruction,
     required this.voice,
     required this.tools,
-  });
+    this.silenceToEndTurn = const Duration(milliseconds: 700),
+    String? resumptionHandle,
+    LiveChannelFactory? channelFactory,
+  })  : _resumptionHandle = resumptionHandle,
+        _channelFactory = channelFactory ?? WebSocketChannel.connect;
 
   @visibleForTesting
   Uri get connectionUri => Uri.parse(
@@ -79,18 +118,24 @@ class GeminiLiveClient {
         'BidiGenerateContentConstrained',
       ).replace(queryParameters: {'access_token': sessionToken});
 
+  /// Opens a connection and sends setup. With a [resumptionHandle] the
+  /// server restores the earlier conversation, context included.
   Future<void> connect() async {
     final uri = connectionUri;
     _setupComplete = false;
     _closing = false;
-    if (_setupDone.isCompleted) _setupDone = Completer<void>();
-    vlog('client', 'connecting (model=$model)…');
-    _channel = WebSocketChannel.connect(uri);
+    if (_setupDone.isCompleted) _setupDone = _newSetupCompleter();
+    vlog(
+        'client',
+        'connecting (model=$model'
+            '${_resumptionHandle == null ? '' : ', resuming'})…');
+    final channel = _channelFactory(uri);
+    _channel = channel;
 
     // Await the actual WebSocket handshake (the web client awaits `open` the
     // same way); otherwise a failed handshake surfaces later as silence.
     try {
-      await _channel!.ready.timeout(const Duration(seconds: 8));
+      await channel.ready.timeout(const Duration(seconds: 8));
     } catch (error) {
       vlog('client', 'connect FAILED: $error');
       onError?.call(error);
@@ -98,26 +143,43 @@ class GeminiLiveClient {
     }
     vlog('client', 'socket open — sending setup');
 
-    _sub = _channel!.stream.listen(
+    _sub = channel.stream.listen(
       _onMessage,
       onError: (Object error) {
         vlog('client', 'socket error: $error');
+        _failSetup(error);
         onError?.call(error);
       },
       // A server-initiated close was previously invisible (no onDone handler):
       // the session died silently and the dock sat "listening" forever.
       onDone: () {
-        final code = _channel?.closeCode;
-        final reason = _channel?.closeReason;
+        final code = channel.closeCode;
+        final reason = channel.closeReason;
         vlog('client',
             'socket closed (code=$code reason="$reason" byUs=$_closing)');
         if (!_closing) {
-          onError?.call(
-              StateError('Gemini Live closed the connection ($code $reason)'));
+          final error =
+              StateError('Gemini Live closed the connection ($code $reason)');
+          _failSetup(error);
+          onError?.call(error);
         }
       },
     );
     _sendSetup();
+  }
+
+  void _failSetup(Object error) {
+    if (!_setupDone.isCompleted) _setupDone.completeError(error);
+  }
+
+  /// Replaces the connection with a new one that resumes this conversation
+  /// by its [resumptionHandle] — after a goAway, a dropped socket or a long
+  /// pause. Callbacks stay wired; audio sent meanwhile is buffered. Pass
+  /// [sessionToken] when the current token can no longer start a connection.
+  Future<void> reconnect({String? sessionToken}) async {
+    if (sessionToken != null) this.sessionToken = sessionToken;
+    await _closeChannel();
+    await connect();
   }
 
   void _sendSetup() {
@@ -143,6 +205,20 @@ class GeminiLiveClient {
         'output_audio_transcription': <String, dynamic>{},
         'input_audio_transcription': <String, dynamic>{},
         'tools': tools,
+        // Ask for resumption handles (and resume with the latest one), so a
+        // dropped or recycled connection comes back with its context.
+        'session_resumption': {
+          if (_resumptionHandle != null) 'handle': _resumptionHandle,
+        },
+        // Without compression, audio sessions end at ~15 minutes.
+        'context_window_compression': {
+          'sliding_window': <String, dynamic>{},
+        },
+        'realtime_input_config': {
+          'automatic_activity_detection': {
+            'silence_duration_ms': silenceToEndTurn.inMilliseconds,
+          },
+        },
       },
     };
     _channel!.sink.add(jsonEncode(setup));
@@ -150,17 +226,39 @@ class GeminiLiveClient {
 
   void sendAudio(Uint8List pcm16) {
     // Realtime input before the setup ack is a protocol violation the server
-    // may answer by closing the socket — drop (and count) early frames.
-    if (!_setupComplete) {
-      _framesDropped++;
-      if (_framesDropped == 1 || _framesDropped % 25 == 0) {
-        vlog(
-            'client',
-            'dropping mic frame before setupComplete '
-                '(dropped=$_framesDropped)');
+    // may answer by closing the socket, so early frames wait (oldest dropped
+    // past the cap) and go out in order once input may flow.
+    if (!_setupComplete || _inputHeld) {
+      _pendingAudio.add(pcm16);
+      _pendingBytes += pcm16.length;
+      while (_pendingBytes > maxPendingAudioBytes && _pendingAudio.isNotEmpty) {
+        _pendingBytes -= _pendingAudio.removeAt(0).length;
+        _framesDropped++;
       }
       return;
     }
+    _sendAudioNow(pcm16);
+  }
+
+  /// Keeps mic audio buffered even after setup, e.g. while earlier turns are
+  /// sent as context ahead of it. [releaseInput] sends the buffer in order.
+  void holdInput() => _inputHeld = true;
+
+  void releaseInput() {
+    _inputHeld = false;
+    _flushPendingAudio();
+  }
+
+  void _flushPendingAudio() {
+    if (!_setupComplete || _inputHeld || _pendingAudio.isEmpty) return;
+    vlog('client', 'sending ${_pendingAudio.length} buffered mic frames');
+    final frames = List<Uint8List>.of(_pendingAudio);
+    _pendingAudio.clear();
+    _pendingBytes = 0;
+    frames.forEach(_sendAudioNow);
+  }
+
+  void _sendAudioNow(Uint8List pcm16) {
     _framesSent++;
     if (_framesSent == 1 || _framesSent % 50 == 0) {
       vlog('client', 'mic → gemini: frame #$_framesSent (${pcm16.length} B)');
@@ -176,6 +274,44 @@ class GeminiLiveClient {
         },
       }),
     );
+  }
+
+  /// The mic paused: tells Gemini the audio stream ended so it can flush its
+  /// voice detection rather than wait on silence that never arrives.
+  void sendAudioStreamEnd() {
+    if (!_setupComplete) return;
+    _pendingAudio.clear();
+    _pendingBytes = 0;
+    _channel?.sink.add(jsonEncode({
+      'realtime_input': {'audio_stream_end': true},
+    }));
+  }
+
+  /// Earlier turns of this conversation, as context for a new connection.
+  /// `turn_complete: false` asks for no reply; [note] follows as the user's.
+  void sendHistory(List<HistoryTurn> turns, {String? note}) {
+    final content = [
+      for (final turn in turns)
+        if (turn.text.trim().isNotEmpty)
+          {
+            'role': turn.fromUser ? 'user' : 'model',
+            'parts': [
+              {'text': turn.text},
+            ],
+          },
+      if (note != null)
+        {
+          'role': 'user',
+          'parts': [
+            {'text': note},
+          ],
+        },
+    ];
+    if (content.isEmpty) return;
+    vlog('client', 'context → gemini: ${content.length} turns');
+    _channel?.sink.add(jsonEncode({
+      'client_content': {'turns': content, 'turn_complete': false},
+    }));
   }
 
   void sendText(String text, {bool endOfTurn = true}) {
@@ -251,9 +387,20 @@ class GeminiLiveClient {
       vlog(
           'client',
           'setupComplete — session live '
-              '(dropped $_framesDropped early mic frames)');
+              '(${_pendingAudio.length} mic frames buffered, '
+              '$_framesDropped dropped)');
       if (!_setupDone.isCompleted) _setupDone.complete();
       onSetupComplete?.call();
+      _flushPendingAudio();
+      return;
+    }
+
+    if (msg.containsKey('sessionResumptionUpdate')) {
+      final update = msg['sessionResumptionUpdate'] as Map<String, dynamic>;
+      final handle = update['newHandle'];
+      if (update['resumable'] == true && handle is String && handle.isNotEmpty) {
+        _resumptionHandle = handle;
+      }
       return;
     }
 
@@ -358,14 +505,25 @@ class GeminiLiveClient {
   }
 
   Future<void> close() async {
-    _closing = true;
     vlog(
         'client',
         'closing (sent=$_framesSent frames, '
             'received=$_audioChunksIn audio chunks)');
-    await _sub?.cancel();
-    await _channel?.sink.close();
-    _channel = null;
+    _pendingAudio.clear();
+    _pendingBytes = 0;
+    await _closeChannel();
+  }
+
+  Future<void> _closeChannel() async {
+    _closing = true;
     _setupComplete = false;
+    // Anyone still waiting for this connection's setup stops waiting now.
+    _failSetup(StateError('Gemini Live connection closed'));
+    final sub = _sub;
+    final channel = _channel;
+    _sub = null;
+    _channel = null;
+    await sub?.cancel();
+    await channel?.sink.close();
   }
 }

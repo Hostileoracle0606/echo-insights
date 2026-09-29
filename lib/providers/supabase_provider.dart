@@ -6,6 +6,7 @@ import '../services/extract_graph_service.dart';
 import '../services/notebook_commit_service.dart';
 import '../services/notebook_runtime_service.dart';
 import '../services/supabase_service.dart';
+import '../services/transcript_store.dart';
 
 final supabaseClientProvider = Provider<SupabaseClient>((ref) {
   return Supabase.instance.client;
@@ -33,4 +34,8 @@ final extractGraphServiceProvider = Provider<ExtractGraphService>((ref) {
     baseUrl: Env.notebookRuntimeUrl,
     accessTokenProvider: () async => client.auth.currentSession?.accessToken,
   );
+});
+
+final transcriptStoreProvider = Provider<TranscriptStore>((ref) {
+  return SupabaseTranscriptStore(ref.watch(supabaseClientProvider));
 });

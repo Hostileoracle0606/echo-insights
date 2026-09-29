@@ -59,3 +59,15 @@ final agentSpeakingProvider = Provider<bool>((ref) {
   ref.watch(journalProvider);
   return ref.watch(journalProvider.notifier).agentSpeaking;
 });
+
+/// A dropped or recycled connection is being restored by resumption handle.
+final reconnectingProvider = Provider<bool>((ref) {
+  ref.watch(journalProvider);
+  return ref.watch(journalProvider.notifier).reconnecting;
+});
+
+/// Lumen joining a new notebook as it opens.
+final joiningPhaseProvider = Provider<JoiningPhase>((ref) {
+  ref.watch(journalProvider);
+  return ref.watch(journalProvider.notifier).joining;
+});

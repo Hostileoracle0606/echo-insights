@@ -16,6 +16,7 @@ import 'entity_note_sheet.dart';
 import 'graph_canvas.dart';
 import 'graph_drawer.dart';
 import 'journal_top_bar.dart';
+import 'lumen_joining.dart';
 import 'transcript_page.dart';
 import 'voice_dock.dart';
 
@@ -72,18 +73,16 @@ class _JournalScreenState extends ConsumerState<JournalScreen>
     super.dispose();
   }
 
-  // The warm standby holds a live socket and a runtime credential. iOS
-  // suspends sockets in the background anyway, so release it there and
-  // prepare a fresh one on return.
+  // The mic can't record in the background, and iOS suspends the socket
+  // there: pause, and let the user resume on return (the connection comes
+  // back by resumption handle if it lapsed).
   @override
   void didChangeAppLifecycleState(AppLifecycleState lifecycle) {
-    final notifier = ref.read(journalProvider.notifier);
     switch (lifecycle) {
-      case AppLifecycleState.resumed:
-        notifier.noteInteraction();
       case AppLifecycleState.paused:
       case AppLifecycleState.hidden:
-        unawaited(notifier.coolDown());
+        unawaited(ref.read(journalProvider.notifier).pauseMic());
+      case AppLifecycleState.resumed:
       case AppLifecycleState.inactive:
       case AppLifecycleState.detached:
         break;
@@ -111,6 +110,8 @@ class _JournalScreenState extends ConsumerState<JournalScreen>
           .read(journalProvider.notifier)
           .enterNotebook(id, autoStart: autoStart);
       if (!mounted || widget.notebookId != id || result.succeeded) return;
+      // Lumen failing to join has its own banner with Retry.
+      if (ref.read(joiningPhaseProvider) != JoiningPhase.none) return;
       _showTransitionError(result);
     });
   }
@@ -126,14 +127,28 @@ class _JournalScreenState extends ConsumerState<JournalScreen>
     // The tap registers before any network work: a light tick now, and the
     // dock morphs to "Lumen · Connecting" in the same frame.
     unawaited(HapticFeedback.lightImpact());
+    // The mic starts, pauses and resumes; only End ends the session.
     final notifier = ref.read(journalProvider.notifier);
-    late final NotebookTransitionResult result;
-    if (status == SessionStatus.idle || status == SessionStatus.error) {
-      result = await notifier.startSession();
-    } else {
-      result = await notifier.endSession();
+    final NotebookTransitionResult result;
+    switch (status) {
+      case SessionStatus.idle:
+      case SessionStatus.error:
+        result = await notifier.startSession();
+      case SessionStatus.live:
+        await notifier.pauseMic();
+        return;
+      case SessionStatus.paused:
+        result = await notifier.resumeMic();
+      case SessionStatus.connecting:
+      case SessionStatus.ending:
+        return;
     }
     if (mounted && !result.succeeded) _showTransitionError(result);
+  }
+
+  Future<void> _retryJoining() async {
+    unawaited(HapticFeedback.lightImpact());
+    await ref.read(journalProvider.notifier).retryJoining();
   }
 
   Future<void> _endSession() async {
@@ -194,14 +209,17 @@ class _JournalScreenState extends ConsumerState<JournalScreen>
   ) {
     switch (status) {
       case SessionStatus.connecting:
-        // A cold start plays Lumen's greeting while the socket connects.
-        return agentSpeaking ? DockMode.speaking : DockMode.thinking;
+        // A new notebook plays Lumen's greeting while the socket connects;
+        // continuing one, the mic is already recording.
+        if (agentSpeaking) return DockMode.speaking;
+        return openingInProgress ? DockMode.thinking : DockMode.listening;
       case SessionStatus.live:
         if (agentSpeaking) return DockMode.speaking;
         // Live but Lumen's opening hasn't played yet: the mic is gated, so
         // "listening" would be a lie — keep the booting-up state.
         if (openingInProgress) return DockMode.thinking;
         return DockMode.listening;
+      case SessionStatus.paused:
       case SessionStatus.idle:
       case SessionStatus.ending:
       case SessionStatus.error:
@@ -300,6 +318,8 @@ class _JournalScreenState extends ConsumerState<JournalScreen>
     final activity = ref.watch(upsertActivityProvider);
     final muted = ref.watch(mutedProvider);
     final agentSpeaking = ref.watch(agentSpeakingProvider);
+    final reconnecting = ref.watch(reconnectingProvider);
+    final joining = ref.watch(joiningPhaseProvider);
     final turns =
         ref.watch(transcriptRowsProvider).map(_toTurn).toList(growable: false);
     final terms = _termsFor(state.entities);
@@ -308,90 +328,113 @@ class _JournalScreenState extends ConsumerState<JournalScreen>
         : status == SessionStatus.live
             ? DockSpeaker.you
             : null;
-    final sessionActive =
-        status == SessionStatus.live || status == SessionStatus.connecting;
+    final sessionActive = status == SessionStatus.live ||
+        status == SessionStatus.connecting ||
+        status == SessionStatus.paused;
     final insets = MediaQuery.paddingOf(context);
     final relationCount =
         state.relations.values.where((relation) => relation.isActive).length;
 
-    // Any touch means someone is here: refill the warm-up budget so a notebook
-    // that went cold while idle is ready again by the time they reach the mic.
-    return Listener(
-      behavior: HitTestBehavior.translucent,
-      onPointerDown: (_) =>
-          ref.read(journalProvider.notifier).noteInteraction(),
-      // In transcript view the back gesture returns to the graph first.
-      child: PopScope(
-        canPop: _view == JournalView.graph,
-        onPopInvokedWithResult: (didPop, _) {
-          if (!didPop) _setView(JournalView.graph);
-        },
-        child: Scaffold(
-          key: _scaffoldKey,
-          drawer: GraphDrawer(onEntityTap: _openEntity),
-          body: Stack(
-            fit: StackFit.expand,
-            children: [
-              _graphLayer(GraphCanvas(state: state)),
-              _transcriptLayer(
-                TranscriptPage(
-                  turns: turns,
-                  terms: terms,
-                  entrance: _page,
-                  liveSpeaker: liveSpeaker,
-                  topInset: insets.top + 68,
-                  // Dock (~108) + its 28pt lift + a breath.
-                  bottomInset: insets.bottom + 28 + 108 + 8,
+    // In transcript view the back gesture returns to the graph first.
+    return PopScope(
+      canPop: _view == JournalView.graph,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _setView(JournalView.graph);
+      },
+      child: Scaffold(
+        key: _scaffoldKey,
+        drawer: GraphDrawer(onEntityTap: _openEntity),
+        body: Stack(
+          fit: StackFit.expand,
+          children: [
+            _graphLayer(GraphCanvas(state: state)),
+            _transcriptLayer(
+              TranscriptPage(
+                turns: turns,
+                terms: terms,
+                entrance: _page,
+                liveSpeaker: liveSpeaker,
+                topInset: insets.top + 68,
+                // Dock (~108) + its 28pt lift + a breath.
+                bottomInset: insets.bottom + 28 + 108 + 8,
+              ),
+            ),
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                  child: JournalTopBar(
+                    entityCount: state.entities.length,
+                    relationCount: relationCount,
+                    onMenuTap: () => _scaffoldKey.currentState?.openDrawer(),
+                    onHomeTap: _leaving ? null : _leaveToDashboard,
+                  ),
                 ),
               ),
+            ),
+            Positioned(
+              bottom: 0,
+              left: 0,
+              right: 0,
+              child: SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: 28),
+                  child: Align(
+                    alignment: Alignment.bottomCenter,
+                    child: VoiceDock(
+                      mode:
+                          _dockMode(status, agentSpeaking, openingInProgress),
+                      liveUser: liveUser,
+                      liveAgent: liveAgent,
+                      extracting: extracting,
+                      openingInProgress: openingInProgress,
+                      paused: status == SessionStatus.paused,
+                      reconnecting: reconnecting,
+                      activity: activity,
+                      muted: muted,
+                      view: _view,
+                      terms: terms,
+                      onMicTap: () => _toggleMic(status),
+                      onViewChanged: _setView,
+                      onMuteTap: () =>
+                          ref.read(journalProvider.notifier).toggleMute(),
+                      onEndTap: sessionActive ? _endSession : null,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            // A new notebook waits for Lumen behind this cover.
+            IgnorePointer(
+              ignoring: joining != JoiningPhase.joining,
+              child: AnimatedOpacity(
+                opacity: joining == JoiningPhase.joining ? 1 : 0,
+                duration: const Duration(milliseconds: 320),
+                curve: Curves.easeOut,
+                child: const LumenJoiningCover(),
+              ),
+            ),
+            if (joining == JoiningPhase.failed)
               Positioned(
                 top: 0,
                 left: 0,
                 right: 0,
                 child: SafeArea(
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                    child: JournalTopBar(
-                      entityCount: state.entities.length,
-                      relationCount: relationCount,
-                      onMenuTap: () => _scaffoldKey.currentState?.openDrawer(),
-                      onHomeTap: _leaving ? null : _leaveToDashboard,
-                    ),
-                  ),
-                ),
-              ),
-              Positioned(
-                bottom: 0,
-                left: 0,
-                right: 0,
-                child: SafeArea(
-                  child: Padding(
-                    padding: const EdgeInsets.only(bottom: 28),
-                    child: Align(
-                      alignment: Alignment.bottomCenter,
-                      child: VoiceDock(
-                        mode:
-                            _dockMode(status, agentSpeaking, openingInProgress),
-                        liveUser: liveUser,
-                        liveAgent: liveAgent,
-                        extracting: extracting,
-                        openingInProgress: openingInProgress,
-                        activity: activity,
-                        muted: muted,
-                        view: _view,
-                        terms: terms,
-                        onMicTap: () => _toggleMic(status),
-                        onViewChanged: _setView,
-                        onMuteTap: () =>
-                            ref.read(journalProvider.notifier).toggleMute(),
-                        onEndTap: sessionActive ? _endSession : null,
+                    padding: const EdgeInsets.fromLTRB(16, 68, 16, 0),
+                    child: LumenJoinFailedBanner(
+                      onRetry: _retryJoining,
+                      onOpenWithoutVoice: () => unawaited(
+                        ref.read(journalProvider.notifier).openWithoutVoice(),
                       ),
                     ),
                   ),
                 ),
               ),
-            ],
-          ),
+          ],
         ),
       ),
     );

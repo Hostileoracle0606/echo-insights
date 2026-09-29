@@ -124,4 +124,84 @@ void main() {
       throwsA(isA<FormatException>()),
     );
   });
+
+  test('requests a user-scoped credential with its start window', () async {
+    late http.Request captured;
+    final service = NotebookRuntimeService(
+      baseUrl: 'https://runtime.example.com/',
+      accessTokenProvider: () async => 'signed-user-token',
+      client: MockClient((request) async {
+        captured = request;
+        return http.Response(
+          jsonEncode({
+            'status': 'ready',
+            'sessionToken': 'auth_tokens/temporary-token',
+            'expiresAt': '2026-09-07T12:30:00.000Z',
+            'newSessionExpiresAt': '2026-09-07T12:10:00.000Z',
+            'model': 'gemini-3.1-flash-live-preview',
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      }),
+    );
+
+    final outcome = await service.startUserLiveSession();
+
+    expect(captured.method, 'POST');
+    expect(
+      captured.url.toString(),
+      'https://runtime.example.com/v1/live-sessions',
+    );
+    expect(captured.headers['authorization'], 'Bearer signed-user-token');
+    final ready = outcome as LiveSessionReady;
+    expect(ready.sessionToken, 'auth_tokens/temporary-token');
+    expect(
+      ready.newSessionExpiresAt,
+      DateTime.parse('2026-09-07T12:10:00.000Z'),
+    );
+  });
+
+  test('reports an undeployed user route as routeUnavailable', () async {
+    final service = NotebookRuntimeService(
+      baseUrl: 'https://runtime.example.com',
+      accessTokenProvider: () async => 'signed-user-token',
+      client: MockClient(
+        (request) async => http.Response(
+          jsonEncode({'message': 'Not Found'}),
+          404,
+          headers: {'content-type': 'application/json'},
+        ),
+      ),
+    );
+
+    final outcome = await service.startUserLiveSession();
+
+    expect(outcome, isA<LiveSessionRejected>());
+    expect(
+      (outcome as LiveSessionRejected).code,
+      NotebookRuntimeService.routeUnavailableCode,
+    );
+  });
+
+  test('a notebook the user cannot see is still notFound, not unavailable',
+      () async {
+    final service = NotebookRuntimeService(
+      baseUrl: 'https://runtime.example.com',
+      accessTokenProvider: () async => 'signed-user-token',
+      client: MockClient(
+        (request) async => http.Response(
+          jsonEncode({'status': 'rejected', 'code': 'notFound'}),
+          404,
+          headers: {'content-type': 'application/json'},
+        ),
+      ),
+    );
+
+    final outcome = await service.startLiveSession(
+      '8e03b8f4-4f20-4df3-8398-d854adc32b14',
+    );
+
+    expect((outcome as LiveSessionRejected).code, 'notFound');
+  });
 }

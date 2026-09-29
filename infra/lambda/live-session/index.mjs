@@ -15,6 +15,7 @@ const handle = createLiveSessionHandler({
   supabaseUrl: requiredEnvironment("SUPABASE_URL"),
   publishableKey: requiredEnvironment("SUPABASE_PUBLISHABLE_KEY"),
   model: requiredEnvironment("GEMINI_LIVE_MODEL"),
+  userStartWindowSeconds: process.env.LIVE_SESSION_START_WINDOW_SECONDS,
   fetchImpl: fetch,
   getPermanentCredential: async () => {
     const result = await secrets.send(new GetSecretValueCommand({ SecretId: secretArn }));
