@@ -469,6 +469,19 @@ class JournalNotifier extends Notifier<JournalState> {
   Future<void> _performEffect(TurnEffect effect) async {
     switch (effect) {
       case StartDurableExtraction():
+        final turn = _turnMachine.state.pending
+            .where((t) => t.turnId == effect.key.turnId)
+            .firstOrNull;
+        if (!extractAssistantTurns && turn?.speaker == Speaker.assistant) {
+          vlog('timing', 'extract assistant turn skipped');
+          final patch = GraphPatch.empty();
+          _lastPatches[effect.key.turnId] = patch;
+          _dispatchTurn(DurableExtractionSucceeded(
+            key: effect.key,
+            payload: patch.toJson(),
+          ));
+          return;
+        }
         await _runDurableExtraction(effect);
       case StartCommit():
         final turn = _turnMachine.state.pending
@@ -561,14 +574,15 @@ class JournalNotifier extends Notifier<JournalState> {
 
   Future<void> _runDurableExtraction(StartDurableExtraction effect) async {
     final extractService = ref.read(extractGraphServiceProvider);
+    final clock = Stopwatch()..start();
     try {
-      final retrieval = await RetrieveMemoryService(
-        ref.read(supabaseClientProvider),
-      ).retrieveResult(
+      final retrieval =
+          await ref.read(retrieveMemoryServiceProvider).retrieveResult(
         query: effect.transcript,
         notebookId: effect.key.notebookId,
         state: state,
       );
+      vlog('timing', 'extract retrieve +${clock.elapsedMilliseconds}ms');
       final openFollowUps = state.followUps.where((item) => !item.answered);
       final patch = await extractService.extract(
         notebookId: effect.key.notebookId,
@@ -583,6 +597,7 @@ class JournalNotifier extends Notifier<JournalState> {
         retrievedEntityIds: retrieval.entityIds,
         answeringFollowUp: openFollowUps.isEmpty ? null : openFollowUps.last,
       );
+      vlog('timing', 'extract model +${clock.elapsedMilliseconds}ms');
       _lastPatches[effect.key.turnId] = patch;
       // The checkpoint carries the real result, not a marker: a restart must be
       // able to reuse exactly what the model returned.
@@ -651,12 +666,14 @@ class JournalNotifier extends Notifier<JournalState> {
     final commitService = ref.read(notebookCommitServiceProvider);
     commit_service.CommitOutcome outcome;
     try {
+      final commitClock = Stopwatch()..start();
       outcome = await commitService.commitNotebook(
         notebookId: turn.notebookId,
         expectedRevision: prepared.expectedRevision,
         requestId: turn.commitRequestId,
         change: prepared.change,
       );
+      vlog('timing', 'commit +${commitClock.elapsedMilliseconds}ms');
     } catch (error) {
       // Unknown outcome: retry the identical request with the same id. The
       // server ledger replays it if it already committed.
@@ -828,7 +845,7 @@ class JournalNotifier extends Notifier<JournalState> {
     }
     _memoryCallsThisTurn++;
     _lastMemoryQuery = query;
-    final service = RetrieveMemoryService(ref.read(supabaseClientProvider));
+    final service = ref.read(retrieveMemoryServiceProvider);
     final context = await service.retrieve(
       query: query,
       notebookId: notebookId,

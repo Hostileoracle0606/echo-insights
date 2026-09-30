@@ -9,16 +9,21 @@ import 'package:lumen/audio/audio_output.dart';
 import 'package:lumen/audio/pcm_capture.dart';
 import 'package:lumen/audio/pcm_player.dart';
 import 'package:lumen/logic/resume_context.dart';
-import 'package:lumen/logic/turn_state.dart';
+import 'package:lumen/logic/turn_state.dart' hide CommitCommitted;
+import 'package:lumen/models/follow_up.dart';
+import 'package:lumen/models/graph_patch.dart';
 import 'package:lumen/models/journal_entry.dart';
 import 'package:lumen/models/journal_state.dart';
 import 'package:lumen/providers/journal_provider.dart';
 import 'package:lumen/providers/supabase_provider.dart';
 import 'package:lumen/providers/voice_services_provider.dart';
+import 'package:lumen/services/extract_graph_service.dart';
+import 'package:lumen/services/extraction_context.dart';
 import 'package:lumen/services/gemini_live_client.dart';
 import 'package:lumen/services/live_credentials.dart';
 import 'package:lumen/services/notebook_commit_service.dart';
 import 'package:lumen/services/notebook_runtime_service.dart';
+import 'package:lumen/services/retrieve_memory_service.dart';
 import 'package:lumen/services/supabase_service.dart';
 import 'package:lumen/services/transcript_store.dart';
 import 'package:lumen/services/turn_journal_service.dart';
@@ -65,10 +70,26 @@ class _Backend implements PcmAudioBackend {
 class _FakeCommits implements NotebookCommitService {
   _FakeCommits(this.state);
   final JournalState state;
+  int commits = 0;
 
   @override
   Future<NotebookSnapshot?> getNotebookSnapshot(String notebookId) async =>
       NotebookSnapshot(notebookId: notebookId, revision: 3, state: state);
+
+  // Commits succeed, so the durable queue keeps moving past each turn.
+  @override
+  Future<CommitOutcome> commitNotebook({
+    required String notebookId,
+    required int expectedRevision,
+    required String requestId,
+    required NotebookChange change,
+  }) async {
+    commits += 1;
+    return CommitCommitted(
+      requestId: requestId,
+      revision: expectedRevision + 1,
+    );
+  }
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
@@ -79,11 +100,64 @@ class _FakeTurnJournal implements TurnJournalService {
   Future<void> persistTurn(FinalizedTurn turn) async {}
 
   @override
+  Future<void> persistPreparedCommit({
+    required FinalizedTurn turn,
+    required PreparedTurnCommit preparedCommit,
+  }) async {}
+
+  @override
   Future<void> forgetTurn({required String notebookId, required String turnId}) async {}
 
   @override
   Future<List<TurnJournalCheckpoint>> loadCheckpoints(String notebookId) async =>
       const [];
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+/// Records what reaches the extraction model.
+class _FakeExtractor implements ExtractGraphService {
+  final texts = <String>[];
+
+  @override
+  Future<GraphPatch> extract({
+    required String notebookId,
+    required String turnId,
+    required String extractorVersion,
+    required String text,
+    required JournalState state,
+    required String mode,
+    List<({Speaker role, String text})> recentConversation = const [],
+    List<String> retrievedEntityIds = const [],
+    FollowUp? answeringFollowUp,
+    int tokenBudget = defaultExtractionTokenBudget,
+    int maxRetries = 2,
+  }) async {
+    texts.add(text);
+    return GraphPatch.empty();
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _NoMemory implements RetrieveMemoryService {
+  @override
+  Future<MemoryRetrieval> retrieveResult({
+    required String query,
+    required String notebookId,
+    required JournalState state,
+  }) async =>
+      MemoryRetrieval.empty;
+
+  @override
+  Future<String> retrieve({
+    required String query,
+    required String notebookId,
+    required JournalState state,
+  }) async =>
+      '';
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
@@ -114,7 +188,8 @@ class _Harness {
     JournalState? state,
     List<ConversationTurn> history = const [],
     Duration openingTimeout = const Duration(seconds: 10),
-  }) : transcripts = _FakeTranscripts(history) {
+  })  : transcripts = _FakeTranscripts(history),
+        commits = _FakeCommits(state ?? JournalState.empty()) {
     credentials = LiveCredentials(fetch: () async {
       tokensMinted += 1;
       final now = DateTime.now();
@@ -126,8 +201,9 @@ class _Harness {
       );
     });
     container = ProviderContainer(overrides: [
-      notebookCommitServiceProvider
-          .overrideWithValue(_FakeCommits(state ?? JournalState.empty())),
+      notebookCommitServiceProvider.overrideWithValue(commits),
+      extractGraphServiceProvider.overrideWithValue(extractor),
+      retrieveMemoryServiceProvider.overrideWithValue(_NoMemory()),
       turnJournalServiceProvider.overrideWithValue(_FakeTurnJournal()),
       transcriptStoreProvider.overrideWithValue(transcripts),
       openingTimeoutProvider.overrideWithValue(openingTimeout),
@@ -157,6 +233,8 @@ class _Harness {
   }
 
   final _FakeTranscripts transcripts;
+  final _FakeCommits commits;
+  final extractor = _FakeExtractor();
   late final ProviderContainer container;
   late final LiveCredentials credentials;
   final mic = _FakeMic();
@@ -452,6 +530,43 @@ void main() {
     h.socket.serverSends({'serverContent': {'turnComplete': true}});
     await Future<void>.delayed(const Duration(milliseconds: 20));
     expect(h.transcripts.saved, hasLength(2));
+  });
+
+  test("Lumen's turns commit without a model call of their own", () async {
+    h = _Harness(
+      state: JournalState.empty().copyWith(entries: [_entry('Earlier.')]),
+    );
+    await h.journal.enterNotebook(_notebookId);
+    await h.startLive();
+
+    h.socket
+      ..serverSends({
+        'serverContent': {
+          'inputTranscription': {
+            'text': 'I finished the Atlas draft.',
+            'finished': true,
+          },
+        },
+      })
+      ..serverSends({
+        'serverContent': {
+          'outputTranscription': {
+            'text': 'How does it feel to be done?',
+            'finished': true,
+          },
+        },
+      })
+      ..serverSends({
+        'serverContent': {'turnComplete': true},
+      });
+
+    // Both turns commit (so the queue drained past Lumen's turn)…
+    for (var i = 0; i < 200 && h.commits.commits < 2; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+    }
+    expect(h.commits.commits, 2);
+    // …but only the user's words were sent to the extraction model.
+    expect(h.extractor.texts, ['I finished the Atlas draft.']);
   });
 
   test('Lumen not joining in time offers Retry, which can then succeed',
