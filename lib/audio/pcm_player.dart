@@ -1,52 +1,64 @@
-// ignore_for_file: experimental_member_use
-
 import 'dart:async';
-import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
-import 'package:just_audio/just_audio.dart';
+
+import '../logic/voice_log.dart';
+import 'voice_engine.dart';
 
 /// Gemini Live's native-audio output rate (`audio/pcm;rate=24000`). The web
 /// player uses the same (src/lib/audio/pcm-player.ts OUTPUT_SAMPLE_RATE).
 const int geminiOutputSampleRate = 24000;
 
+/// Where scheduled PCM goes. The app plays through the native voice engine;
+/// tests use a fake.
 abstract interface class PcmAudioBackend {
-  Future<void> setAudioStream(Stream<List<int>> stream);
+  /// Readies the speaker. Must never wait for audio to arrive.
+  Future<void> start();
 
-  Future<void> play();
+  /// Queues one PCM16 mono chunk behind everything already queued.
+  Future<void> schedule(Uint8List pcm16, int sampleRate);
 
+  /// Drops everything queued; the backend stays ready.
   Future<void> stop();
 
   Future<void> dispose();
 }
 
-class JustAudioPcmBackend implements PcmAudioBackend {
-  final AudioPlayer _player = AudioPlayer();
+/// Lumen's voice through the shared engine, so the mic's echo canceller
+/// hears it.
+class VoiceEnginePlayback implements PcmAudioBackend {
+  VoiceEnginePlayback(this._engine);
+  final VoiceEngine _engine;
 
   @override
-  Future<void> setAudioStream(Stream<List<int>> stream) async {
-    await _player.setAudioSource(_PcmStreamAudioSource(stream));
-  }
+  Future<void> start() => _engine.prepare();
 
   @override
-  Future<void> play() => _player.play();
+  Future<void> schedule(Uint8List pcm16, int sampleRate) =>
+      _engine.schedule(pcm16, sampleRate);
 
   @override
-  Future<void> stop() => _player.stop();
+  Future<void> stop() => _engine.stopPlayback();
 
+  // The engine is app-wide; a disposed player only silences what it queued.
   @override
-  Future<void> dispose() => _player.dispose();
+  Future<void> dispose() => _engine.stopPlayback();
 }
 
-/// Streams agent PCM to the speaker and keeps a playback clock.
+/// Plays agent PCM and keeps a playback clock.
 ///
 /// Gemini delivers audio faster than real time, so "a chunk just arrived"
 /// says nothing about whether Lumen is still audible. Like the web player's
 /// scheduled tail, every accepted chunk extends an estimated end-of-playback
 /// instant by its own duration; [speaking] is true until that instant passes.
+///
+/// It used to stream WAV-wrapped chunks into just_audio, whose
+/// `setAudioSource` waited for audio that could only arrive after `init` —
+/// so on a device `init` always timed out and Lumen was never heard.
+/// Samples are now queued on the native engine, which is ready at once.
 class PcmPlayer {
   PcmPlayer({PcmAudioBackend? backend, Duration Function()? now})
-      : _backend = backend ?? JustAudioPcmBackend(),
+      : _backend = backend ?? VoiceEnginePlayback(VoiceEngine.instance),
         _now = now ?? _monotonic();
 
   static Duration Function() _monotonic() {
@@ -59,6 +71,10 @@ class PcmPlayer {
   final ValueNotifier<bool> _speaking = ValueNotifier(false);
   Duration _tail = Duration.zero;
   Timer? _silenceTimer;
+  bool _ready = false;
+  bool _disposed = false;
+  bool _disposedNotifier = false;
+  Future<void>? _disposing;
 
   /// True while fed audio is still (estimated to be) playing.
   ValueListenable<bool> get speaking => _speaking;
@@ -68,38 +84,29 @@ class PcmPlayer {
     final left = _tail - _now();
     return left.isNegative ? Duration.zero : left;
   }
-  StreamController<List<int>>? _controller;
-  Future<void> _lifecycleTail = Future<void>.value();
-  bool _initialized = false;
-  bool _acceptingAudio = false;
-  bool _disposed = false;
-  int _generation = 0;
 
-  Future<void> init() {
-    return _serialized(() async {
-      if (_disposed || _initialized) return;
-      await _startSource(_generation);
-    });
+  bool get isDisposed => _disposed;
+
+  Future<void> init() async {
+    if (_disposed || _ready) return;
+    await _backend.start();
+    if (!_disposed) _ready = true;
   }
 
-  /// Queues audio for playback and advances the playback clock. This is not
-  /// a playback acknowledgement. With [audible] false (muted) the audio skips
-  /// the speaker but still counts as time Lumen is talking, so the UI keeps
+  /// Queues audio and advances the playback clock. This is not a playback
+  /// acknowledgement. With [audible] false (muted) the audio skips the
+  /// speaker but still counts as time Lumen is talking, so the UI keeps
   /// showing who has the floor.
   bool feed(
     Uint8List pcm16, {
     int sampleRate = geminiOutputSampleRate,
     bool audible = true,
   }) {
-    final controller = _controller;
-    if (!_acceptingAudio ||
-        controller == null ||
-        controller.isClosed ||
-        _disposed) {
-      return false;
-    }
+    if (!_ready || _disposed) return false;
     if (audible) {
-      controller.add(prependWavHeader(pcm16, sampleRate: sampleRate));
+      _backend.schedule(pcm16, sampleRate).catchError((Object error) {
+        vlog('playback', 'schedule failed: $error');
+      });
     }
     _advanceClock(pcm16.length, sampleRate);
     return true;
@@ -135,133 +142,22 @@ class PcmPlayer {
     if (!_disposedNotifier) _speaking.value = false;
   }
 
-  bool _disposedNotifier = false;
-
-  /// Stops the current source, discards everything buffered in it, and starts
-  /// a fresh playback generation. Audio arriving while the reset is in
-  /// progress is deliberately dropped rather than leaking across an
-  /// interruption.
-  Future<void> flush() {
-    _generation += 1;
-    _acceptingAudio = false;
+  /// Stops what's queued (a barge-in); the player stays ready.
+  Future<void> flush() async {
     _resetClock();
-    return _serialized(() async {
-      if (_disposed) return;
-      final generation = _generation;
-      await _backend.stop();
-      await _closeController();
-      _initialized = false;
-      await _startSource(generation);
-    });
+    if (_disposed) return;
+    await _backend.stop();
   }
-
-  bool get isDisposed => _disposed;
 
   /// Idempotent: a session teardown and a failed init may both dispose.
   Future<void> dispose() {
-    if (_disposed) return _lifecycleTail;
-    _generation += 1;
-    _acceptingAudio = false;
-    _disposed = true;
-    _resetClock();
-    _disposedNotifier = true;
-    _speaking.dispose();
-    return _serialized(() async {
-      await _backend.stop();
-      await _closeController();
-      _initialized = false;
+    return _disposing ??= () async {
+      _disposed = true;
+      _ready = false;
+      _resetClock();
+      _disposedNotifier = true;
+      _speaking.dispose();
       await _backend.dispose();
-    });
-  }
-
-  Future<void> _startSource(int generation) async {
-    final controller = StreamController<List<int>>.broadcast();
-    _controller = controller;
-    await _backend.setAudioStream(controller.stream);
-    if (_disposed || generation != _generation) {
-      if (identical(_controller, controller)) _controller = null;
-      await controller.close();
-      return;
-    }
-    await _backend.play();
-    if (_disposed || generation != _generation) return;
-    _initialized = true;
-    _acceptingAudio = true;
-  }
-
-  Future<void> _closeController() async {
-    final controller = _controller;
-    _controller = null;
-    if (controller != null && !controller.isClosed) {
-      await controller.close();
-    }
-  }
-
-  Future<void> _serialized(Future<void> Function() operation) {
-    final result = _lifecycleTail.then((_) => operation());
-    _lifecycleTail = result.then<void>(
-      (_) {},
-      onError: (Object _, StackTrace __) {},
-    );
-    return result;
-  }
-}
-
-/// Wraps one PCM16 mono chunk as a WAV. [sampleRate] must be the rate the
-/// audio was produced at — Gemini's output is 24kHz; labelling it 16kHz (as
-/// this did originally) plays Lumen at 2/3 speed and a fifth lower.
-Uint8List prependWavHeader(
-  Uint8List pcm16, {
-  int sampleRate = geminiOutputSampleRate,
-}) {
-  const channels = 1;
-  const bitsPerSample = 16;
-  final byteRate = sampleRate * channels * bitsPerSample ~/ 8;
-  const blockAlign = channels * bitsPerSample ~/ 8;
-  final dataLength = pcm16.length;
-  final totalLength = dataLength + 36;
-  final bytes = BytesBuilder(copy: false);
-  final header = ByteData(44);
-
-  void setAscii(int offset, String value) {
-    for (var i = 0; i < value.length; i++) {
-      header.setUint8(offset + i, value.codeUnitAt(i));
-    }
-  }
-
-  setAscii(0, 'RIFF');
-  header.setUint32(4, totalLength, Endian.little);
-  setAscii(8, 'WAVE');
-  setAscii(12, 'fmt ');
-  header.setUint32(16, 16, Endian.little);
-  header.setUint16(20, 1, Endian.little);
-  header.setUint16(22, channels, Endian.little);
-  header.setUint32(24, sampleRate, Endian.little);
-  header.setUint32(28, byteRate, Endian.little);
-  header.setUint16(32, blockAlign, Endian.little);
-  header.setUint16(34, bitsPerSample, Endian.little);
-  setAscii(36, 'data');
-  header.setUint32(40, dataLength, Endian.little);
-
-  bytes.add(header.buffer.asUint8List());
-  bytes.add(pcm16);
-  return bytes.takeBytes();
-}
-
-class _PcmStreamAudioSource extends StreamAudioSource {
-  final Stream<List<int>> _stream;
-
-  _PcmStreamAudioSource(this._stream) : super(tag: 'pcm-live');
-
-  @override
-  Future<StreamAudioResponse> request([int? start, int? end]) async {
-    return StreamAudioResponse(
-      rangeRequestsSupported: false,
-      sourceLength: null,
-      contentLength: null,
-      offset: null,
-      stream: _stream,
-      contentType: 'audio/wav',
-    );
+    }();
   }
 }
