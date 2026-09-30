@@ -456,8 +456,15 @@ class GeminiLiveClient {
           (content['modelTurn']?['parts'] as List<dynamic>?) ?? const [];
       for (final part in parts) {
         final p = part as Map<String, dynamic>;
+        // Responses are AUDIO: Lumen's words arrive as outputTranscription.
+        // Text parts here are the model's thinking — never the user's
+        // speech (they used to be routed to onTranscript) and never shown.
         if (p.containsKey('text')) {
-          onTranscript?.call(p['text'] as String, turnComplete);
+          vlog(
+            'client',
+            'gemini → model text part dropped'
+                '${p['thought'] == true ? ' (thought)' : ''}',
+          );
         }
         if (p.containsKey('inlineData')) {
           final data = p['inlineData'] as Map<String, dynamic>;

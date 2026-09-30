@@ -284,4 +284,31 @@ void main() {
       });
     });
   });
+
+  test('model text parts (thinking) reach neither transcript', () {
+    final client = makeClient();
+    final user = <String>[];
+    final agent = <String>[];
+    client
+      ..onTranscript = (text, isFinal) {
+        user.add(text);
+      }
+      ..onAgentTranscript = (text, isFinal) {
+        agent.add(text);
+      };
+
+    client.handleServerMessage(jsonEncode({
+      'serverContent': {
+        'modelTurn': {
+          'parts': [
+            {'text': '**Planning** Ask about Priya.', 'thought': true},
+            {'text': 'stray text without a thought flag'},
+          ],
+        },
+      },
+    }));
+
+    expect(user, isEmpty, reason: "the model's words are never the user's");
+    expect(agent, isEmpty, reason: 'Lumen speaks via outputTranscription');
+  });
 }
