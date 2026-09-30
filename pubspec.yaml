@@ -26,12 +26,9 @@ dependencies:
   # 6.x: record 5.1.2's darwin implementation predates iOS 26 — hasPermission
   # never returned (hanging startSession before capture could even begin).
   # (7.x needs Dart ≥3.12; this Flutter ships 3.11.)
-  record: ^6.0.0
-  just_audio: ^0.9.40
   # Shared AVAudioSession arbiter (just_audio's own session layer): we must set
   # playAndRecord ourselves — the record plugin doesn't manage the session by
   # default, and just_audio alone configures playback-only, silencing the mic.
-  audio_session: ^0.1.25
 
   # Supabase
   supabase_flutter: ^2.5.3

@@ -5,7 +5,6 @@ import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../audio/audio_output.dart';
-import '../audio/audio_session_config.dart';
 import '../audio/pcm_capture.dart';
 import '../audio/pcm_player.dart';
 import '../audio/standard_opening.dart';
@@ -1220,8 +1219,8 @@ class JournalNotifier extends Notifier<JournalState> {
     // Agent-audio playback is optional (the session still captures voice and
     // builds the graph without it). The app-level player was started at
     // sign-in; waiting for it is timeout-capped and runs in parallel, never
-    // in front of the socket.
-    final audioSessionReady = configureVoiceAudioSession();
+    // in front of the socket. The audio session is configured natively by
+    // the voice engine, which the mic and the player share.
     final playbackReady = _attachPlayer(ref.read(audioOutputProvider));
     final greetingReady =
         continuing ? Future<StandardOpening?>.value() : _loadStandardOpening();
@@ -1234,7 +1233,6 @@ class JournalNotifier extends Notifier<JournalState> {
       }));
     }
     final liveSession = await _takeCredential(notebookId, mark);
-    await audioSessionReady;
     if (!_liveSessionGuard.isCurrent(lease)) return null;
     if (liveSession is LiveSessionRejected) {
       throw StateError('Live session rejected: ${liveSession.code}');
@@ -1801,7 +1799,7 @@ final openingTimeoutProvider = Provider<Duration>(
 
 /// Makes the session's microphone; tests substitute a fake.
 final micCaptureFactoryProvider = Provider<MicCapture Function()>(
-  (ref) => PcmCapture.new,
+  (ref) => EngineMicCapture.new,
 );
 
 /// Makes the session's Gemini Live client; tests substitute a fake socket.

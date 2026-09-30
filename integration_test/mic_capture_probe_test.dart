@@ -1,6 +1,6 @@
-// ON-DEVICE mic-capture probe. Runs on a simulator or physical iPhone and
-// replicates startSession's exact audio order (audio-session config → playback
-// init → mic capture), then measures what the mic actually delivers:
+// ON-DEVICE voice-engine probe. Runs on a simulator or physical iPhone:
+// prepares the shared voice engine, checks playback is ready at once, then
+// measures what the mic actually delivers through the same engine:
 //
 //   flutter test integration_test/mic_capture_probe_test.dart -d <device-id>
 //
@@ -8,34 +8,33 @@
 // int16), and peak amplitude (0 = pure silence). This is the layer no Mac-side
 // probe can exercise — the backend audio path is already proven by
 // test/gemini_live_audio_probe.dart.
-import 'package:audio_session/audio_session.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:lumen/audio/pcm_capture.dart';
+import 'package:lumen/audio/pcm_player.dart';
+import 'package:lumen/audio/voice_engine.dart';
 
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
-  testWidgets('mic capture streams real PCM under the app audio config',
+  testWidgets('mic capture streams real PCM through the voice engine',
       (tester) async {
-    // 1. Same session config the app now applies in startSession.
-    final session = await AudioSession.instance;
-    await session.configure(AudioSessionConfiguration(
-      avAudioSessionCategory: AVAudioSessionCategory.playAndRecord,
-      avAudioSessionCategoryOptions:
-          AVAudioSessionCategoryOptions.defaultToSpeaker |
-              AVAudioSessionCategoryOptions.allowBluetooth,
-      avAudioSessionMode: AVAudioSessionMode.spokenAudio,
-    ));
-    debugPrintSynchronously('[probe] audio session configured (playAndRecord)');
+    // 1. The engine the app uses: audio session, voice processing (once the
+    // mic is permitted), and the player node Lumen's voice plays through.
+    await VoiceEngine.instance.prepare();
+    debugPrintSynchronously('[probe] voice engine prepared');
 
-    // 2. Mic capture, playback deliberately absent: startSession now starts
-    // capture BEFORE playback (playback is optional and its init can stall on
-    // the simulator, blocking other audio plugin calls), so pure capture under
-    // the playAndRecord session is exactly the app's critical path.
+    // 2. Playback must be ready at once (with just_audio it timed out after
+    // 5 s on every device, so Lumen was never heard).
+    final player = PcmPlayer();
+    await player.init().timeout(const Duration(seconds: 1));
+    player.feed(Uint8List(48000)); // 1 s of silence through the speaker path
+    debugPrintSynchronously('[probe] playback ready and accepting audio');
+
+    // 3. Mic capture through the same engine.
     debugPrintSynchronously('[probe] checking mic permission…');
-    final capture = PcmCapture();
+    final capture = EngineMicCapture();
     final permitted =
         await capture.hasPermission().timeout(const Duration(seconds: 15));
     debugPrintSynchronously('[probe] mic permission: $permitted');
