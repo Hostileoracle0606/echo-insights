@@ -6,6 +6,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lumen/models/conversation_mode.dart';
 import 'package:lumen/models/notebook.dart';
 import 'package:lumen/providers/notebooks_provider.dart';
 import 'package:lumen/providers/supabase_provider.dart';
@@ -36,7 +37,10 @@ class _StallingSupabaseService extends SupabaseService {
   final _completer = Completer<Notebook?>();
 
   @override
-  Future<Notebook?> createNotebook() {
+  Future<Notebook?> createNotebook({
+    ConversationMode mode = ConversationMode.justTalk,
+    Map<String, dynamic> context = const {},
+  }) {
     callCount++;
     return _completer.future;
   }
