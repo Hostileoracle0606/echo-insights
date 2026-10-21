@@ -196,6 +196,7 @@ select is(
    where m ->> 'entryId' = 'e0000000-0000-0000-0000-000000000001'),
   '{"entryId": "e0000000-0000-0000-0000-000000000001", "notebookId": "a0000000-0000-0000-0000-000000000001",
     "notebookTitle": "January", "notebookStartedAt": "2026-01-01T09:00:00+00:00",
+    "conversationMode": "just_talk",
     "createdAt": "2026-01-02T10:00:00+00:00", "turnId": "t1", "spokenAt": "2026-01-02T09:59:00+00:00"}'::jsonb,
   'a matching user turn is the latest one spoken at or before the entry');
 select is(
