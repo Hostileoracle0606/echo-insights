@@ -37,6 +37,16 @@ class LumenText {
     );
   }
 
+  /// Fraunces at an arbitrary size, with the same axis settings as the theme's
+  /// display styles. For one-off serif sizes (card titles, badge numerals)
+  /// that don't map onto a TextTheme role.
+  static TextStyle display({
+    required double size,
+    required Color color,
+    double? height,
+  }) =>
+      _fraunces(size: size, color: color, height: height);
+
   static TextTheme textTheme({
     required Color foreground,
     required Color mutedForeground,

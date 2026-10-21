@@ -10,6 +10,9 @@ class LumenSurface extends ThemeExtension<LumenSurface> {
   final double radiusLg;
   final double radiusXl;
   final double radius2xl;
+
+  /// Flat context tiles (LM-09): between radiusXl and radius2xl.
+  final double radiusTile;
   final List<BoxShadow> shadowPaper;
   final List<BoxShadow> shadowInk;
 
@@ -19,6 +22,7 @@ class LumenSurface extends ThemeExtension<LumenSurface> {
     required this.radiusLg,
     required this.radiusXl,
     required this.radius2xl,
+    required this.radiusTile,
     required this.shadowPaper,
     required this.shadowInk,
   });
@@ -29,6 +33,7 @@ class LumenSurface extends ThemeExtension<LumenSurface> {
     radiusLg: 8,
     radiusXl: 12,
     radius2xl: 16,
+    radiusTile: 14,
     shadowPaper: [
       BoxShadow(
         color: LumenColors.light.ink.withValues(alpha: 0.06),
@@ -57,6 +62,7 @@ class LumenSurface extends ThemeExtension<LumenSurface> {
     double? radiusLg,
     double? radiusXl,
     double? radius2xl,
+    double? radiusTile,
     List<BoxShadow>? shadowPaper,
     List<BoxShadow>? shadowInk,
   }) {
@@ -66,6 +72,7 @@ class LumenSurface extends ThemeExtension<LumenSurface> {
       radiusLg: radiusLg ?? this.radiusLg,
       radiusXl: radiusXl ?? this.radiusXl,
       radius2xl: radius2xl ?? this.radius2xl,
+      radiusTile: radiusTile ?? this.radiusTile,
       shadowPaper: shadowPaper ?? this.shadowPaper,
       shadowInk: shadowInk ?? this.shadowInk,
     );
@@ -80,6 +87,7 @@ class LumenSurface extends ThemeExtension<LumenSurface> {
       radiusLg: radiusLg + (other.radiusLg - radiusLg) * t,
       radiusXl: radiusXl + (other.radiusXl - radiusXl) * t,
       radius2xl: radius2xl + (other.radius2xl - radius2xl) * t,
+      radiusTile: radiusTile + (other.radiusTile - radiusTile) * t,
       shadowPaper:
           BoxShadow.lerpList(shadowPaper, other.shadowPaper, t) ?? shadowPaper,
       shadowInk: BoxShadow.lerpList(shadowInk, other.shadowInk, t) ?? shadowInk,
