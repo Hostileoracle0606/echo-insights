@@ -138,15 +138,20 @@ class _VoiceDockPreviewState extends State<_VoiceDockPreview> {
     return Scaffold(
       body: SafeArea(
         child: Column(
+          // Full width, so the dock centres on the screen and not on the
+          // widest child.
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             const SizedBox(height: 24),
             Text(
               'VoiceDock · ${_mode.name}',
+              textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.labelLarge,
             ),
             const SizedBox(height: 4),
             Text(
               'tap the mic to cycle states · tap View to switch views',
+              textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 11,
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
