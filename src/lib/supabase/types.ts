@@ -398,7 +398,34 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      user_entities: {
+        Row: {
+          description: string | null
+          first_seen: string | null
+          id: string | null
+          last_seen: string | null
+          mentions: number | null
+          name: string | null
+          notebook_count: number | null
+          notebook_ids: string[] | null
+          type: string | null
+          user_id: string | null
+        }
+        Relationships: []
+      }
+      user_relations: {
+        Row: {
+          active: boolean | null
+          first_created_at: string | null
+          id: string | null
+          label: string | null
+          notebook_ids: string[] | null
+          source_id: string | null
+          target_id: string | null
+          user_id: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       _commit_answer_follow_up: {
@@ -422,7 +449,15 @@ export type Database = {
       }
       embed_orphan_prune: { Args: never; Returns: undefined }
       embed_reconcile_sweep: { Args: never; Returns: undefined }
+      get_entity_mentions: {
+        Args: { p_before?: string; p_entity_id: string; p_limit?: number }
+        Returns: Json
+      }
       get_notebook_snapshot: { Args: { p_notebook_id: string }; Returns: Json }
+      get_user_graph: {
+        Args: { p_limit?: number; p_types?: string[] }
+        Returns: Json
+      }
       match_entity_embeddings: {
         Args: {
           p_limit: number
@@ -432,6 +467,19 @@ export type Database = {
         }
         Returns: {
           entity_id: string
+          score: number
+        }[]
+      }
+      match_user_entity_embeddings: {
+        Args: {
+          p_limit: number
+          p_model: string
+          p_query: string
+          p_user_id: string
+        }
+        Returns: {
+          entity_id: string
+          notebook_id: string
           score: number
         }[]
       }
