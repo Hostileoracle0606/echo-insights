@@ -93,8 +93,8 @@ void main() {
       const probe = Color(0xFF010203);
       for (final name in expected.keys) {
         final target = withToken(name, probe);
-        expect(read[name]!(LumenColors.light.lerp(target, 0)),
-            expected[name], reason: '$name at t=0');
+        expect(read[name]!(LumenColors.light.lerp(target, 0)), expected[name],
+            reason: '$name at t=0');
         expect(read[name]!(LumenColors.light.lerp(target, 1)), probe,
             reason: '$name at t=1');
       }
