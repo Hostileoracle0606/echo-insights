@@ -11,6 +11,9 @@
 create index entities_user_id_idx on public.entities (user_id, id);
 create index relations_user_id_idx on public.relations (user_id, id);
 create index entity_embeddings_user_model_idx on public.entity_embeddings (user_id, embedding_model);
+-- journal_entries is only indexed by notebook, so get_entity_mentions would
+-- otherwise scan every user's entries.
+create index journal_entries_user_created_idx on public.journal_entries (user_id, created_at desc);
 
 -- ────────────────────────────────────────────────────────────
 -- 2. user_entities: one row per (user_id, slug)
