@@ -28,7 +28,10 @@ import 'package:lumen/screens/journal/transcript_page.dart';
 import 'package:lumen/screens/journal/voice_dock.dart';
 import 'package:lumen/theme/lumen_colors.dart';
 import 'package:lumen/theme/lumen_theme.dart';
+import 'package:lumen/widgets/context_tile.dart';
 import 'package:lumen/widgets/graph_legend.dart';
+import 'package:lumen/widgets/mode_header.dart';
+import 'package:lumen/widgets/result_card.dart';
 
 Future<void> _loadFont(String family, String path) async {
   final bytes = await File(path).readAsBytes();
@@ -241,6 +244,16 @@ Widget _dockSlice(VoiceDock dock) => MediaQuery(
         alignment: Alignment.bottomCenter,
         child: Padding(padding: const EdgeInsets.only(bottom: 16), child: dock),
       ),
+    );
+
+// LM-09 copy, from the prototype's Close and Prep screens.
+const _ciWin =
+    'Cut CI build time 41% (22 → 13 min) by fixing cache keys, with Priya.';
+
+// A card-width column on paper, pinned to the top, for the LM-09 pieces.
+Widget _cardSlot(Widget child) => Padding(
+      padding: const EdgeInsets.all(16),
+      child: Align(alignment: Alignment.topCenter, child: child),
     );
 
 void main() {
@@ -630,5 +643,149 @@ void main() {
     }
     await _writeBoundaryPng(tester, key, 'graph-with-drawer', pixelRatio: 2);
     await tester.pumpWidget(const SizedBox());
+  });
+
+  // LM-09: the raised result card with its ink-badged hero on highlight.
+  testWidgets('ResultCard with hero', (tester) async {
+    await _capture(
+      tester,
+      name: 'result-card-hero',
+      width: 402,
+      height: 470,
+      child: _cardSlot(
+        ResultCard(
+          eyebrow: 'This week · 3 wins',
+          onExpand: () {},
+          expandLabel: 'Open your full review brief',
+          hero: const ResultRow(
+            badge: ResultBadge.check(),
+            label: 'Top win',
+            text: _ciWin,
+            meta: 'Tuesday · with Priya',
+          ),
+          rows: const [
+            ResultRow(
+              badge: ResultBadge.check(),
+              text: 'Unblocked the Atlas handoff with Maya',
+            ),
+            ResultRow(
+              badge: ResultBadge.check(),
+              text: 'Said no to the Friday offsite prep',
+              meta: 'Thursday',
+            ),
+          ],
+          footerNote: '41 wins in your brief',
+          footerActionLabel: 'Copy',
+          onFooterAction: () {},
+        ),
+      ),
+    );
+  });
+
+  // LM-09: the same card without a hero — the prep brief's numbered list.
+  testWidgets('ResultCard without hero', (tester) async {
+    await _capture(
+      tester,
+      name: 'result-card-prep',
+      width: 402,
+      height: 300,
+      child: _cardSlot(
+        ResultCard(
+          eyebrow: 'Bring these up.',
+          onExpand: () {},
+          expandLabel: 'Open your prep brief',
+          rows: const [
+            ResultRow(
+              badge: ResultBadge.number(1),
+              text: 'The CI win: 22 → 13 min, with Priya',
+            ),
+            ResultRow(
+              badge: ResultBadge.number(2),
+              text: 'Who owns the Atlas handoff after the demo?',
+            ),
+            ResultRow(
+              badge: ResultBadge.number(3),
+              text: 'Your Q4 growth goal',
+              meta: 'You set it in June',
+            ),
+          ],
+        ),
+      ),
+    );
+  });
+
+  // LM-09: flat context tile and the "Lumen will remember" list.
+  testWidgets('ContextTile and ContextList', (tester) async {
+    await _capture(
+      tester,
+      name: 'context-tiles',
+      width: 402,
+      height: 340,
+      child: _cardSlot(
+        Column(
+          children: [
+            const ContextTile(
+              icon: Icons.history,
+              eyebrow: 'Since last time',
+              body: 'You wanted Priya to get credit for the cache-key fix '
+                  'in your review.',
+            ),
+            const SizedBox(height: 16),
+            ContextList(
+              eyebrow: 'Lumen will remember',
+              items: const [
+                ContextItem(title: 'Priya', note: 'paired on the cache keys'),
+                ContextItem(title: 'CI build time', note: '22 → 13 min'),
+                ContextItem(
+                    title: 'Ask Priya about the Q4 rollout', open: true),
+              ],
+              onRemove: (_) {},
+            ),
+          ],
+        ),
+      ),
+    );
+  });
+
+  // LM-09: mode header with a stand-in trailing pill, at 375pt with a long
+  // title so the ellipsis shows.
+  testWidgets('ModeHeader', (tester) async {
+    Widget pill(BuildContext context) {
+      final colors = context.lumenColors;
+      return Container(
+        width: 150,
+        height: 36,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: colors.card,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: colors.border),
+        ),
+        child: Text('12:04 · End', style: TextStyle(color: colors.ink)),
+      );
+    }
+
+    await _capture(
+      tester,
+      name: 'mode-header',
+      width: 375,
+      height: 150,
+      child: Builder(
+        builder: (context) => Column(
+          children: [
+            ModeHeader(
+              title: 'Weekly debrief',
+              onBack: () {},
+              trailing: pill(context),
+            ),
+            ModeHeader(
+              title: 'Prepare for your one-on-one with Priya',
+              onBack: () {},
+              trailing: pill(context),
+            ),
+          ],
+        ),
+      ),
+    );
   });
 }

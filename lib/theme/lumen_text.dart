@@ -39,13 +39,16 @@ class LumenText {
 
   /// Fraunces at an arbitrary size, with the same axis settings as the theme's
   /// display styles. For one-off serif sizes (card titles, badge numerals)
-  /// that don't map onto a TextTheme role.
+  /// that don't map onto a TextTheme role. Falls back to Inter for glyphs the
+  /// bundled Fraunces lacks (e.g. "→" in "22 → 13 min") rather than to the
+  /// system font.
   static TextStyle display({
     required double size,
     required Color color,
     double? height,
   }) =>
-      _fraunces(size: size, color: color, height: height);
+      _fraunces(size: size, color: color, height: height)
+          .copyWith(fontFamilyFallback: const [sansFontFamily]);
 
   static TextTheme textTheme({
     required Color foreground,
