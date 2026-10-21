@@ -4,15 +4,17 @@ import '../../theme/lumen_colors.dart';
 import '../../theme/lumen_text.dart';
 import '../../theme/lumen_theme.dart';
 
-/// The journal screen's floating top bar (paper theme): a left "‹ Your
-/// notebooks" back button ([onHomeTap] returns to the dashboard), the session
-/// controls — mute Lumen ([onMuteTap]) and End ([onEndTap]) — and a right
-/// stats pill that opens the graph sidepane via a hamburger ([onMenuTap]) and
+/// The journal screen's floating top bar (paper theme): a left "‹" back
+/// button ([onHomeTap] returns to the dashboard; VoiceOver reads "Your
+/// notebooks"), the session controls — mute Lumen ([onMuteTap]) and End
+/// ([onEndTap]) — and a right stats pill that opens the graph sidepane via a hamburger ([onMenuTap]) and
 /// shows the entity · relation counts. The view toggle lives in the pill, not
 /// here. The Lumen brand now lives on the dashboard.
 ///
 /// Mute and End moved here from the dock (LM-10). Where mute finally lives is
 /// still open, so the pair is one self-contained [_SessionControls] widget.
+/// The back button is icon-only so all four fit a 375pt screen untruncated;
+/// with its "Your notebooks" label the bar needs ~400pt.
 class JournalTopBar extends StatelessWidget {
   final int entityCount;
   final int relationCount;
@@ -41,31 +43,28 @@ class JournalTopBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.lumenColors;
     final surface = Theme.of(context).extension<LumenSurface>()!;
-    final textTheme = Theme.of(context).textTheme;
 
     return Row(
       children: [
-        Expanded(
+        Semantics(
+          button: true,
+          label: 'Your notebooks',
+          excludeSemantics: true,
           child: GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: onHomeTap,
-            child: Row(
-              children: [
-                Icon(Icons.chevron_left, size: 24, color: colors.ink),
-                const SizedBox(width: 3),
-                Flexible(
-                  child: Text(
-                    'Your notebooks',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: textTheme.headlineMedium?.copyWith(fontSize: 19),
-                  ),
-                ),
-              ],
+            child: SizedBox(
+              width: 44,
+              height: 44,
+              // Glyph on the gutter line, as the labelled button had it.
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Icon(Icons.chevron_left, size: 28, color: colors.ink),
+              ),
             ),
           ),
         ),
-        const SizedBox(width: 4),
+        const Spacer(),
         _SessionControls(
           muted: muted,
           onMuteTap: onMuteTap,

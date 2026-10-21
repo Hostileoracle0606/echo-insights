@@ -174,7 +174,7 @@ void main() {
     expect(journal.enteredNotebookId, 'notebook-a');
     expect(journal.enteredWithAutoStart, isTrue);
 
-    await tester.tap(find.text('Your notebooks'));
+    await tester.tap(find.bySemanticsLabel('Your notebooks'));
     await tester.pump();
 
     expect(journal.leaveCalls, 1);
