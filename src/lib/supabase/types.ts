@@ -271,11 +271,13 @@ export type Database = {
       notebooks: {
         Row: {
           archived_at: string | null
+          conversation_mode: string
           created_at: string
           duration_seconds: number | null
           ended_at: string | null
           entity_count: number
           id: string
+          mode_context: Json
           revision: number
           started_at: string
           summary: string | null
@@ -286,11 +288,13 @@ export type Database = {
         }
         Insert: {
           archived_at?: string | null
+          conversation_mode?: string
           created_at?: string
           duration_seconds?: number | null
           ended_at?: string | null
           entity_count?: number
           id?: string
+          mode_context?: Json
           revision?: number
           started_at: string
           summary?: string | null
@@ -301,11 +305,13 @@ export type Database = {
         }
         Update: {
           archived_at?: string | null
+          conversation_mode?: string
           created_at?: string
           duration_seconds?: number | null
           ended_at?: string | null
           entity_count?: number
           id?: string
+          mode_context?: Json
           revision?: number
           started_at?: string
           summary?: string | null
