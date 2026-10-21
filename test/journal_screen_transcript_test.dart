@@ -1,8 +1,9 @@
-// Stitch regression: the dock's transcript button should turn the screen over
-// to the transcript page (graph behind it), and the graph button back again.
-// Exercises the real JournalScreen (not a composed stand-in) so the wiring —
-// view button -> page transition -> transcriptRowsProvider -> turns — is
-// covered.
+// Stitch regression: the pill's View toggle should turn the screen over to
+// the transcript page (graph behind it), and back again. The toggle is one
+// button whose icon names the view it switches to: article -> transcript,
+// hub -> graph. Exercises the real JournalScreen (not a composed stand-in) so
+// the wiring — view button -> page transition -> transcriptRowsProvider ->
+// turns — is covered.
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -108,6 +109,9 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('When did the Atlas launch slip?'), findsOneWidget);
+    // The same button now offers the graph.
+    expect(find.byIcon(Icons.article_outlined), findsNothing);
+    expect(find.byIcon(Icons.hub_outlined), findsOneWidget);
     // The page covers the graph fully, so the graph stops painting.
     expect(
       find.ancestor(
@@ -126,6 +130,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 16));
     }
     expect(find.byType(TranscriptPage), findsNothing);
+    expect(find.byIcon(Icons.article_outlined), findsOneWidget);
 
     // Unmount so the GraphCanvas ticker disposes before the test ends.
     await tester.pumpWidget(const SizedBox());

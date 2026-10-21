@@ -234,6 +234,15 @@ List<Notebook> _demoNotebooks() {
   ];
 }
 
+// A bottom slice of a 402pt phone: the pill sizes from the screen width.
+Widget _dockSlice(VoiceDock dock) => MediaQuery(
+      data: const MediaQueryData(size: Size(402, 874)),
+      child: Align(
+        alignment: Alignment.bottomCenter,
+        child: Padding(padding: const EdgeInsets.only(bottom: 16), child: dock),
+      ),
+    );
+
 void main() {
   setUpAll(() async {
     await _loadFont('Inter', 'assets/fonts/Inter.ttf');
@@ -266,6 +275,8 @@ void main() {
                 entityCount: 8,
                 relationCount: 6,
                 onMenuTap: () {},
+                onMuteTap: () {},
+                onEndTap: () {},
               ),
             ),
           ),
@@ -274,85 +285,106 @@ void main() {
     );
   });
 
+  // The pill at rest: Type · Talk · View, hugging its three buttons. Type is
+  // shown here for design review; the journal passes no onTypeTap until LM-12.
   testWidgets('VoiceDock idle', (tester) async {
     await _capture(
       tester,
       name: 'voice-dock-idle',
-      width: 360,
-      height: 170,
-      child: Center(
-        child: VoiceDock(mode: DockMode.idle, onMicTap: () {}),
+      width: 402,
+      height: 120,
+      child: _dockSlice(
+        VoiceDock(
+          mode: DockMode.idle,
+          onMicTap: () {},
+          onTypeTap: () {},
+          onViewChanged: (_) {},
+        ),
       ),
     );
   });
 
-  // Listening, no words yet: the You chip lit and the amber mic ring pulsing.
+  // Listening, no words yet: "You · Listening" above the row and the amber mic
+  // ring pulsing.
   testWidgets('VoiceDock listening', (tester) async {
     await _capture(
       tester,
       name: 'voice-dock-listening',
-      width: 360,
-      height: 170,
+      width: 402,
+      height: 160,
       settle: false,
-      child: Center(
-        child: VoiceDock(mode: DockMode.listening, onMicTap: () {}),
+      child: _dockSlice(
+        VoiceDock(
+          mode: DockMode.listening,
+          onMicTap: () {},
+          onTypeTap: () {},
+          onViewChanged: (_) {},
+        ),
       ),
     );
   });
 
-  // Lumen is talking rather than recording: the Lumen chip lit, and the
-  // amber mic-pulse ring absent (compare to "listening").
+  // Lumen is talking rather than recording: "Lumen · Speaking" in sage with its
+  // streaming words, and the amber mic-pulse ring absent.
   testWidgets('VoiceDock speaking', (tester) async {
     await _capture(
       tester,
       name: 'voice-dock-speaking',
-      width: 360,
-      height: 170,
+      width: 402,
+      height: 220,
       settle: false,
-      child: Center(
-        child: VoiceDock(mode: DockMode.speaking, onMicTap: () {}),
+      frames: 40,
+      child: _dockSlice(
+        VoiceDock(
+          mode: DockMode.speaking,
+          terms: _demoTerms,
+          liveAgent: 'What does Maya think Lisbon changes about the launch?',
+          onMicTap: () {},
+          onTypeTap: () {},
+          onViewChanged: (_) {},
+        ),
       ),
     );
   });
 
-  // Connecting: the You chip reads Connecting and the mic fill breathes a
-  // slow, dim pulse — "booting up," distinct from idle (static) and
-  // listening (ring).
+  // Connecting: "You · Connecting" and the mic fill breathes a slow, dim
+  // pulse — "booting up," distinct from idle (static) and listening (ring).
   testWidgets('VoiceDock thinking', (tester) async {
     await _capture(
       tester,
       name: 'voice-dock-thinking',
-      width: 360,
-      height: 170,
+      width: 402,
+      height: 160,
       settle: false,
-      child: Center(
-        child: VoiceDock(mode: DockMode.thinking, onMicTap: () {}),
+      child: _dockSlice(
+        VoiceDock(
+          mode: DockMode.thinking,
+          onMicTap: () {},
+          onTypeTap: () {},
+          onViewChanged: (_) {},
+        ),
       ),
     );
   });
 
-  // Graph view, someone speaking: the drawer opens between the dock's tiers
-  // with the in-flight words, entities marked in their graph colours.
+  // Graph view, someone speaking: the live words ride in the pill under the
+  // label, entities marked in their graph colours.
   testWidgets('VoiceDock drawer', (tester) async {
     await _capture(
       tester,
       name: 'voice-dock-drawer',
       width: 402,
-      height: 260,
+      height: 220,
       settle: false,
-      child: MediaQuery(
-        data: const MediaQueryData(size: Size(402, 874)),
-        child: Align(
-          alignment: Alignment.bottomCenter,
-          child: Padding(
-            padding: const EdgeInsets.only(bottom: 28),
-            child: VoiceDock(
-              mode: DockMode.listening,
-              terms: _demoTerms,
-              liveUser: 'and Maya wants Lisbon on the roadmap for the trip.',
-              onMicTap: () {},
-            ),
-          ),
+      frames: 40,
+      child: _dockSlice(
+        VoiceDock(
+          mode: DockMode.listening,
+          terms: _demoTerms,
+          liveUser: 'and Maya wants Lisbon on the roadmap for the trip.',
+          onMicTap: () {},
+          onTypeTap: () {},
+          onViewChanged: (_) {},
         ),
       ),
     );
@@ -388,6 +420,7 @@ void main() {
                     mode: DockMode.speaking,
                     view: JournalView.transcript,
                     onMicTap: () {},
+                    onViewChanged: (_) {},
                   ),
                 ),
               ),
@@ -526,8 +559,8 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  // Graph view in context: the warm graph behind, the dock's drawer open with
-  // the in-flight words between its tiers.
+  // Graph view in context: the warm graph behind, the pill open with the
+  // in-flight words under its status label.
   testWidgets('Graph with drawer in context', (tester) async {
     // Phone-portrait surface so the SizedBox isn't squashed by the default
     // 800x600 test window (tight constraints would otherwise win).
@@ -560,6 +593,8 @@ void main() {
                           entityCount: 8,
                           relationCount: 6,
                           onMenuTap: () {},
+                          onMuteTap: () {},
+                          onEndTap: () {},
                         ),
                       ),
                     ),
@@ -577,6 +612,7 @@ void main() {
                             liveUser:
                                 'and Maya wants Lisbon on the roadmap for the trip.',
                             onMicTap: () {},
+                            onViewChanged: (_) {},
                           ),
                         ),
                       ),
