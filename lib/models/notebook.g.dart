@@ -19,6 +19,11 @@ Notebook _$NotebookFromJson(Map<String, dynamic> json) => Notebook(
       summary: json['summary'] as String?,
       createdAt: DateTime.parse(json['created_at'] as String),
       updatedAt: DateTime.parse(json['updated_at'] as String),
+      conversationMode: $enumDecodeNullable(
+              _$ConversationModeEnumMap, json['conversation_mode'],
+              unknownValue: ConversationMode.justTalk) ??
+          ConversationMode.justTalk,
+      modeContext: json['mode_context'] as Map<String, dynamic>? ?? {},
     );
 
 Map<String, dynamic> _$NotebookToJson(Notebook instance) => <String, dynamic>{
@@ -32,4 +37,15 @@ Map<String, dynamic> _$NotebookToJson(Notebook instance) => <String, dynamic>{
       'summary': instance.summary,
       'created_at': instance.createdAt.toIso8601String(),
       'updated_at': instance.updatedAt.toIso8601String(),
+      'conversation_mode':
+          _$ConversationModeEnumMap[instance.conversationMode]!,
+      'mode_context': instance.modeContext,
     };
+
+const _$ConversationModeEnumMap = {
+  ConversationMode.weeklyDebrief: 'weekly_debrief',
+  ConversationMode.sessionPrep: 'session_prep',
+  ConversationMode.whatLanded: 'what_landed',
+  ConversationMode.firstSession: 'first_session',
+  ConversationMode.justTalk: 'just_talk',
+};
