@@ -9,7 +9,7 @@ import '../../theme/lumen_text.dart';
 import '../../theme/lumen_theme.dart';
 import '../../widgets/node_glyph.dart';
 
-/// Dock state — drives the mic and the speaker chips. Mapped from
+/// Dock state — drives the mic and the status label. Mapped from
 /// SessionStatus at the call site.
 enum DockMode { idle, listening, speaking, thinking }
 
@@ -17,20 +17,29 @@ enum DockMode { idle, listening, speaking, thinking }
 enum DockSpeaker { you, lumen }
 
 /// What fills the screen behind the dock: the knowledge graph, or the whole
-/// conversation as a rolling transcript. The dock's outer buttons switch it.
+/// conversation as a rolling transcript. The pill's View button switches it.
 enum JournalView { graph, transcript }
 
-/// The bottom voice dock ("pill E"): a symmetric two-tier card.
+/// The bottom control on every conversation screen ("the pill"): one row of
+/// Type · Talk · View, with a status tier that opens above it.
 ///
-///  * Top tier — You | Lumen chips. The one holding the floor lights up in its
-///    colour with a live status ("Listening", "Speaking", "Connecting").
-///  * Drawer — in graph view only, the in-flight words open between the tiers
-///    (up to three lines, newest anchored), entities marked in their graph
-///    colours. In transcript view the page is the transcript, so it stays shut.
-///  * Bottom tier — graph · speaker · mic · end · transcript. Graph and
-///    transcript are one mode switch split across the mic; a dot marks the
-///    active view. Tapping one reports [onViewChanged]; the screen runs the
-///    page transition. The mic sits on the dock's centre line by construction.
+///  * Row — `[Type 44] 14 [mic 48] 14 [View 44]`. Type turns the pill into a
+///    composer ([onTypeTap]); the mic is Talk; View toggles graph ⇄ transcript
+///    ([onViewChanged]) and shows the view it would switch *to*. A missing
+///    callback leaves an empty 44pt slot rather than a dead button, so the mic
+///    stays on the centre line by construction.
+///  * Tier — while someone holds the floor, one label line ("You · Listening"
+///    in amber, "Lumen · Speaking" in sage). In graph view the in-flight words
+///    ride under it (up to three lines, newest anchored, entities marked in
+///    their graph colours); in transcript view the page is the transcript, so
+///    only the label shows.
+///  * Width — at rest the pill hugs its row (184pt). When the tier or a
+///    [composer] appears it springs out to `min(358, screen − 32)` and back.
+///    Reduced motion resizes at once.
+///  * [composer] — when set, replaces the row (the tier stays above it).
+///
+/// The widget only reads its props and calls back; session logic and
+/// providers stay with the screen, so other screens can reuse the pill.
 class VoiceDock extends StatefulWidget {
   final DockMode mode;
 
@@ -44,7 +53,7 @@ class VoiceDock extends StatefulWidget {
   final bool extracting;
 
   /// Lumen owns the floor: the session is opening and Lumen's opening has
-  /// not finished playing. The chips read Lumen, never You — the mic is not
+  /// not finished playing. The label reads Lumen, never You — the mic is not
   /// accepting speech yet.
   final bool openingInProgress;
 
@@ -54,19 +63,22 @@ class VoiceDock extends StatefulWidget {
   /// The connection is being restored; the conversation keeps its context.
   final bool reconnecting;
 
-  /// The latest graph upsert, shown as a chip above the dock.
+  /// The latest graph upsert, shown as a chip above the pill.
   final UpsertActivity? activity;
-  final bool muted;
   final JournalView view;
 
-  /// Names to mark in the drawer, from the graph.
+  /// Names to mark in the live words, from the graph.
   final List<HighlightTerm> terms;
   final VoidCallback onMicTap;
-  final ValueChanged<JournalView>? onViewChanged;
-  final VoidCallback? onMuteTap;
 
-  /// Ends the live session; null (drawn dimmed) when there is none.
-  final VoidCallback? onEndTap;
+  /// Asks for the other view; null leaves the View slot empty.
+  final ValueChanged<JournalView>? onViewChanged;
+
+  /// Opens the text composer; null leaves the Type slot empty.
+  final VoidCallback? onTypeTap;
+
+  /// Replaces the button row while set (the typed-turn composer).
+  final Widget? composer;
 
   const VoiceDock({
     super.key,
@@ -78,14 +90,17 @@ class VoiceDock extends StatefulWidget {
     this.paused = false,
     this.reconnecting = false,
     this.activity,
-    this.muted = false,
     this.view = JournalView.graph,
     this.terms = const [],
     required this.onMicTap,
     this.onViewChanged,
-    this.onMuteTap,
-    this.onEndTap,
+    this.onTypeTap,
+    this.composer,
   });
+
+  /// The pill's card, for tests that measure its width.
+  @visibleForTesting
+  static const Key pillKey = ValueKey('voice-dock-pill');
 
   @override
   State<VoiceDock> createState() => _VoiceDockState();
@@ -99,10 +114,14 @@ class _VoiceDockState extends State<VoiceDock>
     duration: const Duration(milliseconds: 2200),
   );
 
-  // The drawer's spring, matching the web dock: a soft overshoot on open.
+  // The pill's spring, matching the web dock: a soft overshoot on open.
   static const Curve _spring = Cubic(0.34, 1.56, 0.64, 1);
   static const Duration _springDuration = Duration(milliseconds: 520);
-  static const double _dockW = 320;
+  static const double _wideW = 358;
+  static const double _button = 44;
+  static const double _gap = 14;
+  // 10 + 44 + 14 + 48 + 14 + 44 + 10 = 184.
+  static const double _restW = 2 * 10 + 2 * _button + 2 * _gap + 48;
 
   bool get _pulseActive =>
       widget.mode == DockMode.listening || widget.mode == DockMode.thinking;
@@ -175,14 +194,23 @@ class _VoiceDockState extends State<VoiceDock>
     final colors = context.lumenColors;
     final surface = Theme.of(context).extension<LumenSurface>()!;
     final screen = MediaQuery.sizeOf(context);
-    final width = math.min(_dockW, screen.width - 32);
+    final reduceMotion = MediaQuery.disableAnimationsOf(context);
     final activity = widget.activity;
     final lumenWords = _speaking || widget.openingInProgress;
+
+    // One speaker at a time. You only holds a status while Lumen doesn't hold
+    // the floor, so this only settles "You · Paused" over "Lumen · Mapping".
+    final youStatus = _youStatus;
+    final lumen = youStatus == null;
+    final status = youStatus ?? _lumenStatus;
+    final tier = status != null;
+    final wide = tier || widget.composer != null;
+    final wideW = math.max(_restW, math.min(_wideW, screen.width - 32));
 
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        // The upsert chip rides above the dock. Keyed by activity id so each
+        // The upsert chip rides above the pill. Keyed by activity id so each
         // upsert replays the pop.
         if (activity != null)
           Padding(
@@ -195,7 +223,7 @@ class _VoiceDockState extends State<VoiceDock>
           ),
         RepaintBoundary(
           child: Container(
-            width: width,
+            key: VoiceDock.pillKey,
             clipBehavior: Clip.antiAlias,
             decoration: BoxDecoration(
               color: colors.card,
@@ -206,92 +234,48 @@ class _VoiceDockState extends State<VoiceDock>
               borderRadius: BorderRadius.circular(28),
               border: Border.all(color: colors.border),
             ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: _SpeakerChip(
-                          name: 'You',
-                          status: _youStatus,
-                          color: colors.amber,
-                          colors: colors,
-                        ),
-                      ),
-                      const SizedBox(width: 4),
-                      Expanded(
-                        child: _SpeakerChip(
-                          name: 'Lumen',
-                          status: _lumenStatus,
-                          color: colors.sage,
-                          colors: colors,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                // Drawer: grows between the tiers so the controls never move.
-                AnimatedSize(
-                  duration: _springDuration,
-                  curve: _spring,
-                  alignment: Alignment.bottomCenter,
-                  child: _drawerOpen
-                      ? _Drawer(
-                          text: lumenWords ? widget.liveAgent : widget.liveUser,
-                          lumen: lumenWords,
-                          terms: widget.terms,
-                          colors: colors,
-                        )
-                      : const SizedBox(width: double.infinity, height: 6),
-                ),
-                Container(
-                  height: 1,
-                  margin: const EdgeInsets.symmetric(horizontal: 18),
-                  color: colors.border,
-                ),
-                Padding(
-                  padding: const EdgeInsets.all(6),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      _ModeButton(
-                        icon: Icons.hub_outlined,
-                        label: 'Graph view',
-                        active: widget.view == JournalView.graph,
+            child: _springSize(
+              reduceMotion: reduceMotion,
+              child: SizedBox(
+                width: wide ? wideW : _restW,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (tier)
+                      _Tier(
+                        name: lumen ? 'Lumen' : 'You',
+                        status: status,
+                        color: lumen ? colors.sage : colors.amber,
+                        words: _drawerOpen
+                            ? _Drawer(
+                                text: lumenWords
+                                    ? widget.liveAgent
+                                    : widget.liveUser,
+                                lumen: lumenWords,
+                                terms: widget.terms,
+                                colors: colors,
+                              )
+                            : null,
+                        fadeIn: !reduceMotion,
                         colors: colors,
-                        onTap: _switchTo(JournalView.graph),
                       ),
-                      _SideControl(
-                        icon: widget.muted ? Icons.volume_off : Icons.volume_up,
-                        label: widget.muted ? 'Unmute Lumen' : 'Mute Lumen',
-                        color: colors.mutedForeground,
-                        onTap: widget.onMuteTap,
-                      ),
-                      const SizedBox(width: 4),
-                      _mic(colors),
-                      const SizedBox(width: 4),
-                      _SideControl(
-                        icon: Icons.stop_circle_outlined,
-                        label: 'End session',
-                        color: widget.onEndTap == null
-                            ? colors.mutedForeground.withValues(alpha: 0.35)
-                            : colors.mutedForeground,
-                        onTap: widget.onEndTap,
-                      ),
-                      _ModeButton(
-                        icon: Icons.article_outlined,
-                        label: 'Transcript view',
-                        active: widget.view == JournalView.transcript,
-                        colors: colors,
-                        onTap: _switchTo(JournalView.transcript),
-                      ),
-                    ],
-                  ),
+                    AnimatedSwitcher(
+                      duration: reduceMotion
+                          ? Duration.zero
+                          : const Duration(milliseconds: 220),
+                      child: widget.composer == null
+                          ? KeyedSubtree(
+                              key: const ValueKey('row'),
+                              child: _row(colors),
+                            )
+                          : KeyedSubtree(
+                              key: const ValueKey('composer'),
+                              child: widget.composer!,
+                            ),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
           ),
         ),
@@ -299,19 +283,63 @@ class _VoiceDockState extends State<VoiceDock>
     );
   }
 
-  VoidCallback? _switchTo(JournalView view) {
-    final cb = widget.onViewChanged;
-    if (cb == null) return null;
-    return () {
-      if (widget.view != view) cb(view);
-    };
+  // AnimatedSize lays the child out at its final size and clips while the box
+  // springs, so the overshoot can never overflow the row. Bottom-centre keeps
+  // the row (and the mic) still as the tier opens above it. Reduced motion
+  // resizes at once (a zero-length AnimatedSize re-dirties its own layout).
+  Widget _springSize({required bool reduceMotion, required Widget child}) {
+    if (reduceMotion) return child;
+    return AnimatedSize(
+      duration: _springDuration,
+      curve: _spring,
+      alignment: Alignment.bottomCenter,
+      child: child,
+    );
+  }
+
+  Widget _row(LumenColors colors) {
+    final onType = widget.onTypeTap;
+    final onView = widget.onViewChanged;
+    final graph = widget.view == JournalView.graph;
+    const empty = SizedBox(width: _button, height: _button);
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (onType == null)
+            empty
+          else
+            _PillButton(
+              icon: Icons.keyboard_outlined,
+              label: 'Type instead',
+              colors: colors,
+              onTap: onType,
+            ),
+          const SizedBox(width: _gap),
+          _mic(colors),
+          const SizedBox(width: _gap),
+          if (onView == null)
+            empty
+          else
+            _PillButton(
+              icon: graph ? Icons.article_outlined : Icons.hub_outlined,
+              label: graph ? 'Show transcript' : 'Show graph',
+              colors: colors,
+              onTap: () => onView(
+                graph ? JournalView.transcript : JournalView.graph,
+              ),
+            ),
+        ],
+      ),
+    );
   }
 
   Widget _mic(LumenColors colors) {
     final listening = widget.mode == DockMode.listening;
     final thinking = widget.mode == DockMode.thinking;
     // Scoped to its own AnimatedBuilder: the pulse animates only this 48×48
-    // subtree (ring + fill), never the rest of the dock.
+    // subtree (ring + fill), never the rest of the pill.
     return SizedBox(
       width: 48,
       height: 48,
@@ -356,6 +384,13 @@ class _VoiceDockState extends State<VoiceDock>
                           ? colors.amber.withValues(alpha: thinkingBreath)
                           : colors.amber,
                       shape: BoxShape.circle,
+                      // The resting halo: a 5pt amber ring at 22%.
+                      boxShadow: [
+                        BoxShadow(
+                          color: colors.amber.withValues(alpha: 0.22),
+                          spreadRadius: 5,
+                        ),
+                      ],
                     ),
                     child: Icon(
                       widget.paused ? Icons.mic_off : Icons.mic,
@@ -373,84 +408,90 @@ class _VoiceDockState extends State<VoiceDock>
   }
 }
 
-/// One side of the top tier. Active (a [status] is set): tinted in its
-/// speaker colour with a ping dot and the status word. Inactive: dimmed.
-class _SpeakerChip extends StatelessWidget {
+/// The status tier: one label line (ping dot · speaker · status) and, in
+/// graph view, the live words under it. The label is a live region so
+/// VoiceOver announces each change of floor.
+class _Tier extends StatelessWidget {
   final String name;
-  final String? status;
+  final String status;
   final Color color;
+  final Widget? words;
+  final bool fadeIn;
   final LumenColors colors;
 
-  const _SpeakerChip({
+  const _Tier({
     required this.name,
     required this.status,
     required this.color,
+    required this.words,
+    required this.fadeIn,
     required this.colors,
   });
 
   @override
   Widget build(BuildContext context) {
-    final active = status != null;
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeOut,
-      height: 36,
-      decoration: BoxDecoration(
-        color: active ? color.withValues(alpha: 0.14) : Colors.transparent,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: AnimatedOpacity(
-        duration: const Duration(milliseconds: 300),
-        opacity: active ? 1 : 0.45,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            if (active)
-              _PingDot(color: color)
-            else
-              SizedBox(
-                width: 6,
-                height: 6,
-                child: DecoratedBox(
-                  decoration:
-                      BoxDecoration(color: color, shape: BoxShape.circle),
-                ),
-              ),
-            const SizedBox(width: 7),
-            Text(
-              name,
+    final label = Semantics(
+      liveRegion: true,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          _PingDot(color: color),
+          const SizedBox(width: 7),
+          Text(
+            name,
+            style: TextStyle(
+              fontFamily: LumenText.sansFontFamily,
+              fontSize: 12.5,
+              fontWeight: FontWeight.w600,
+              color: color,
+            ),
+          ),
+          Text(
+            ' · ',
+            style: TextStyle(
+              fontFamily: LumenText.sansFontFamily,
+              fontSize: 12.5,
+              color: color,
+            ),
+          ),
+          Flexible(
+            child: Text(
+              status,
+              maxLines: 1,
+              overflow: TextOverflow.fade,
+              softWrap: false,
               style: TextStyle(
                 fontFamily: LumenText.sansFontFamily,
                 fontSize: 12.5,
                 fontWeight: FontWeight.w500,
-                color: colors.ink,
+                color: color,
               ),
             ),
-            if (active) ...[
-              const SizedBox(width: 6),
-              Flexible(
-                child: Text(
-                  status!,
-                  maxLines: 1,
-                  overflow: TextOverflow.fade,
-                  softWrap: false,
-                  style: TextStyle(
-                    fontFamily: LumenText.sansFontFamily,
-                    fontSize: 12,
-                    color: colors.mutedForeground,
-                  ),
-                ),
-              ),
-            ],
-          ],
-        ),
+          ),
+        ],
       ),
+    );
+    final body = Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [label, if (words != null) words!],
+      ),
+    );
+    if (!fadeIn) return body;
+    // A short fade as the pill springs open; the spring's clip does the exit.
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: const Duration(milliseconds: 240),
+      curve: Curves.easeOut,
+      builder: (context, t, child) => Opacity(opacity: t, child: child),
+      child: body,
     );
   }
 }
 
-/// The in-flight words between the tiers: at most three lines, anchored to
-/// the newest (a reversed viewport keeps the tail in view as text streams),
+/// The in-flight words under the status label: at most three lines, anchored
+/// to the newest (a reversed viewport keeps the tail in view as text streams),
 /// entities marked in their graph colours.
 class _Drawer extends StatelessWidget {
   final String text;
@@ -477,7 +518,7 @@ class _Drawer extends StatelessWidget {
       color: colors.ink,
     );
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 10),
+      padding: const EdgeInsets.fromLTRB(4, 8, 4, 0),
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxHeight: _lineH * 3),
         child: SingleChildScrollView(
@@ -502,7 +543,7 @@ class _Drawer extends StatelessWidget {
 }
 
 /// Transcript text as spans: each entity mention washed in its graph colour,
-/// Kindle-style. Shared by the dock drawer and the transcript page.
+/// Kindle-style. Shared by the pill's live words and the transcript page.
 List<InlineSpan> highlightSpans(String text, List<HighlightTerm> terms) => [
       for (final run in highlightRuns(text, terms))
         TextSpan(
@@ -516,93 +557,33 @@ List<InlineSpan> highlightSpans(String text, List<HighlightTerm> terms) => [
         ),
     ];
 
-/// One half of the view switch. The dot beneath springs in under the active
-/// view.
-class _ModeButton extends StatelessWidget {
+/// A 44pt icon button in the pill's row (Type, View).
+class _PillButton extends StatelessWidget {
   final IconData icon;
   final String label;
-  final bool active;
   final LumenColors colors;
-  final VoidCallback? onTap;
+  final VoidCallback onTap;
 
-  const _ModeButton({
+  const _PillButton({
     required this.icon,
     required this.label,
-    required this.active,
     required this.colors,
-    this.onTap,
+    required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
     return Semantics(
       button: true,
-      selected: active,
       label: label,
+      excludeSemantics: true,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: onTap,
         child: SizedBox(
           width: 44,
           height: 44,
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              Icon(
-                icon,
-                size: 19,
-                color: active ? colors.ink : colors.mutedForeground,
-              ),
-              Positioned(
-                bottom: 3,
-                child: AnimatedScale(
-                  scale: active ? 1 : 0,
-                  duration: const Duration(milliseconds: 240),
-                  curve: const Cubic(0.34, 1.56, 0.64, 1),
-                  child: Container(
-                    width: 4,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: colors.amber,
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _SideControl extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final Color color;
-  final VoidCallback? onTap;
-
-  const _SideControl({
-    required this.icon,
-    required this.label,
-    required this.color,
-    this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      button: true,
-      enabled: onTap != null,
-      label: label,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: onTap,
-        child: SizedBox(
-          width: 44,
-          height: 44,
-          child: Icon(icon, size: 18, color: color),
+          child: Icon(icon, size: 19, color: colors.ink),
         ),
       ),
     );

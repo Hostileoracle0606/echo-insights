@@ -118,7 +118,6 @@ class _VoiceDockPreview extends StatefulWidget {
 
 class _VoiceDockPreviewState extends State<_VoiceDockPreview> {
   DockMode _mode = DockMode.idle;
-  bool _muted = false;
   JournalView _view = JournalView.graph;
 
   static const _transcripts = <DockMode, String>{
@@ -139,15 +138,20 @@ class _VoiceDockPreviewState extends State<_VoiceDockPreview> {
     return Scaffold(
       body: SafeArea(
         child: Column(
+          // Full width, so the dock centres on the screen and not on the
+          // widest child.
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             const SizedBox(height: 24),
             Text(
               'VoiceDock · ${_mode.name}',
+              textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.labelLarge,
             ),
             const SizedBox(height: 4),
             Text(
-              'tap the mic to cycle states · tap speaker to toggle mute',
+              'tap the mic to cycle states · tap View to switch views',
+              textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 11,
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -156,7 +160,6 @@ class _VoiceDockPreviewState extends State<_VoiceDockPreview> {
             const Spacer(),
             VoiceDock(
               mode: _mode,
-              muted: _muted,
               liveUser:
                   _mode == DockMode.speaking ? '' : _transcripts[_mode] ?? '',
               liveAgent:
@@ -164,7 +167,6 @@ class _VoiceDockPreviewState extends State<_VoiceDockPreview> {
               onMicTap: _cycle,
               view: _view,
               onViewChanged: (view) => setState(() => _view = view),
-              onMuteTap: () => setState(() => _muted = !_muted),
             ),
             const SizedBox(height: 48),
           ],

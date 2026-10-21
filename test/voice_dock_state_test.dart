@@ -1,5 +1,6 @@
-// Phase 2 regression: the dock's volume control is wired to a real mute flag
-// (not a no-op), and the notifier's derived providers reflect it.
+// Phase 2 regression: the volume control (in the top bar since LM-10) is
+// wired to a real mute flag (not a no-op), and the notifier's derived
+// providers reflect it.
 //
 // Two layers:
 //  * A pure-provider test drives JournalNotifier.toggleMute() directly through
@@ -36,7 +37,7 @@ void main() {
     expect(container.read(mutedProvider), isFalse);
   });
 
-  testWidgets('volume icon toggles when the dock control is tapped',
+  testWidgets('volume icon toggles when the top bar control is tapped',
       (tester) async {
     await tester.binding.setSurfaceSize(const Size(402, 874));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -55,7 +56,7 @@ void main() {
     );
     await tester.pump(const Duration(milliseconds: 16));
 
-    // Idle dock: unmuted by default.
+    // Idle session: unmuted by default.
     expect(find.byIcon(Icons.volume_up), findsOneWidget);
     expect(find.byIcon(Icons.volume_off), findsNothing);
 
