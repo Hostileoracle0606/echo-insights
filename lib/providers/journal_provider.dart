@@ -139,8 +139,6 @@ class JournalNotifier extends Notifier<JournalState> {
   String? _lastMemoryQuery;
   int _memoryCallsThisTurn = 0;
   static const _maxMemoryCallsPerTurn = 3;
-  // Gemini waits on the tool; past this, recall answers empty.
-  static const _memoryToolBudget = Duration(seconds: 4);
   // What the last memory lookup brought back (LM-13 / LM-14 read it).
   RecallActivity? _recall;
   int _recallSeq = 0;
@@ -859,7 +857,6 @@ class JournalNotifier extends Notifier<JournalState> {
       query: query,
       notebookId: notebookId,
       scope: RetrievalScope.user,
-      timeout: _memoryToolBudget,
     );
     if (retrieval.entityIds.isNotEmpty && isCurrent()) {
       _recall = RecallActivity(

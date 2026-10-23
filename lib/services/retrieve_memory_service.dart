@@ -134,6 +134,10 @@ Map<String, dynamic> memoryToolResult(
       ],
     };
 
+/// User-scope lookups answer Gemini's live tool call, which blocks Lumen
+/// until it is answered; past this the call degrades to empty memory.
+const Duration userScopeRetrieveTimeout = Duration(milliseconds: 3500);
+
 typedef RetrieveMemoryInvoker = Future<dynamic> Function(
   Map<String, dynamic> body,
 );
@@ -167,8 +171,9 @@ class RetrieveMemoryService {
           .context;
 
   /// [state] is sent only for [RetrievalScope.notebook]; user scope reads the
-  /// graph on the server. [timeout], when given, bounds the whole call and
-  /// degrades to empty memory like any other failure.
+  /// graph on the server. [timeout] bounds the whole call and degrades to
+  /// empty memory like any other failure; it defaults to
+  /// [userScopeRetrieveTimeout] for user scope and to none for notebook scope.
   Future<MemoryRetrieval> retrieveResult({
     required String query,
     required String notebookId,
@@ -198,8 +203,10 @@ class RetrieveMemoryService {
         else
           'state': stateToGraphloop(state ?? JournalState.empty()),
       };
+      final limit = timeout ??
+          (scope == RetrievalScope.user ? userScopeRetrieveTimeout : null);
       final call = _invoke(body);
-      final data = await (timeout == null ? call : call.timeout(timeout));
+      final data = await (limit == null ? call : call.timeout(limit));
       final result = MemoryRetrieval.fromData(data);
       emit(
         result.context.isEmpty ? 'empty' : 'ok',

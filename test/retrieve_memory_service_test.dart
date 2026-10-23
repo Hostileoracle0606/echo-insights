@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lumen/models/entity.dart';
 import 'package:lumen/models/journal_entry.dart';
@@ -9,6 +10,10 @@ import 'package:lumen/models/journal_state.dart';
 import 'package:lumen/models/memory_quote.dart';
 import 'package:lumen/models/relation.dart';
 import 'package:lumen/services/retrieve_memory_service.dart';
+
+Map<String, dynamic> _fixtureFor(String name) => jsonDecode(
+      File('contracts/fixtures/$name').readAsStringSync(),
+    ) as Map<String, dynamic>;
 
 void main() {
   final now = DateTime.utc(2026, 6, 13, 9);
@@ -273,6 +278,36 @@ void main() {
         ),
         same(MemoryRetrieval.empty),
       );
+    });
+  });
+
+  test('user scope fails closed at 3.5 s by default; notebook scope waits',
+      () {
+    fakeAsync((async) {
+      final pending = Completer<dynamic>();
+      final service = RetrieveMemoryService.withInvoker((_) => pending.future);
+      MemoryRetrieval? user;
+      MemoryRetrieval? notebook;
+      service
+          .retrieveResult(
+            query: 'Priya',
+            notebookId: 'nb',
+            scope: RetrievalScope.user,
+          )
+          .then((r) => user = r);
+      service
+          .retrieveResult(query: 'Priya', notebookId: 'nb', state: JournalState.empty())
+          .then((r) => notebook = r);
+
+      async.elapse(const Duration(milliseconds: 3400));
+      expect(user, isNull);
+      async.elapse(const Duration(milliseconds: 200));
+      expect(user, same(MemoryRetrieval.empty));
+      expect(notebook, isNull, reason: 'extraction keeps its old behaviour');
+
+      pending.complete(_fixtureFor('retrieve-memory-v1.success.json'));
+      async.flushMicrotasks();
+      expect(notebook!.entityIds, ['maya', 'project-atlas']);
     });
   });
 
