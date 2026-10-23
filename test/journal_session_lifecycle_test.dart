@@ -147,7 +147,9 @@ class _NoMemory implements RetrieveMemoryService {
   Future<MemoryRetrieval> retrieveResult({
     required String query,
     required String notebookId,
-    required JournalState state,
+    JournalState? state,
+    RetrievalScope scope = RetrievalScope.notebook,
+    Duration? timeout,
   }) async =>
       MemoryRetrieval.empty;
 

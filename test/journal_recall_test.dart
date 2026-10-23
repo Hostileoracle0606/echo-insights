@@ -44,12 +44,9 @@ class _FakeMic implements MicCapture {
 
 class _Backend implements PcmAudioBackend {
   @override
-  Future<void> setAudioStream(Stream<List<int>> stream) async {
-    stream.listen((_) {});
-  }
-
+  Future<void> start() async {}
   @override
-  Future<void> play() async {}
+  Future<void> schedule(Uint8List pcm16, int sampleRate) async {}
   @override
   Future<void> stop() async {}
   @override
