@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:developer' as developer;
 
-import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -153,9 +152,8 @@ class RetrieveMemoryService {
             (await client.functions.invoke('retrieve-memory', body: body))
                 .data);
 
-  /// For tests: [invoke] receives the request body and returns the response
-  /// data.
-  @visibleForTesting
+  /// For tests only: [invoke] receives the request body and returns the
+  /// response data.
   RetrieveMemoryService.withInvoker(this._invoke);
 
   Future<String> retrieve({
