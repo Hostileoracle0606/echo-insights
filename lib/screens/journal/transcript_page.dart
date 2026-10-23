@@ -21,12 +21,16 @@ class TranscriptTurn {
   /// When it was spoken (its first transcript chunk).
   final DateTime? at;
 
+  /// Typed in the composer rather than spoken ("typed · 5:04").
+  final bool typed;
+
   const TranscriptTurn(
     this.speaker,
     this.text, {
     this.id = '',
     this.pending = false,
     this.at,
+    this.typed = false,
   });
 }
 
@@ -342,6 +346,10 @@ class _TurnView extends StatelessWidget {
             color: colors.ink,
           );
     final at = turn.at;
+    final stamp = [
+      if (turn.typed) 'typed',
+      if (at != null) _clock(at),
+    ].join(' · ');
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -354,10 +362,10 @@ class _TurnView extends StatelessWidget {
             ),
             const SizedBox(width: 8),
             Text(lumen ? 'LUMEN' : 'YOU', style: LumenText.eyebrow(dot)),
-            if (at != null) ...[
+            if (stamp.isNotEmpty) ...[
               const SizedBox(width: 8),
               Text(
-                _clock(at),
+                stamp,
                 style: TextStyle(
                   fontFamily: LumenText.sansFontFamily,
                   fontSize: 11,
