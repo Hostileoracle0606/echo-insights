@@ -13,7 +13,12 @@ import 'package:lumen/screens/journal/graph_canvas.dart';
 import 'package:lumen/screens/journal/journal_screen.dart';
 import 'package:lumen/screens/journal/journal_top_bar.dart';
 import 'package:lumen/screens/journal/voice_dock.dart';
+import 'package:lumen/theme/lumen_colors.dart';
+import 'package:lumen/theme/lumen_text.dart';
 import 'package:lumen/theme/lumen_theme.dart';
+import 'package:lumen/widgets/context_tile.dart';
+import 'package:lumen/widgets/mode_header.dart';
+import 'package:lumen/widgets/result_card.dart';
 
 void main() {
   const screen = String.fromEnvironment('SCREEN', defaultValue: 'login');
@@ -64,6 +69,7 @@ class _PreviewApp extends StatelessWidget {
             ),
           'voicedock' => const _VoiceDockPreview(),
           'graph' => Scaffold(body: GraphCanvas(state: _previewState)),
+          'cards' => const _CardsPreview(),
           _ => const LoginScreen(),
         },
       ),
@@ -171,6 +177,181 @@ class _VoiceDockPreviewState extends State<_VoiceDockPreview> {
             const SizedBox(height: 48),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// LM-09 shared result pieces on one scrolling page, with the prototype's
+/// copy: a ModeHeader with a sample timer pill, a ResultCard with and without
+/// a hero row, a ContextTile and a ContextList whose × buttons really remove.
+class _CardsPreview extends StatefulWidget {
+  const _CardsPreview();
+
+  @override
+  State<_CardsPreview> createState() => _CardsPreviewState();
+}
+
+class _CardsPreviewState extends State<_CardsPreview> {
+  var _remember = const [
+    ContextItem(title: 'Priya', note: 'paired on the cache keys'),
+    ContextItem(title: 'CI build time', note: '22 → 13 min'),
+    ContextItem(title: 'Ask Priya about the Q4 rollout', open: true),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            ModeHeader(
+              title: 'Weekly debrief',
+              onBack: () {},
+              trailing: const _SamplePill(),
+            ),
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+                children: [
+                  ResultCard(
+                    eyebrow: 'This week · 3 wins',
+                    onExpand: () {},
+                    expandLabel: 'Open your full review brief',
+                    hero: const ResultRow(
+                      badge: ResultBadge.check(),
+                      label: 'Top win',
+                      text: _ciWin,
+                      meta: 'Tuesday · with Priya',
+                    ),
+                    rows: const [
+                      ResultRow(
+                        badge: ResultBadge.check(),
+                        text: 'Unblocked the Atlas handoff with Maya',
+                      ),
+                      ResultRow(
+                        badge: ResultBadge.check(),
+                        text: 'Said no to the Friday offsite prep',
+                        meta: 'Thursday',
+                      ),
+                    ],
+                    footerNote: '41 wins in your brief',
+                    footerActionLabel: 'Copy',
+                    onFooterAction: () {},
+                  ),
+                  const SizedBox(height: 16),
+                  ContextList(
+                    eyebrow: 'Lumen will remember',
+                    items: _remember,
+                    onRemove: (item) => setState(() {
+                      _remember = [..._remember]..remove(item);
+                    }),
+                  ),
+                  const SizedBox(height: 28),
+                  ResultCard(
+                    eyebrow: 'Bring these up.',
+                    onExpand: () {},
+                    expandLabel: 'Open your prep brief',
+                    rows: const [
+                      ResultRow(
+                        badge: ResultBadge.number(1),
+                        text: 'The CI win: 22 → 13 min, with Priya',
+                      ),
+                      ResultRow(
+                        badge: ResultBadge.number(2),
+                        text: 'Who owns the Atlas handoff after the demo?',
+                      ),
+                      ResultRow(
+                        badge: ResultBadge.number(3),
+                        text: 'Your Q4 growth goal',
+                        meta: 'You set it in June',
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  const ContextTile(
+                    icon: Icons.history,
+                    eyebrow: 'Since last time',
+                    body:
+                        'You wanted Priya to get credit for the cache-key fix '
+                        'in your review.',
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'preview · cards',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+const _ciWin =
+    'Cut CI build time 41% (22 → 13 min) by fixing cache keys, with Priya.';
+
+/// Stand-in for LM-11's timer pill and End, to exercise ModeHeader's slot.
+class _SamplePill extends StatelessWidget {
+  const _SamplePill();
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.lumenColors;
+    return Container(
+      height: 36,
+      padding: const EdgeInsets.only(left: 12, right: 4),
+      decoration: BoxDecoration(
+        color: colors.card,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: colors.border),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 7,
+            height: 7,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: colors.recallRing,
+            ),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            '12:04',
+            style: TextStyle(
+              fontFamily: LumenText.sansFontFamily,
+              fontSize: 13,
+              fontFeatures: const [FontFeature.tabularFigures()],
+              color: colors.ink,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            decoration: BoxDecoration(
+              color: colors.ink,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Text(
+              'End',
+              style: TextStyle(
+                fontFamily: LumenText.sansFontFamily,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: colors.paper,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -34,4 +34,12 @@ void main() {
   test('textTheme is wired with Fraunces display', () {
     expect(theme.textTheme.displayLarge!.fontFamily, 'Fraunces');
   });
+
+  test('LumenSurface radiusTile is 14 and survives copyWith and lerp', () {
+    final s = theme.extension<LumenSurface>()!;
+    expect(s.radiusTile, 14);
+    expect(s.copyWith(radiusXl: 1).radiusTile, 14);
+    expect(s.copyWith(radiusTile: 20).radiusTile, 20);
+    expect(s.lerp(s.copyWith(radiusTile: 20), 0.5).radiusTile, 17);
+  });
 }

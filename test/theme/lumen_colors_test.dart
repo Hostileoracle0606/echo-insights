@@ -40,4 +40,69 @@ void main() {
     expect(l.paper, LumenColors.light.paper);
     expect(l.ink, LumenColors.light.ink);
   });
+
+  group('LM-09 card tokens', () {
+    const expected = <String, Color>{
+      'highlight': Color(0xFFFBF1E4),
+      'sageSoft': Color(0xFFDCE7DF),
+      'sageInk': Color(0xFF2F4D3D),
+      'lumenLabel': Color(0xFF3F6550),
+      'youLabel': Color(0xFF8A4A0C),
+      'lumenBody': Color(0xFF3A2A1E),
+    };
+
+    // One accessor per new token, so a token missing from copyWith or lerp
+    // fails by name instead of silently keeping the old colour.
+    final read = <String, Color Function(LumenColors)>{
+      'highlight': (c) => c.highlight,
+      'sageSoft': (c) => c.sageSoft,
+      'sageInk': (c) => c.sageInk,
+      'lumenLabel': (c) => c.lumenLabel,
+      'youLabel': (c) => c.youLabel,
+      'lumenBody': (c) => c.lumenBody,
+    };
+
+    LumenColors withToken(String name, Color color) => switch (name) {
+          'highlight' => LumenColors.light.copyWith(highlight: color),
+          'sageSoft' => LumenColors.light.copyWith(sageSoft: color),
+          'sageInk' => LumenColors.light.copyWith(sageInk: color),
+          'lumenLabel' => LumenColors.light.copyWith(lumenLabel: color),
+          'youLabel' => LumenColors.light.copyWith(youLabel: color),
+          'lumenBody' => LumenColors.light.copyWith(lumenBody: color),
+          _ => throw ArgumentError(name),
+        };
+
+    test('have the exact hex values', () {
+      for (final MapEntry(:key, :value) in expected.entries) {
+        expect(read[key]!(LumenColors.light), value, reason: key);
+      }
+    });
+
+    test('copyWith sets each one and keeps the others', () {
+      const probe = Color(0xFF010203);
+      for (final name in expected.keys) {
+        final c = withToken(name, probe);
+        expect(read[name]!(c), probe, reason: name);
+        for (final other in expected.keys.where((n) => n != name)) {
+          expect(read[other]!(c), expected[other], reason: '$name -> $other');
+        }
+      }
+    });
+
+    test('lerp carries each one through', () {
+      const probe = Color(0xFF010203);
+      for (final name in expected.keys) {
+        final target = withToken(name, probe);
+        expect(read[name]!(LumenColors.light.lerp(target, 0)), expected[name],
+            reason: '$name at t=0');
+        expect(read[name]!(LumenColors.light.lerp(target, 1)), probe,
+            reason: '$name at t=1');
+      }
+    });
+
+    test('role aliases point at the ring colours', () {
+      expect(LumenColors.light.recallRing, LumenColors.light.sage);
+      expect(LumenColors.light.upsertRing, LumenColors.light.amber);
+    });
+  });
 }

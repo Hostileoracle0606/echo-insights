@@ -21,6 +21,16 @@ class LumenColors extends ThemeExtension<LumenColors> {
   final Color destructive;
   final Color destructiveForeground;
 
+  // Result-card tokens (LM-09), from the Conversation Modes prototype. The
+  // label tokens exist because sage (4.31:1) and amber (2.39:1) are too faint
+  // for small text on paper; those two stay for dots, rings and fills.
+  final Color highlight;
+  final Color sageSoft;
+  final Color sageInk;
+  final Color lumenLabel;
+  final Color youLabel;
+  final Color lumenBody;
+
   const LumenColors({
     required this.paper,
     required this.ink,
@@ -35,6 +45,12 @@ class LumenColors extends ThemeExtension<LumenColors> {
     required this.mutedForeground,
     required this.destructive,
     required this.destructiveForeground,
+    required this.highlight,
+    required this.sageSoft,
+    required this.sageInk,
+    required this.lumenLabel,
+    required this.youLabel,
+    required this.lumenBody,
   });
 
   static const light = LumenColors(
@@ -51,7 +67,26 @@ class LumenColors extends ThemeExtension<LumenColors> {
     mutedForeground: Color(0xFF564B42), // oklch(0.42 0.02 60)
     destructive: Color(0xFFCC272E), // oklch(0.55 0.2 25)
     destructiveForeground: Color(0xFFF8F8F8), // oklch(0.98 0 0)
+    // "One thing first" row behind a result card's hero. Ink on it: 16.85:1.
+    highlight: Color(0xFFFBF1E4),
+    // Done-chip background. sageInk on it: 7.35:1.
+    sageSoft: Color(0xFFDCE7DF),
+    // Text on sageSoft.
+    sageInk: Color(0xFF2F4D3D),
+    // Small "Lumen" labels and in-text checks. 6.05:1 on paper.
+    lumenLabel: Color(0xFF3F6550),
+    // Small "You" labels and the hero row's label. 6.13:1 on highlight,
+    // 6.30:1 on paper.
+    youLabel: Color(0xFF8A4A0C),
+    // Lumen's serif lines in transcripts. 12.62:1 on paper.
+    lumenBody: Color(0xFF3A2A1E),
   );
+
+  /// Ring/dot colour for Lumen reading memory (recall).
+  Color get recallRing => sage;
+
+  /// Ring/dot colour for you adding to memory (upsert).
+  Color get upsertRing => amber;
 
   /// Knowledge-graph node palette, ported 1:1 from the web's
   /// `graph-view.tsx` TYPE_COLORS (plain hex there too, since canvas can't
@@ -83,6 +118,12 @@ class LumenColors extends ThemeExtension<LumenColors> {
     Color? mutedForeground,
     Color? destructive,
     Color? destructiveForeground,
+    Color? highlight,
+    Color? sageSoft,
+    Color? sageInk,
+    Color? lumenLabel,
+    Color? youLabel,
+    Color? lumenBody,
   }) {
     return LumenColors(
       paper: paper ?? this.paper,
@@ -99,6 +140,12 @@ class LumenColors extends ThemeExtension<LumenColors> {
       destructive: destructive ?? this.destructive,
       destructiveForeground:
           destructiveForeground ?? this.destructiveForeground,
+      highlight: highlight ?? this.highlight,
+      sageSoft: sageSoft ?? this.sageSoft,
+      sageInk: sageInk ?? this.sageInk,
+      lumenLabel: lumenLabel ?? this.lumenLabel,
+      youLabel: youLabel ?? this.youLabel,
+      lumenBody: lumenBody ?? this.lumenBody,
     );
   }
 
@@ -120,6 +167,12 @@ class LumenColors extends ThemeExtension<LumenColors> {
       destructive: Color.lerp(destructive, other.destructive, t)!,
       destructiveForeground:
           Color.lerp(destructiveForeground, other.destructiveForeground, t)!,
+      highlight: Color.lerp(highlight, other.highlight, t)!,
+      sageSoft: Color.lerp(sageSoft, other.sageSoft, t)!,
+      sageInk: Color.lerp(sageInk, other.sageInk, t)!,
+      lumenLabel: Color.lerp(lumenLabel, other.lumenLabel, t)!,
+      youLabel: Color.lerp(youLabel, other.youLabel, t)!,
+      lumenBody: Color.lerp(lumenBody, other.lumenBody, t)!,
     );
   }
 }
