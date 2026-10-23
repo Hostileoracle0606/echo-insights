@@ -1408,6 +1408,10 @@ class JournalNotifier extends Notifier<JournalState> {
     bool isCurrent() => _isCurrentLiveSession(prepared.binding, prepared.live);
     _session = prepared;
     _connectionLapsed = false;
+    // Typed turns an earlier connection never sent reach Gemini as context
+    // (sendHistory below), not as new turns to answer.
+    _typedTurnsAwaitingConnection.clear();
+    _droppingCutOffReply = false;
     _sessionStartedAt = DateTime.now();
     // A live Gemini socket and an active turn-processing session are two
     // separate states. Establish the turn-machine identity before anything

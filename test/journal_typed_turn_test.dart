@@ -43,17 +43,14 @@ class _FakeMic implements MicCapture {
   Future<void> stop() async => _onChunk = null;
 }
 
-/// The speaker: counts the audio chunks that reach it.
+/// The speaker: counts the audio chunks scheduled on it.
 class _Speaker implements PcmAudioBackend {
   int chunks = 0;
 
   @override
-  Future<void> setAudioStream(Stream<List<int>> stream) async {
-    stream.listen((_) => chunks += 1);
-  }
-
+  Future<void> start() async {}
   @override
-  Future<void> play() async {}
+  Future<void> schedule(Uint8List pcm16, int sampleRate) async => chunks += 1;
   @override
   Future<void> stop() async {}
   @override
@@ -365,4 +362,53 @@ void main() {
     expect(h.journal.status, SessionStatus.paused, reason: 'the mic stays off');
     expect(h.mic.recording, isFalse);
   });
+
+  test('a typed turn a failed reconnect never sent is context, not a new turn',
+      () async {
+    h = _Harness();
+    await h.startLive();
+    await h.journal.pauseMic();
+    h.socket.serverCloses();
+    await h.settle();
+
+    h.journal.sendTypedTurn('Lost in transit.');
+    // Every reconnect attempt dies before setup.
+    for (var attempt = 2; attempt <= 4; attempt++) {
+      await h.waitForSocket(attempt);
+      h.socket.serverCloses();
+      for (var i = 0; i < 400 && h.sockets.length == attempt; i++) {
+        if (h.journal.status == SessionStatus.error) break;
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+    }
+    expect(h.journal.status, SessionStatus.error);
+
+    final starting = h.journal.startSession();
+    await h.waitForSocket(5);
+    h.socket.serverSends({'setupComplete': <String, dynamic>{}});
+    expect((await starting).succeeded, isTrue);
+    await h.settle();
+
+    expect(_typedSent(h.socket), isEmpty, reason: 'not replayed as a turn');
+    final context = h.socket.sent
+        .map((m) => m['client_content'])
+        .whereType<Map<String, dynamic>>()
+        .where((c) => c['turn_complete'] == false)
+        .single;
+    expect(jsonEncode(context['turns']), contains('Lost in transit.'));
+
+    // Nor on the new session's next reconnect.
+    h.socket
+      ..serverSends({
+        'sessionResumptionUpdate': {'newHandle': 'handle-5', 'resumable': true},
+      })
+      ..serverSends({'goAway': {'timeLeft': '10s'}});
+    await h.waitForSocket(6);
+    h.socket.serverSends({'setupComplete': <String, dynamic>{}});
+    for (var i = 0; i < 20 && h.journal.reconnecting; i++) {
+      await Future<void>.delayed(Duration.zero);
+    }
+    expect(h.journal.reconnecting, isFalse);
+    expect(_typedSent(h.socket), isEmpty, reason: 'not replayed later either');
+  }, timeout: const Timeout(Duration(seconds: 30)));
 }
