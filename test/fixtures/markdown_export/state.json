@@ -1,0 +1,111 @@
+{
+  "entries": [
+    {
+      "id": "entry-4",
+      "text": "Back at Phillip Street Café with Maya.   We   argued about AC/DC again, and she still thinks the Atlas launch should slip a week so the onboarding copy can be rewritten properly before anyone outside the team sees it.",
+      "createdAt": "2026-04-26T18:45:00.000Z",
+      "entityIds": ["phillip-street-cafe", "maya", "ac-dc", "atlas"],
+      "relationIds": ["rel-maya-cafe"]
+    },
+    {
+      "id": "entry-3",
+      "text": "Morning run. Thinking about Atlas.",
+      "createdAt": "2026-04-26T07:05:00.000Z",
+      "entityIds": ["atlas", "missing-entity"],
+      "relationIds": []
+    },
+    {
+      "id": "entry-2",
+      "text": "Maya and I sketched the Atlas roadmap.",
+      "createdAt": "2026-04-25T16:20:00.000Z",
+      "entityIds": ["maya", "atlas"],
+      "relationIds": ["rel-maya-atlas"]
+    },
+    {
+      "id": "entry-1",
+      "text": "Quiet day. No names.",
+      "createdAt": "2026-04-25T09:00:00.000Z",
+      "entityIds": [],
+      "relationIds": []
+    }
+  ],
+  "entities": {
+    "maya": {
+      "id": "maya",
+      "name": "Maya",
+      "type": "person",
+      "description": "Close friend and Atlas co-founder.\nLoves loud music.",
+      "metadata": { "role": "co-founder", "met": 2019, "close": true },
+      "mentions": 3,
+      "firstSeen": "2026-04-25T16:20:00.000Z",
+      "lastSeen": "2026-04-26T18:45:00.000Z",
+      "questions": ["How did you and Maya meet?", "What does Maya want from Atlas?"]
+    },
+    "atlas": {
+      "id": "atlas",
+      "name": "Atlas",
+      "type": "project",
+      "metadata": {},
+      "mentions": 3,
+      "firstSeen": "2026-04-25T16:20:00.000Z",
+      "lastSeen": "2026-04-26T18:45:00.000Z"
+    },
+    "phillip-street-cafe": {
+      "id": "phillip-street-cafe",
+      "name": "Phillip Street Café",
+      "type": "place",
+      "description": "Corner café near the office.",
+      "metadata": { "city": "Sydney" },
+      "mentions": 1,
+      "firstSeen": "2026-04-26T18:45:00.000Z",
+      "lastSeen": "2026-04-26T18:45:00.000Z",
+      "questions": []
+    },
+    "ac-dc": {
+      "id": "ac-dc",
+      "name": "AC/DC",
+      "type": "other",
+      "description": "",
+      "metadata": { "genre": "rock" },
+      "mentions": 1,
+      "firstSeen": "2026-04-26T18:45:00.000Z",
+      "lastSeen": "2026-04-26T18:45:00.000Z"
+    }
+  },
+  "relations": {
+    "rel-maya-atlas": {
+      "id": "rel-maya-atlas",
+      "source": "maya",
+      "target": "atlas",
+      "label": "co_founded",
+      "metadata": {},
+      "createdAt": "2026-04-25T16:20:00.000Z"
+    },
+    "rel-maya-cafe": {
+      "id": "rel-maya-cafe",
+      "source": "maya",
+      "target": "phillip-street-cafe",
+      "label": "meets_at",
+      "metadata": {},
+      "createdAt": "2026-04-26T18:45:00.000Z"
+    },
+    "rel-maya-acdc": {
+      "id": "rel-maya-acdc",
+      "source": "maya",
+      "target": "ac-dc",
+      "label": "listens_to",
+      "metadata": {},
+      "createdAt": "2026-04-26T18:45:00.000Z"
+    },
+    "rel-atlas-acdc-old": {
+      "id": "rel-atlas-acdc-old",
+      "source": "atlas",
+      "target": "ac-dc",
+      "label": "named_after",
+      "metadata": {},
+      "createdAt": "2026-04-25T16:20:00.000Z",
+      "supersededAt": "2026-04-26T18:45:00.000Z"
+    }
+  },
+  "followUps": []
+}
