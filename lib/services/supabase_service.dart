@@ -1,5 +1,7 @@
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../models/conversation_mode.dart';
 import '../models/notebook.dart';
 
 /// Notebook lifecycle only (create/list/end) — reads and writes of a
@@ -64,23 +66,43 @@ class SupabaseService {
         .toList();
   }
 
-  Future<Notebook?> createNotebook() async {
+  Future<Notebook?> createNotebook({
+    ConversationMode mode = ConversationMode.justTalk,
+    Map<String, dynamic> context = const {},
+  }) async {
     final userId = currentUser?.id;
     if (userId == null) return null;
 
     final created = await _client
         .from('notebooks')
-        .insert({
-          'user_id': userId,
-          'title': 'Untitled',
-          // started_at is NOT NULL with no DB default (unlike created_at); the
-          // web client sets it explicitly too. Omitting it fails the insert.
-          'started_at': DateTime.now().toUtc().toIso8601String(),
-        })
+        .insert(newNotebookRow(
+          userId: userId,
+          startedAt: DateTime.now(),
+          conversationMode: mode,
+          modeContext: context,
+        ))
         .select()
         .single();
     return Notebook.fromJson(created);
   }
+
+  /// The row [createNotebook] inserts.
+  @visibleForTesting
+  static Map<String, dynamic> newNotebookRow({
+    required String userId,
+    required DateTime startedAt,
+    ConversationMode conversationMode = ConversationMode.justTalk,
+    Map<String, dynamic> modeContext = const {},
+  }) =>
+      {
+        'user_id': userId,
+        'title': 'Untitled',
+        // started_at is NOT NULL with no DB default (unlike created_at); the
+        // web client sets it explicitly too. Omitting it fails the insert.
+        'started_at': startedAt.toUtc().toIso8601String(),
+        'conversation_mode': conversationMode.wireName,
+        'mode_context': modeContext,
+      };
 
   Future<void> endNotebook(String notebookId) async {
     await _client.from('notebooks').update({
