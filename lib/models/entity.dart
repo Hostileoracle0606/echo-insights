@@ -20,6 +20,11 @@ class Entity {
   final String name;
   final EntityType type;
   final String? description;
+
+  /// Who wrote [description]: `'extracted'` (Lumen) or `'user'`. A
+  /// user-written description is never replaced by extraction (LM-29).
+  @JsonKey(defaultValue: 'extracted')
+  final String descriptionSource;
   final Map<String, dynamic> metadata;
   final int mentions;
   final DateTime firstSeen;
@@ -31,6 +36,7 @@ class Entity {
     required this.name,
     required this.type,
     this.description,
+    this.descriptionSource = 'extracted',
     required this.metadata,
     required this.mentions,
     required this.firstSeen,
@@ -43,6 +49,7 @@ class Entity {
 
   Entity copyWith({
     String? description,
+    String? descriptionSource,
     Map<String, dynamic>? metadata,
     int? mentions,
     DateTime? lastSeen,
@@ -54,6 +61,7 @@ class Entity {
         name: name,
         type: type ?? this.type,
         description: description ?? this.description,
+        descriptionSource: descriptionSource ?? this.descriptionSource,
         metadata: metadata ?? this.metadata,
         mentions: mentions ?? this.mentions,
         firstSeen: firstSeen,

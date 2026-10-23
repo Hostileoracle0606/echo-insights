@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart' show rootBundle;
+import 'package:flutter/widgets.dart' show WidgetsBinding;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../audio/audio_output.dart';
@@ -13,6 +14,7 @@ import '../logic/conversation_policy.dart';
 import '../logic/live_session_guard.dart';
 import '../logic/live_signal_gate.dart';
 import '../logic/resume_context.dart';
+import '../logic/memory_removal.dart';
 import '../logic/merge.dart' as merge_logic;
 import '../logic/session_opening_coordinator.dart';
 import '../logic/transcript_assembler.dart';
@@ -24,6 +26,7 @@ import '../models/journal_entry.dart';
 import '../models/journal_state.dart';
 import '../models/upsert_activity.dart';
 import '../services/gemini_live_client.dart';
+import '../services/memory_control_service.dart';
 import '../services/notebook_commit_service.dart' as commit_service;
 import '../services/notebook_runtime_service.dart';
 import '../services/retrieve_memory_service.dart';
@@ -60,6 +63,12 @@ const int finalizationDeadlineMs = 1500;
 /// every finalized turn so a replayed checkpoint is never silently
 /// reinterpreted by a different extractor than the one that produced it.
 const String extractorVersion = 'gemini/extract_graph/v2';
+
+/// How long "Removed Priya · Undo" holds a removal before it is sent (LM-29).
+const Duration removeUndoWindow = Duration(seconds: 5);
+
+/// How a [JournalNotifier.removeEntity] call ended.
+enum RemovalOutcome { removed, undone, failed }
 
 class JournalNotifier extends Notifier<JournalState> {
   GeminiLiveClient? _live;
@@ -168,6 +177,14 @@ class JournalNotifier extends Notifier<JournalState> {
   // it was queued) and a committed response updates it — see
   // _enqueueCommit / _commitApplyTurn.
   int _revision = 0;
+
+  // LM-29: ids the user removed from memory (from the snapshot, plus any
+  // removal still inside its undo window). merge() never adds them back.
+  final Set<String> _suppressed = {};
+  final Map<String, _PendingRemoval> _pendingRemovals = {};
+  BackgroundFlush? _backgroundFlush;
+  Set<String> get suppressedEntityIds => Set.unmodifiable(_suppressed);
+
   SessionStatus get status => _status;
   String get lastTranscript => _lastTranscript;
   String get liveUserText => _liveUserText;
@@ -225,6 +242,13 @@ class JournalNotifier extends Notifier<JournalState> {
       _agentSpeakingTimer?.cancel();
       _activityTimer?.cancel();
       _joiningTimer?.cancel();
+      // A removal the user did not undo is never dropped: send what is left.
+      for (final entry in _pendingRemovals.entries) {
+        entry.value.timer.cancel();
+        unawaited(entry.value.service.removeEntity(entry.key));
+      }
+      _pendingRemovals.clear();
+      _syncBackgroundFlush();
       _session?.gate.dispose();
       unawaited(_capture?.stop());
       unawaited(_live?.close());
@@ -630,7 +654,8 @@ class JournalNotifier extends Notifier<JournalState> {
         // Prepare once. An unknown-outcome retry must reuse this exact envelope
         // instead of merging again against the already-optimistic local state.
         final before = state;
-        final result = merge_logic.merge(state, turn.transcript, patch);
+        final result = merge_logic.merge(state, turn.transcript, patch,
+            suppressed: _suppressed);
         prepared = PreparedTurnCommit(
           expectedRevision: turn.baseRevision ?? _revision,
           change: result.change,
@@ -692,7 +717,7 @@ class JournalNotifier extends Notifier<JournalState> {
             await commitService.getNotebookSnapshot(turn.notebookId);
         if (snapshot != null) {
           _revision = snapshot.revision;
-          state = snapshot.state;
+          state = _adoptSnapshot(snapshot);
         }
       } else {
         _reconcileEntryId(prepared.entryId, outcome.entryId);
@@ -747,12 +772,124 @@ class JournalNotifier extends Notifier<JournalState> {
       final snapshot = await commitService.getNotebookSnapshot(notebookId);
       if (snapshot == null) return;
       _revision = snapshot.revision;
-      state = snapshot.state;
+      state = _adoptSnapshot(snapshot);
       // Pending turns now replay over the fresh snapshot in their original
       // order, keeping the request ids they were minted with.
       _dispatchTurn(SnapshotReloaded(revision: snapshot.revision));
     } catch (error) {
       vlog('session', 'snapshot reload failed: $error');
+    }
+  }
+
+  // ── LM-29: edit and remove what Lumen keeps ─────────────────────────────
+
+  /// The server's view, with any removal still inside its undo window kept
+  /// hidden (the server has not been told yet, so it still has the entity).
+  JournalState _adoptSnapshot(commit_service.NotebookSnapshot snapshot) {
+    _suppressed
+      ..clear()
+      ..addAll(snapshot.suppressedEntityIds)
+      ..addAll(_pendingRemovals.keys);
+    var next = snapshot.state;
+    for (final id in _pendingRemovals.keys) {
+      next = withoutEntity(next, id);
+    }
+    return next;
+  }
+
+  /// Writes the user's own description for [entityId] in every notebook.
+  /// Applied here first; a failed call reloads the server snapshot and
+  /// rethrows so the caller can say so.
+  Future<void> editEntityDescription(String entityId, String text) async {
+    var trimmed = text.trim();
+    if (trimmed.isEmpty) return;
+    if (trimmed.length > 800) trimmed = trimmed.substring(0, 800);
+    final entity = state.entities[entityId];
+    if (entity != null) {
+      state = state.copyWith(entities: {
+        ...state.entities,
+        entityId:
+            entity.copyWith(description: trimmed, descriptionSource: 'user'),
+      });
+    }
+    try {
+      await ref
+          .read(memoryControlServiceProvider)
+          .editDescription(entityId, trimmed);
+    } catch (error) {
+      vlog('session', 'edit description failed: $error');
+      await _reloadSnapshot();
+      rethrow;
+    }
+  }
+
+  /// Hides [entityId] now and removes it from memory once [removeUndoWindow]
+  /// passes without [undoRemove] — or at once if the app goes to the
+  /// background, so a removal is never left unsent. Completes when it was
+  /// sent, undone, or failed (a failure brings the entity back).
+  Future<RemovalOutcome> removeEntity(String entityId) {
+    final existing = _pendingRemovals[entityId];
+    if (existing != null) return existing.done.future;
+
+    final before = state;
+    final pending = _PendingRemoval(
+      hidden: HiddenEntity.capture(before, entityId),
+      service: ref.read(memoryControlServiceProvider),
+      timer: Timer(removeUndoWindow, () => unawaited(_sendRemoval(entityId))),
+    );
+    _pendingRemovals[entityId] = pending;
+    _suppressed.add(entityId);
+    state = withoutEntity(before, entityId);
+    _syncBackgroundFlush();
+    return pending.done.future;
+  }
+
+  /// Cancels a removal still inside its undo window. False once it was sent.
+  bool undoRemove(String entityId) {
+    final pending = _pendingRemovals.remove(entityId);
+    if (pending == null) return false;
+    pending.timer.cancel();
+    _syncBackgroundFlush();
+    _suppressed.remove(entityId);
+
+    state = pending.hidden
+        .restoreInto(state, (id) => _pendingRemovals[id]?.hidden);
+    pending.done.complete(RemovalOutcome.undone);
+    return true;
+  }
+
+  /// Sends every removal still inside its undo window, now.
+  Future<void> flushPendingRemovals() => Future.wait([
+        for (final id in _pendingRemovals.keys.toList()) _sendRemoval(id),
+      ]);
+
+  Future<void> _sendRemoval(String entityId) async {
+    final pending = _pendingRemovals.remove(entityId);
+    if (pending == null) return;
+    pending.timer.cancel();
+    _syncBackgroundFlush();
+    try {
+      await pending.service.removeEntity(entityId);
+      pending.done.complete(RemovalOutcome.removed);
+    } catch (error) {
+      // Not removed on the server, so not suppressed there either: show the
+      // entity again rather than pretend it is gone.
+      vlog('session', 'remove entity failed: $error');
+      _suppressed.remove(entityId);
+      await _reloadSnapshot();
+      pending.done.complete(RemovalOutcome.failed);
+    }
+  }
+
+  void _syncBackgroundFlush() {
+    final hook = _backgroundFlush;
+    if (_pendingRemovals.isEmpty) {
+      if (hook != null) WidgetsBinding.instance.removeObserver(hook);
+      _backgroundFlush = null;
+    } else if (hook == null) {
+      final added = BackgroundFlush(() => unawaited(flushPendingRemovals()));
+      WidgetsBinding.instance.addObserver(added);
+      _backgroundFlush = added;
     }
   }
 
@@ -867,7 +1004,7 @@ class JournalNotifier extends Notifier<JournalState> {
       ..addAll(_history.map((turn) => turn.turnId));
     _saveRetryAfter = null;
     _revision = snapshot?.revision ?? 0;
-    state = snapshot?.state ?? JournalState.empty();
+    state = snapshot == null ? JournalState.empty() : _adoptSnapshot(snapshot);
     await _restoreTurnsForNotebook(notebookId);
   }
 
@@ -1788,6 +1925,20 @@ class JournalNotifier extends Notifier<JournalState> {
 
 /// A connected, set-up Gemini session. Its [gate] passes signals through
 /// once the session is activated.
+/// A removal inside its undo window.
+class _PendingRemoval {
+  _PendingRemoval({
+    required this.hidden,
+    required this.service,
+    required this.timer,
+  });
+
+  final HiddenEntity hidden;
+  final MemoryControlService service;
+  final Timer timer;
+  final Completer<RemovalOutcome> done = Completer<RemovalOutcome>();
+}
+
 class _PreparedLive {
   _PreparedLive({
     required this.binding,

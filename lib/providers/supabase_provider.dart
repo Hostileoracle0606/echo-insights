@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../env.dart';
 import '../services/extract_graph_service.dart';
 import '../services/fresh_access_token.dart';
+import '../services/memory_control_service.dart';
 import '../services/notebook_commit_service.dart';
 import '../services/notebook_runtime_service.dart';
 import '../services/supabase_service.dart';
@@ -32,6 +33,10 @@ final supabaseServiceProvider = Provider<SupabaseService>((ref) {
 
 final notebookCommitServiceProvider = Provider<NotebookCommitService>((ref) {
   return NotebookCommitService(ref.watch(supabaseClientProvider));
+});
+
+final memoryControlServiceProvider = Provider<MemoryControlService>((ref) {
+  return MemoryControlService(ref.watch(supabaseClientProvider));
 });
 
 final notebookRuntimeServiceProvider = Provider<NotebookRuntimeService>((ref) {
