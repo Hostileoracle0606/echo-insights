@@ -112,7 +112,10 @@ class _ComposerState extends State<Composer> {
                 ),
               ),
             ),
+          // Bottom-aligned: a message that grows to several lines keeps the
+          // buttons on its last line, as in a chat.
           Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               _RoundButton(
                 label: 'Switch to voice',
@@ -180,6 +183,9 @@ class _ComposerState extends State<Composer> {
         cursorColor: colors.amber,
         decoration: InputDecoration(
           hintText: 'Type to Lumen',
+          // Never wrap the hint (narrow phones, large text): an empty field
+          // stays one line tall, on the row's centre line.
+          hintMaxLines: 1,
           hintStyle: text.copyWith(color: colors.mutedForeground),
           isDense: true,
           filled: true,

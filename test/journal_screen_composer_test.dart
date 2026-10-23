@@ -8,6 +8,7 @@ import 'package:lumen/logic/turn_state.dart';
 import 'package:lumen/models/journal_state.dart';
 import 'package:lumen/providers/journal_provider.dart';
 import 'package:lumen/screens/journal/composer.dart';
+import 'package:lumen/screens/journal/graph_canvas.dart';
 import 'package:lumen/screens/journal/journal_screen.dart';
 import 'package:lumen/screens/journal/voice_dock.dart';
 import 'package:lumen/theme/lumen_theme.dart';
@@ -170,6 +171,36 @@ void main() {
       );
       await tester.pumpWidget(const SizedBox());
     }
+  });
+
+  testWidgets('the keyboard lifts the pill, not the graph', (tester) async {
+    await _pump(tester);
+    await _openComposer(tester);
+    tester.view.viewInsets = const FakeViewPadding(bottom: 336);
+    await _frames(tester, count: 5);
+
+    expect(tester.getRect(find.byKey(VoiceDock.pillKey)).bottom,
+        moreOrLessEquals(874 - 336 - 8, epsilon: 0.5));
+    expect(tester.getSize(find.byType(GraphCanvas)), const Size(402, 874));
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('a multi-line message keeps the buttons on its last line',
+      (tester) async {
+    await _pump(tester);
+    await _openComposer(tester);
+    await tester.enterText(find.byType(TextField),
+        'One line\nTwo lines\nThree lines, and a fourth to be sure');
+    await _frames(tester, count: 40);
+
+    final field = tester.getRect(find.byType(TextField));
+    expect(field.height, greaterThan(60));
+    for (final label in ['Switch to voice', 'Send']) {
+      expect(tester.getRect(find.bySemanticsLabel(label)).bottom,
+          moreOrLessEquals(field.bottom, epsilon: 0.5),
+          reason: label);
+    }
+    await tester.pumpWidget(const SizedBox());
   });
 
   testWidgets('without a session there is nothing to type to', (tester) async {
