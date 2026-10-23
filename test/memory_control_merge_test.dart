@@ -67,6 +67,20 @@ void main() {
       expect(result.next.entries.single.entityIds, ['maya']);
     });
 
+    test('an empty patch (Lumen\'s own turn) commits a bare entry', () {
+      final prev = JournalState.empty()
+          .copyWith(entities: {'maya': _maya(description: 'A friend.')});
+
+      final result = merge(prev, 'How did that go?', GraphPatch.empty(),
+          suppressed: const {'priya'});
+
+      expect(result.next.entities.keys, ['maya']);
+      expect(result.change.entities, isEmpty);
+      expect(result.change.relations, isEmpty);
+      expect(result.change.entryEntityIds, isEmpty);
+      expect(result.next.entries.single.text, 'How did that go?');
+    });
+
     test('changes nothing when nothing is suppressed', () {
       final result =
           merge(JournalState.empty(), 'Priya and Maya talked.', _priyaAndMaya);
