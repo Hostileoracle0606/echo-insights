@@ -1,0 +1,6 @@
+{
+  "version": 2,
+  "context": "## Entities\n- Priya (person): runs the CI rotation [mentions: 1]",
+  "entityIds": ["priya"],
+  "quotes": []
+}

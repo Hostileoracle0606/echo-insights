@@ -1,11 +1,15 @@
+import 'dart:async';
 import 'dart:developer' as developer;
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../logic/relative_time.dart';
 import '../models/entity.dart';
 import '../models/journal_entry.dart';
 import '../models/journal_state.dart';
+import '../models/memory_quote.dart';
 import '../models/relation.dart';
 import '../providers/supabase_provider.dart';
 
@@ -63,45 +67,92 @@ Map<String, dynamic> stateToGraphloop(JournalState state) => {
     };
 
 const int retrieveMemoryContractVersion = 1;
+const int retrieveMemoryContractVersionV2 = 2;
 
-/// Successful response from the versioned retrieve-memory interface.
+/// Which memory retrieve-memory searches. [user] reads the user's merged
+/// graph across every notebook on the server and answers v2 with quotes;
+/// [notebook] searches the graph the app sends and answers v1 (old clients).
+enum RetrievalScope { notebook, user }
+
+/// Successful response from the versioned retrieve-memory interface (v1 or
+/// v2). v1 responses carry no quotes.
 class MemoryRetrieval {
   final String context;
   final List<String> entityIds;
+  final List<MemoryQuote> quotes;
 
   const MemoryRetrieval({
     required this.context,
     required this.entityIds,
+    this.quotes = const [],
   });
 
   static const empty = MemoryRetrieval(context: '', entityIds: []);
 
   factory MemoryRetrieval.fromData(dynamic data) {
     if (data is! Map) {
-      throw const FormatException('Invalid retrieve-memory v1 response');
+      throw const FormatException('Invalid retrieve-memory response');
     }
-    if (data['version'] != retrieveMemoryContractVersion) {
+    final version = data['version'];
+    if (version != retrieveMemoryContractVersion &&
+        version != retrieveMemoryContractVersionV2) {
       throw const FormatException('Unsupported retrieve-memory contract version');
     }
     final context = data['context'];
     final ids = data['entityIds'];
     if (context is! String || ids is! List || ids.any((id) => id is! String)) {
-      throw const FormatException('Invalid retrieve-memory v1 response');
+      throw FormatException('Invalid retrieve-memory v$version response');
+    }
+    final quotes = <MemoryQuote>[];
+    if (version == retrieveMemoryContractVersionV2) {
+      final raw = data['quotes'];
+      if (raw is! List) {
+        throw const FormatException('Invalid retrieve-memory v2 response');
+      }
+      quotes.addAll(raw.map(MemoryQuote.fromData));
     }
     return MemoryRetrieval(
       context: context,
       entityIds: ids.cast<String>().toList(growable: false),
+      quotes: List.unmodifiable(quotes),
     );
   }
 }
+
+/// What get_relevant_memory hands the model: the private context packet and
+/// the user's own past words with when they said them. Never ids, titles or
+/// anything else the model could read out as plumbing.
+Map<String, dynamic> memoryToolResult(
+  MemoryRetrieval retrieval, {
+  DateTime? now,
+}) =>
+    {
+      'context': retrieval.context,
+      'quotes': [
+        for (final quote in retrieval.quotes)
+          {'when': spokenWhen(quote.saidAt, now: now), 'text': quote.text},
+      ],
+    };
+
+typedef RetrieveMemoryInvoker = Future<dynamic> Function(
+  Map<String, dynamic> body,
+);
 
 /// Calls the retrieve-memory Edge Function. Transport/provider failures degrade
 /// to empty memory. Contract mismatches are rejected, logged distinctly, then
 /// fail closed so retrieval cannot break journaling.
 class RetrieveMemoryService {
-  final SupabaseClient _client;
+  final RetrieveMemoryInvoker _invoke;
 
-  RetrieveMemoryService(this._client);
+  RetrieveMemoryService(SupabaseClient client)
+      : _invoke = ((body) async =>
+            (await client.functions.invoke('retrieve-memory', body: body))
+                .data);
+
+  /// For tests: [invoke] receives the request body and returns the response
+  /// data.
+  @visibleForTesting
+  RetrieveMemoryService.withInvoker(this._invoke);
 
   Future<String> retrieve({
     required String query,
@@ -115,34 +166,50 @@ class RetrieveMemoryService {
       ))
           .context;
 
+  /// [state] is sent only for [RetrievalScope.notebook]; user scope reads the
+  /// graph on the server. [timeout], when given, bounds the whole call and
+  /// degrades to empty memory like any other failure.
   Future<MemoryRetrieval> retrieveResult({
     required String query,
     required String notebookId,
-    required JournalState state,
+    JournalState? state,
+    RetrievalScope scope = RetrievalScope.notebook,
+    Duration? timeout,
   }) async {
     final q = query.trim();
     if (q.length < 2) return MemoryRetrieval.empty;
     final startedAt = DateTime.now();
 
     // Non-sensitive telemetry: outcome + counts only, never query/context text.
-    void emit(String outcome, int contextLength) => developer.log(
-          'outcome=$outcome qLen=${q.length} contextLen=$contextLength '
+    void emit(String outcome, int contextLength, [int quoteCount = 0]) =>
+        developer.log(
+          'outcome=$outcome scope=${scope.name} qLen=${q.length} '
+          'contextLen=$contextLength quoteCount=$quoteCount '
           'latencyMs=${DateTime.now().difference(startedAt).inMilliseconds}',
           name: 'lumen.memory',
         );
 
     try {
-      final res = await _client.functions.invoke(
-        'retrieve-memory',
-        body: {
-          'query': q,
-          'notebookId': notebookId,
-          'state': stateToGraphloop(state),
-        },
+      final body = <String, dynamic>{
+        'query': q,
+        'notebookId': notebookId,
+        if (scope == RetrievalScope.user)
+          'scope': 'user'
+        else
+          'state': stateToGraphloop(state ?? JournalState.empty()),
+      };
+      final call = _invoke(body);
+      final data = await (timeout == null ? call : call.timeout(timeout));
+      final result = MemoryRetrieval.fromData(data);
+      emit(
+        result.context.isEmpty ? 'empty' : 'ok',
+        result.context.length,
+        result.quotes.length,
       );
-      final result = MemoryRetrieval.fromData(res.data);
-      emit(result.context.isEmpty ? 'empty' : 'ok', result.context.length);
       return result;
+    } on TimeoutException {
+      emit('timeout', 0);
+      return MemoryRetrieval.empty;
     } on FormatException {
       emit('contractError', 0);
       return MemoryRetrieval.empty;
