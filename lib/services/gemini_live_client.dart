@@ -34,6 +34,11 @@ class GeminiLiveClient {
 
   /// Silence that ends the user's turn (Gemini recommends 500–800 ms).
   final Duration silenceToEndTurn;
+
+  /// Gemini waits for an answer to every tool call before it continues, so a
+  /// handler that hangs (a stalled network call) would silence Lumen for
+  /// good. Past this, the call is answered with an empty result.
+  final Duration toolTimeout;
   final LiveChannelFactory _channelFactory;
 
   WebSocketChannel? _channel;
@@ -106,6 +111,7 @@ class GeminiLiveClient {
     required this.voice,
     required this.tools,
     this.silenceToEndTurn = const Duration(milliseconds: 700),
+    this.toolTimeout = const Duration(seconds: 4),
     String? resumptionHandle,
     LiveChannelFactory? channelFactory,
   })  : _resumptionHandle = resumptionHandle,
@@ -421,13 +427,23 @@ class GeminiLiveClient {
         final id = callMap['id'] as String? ?? '';
         final args = (callMap['args'] as Map<String, dynamic>?) ?? {};
         final handler = onToolCall;
-        if (handler == null) {
+        final clock = Stopwatch()..start();
+        final Future<Map<String, dynamic>> pending = handler == null
+            ? Future.value(const <String, dynamic>{})
+            : handler(name, args);
+        pending.timeout(toolTimeout).then((result) {
+          vlog('client',
+              'toolCall $name answered in ${clock.elapsedMilliseconds}ms');
+          respondToTool(id, result);
+        }).catchError((Object error) {
+          vlog(
+            'client',
+            'toolCall $name '
+                '${error is TimeoutException ? 'timed out' : 'failed'} '
+                'after ${clock.elapsedMilliseconds}ms — answering empty',
+          );
           respondToTool(id, const {});
-        } else {
-          handler(name, args)
-              .then((result) => respondToTool(id, result))
-              .catchError((_) => respondToTool(id, const {}));
-        }
+        });
       }
       return;
     }
@@ -440,8 +456,15 @@ class GeminiLiveClient {
           (content['modelTurn']?['parts'] as List<dynamic>?) ?? const [];
       for (final part in parts) {
         final p = part as Map<String, dynamic>;
+        // Responses are AUDIO: Lumen's words arrive as outputTranscription.
+        // Text parts here are the model's thinking — never the user's
+        // speech (they used to be routed to onTranscript) and never shown.
         if (p.containsKey('text')) {
-          onTranscript?.call(p['text'] as String, turnComplete);
+          vlog(
+            'client',
+            'gemini → model text part dropped'
+                '${p['thought'] == true ? ' (thought)' : ''}',
+          );
         }
         if (p.containsKey('inlineData')) {
           final data = p['inlineData'] as Map<String, dynamic>;

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -6,16 +7,18 @@ import 'package:lumen/audio/audio_output.dart';
 import 'package:lumen/audio/pcm_player.dart';
 
 class _Backend implements PcmAudioBackend {
-  _Backend({this.stallPlay = false});
+  _Backend({this.stallStart = false});
 
-  final bool stallPlay;
+  /// A start that never completes: how a stalled audio route looks.
+  final bool stallStart;
   int disposeCalls = 0;
 
   @override
-  Future<void> setAudioStream(Stream<List<int>> stream) async {}
+  Future<void> start() =>
+      stallStart ? Completer<void>().future : Future.value();
 
   @override
-  Future<void> play() => stallPlay ? Completer<void>().future : Future.value();
+  Future<void> schedule(Uint8List pcm16, int sampleRate) async {}
 
   @override
   Future<void> stop() async {}
@@ -53,7 +56,7 @@ void main() {
       final backends = <_Backend>[];
       final output = AudioOutput(
         createPlayer: () {
-          final backend = _Backend(stallPlay: stall);
+          final backend = _Backend(stallStart: stall);
           backends.add(backend);
           return PcmPlayer(backend: backend);
         },

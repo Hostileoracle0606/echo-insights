@@ -1,11 +1,19 @@
 import 'dart:developer' as developer;
 
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/entity.dart';
 import '../models/journal_entry.dart';
 import '../models/journal_state.dart';
 import '../models/relation.dart';
+import '../providers/supabase_provider.dart';
+
+/// Memory retrieval for extraction and the get_relevant_memory tool; tests
+/// substitute a fake.
+final retrieveMemoryServiceProvider = Provider<RetrieveMemoryService>(
+  (ref) => RetrieveMemoryService(ref.watch(supabaseClientProvider)),
+);
 
 String _iso(DateTime d) => d.toUtc().toIso8601String();
 

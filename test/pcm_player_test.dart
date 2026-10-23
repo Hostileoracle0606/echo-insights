@@ -5,78 +5,77 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lumen/audio/pcm_player.dart';
 
 class _FakeBackend implements PcmAudioBackend {
-  final streams = <Stream<List<int>>>[];
-  int playCalls = 0;
-  int stopCalls = 0;
-  int disposeCalls = 0;
+  final scheduled = <(List<int>, int)>[];
+  int starts = 0;
+  int stops = 0;
+  int disposes = 0;
 
   @override
-  Future<void> setAudioStream(Stream<List<int>> stream) async {
-    streams.add(stream);
-  }
+  Future<void> start() async => starts += 1;
 
   @override
-  Future<void> play() async {
-    playCalls += 1;
-  }
+  Future<void> schedule(Uint8List pcm16, int sampleRate) async =>
+      scheduled.add((pcm16.toList(), sampleRate));
 
   @override
-  Future<void> stop() async {
-    stopCalls += 1;
-  }
+  Future<void> stop() async => stops += 1;
 
   @override
-  Future<void> dispose() async {
-    disposeCalls += 1;
-  }
+  Future<void> dispose() async => disposes += 1;
 }
 
 void main() {
-  test('feed only queues audio and reports whether it was accepted', () async {
+  test('init never waits for audio (the on-device 5 s timeout)', () async {
+    final player = PcmPlayer(backend: _FakeBackend());
+    // The just_audio backend blocked here until audio arrived, which could
+    // only happen after init: on the device it always hit the 5 s timeout.
+    await player.init().timeout(const Duration(milliseconds: 100));
+    expect(player.feed(Uint8List(4)), isTrue);
+    await player.dispose();
+  });
+
+  test('feed before init is refused', () {
+    final player = PcmPlayer(backend: _FakeBackend());
+    expect(player.feed(Uint8List(4)), isFalse);
+  });
+
+  test('feed schedules the raw PCM at its rate, in order', () async {
     final backend = _FakeBackend();
     final player = PcmPlayer(backend: backend);
-    final pcm = Uint8List.fromList([1, 2, 3, 4]);
-
-    expect(player.feed(pcm), isFalse);
     await player.init();
-
-    final received = <List<int>>[];
-    final subscription = backend.streams.single.listen(received.add);
-    expect(player.feed(pcm), isTrue);
+    player
+      ..feed(Uint8List.fromList([1, 2]))
+      ..feed(Uint8List.fromList([3, 4]), sampleRate: 16000);
     await Future<void>.delayed(Duration.zero);
-
-    expect(received, hasLength(1));
-    expect(received.single.length, pcm.length + 44);
-    await subscription.cancel();
+    // Compared as plain lists: a record holding a List compares it by
+    // identity.
+    expect(backend.scheduled.map((e) => e.$1).toList(), [
+      [1, 2],
+      [3, 4],
+    ]);
+    expect(backend.scheduled.map((e) => e.$2).toList(), [24000, 16000]);
     await player.dispose();
   });
 
-  test('flush drops audio during reset and installs a fresh source', () async {
+  test('flush drops queued audio and stays ready', () async {
     final backend = _FakeBackend();
     final player = PcmPlayer(backend: backend);
-    final pcm = Uint8List.fromList([1, 2]);
     await player.init();
-
-    final flushing = player.flush();
-    expect(player.feed(pcm), isFalse);
-    await flushing;
-
-    expect(backend.stopCalls, 1);
-    expect(backend.playCalls, 2);
-    expect(backend.streams, hasLength(2));
-    expect(player.feed(pcm), isTrue);
+    player.feed(Uint8List(48000));
+    await player.flush();
+    expect(backend.stops, 1);
+    expect(player.speaking.value, isFalse);
+    expect(player.feed(Uint8List(4)), isTrue);
     await player.dispose();
   });
 
-  test('dispose rejects later audio and closes the backend', () async {
+  test('dispose rejects later audio and releases the backend', () async {
     final backend = _FakeBackend();
     final player = PcmPlayer(backend: backend);
     await player.init();
-
     await player.dispose();
-
     expect(player.feed(Uint8List(2)), isFalse);
-    expect(backend.disposeCalls, 1);
+    expect(backend.disposes, 1);
   });
 
   group('playback clock', () {
@@ -144,12 +143,10 @@ void main() {
         final player = PcmPlayer(backend: backend, now: () => async.elapsed);
         player.init();
         async.flushMicrotasks();
-        final received = <List<int>>[];
-        backend.streams.single.listen(received.add);
 
         expect(player.feed(ms(1000), audible: false), isTrue);
         async.flushMicrotasks();
-        expect(received, isEmpty);
+        expect(backend.scheduled, isEmpty);
         expect(player.speaking.value, isTrue);
         player.dispose();
         async.flushMicrotasks();
@@ -172,12 +169,6 @@ void main() {
       });
     });
 
-    test('WAV header carries the chunk sample rate', () {
-      final wav = prependWavHeader(Uint8List(4), sampleRate: 24000);
-      final header = ByteData.sublistView(wav, 0, 44);
-      expect(header.getUint32(24, Endian.little), 24000);
-      expect(header.getUint32(28, Endian.little), 48000);
-    });
   });
 
   test('dispose is idempotent', () async {
@@ -186,6 +177,6 @@ void main() {
     await player.init();
     await Future.wait([player.dispose(), player.dispose()]);
     expect(player.isDisposed, isTrue);
-    expect(backend.disposeCalls, 1);
+    expect(backend.disposes, 1);
   });
 }

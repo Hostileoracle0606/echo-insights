@@ -1,9 +1,9 @@
 import 'dart:async';
-import 'dart:typed_data';
 
-import 'package:record/record.dart';
+import 'package:flutter/services.dart';
 
 import '../logic/voice_log.dart';
+import 'voice_engine.dart';
 
 /// The microphone as a session sees it; tests substitute a fake.
 abstract interface class MicCapture {
@@ -14,36 +14,38 @@ abstract interface class MicCapture {
   Future<void> stop();
 }
 
-class PcmCapture implements MicCapture {
-  final AudioRecorder _recorder = AudioRecorder();
+/// The mic through the shared voice engine: 16 kHz PCM16 mono with Apple's
+/// voice processing, whose echo canceller hears Lumen because Lumen plays
+/// through the same engine. (The `record` plugin ran voice processing on an
+/// engine of its own, which could never hear Lumen's voice.)
+class EngineMicCapture implements MicCapture {
+  EngineMicCapture([VoiceEngine? engine])
+      : _engine = engine ?? VoiceEngine.instance;
+
+  final VoiceEngine _engine;
   StreamSubscription<Uint8List>? _sub;
   int _chunks = 0;
 
-  /// 16 kHz PCM16 mono, as Gemini Live expects. Echo cancellation keeps
-  /// Lumen's own voice from the speaker out of the mic (on iOS it switches
-  /// on voice processing); gain control and noise suppression steady the
-  /// user's level. Each is applied only where the platform supports it.
-  static const config = RecordConfig(
-    encoder: AudioEncoder.pcm16bits,
-    sampleRate: 16000,
-    numChannels: 1,
-    autoGain: true,
-    echoCancel: true,
-    noiseSuppress: true,
-  );
+  @override
+  Future<bool> hasPermission() async =>
+      await _engine.hasMicPermission() || await _engine.requestMicPermission();
 
   @override
   Future<void> start(void Function(Uint8List pcm16) onChunk) async {
-    vlog('capture', 'starting stream (pcm16, 16kHz, mono, voice processing)');
+    vlog('capture',
+        'starting (16 kHz PCM16 mono, voice processing, shared engine)');
+    await _sub?.cancel();
     _chunks = 0;
-    final stream = await _recorder.startStream(config);
-    _sub = stream.listen((pcm) {
-      _chunks++;
-      if (_chunks == 1 || _chunks % 100 == 0) {
-        vlog('capture', 'mic chunk #$_chunks (${pcm.length} B)');
-      }
-      onChunk(pcm);
-    });
+    _sub = _engine.micChunks().listen(
+      (pcm) {
+        _chunks++;
+        if (_chunks == 1 || _chunks % 100 == 0) {
+          vlog('capture', 'mic chunk #$_chunks (${pcm.length} B)');
+        }
+        onChunk(pcm);
+      },
+      onError: (Object error) => vlog('capture', 'mic stream error: $error'),
+    );
   }
 
   @override
@@ -51,9 +53,5 @@ class PcmCapture implements MicCapture {
     vlog('capture', 'stopping (delivered $_chunks chunks)');
     await _sub?.cancel();
     _sub = null;
-    await _recorder.stop();
   }
-
-  @override
-  Future<bool> hasPermission() async => _recorder.hasPermission();
 }

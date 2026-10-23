@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lumen/audio/audio_output.dart';
@@ -8,9 +10,9 @@ import 'package:lumen/services/notebook_runtime_service.dart';
 
 class _Backend implements PcmAudioBackend {
   @override
-  Future<void> setAudioStream(Stream<List<int>> stream) async {}
+  Future<void> start() async {}
   @override
-  Future<void> play() async {}
+  Future<void> schedule(Uint8List pcm16, int sampleRate) async {}
   @override
   Future<void> stop() async {}
   @override

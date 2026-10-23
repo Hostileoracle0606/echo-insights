@@ -2,7 +2,6 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../audio/audio_output.dart';
-import '../audio/audio_session_config.dart';
 import '../services/live_credentials.dart';
 import 'auth_provider.dart';
 import 'supabase_provider.dart';
@@ -17,7 +16,8 @@ final liveCredentialsProvider = Provider<LiveCredentials>((ref) {
 });
 
 final audioOutputProvider = Provider<AudioOutput>((ref) {
-  final output = AudioOutput(prepare: configureVoiceAudioSession);
+  // The player's backend prepares the native engine (session included).
+  final output = AudioOutput();
   ref.onDispose(output.stop);
   return output;
 });

@@ -1,4 +1,10 @@
 const silenceFlushMs = 2000;
+
+/// Lumen's own turns get no extraction model call: their words already
+/// reach the extractor as context on the user's next turn, and a call of
+/// their own mostly re-extracts what the user said while holding up the
+/// strictly ordered queue. The turn still commits its journal entry.
+const bool extractAssistantTurns = false;
 const endpointingMs = 1000;
 const finalChunkDebounceMs = 1400;
 const pauseDeferralMs = 900;

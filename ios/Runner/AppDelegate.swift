@@ -12,5 +12,9 @@ import UIKit
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
+    // The app's own voice engine (mic + Lumen's voice on one AVAudioEngine).
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "VoiceEnginePlugin") {
+      VoiceEnginePlugin.register(with: registrar)
+    }
   }
 }

@@ -1,8 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lumen/services/gemini_live_client.dart';
+
+import 'support/fake_live_socket.dart';
 
 void main() {
   GeminiLiveClient makeClient() => GeminiLiveClient(
@@ -184,5 +187,128 @@ void main() {
       await Future<void>.delayed(Duration.zero);
       expect(done, isTrue);
     });
+  });
+
+  group('tool calls', () {
+    // Plain maps (not records): the matcher compares maps deeply, while a
+    // record compares the maps inside it by identity.
+    List<Map<String, Object?>> toolResponses(FakeLiveSocket socket) => [
+          for (final message in socket.sent)
+            if (message['tool_response'] != null)
+              for (final r in (message['tool_response']
+                  as Map)['function_responses'] as List)
+                {
+                  'id': (r as Map)['id'],
+                  'output': (r['response'] as Map)['output'],
+                },
+        ];
+
+    Map<String, dynamic> toolCall(String id) => {
+          'toolCall': {
+            'functionCalls': [
+              {
+                'id': id,
+                'name': 'get_relevant_memory',
+                'args': {'query': 'Priya'},
+              },
+            ],
+          },
+        };
+
+    FakeLiveSocket Function() connectedClient(
+      FakeAsync async,
+      OnToolCall handler,
+    ) {
+      FakeLiveSocket? socket;
+      final client = GeminiLiveClient(
+        sessionToken: 't',
+        model: 'm',
+        systemInstruction: 's',
+        voice: 'Aoede',
+        tools: const [],
+        toolTimeout: const Duration(seconds: 4),
+        channelFactory: (uri) => socket = FakeLiveSocket(uri),
+      )..onToolCall = handler;
+      client.connect();
+      async.flushMicrotasks();
+      socket!.serverSends({'setupComplete': <String, dynamic>{}});
+      async.flushMicrotasks();
+      return () => socket!;
+    }
+
+    test('a tool that never answers is answered empty at the timeout', () {
+      fakeAsync((async) {
+        final socket = connectedClient(
+          async,
+          (name, args) => Completer<Map<String, dynamic>>().future,
+        );
+        socket().serverSends(toolCall('call-1'));
+        async.elapse(const Duration(seconds: 3));
+        expect(toolResponses(socket()), isEmpty, reason: 'still in time');
+
+        async.elapse(const Duration(seconds: 1));
+        expect(toolResponses(socket()), [
+          {'id': 'call-1', 'output': <String, dynamic>{}},
+        ]);
+      });
+    });
+
+    test('a tool that answers in time is answered with its result, once', () {
+      fakeAsync((async) {
+        final socket = connectedClient(async, (name, args) async {
+          await Future<void>.delayed(const Duration(seconds: 1));
+          return {'context': 'Priya climbs'};
+        });
+        socket().serverSends(toolCall('call-2'));
+        async.elapse(const Duration(seconds: 10));
+        expect(toolResponses(socket()), [
+          {
+            'id': 'call-2',
+            'output': {'context': 'Priya climbs'},
+          },
+        ]);
+      });
+    });
+
+    test('a tool that throws is answered empty straight away', () {
+      fakeAsync((async) {
+        final socket = connectedClient(
+          async,
+          (name, args) async => throw StateError('network'),
+        );
+        socket().serverSends(toolCall('call-3'));
+        async.flushMicrotasks();
+        expect(toolResponses(socket()), [
+          {'id': 'call-3', 'output': <String, dynamic>{}},
+        ]);
+      });
+    });
+  });
+
+  test('model text parts (thinking) reach neither transcript', () {
+    final client = makeClient();
+    final user = <String>[];
+    final agent = <String>[];
+    client
+      ..onTranscript = (text, isFinal) {
+        user.add(text);
+      }
+      ..onAgentTranscript = (text, isFinal) {
+        agent.add(text);
+      };
+
+    client.handleServerMessage(jsonEncode({
+      'serverContent': {
+        'modelTurn': {
+          'parts': [
+            {'text': '**Planning** Ask about Priya.', 'thought': true},
+            {'text': 'stray text without a thought flag'},
+          ],
+        },
+      },
+    }));
+
+    expect(user, isEmpty, reason: "the model's words are never the user's");
+    expect(agent, isEmpty, reason: 'Lumen speaks via outputTranscription');
   });
 }
