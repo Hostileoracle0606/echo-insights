@@ -192,6 +192,10 @@ void main() {
       entities: {'maya': _entity('maya', 'Maya', EntityType.person)},
       entries: [...entries, newest],
     );
+    // Tall enough that the lazily built list reaches the 12th mention below
+    // the description and its Edit action.
+    await tester.binding.setSurfaceSize(const Size(800, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
 
     await tester.pumpWidget(_host(seed));
     await tester.pumpAndSettle();

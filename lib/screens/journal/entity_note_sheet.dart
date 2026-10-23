@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lumen/logic/relative_time.dart';
@@ -30,8 +32,24 @@ class EntityNoteSheet extends ConsumerStatefulWidget {
   ConsumerState<EntityNoteSheet> createState() => _EntityNoteSheetState();
 }
 
+// Every control added for LM-29 keeps at least a 44 pt tap target.
+final _tapTarget = TextButton.styleFrom(
+  minimumSize: const Size(44, 44),
+  tapTargetSize: MaterialTapTargetSize.padded,
+);
+
 class _EntityNoteSheetState extends ConsumerState<EntityNoteSheet> {
   late final List<String> _history = [widget.entityId];
+
+  // The entity whose description is open for editing, if any.
+  String? _editingId;
+  final _editor = TextEditingController();
+
+  @override
+  void dispose() {
+    _editor.dispose();
+    super.dispose();
+  }
 
   String get _currentId => _history.last;
   bool get _canGoBack => _history.length > 1;
@@ -153,7 +171,8 @@ class _EntityNoteSheetState extends ConsumerState<EntityNoteSheet> {
 
     return ListView(
       controller: controller,
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
+      padding: EdgeInsets.fromLTRB(
+          16, 8, 16, 28 + MediaQuery.viewInsetsOf(context).bottom),
       children: [
         _header(colors),
         Row(
@@ -183,13 +202,7 @@ class _EntityNoteSheetState extends ConsumerState<EntityNoteSheet> {
           _metaLine(entity),
           style: TextStyle(fontSize: 12, color: colors.mutedForeground),
         ),
-        if (entity.description?.trim().isNotEmpty == true) ...[
-          const SizedBox(height: 14),
-          Text(
-            entity.description!,
-            style: TextStyle(fontSize: 15, height: 1.5, color: colors.ink),
-          ),
-        ],
+        ..._description(entity, colors),
         if (outbound.isNotEmpty) ...[
           _sectionLabel('Connections', colors),
           for (final relation in outbound)
@@ -204,8 +217,178 @@ class _EntityNoteSheetState extends ConsumerState<EntityNoteSheet> {
           _sectionLabel('Recent mentions', colors),
           for (final entry in recent.take(12)) _mentionRow(entry, colors),
         ],
+        const SizedBox(height: 24),
+        Divider(height: 1, color: colors.border),
+        const SizedBox(height: 8),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: Semantics(
+            label: 'Remove ${entity.name} from memory',
+            button: true,
+            excludeSemantics: true,
+            child: TextButton.icon(
+              style: _tapTarget.copyWith(
+                foregroundColor: WidgetStatePropertyAll(colors.destructive),
+              ),
+              onPressed: () => _confirmRemove(entity),
+              icon: const Icon(Icons.delete_outline, size: 18),
+              label: const Text('Remove from memory'),
+            ),
+          ),
+        ),
       ],
     );
+  }
+
+  // ── LM-29: edit and remove ─────────────────────────────────────────────
+
+  List<Widget> _description(Entity entity, LumenColors colors) {
+    if (_editingId == entity.id) {
+      return [
+        const SizedBox(height: 14),
+        TextField(
+          controller: _editor,
+          autofocus: true,
+          maxLength: 800,
+          minLines: 2,
+          maxLines: 8,
+          textCapitalization: TextCapitalization.sentences,
+          style: TextStyle(fontSize: 15, height: 1.5, color: colors.ink),
+          decoration: const InputDecoration(
+            labelText: 'Description',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        ListenableBuilder(
+          listenable: _editor,
+          builder: (context, _) => Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              TextButton(
+                style: _tapTarget,
+                onPressed: () => setState(() => _editingId = null),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                style: _tapTarget,
+                onPressed: _editor.text.trim().isEmpty
+                    ? null
+                    : () => _saveDescription(entity),
+                child: const Text('Save'),
+              ),
+            ],
+          ),
+        ),
+      ];
+    }
+
+    final hasText = entity.description?.trim().isNotEmpty == true;
+    return [
+      if (hasText) ...[
+        const SizedBox(height: 14),
+        Text(
+          entity.description!,
+          style: TextStyle(fontSize: 15, height: 1.5, color: colors.ink),
+        ),
+      ],
+      Row(
+        children: [
+          if (entity.descriptionSource == 'user')
+            Text(
+              'Edited by you',
+              style: TextStyle(fontSize: 12, color: colors.mutedForeground),
+            ),
+          const Spacer(),
+          Semantics(
+            label: 'Edit description of ${entity.name}',
+            button: true,
+            excludeSemantics: true,
+            child: TextButton.icon(
+              style: _tapTarget,
+              onPressed: () => setState(() {
+                _editor.text = entity.description ?? '';
+                _editingId = entity.id;
+              }),
+              icon: const Icon(Icons.edit_outlined, size: 16),
+              label: Text(hasText ? 'Edit' : 'Add description'),
+            ),
+          ),
+        ],
+      ),
+    ];
+  }
+
+  Future<void> _saveDescription(Entity entity) async {
+    final text = _editor.text.trim();
+    setState(() => _editingId = null);
+    if (text == entity.description?.trim()) return;
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await ref
+          .read(journalProvider.notifier)
+          .editEntityDescription(entity.id, text);
+    } catch (_) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text("Couldn't save your edit. Try again.")),
+      );
+    }
+  }
+
+  Future<void> _confirmRemove(Entity entity) async {
+    final name = entity.name;
+    final pronoun = entity.type == EntityType.person ? 'them' : 'it';
+    final colors = context.lumenColors;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('Remove $name?'),
+        content: Text(
+          "Lumen will forget $name and won't add $pronoun back. "
+          'What you said stays in your past conversations.',
+        ),
+        actions: [
+          TextButton(
+            style: _tapTarget,
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              minimumSize: const Size(44, 44),
+              backgroundColor: colors.destructive,
+              foregroundColor: colors.destructiveForeground,
+            ),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    // The sheet closes now; the snackbar and the outcome outlive it.
+    final messenger = ScaffoldMessenger.of(context);
+    final journal = ref.read(journalProvider.notifier);
+    final id = entity.id;
+    unawaited(Navigator.of(context).maybePop());
+    final outcome = journal.removeEntity(id);
+    messenger.showSnackBar(SnackBar(
+      content: Text('Removed $name'),
+      duration: removeUndoWindow,
+      // An action would otherwise keep the bar up past the undo window.
+      persist: false,
+      action: SnackBarAction(
+        label: 'Undo',
+        onPressed: () => journal.undoRemove(id),
+      ),
+    ));
+    if (await outcome == RemovalOutcome.failed) {
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(content: Text("Couldn't remove $name. Try again.")),
+        );
+    }
   }
 
   String _metaLine(Entity entity) {
