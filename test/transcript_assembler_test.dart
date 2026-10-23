@@ -150,5 +150,21 @@ void main() {
       expect(completed.transcriptGeneration, isNull);
       expect(a.assistantFinal(' trailing text'), isEmpty);
     });
+
+    test('a typed turn cuts the reply off until Gemini completes it', () {
+      final a = TranscriptAssembler();
+      a.assistantChunk('You mentioned Acme.');
+
+      // The turn machine interrupts the reply itself, so nothing is emitted.
+      a.typedTurnInterrupted();
+
+      expect(a.assistantChunk(' Your sister Mia'), isEmpty,
+          reason: 'the cut-off reply\'s tail is dropped');
+      expect(a.assistantFinal(' lives in Oslo.'), isEmpty);
+      final completed = a.turnComplete().whereType<TurnCompleted>().last;
+      expect(completed.transcriptGeneration, isNull);
+      expect((a.assistantChunk('Which Acme?').single as InterimTranscript).text,
+          'Which Acme?');
+    });
   });
 }

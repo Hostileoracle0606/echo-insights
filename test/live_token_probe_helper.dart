@@ -18,9 +18,13 @@ Future<String> requestLiveProbeToken({
       'expireTime': now.add(const Duration(minutes: 30)).toIso8601String(),
       'newSessionExpireTime':
           now.add(const Duration(minutes: 1)).toIso8601String(),
-      'liveConnectConstraints': {
+      // The REST shape the live-session lambda uses (infra/lambda/
+      // live-session/core.mjs): the setup message plus a field mask, not the
+      // SDK's liveConnectConstraints.
+      'fieldMask': 'model,generationConfig.responseModalities',
+      'bidiGenerateContentSetup': {
         'model': 'models/$model',
-        'config': {
+        'generationConfig': {
           'responseModalities': ['AUDIO'],
         },
       },

@@ -1084,6 +1084,51 @@ class JournalNotifier extends Notifier<JournalState> {
         return const NotebookTransitionResult.success();
       });
 
+  /// Sends a turn typed in the composer, live or with the mic paused. It is
+  /// recorded at once as its own finalized user turn — saved, extracted and
+  /// committed like a spoken one — and sent to Gemini so Lumen answers it.
+  /// Typing while Lumen speaks interrupts it, as speaking over it does.
+  /// While the connection is being restored the text waits, in order, and
+  /// goes out once it is back. False when there is nothing to send or no
+  /// live session to send it to.
+  bool sendTypedTurn(String text) {
+    final typed = text.trim();
+    final session = _session;
+    final live = _live;
+    if (typed.isEmpty ||
+        session == null ||
+        live == null ||
+        !_isCurrentLiveSession(session.binding, live) ||
+        (_status != SessionStatus.live && _status != SessionStatus.paused)) {
+      return false;
+    }
+    final reply = _turnMachine.state.activeAssistant;
+    if (reply != null && !reply.interrupted) {
+      // The machine cuts the reply at the heard prefix and flushes playback;
+      // the assembler and the speaker drop the reply's late chunks.
+      _assembler.typedTurnInterrupted();
+      _droppingCutOffReply = true;
+      _liveAgentText = '';
+      _agentTurnDone = false;
+    } else if (_agentSpeaking) {
+      // Gemini already completed the reply; only its audio is still queued.
+      unawaited(_flushPlayback());
+    }
+    _dispatchTurn(TypedTurnSubmitted(
+      text: typed,
+      submittedAt: DateTime.now().toUtc().toIso8601String(),
+    ));
+    if (_reconnecting || _connectionLapsed) {
+      _typedTurnsAwaitingConnection.add(typed);
+      if (!_reconnecting) {
+        unawaited(_reconnect(session, 'typed turn', whilePaused: true));
+      }
+      return true;
+    }
+    live.sendText(typed);
+    return true;
+  }
+
   /// Ends the voice session. The notebook stays open, and the next tap
   /// continues its conversation.
   Future<NotebookTransitionResult> endSession() {
@@ -1128,6 +1173,14 @@ class JournalNotifier extends Notifier<JournalState> {
 
   /// The session the user is in (null while idle or connecting).
   _PreparedLive? _session;
+
+  // Typed turns waiting for the connection to come back, in the order sent.
+  final List<String> _typedTurnsAwaitingConnection = [];
+
+  // A typed turn cut Lumen off: the reply's audio still in flight is dropped
+  // until Gemini completes the cut-off turn (it sends `interrupted`, then
+  // `turnComplete`, up to ~0.8 s later).
+  bool _droppingCutOffReply = false;
 
   // Mic audio captured before the socket exists (the credential is still
   // being taken). Handed to the client, which buffers it until it may send.
@@ -1388,12 +1441,18 @@ class JournalNotifier extends Notifier<JournalState> {
   /// can still start a connection (within its 30 min life), otherwise a
   /// fresh one. Context stays on Gemini's side, so nothing is re-sent. While
   /// paused, it only marks the connection lapsed; resuming reconnects.
-  Future<void> _reconnect(_PreparedLive session, String reason) async {
+  /// A typed turn reconnects even while paused ([whilePaused]): the
+  /// composer keeps the mic off but still needs the connection.
+  Future<void> _reconnect(
+    _PreparedLive session,
+    String reason, {
+    bool whilePaused = false,
+  }) async {
     bool isCurrent() => _isCurrentLiveSession(session.binding, session.live) &&
         identical(_session, session);
     if (_reconnecting || !isCurrent()) return;
     final live = session.live;
-    if (_status == SessionStatus.paused) {
+    if (_status == SessionStatus.paused && !whilePaused) {
       vlog('session', 'connection lapsed while paused ($reason)');
       _connectionLapsed = true;
       await live.close();
@@ -1434,6 +1493,12 @@ class JournalNotifier extends Notifier<JournalState> {
           await live.whenSetupComplete.timeout(const Duration(seconds: 8));
           _connectionLapsed = false;
           vlog('session', 'reconnected (attempt ${attempt + 1})');
+          // A cut-off reply's turn ended with the old connection.
+          _droppingCutOffReply = false;
+          for (final typed in _typedTurnsAwaitingConnection) {
+            live.sendText(typed);
+          }
+          _typedTurnsAwaitingConnection.clear();
           return;
         } catch (error) {
           vlog('session', 'reconnect attempt ${attempt + 1} failed: $error');
@@ -1529,6 +1594,7 @@ class JournalNotifier extends Notifier<JournalState> {
           _dispatchTurn(event);
         }
       case AgentAudio(:final pcm, :final sampleRate):
+        if (_droppingCutOffReply) return;
         // Muted audio still runs the playback clock, so the dock keeps
         // showing that Lumen has the floor.
         final fed = _player?.feed(
@@ -1548,6 +1614,7 @@ class JournalNotifier extends Notifier<JournalState> {
           _dispatchTurn(event);
         }
       case TurnCompleteSignal():
+        _droppingCutOffReply = false;
         _memoryCallsThisTurn = 0;
         _lastMemoryQuery = null;
         for (final event in _assembler.turnComplete()) {
@@ -1678,6 +1745,8 @@ class JournalNotifier extends Notifier<JournalState> {
     _session?.gate.dispose();
     _session = null;
     _connectionLapsed = false;
+    _typedTurnsAwaitingConnection.clear();
+    _droppingCutOffReply = false;
     _preconnectAudio.clear();
     _preconnectBytes = 0;
 
