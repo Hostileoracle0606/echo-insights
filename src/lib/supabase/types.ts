@@ -72,6 +72,7 @@ export type Database = {
       entities: {
         Row: {
           description: string | null
+          description_source: string
           first_seen: string
           id: string
           last_seen: string
@@ -85,6 +86,7 @@ export type Database = {
         }
         Insert: {
           description?: string | null
+          description_source?: string
           first_seen: string
           id: string
           last_seen: string
@@ -98,6 +100,7 @@ export type Database = {
         }
         Update: {
           description?: string | null
+          description_source?: string
           first_seen?: string
           id?: string
           last_seen?: string
@@ -156,6 +159,24 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      entity_suppressions: {
+        Row: {
+          created_at: string
+          entity_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          entity_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          entity_id?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       follow_ups: {
         Row: {
@@ -453,6 +474,10 @@ export type Database = {
         }
         Returns: Json
       }
+      edit_entity_description: {
+        Args: { p_entity_id: string; p_text: string }
+        Returns: Json
+      }
       embed_orphan_prune: { Args: never; Returns: undefined }
       embed_reconcile_sweep: { Args: never; Returns: undefined }
       get_entity_mentions: {
@@ -489,6 +514,7 @@ export type Database = {
           score: number
         }[]
       }
+      remove_entity: { Args: { p_entity_id: string }; Returns: Json }
     }
     Enums: {
       [_ in never]: never
