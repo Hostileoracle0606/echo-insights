@@ -22,6 +22,7 @@ import '../logic/voice_log.dart';
 import '../models/graph_patch.dart';
 import '../models/journal_entry.dart';
 import '../models/journal_state.dart';
+import '../models/recall_activity.dart';
 import '../models/upsert_activity.dart';
 import '../services/gemini_live_client.dart';
 import '../services/notebook_commit_service.dart' as commit_service;
@@ -138,6 +139,11 @@ class JournalNotifier extends Notifier<JournalState> {
   String? _lastMemoryQuery;
   int _memoryCallsThisTurn = 0;
   static const _maxMemoryCallsPerTurn = 3;
+  // Gemini waits on the tool; past this, recall answers empty.
+  static const _memoryToolBudget = Duration(seconds: 4);
+  // What the last memory lookup brought back (LM-13 / LM-14 read it).
+  RecallActivity? _recall;
+  int _recallSeq = 0;
   bool _muted = false;
   // Driven by the player's playback clock (audio still queued ahead of the
   // listener), not by chunk arrival: Gemini streams faster than real time,
@@ -195,6 +201,7 @@ class JournalNotifier extends Notifier<JournalState> {
   }
   bool get extracting => _extracting;
   UpsertActivity? get activity => _activity;
+  RecallActivity? get recall => _recall;
   List<ConversationTurn> get conversation => List.unmodifiable(_conversation);
   List<ConversationTurn> get inProgress => List.unmodifiable(_inProgress);
   bool get muted => _muted;
@@ -409,6 +416,7 @@ class JournalNotifier extends Notifier<JournalState> {
         _agentTurnDone = false;
       case SessionEnded():
         _clearLiveText();
+        _recall = null;
       default:
     }
   }
@@ -833,7 +841,7 @@ class JournalNotifier extends Notifier<JournalState> {
   }
 
   Future<Map<String, dynamic>> _retrieveMemory(
-      Map<String, dynamic> args) async {
+      Map<String, dynamic> args, bool Function() isCurrent) async {
     final notebookId = _activeNotebookId;
     final query = (args['query'] as String?)?.trim() ?? '';
     // Over-call guardrails: tiny query, identical repeat (within turn), per-turn cap.
@@ -841,17 +849,28 @@ class JournalNotifier extends Notifier<JournalState> {
         query.length < 2 ||
         query == _lastMemoryQuery ||
         _memoryCallsThisTurn >= _maxMemoryCallsPerTurn) {
-      return const {'context': ''};
+      return memoryToolResult(MemoryRetrieval.empty);
     }
     _memoryCallsThisTurn++;
     _lastMemoryQuery = query;
     final service = ref.read(retrieveMemoryServiceProvider);
-    final context = await service.retrieve(
+    // User scope: every conversation the user has had, not just this one.
+    final retrieval = await service.retrieveResult(
       query: query,
       notebookId: notebookId,
-      state: state,
+      scope: RetrievalScope.user,
+      timeout: _memoryToolBudget,
     );
-    return {'context': context};
+    if (retrieval.entityIds.isNotEmpty && isCurrent()) {
+      _recall = RecallActivity(
+        seq: ++_recallSeq,
+        entityIds: retrieval.entityIds,
+        quotes: retrieval.quotes,
+        at: DateTime.now(),
+      );
+      _notifyUi();
+    }
+    return memoryToolResult(retrieval);
   }
 
   Future<void> _loadNotebookUnlocked(String notebookId) async {
@@ -1304,7 +1323,7 @@ class JournalNotifier extends Notifier<JournalState> {
         if (name == 'get_graph_summary') {
           result = _buildGraphSummary();
         } else if (name == 'get_relevant_memory') {
-          result = await _retrieveMemory(args);
+          result = await _retrieveMemory(args, isCurrent);
         } else {
           result = const {};
         }
