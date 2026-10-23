@@ -82,6 +82,17 @@ void main() {
     });
   });
 
+  testWidgets('a dock mounted with its composer open unmounts cleanly',
+      (tester) async {
+    // The row (and its mic pulse) never builds while the composer is set.
+    await _pump(
+      tester,
+      VoiceDock(onMicTap: () {}, composer: const SizedBox(height: 60)),
+    );
+    await tester.pumpWidget(const SizedBox());
+    expect(tester.takeException(), isNull);
+  });
+
   group('View toggle', () {
     testWidgets('in graph view it offers the transcript', (tester) async {
       final asked = <JournalView>[];
