@@ -14,6 +14,18 @@ library;
 
 enum Speaker { user, assistant }
 
+/// How a user turn reached Lumen: spoken (and transcribed) or typed in the
+/// composer. Assistant turns are always [voice].
+enum TurnInput {
+  voice,
+  typed;
+
+  /// Unknown or missing values read as [voice]: every turn stored before
+  /// typed turns existed was spoken.
+  static TurnInput parse(Object? name) =>
+      name == typed.name ? typed : voice;
+}
+
 /// Durable checkpoint stages. Persisted, so a restart resumes rather than repeats.
 enum DurableStage { finalRecorded, extracted, commitPending, committed, failed }
 
@@ -65,11 +77,13 @@ class ActiveTurn {
     this.turnCompleted = false,
     this.heardChars,
     this.interrupted = false,
+    this.input = TurnInput.voice,
   });
 
   final String turnId;
   final Speaker speaker;
   final String startedAt;
+  final TurnInput input;
 
   /// Replaceable display text. Superseded wholesale by each interim update.
   String text;
@@ -108,6 +122,7 @@ class FinalizedTurn {
     this.baseRevision,
     this.revision,
     this.truncatedFromInterruption = false,
+    this.input = TurnInput.voice,
   });
 
   final String turnId;
@@ -122,6 +137,7 @@ class FinalizedTurn {
   final String commitRequestId;
   final String finalizedAt;
   final bool truncatedFromInterruption;
+  final TurnInput input;
 
   final DurableStage stage;
   final Map<String, dynamic>? extraction;
@@ -159,6 +175,7 @@ class FinalizedTurn {
         baseRevision: baseRevision ?? this.baseRevision,
         revision: revision ?? this.revision,
         truncatedFromInterruption: truncatedFromInterruption,
+        input: input,
       );
 
   TurnIdentity get identity => TurnIdentity(
@@ -186,6 +203,7 @@ class FinalizedTurn {
         'revision': revision,
         'finalizedAt': finalizedAt,
         'truncatedFromInterruption': truncatedFromInterruption,
+        'input': input.name,
       };
 
   static FinalizedTurn fromJson(Map<String, dynamic> json) => FinalizedTurn(
@@ -205,6 +223,7 @@ class FinalizedTurn {
         revision: json['revision'] as int?,
         finalizedAt: json['finalizedAt'] as String,
         truncatedFromInterruption: json['truncatedFromInterruption'] as bool? ?? false,
+        input: TurnInput.parse(json['input']),
       );
 }
 
@@ -215,11 +234,13 @@ class ConversationTurn {
     required this.text,
     required this.createdAt,
     String? startedAt,
+    this.input = TurnInput.voice,
   }) : startedAt = startedAt ?? createdAt;
 
   final String turnId;
   final Speaker role;
   final String text;
+  final TurnInput input;
 
   /// When the turn finalized.
   final String createdAt;
@@ -294,6 +315,18 @@ class FinalizationDeadline extends TurnEvent {
 class PlaybackAdvanced extends TurnEvent {
   const PlaybackAdvanced({required this.heardChars});
   final int heardChars;
+}
+
+/// The user sent a turn from the composer. Its text is authoritative, so it
+/// becomes its own user turn and finalizes at once: it never merges into a
+/// voice turn that is still transcribing or awaiting its final. Typing while
+/// Lumen is speaking interrupts Lumen, exactly as speaking over it does.
+class TypedTurnSubmitted extends TurnEvent {
+  const TypedTurnSubmitted({required this.text, required this.submittedAt});
+  final String text;
+
+  /// When the user sent it (ISO-8601). Conversation order follows this.
+  final String submittedAt;
 }
 
 /// Barge-in. `heardChars == null` means the boundary could not be determined.
@@ -604,6 +637,7 @@ class TurnMachine {
       stage: DurableStage.finalRecorded,
       finalizedAt: _now(),
       truncatedFromInterruption: truncated,
+      input: turn.input,
     );
 
     final effects = <TurnEffect>[];
@@ -621,6 +655,7 @@ class TurnMachine {
       text: text,
       createdAt: finalized.finalizedAt,
       startedAt: turn.startedAt,
+      input: turn.input,
     );
     // Insert by utterance start; ties keep finalization order.
     var at = state.conversation.length;
@@ -806,26 +841,36 @@ class TurnMachine {
         return const [];
 
       case AssistantInterrupted():
-        final effects = <TurnEffect>[const FlushPlayback()];
-        _assistantGate = _AssistantTranscriptGate.discardingInterruptedTurn;
-        final active = state.activeAssistant;
-        if (active == null) return effects;
+        return _interruptAssistant(event.heardChars);
 
-        if (event.heardChars == null) {
-          // Boundary unknown: mark it so turnCompleted discards the turn.
-          active.interrupted = true;
-          active.heardChars = null;
-          active.finalText = null;
-          return effects;
+      case TypedTurnSubmitted():
+        if (state.sessionId == null) return const [];
+        final text = event.text.trim();
+        if (text.isEmpty) return const [];
+        final effects = <TurnEffect>[];
+        final speaking = state.activeAssistant;
+        if (speaking != null && !speaking.interrupted) {
+          // Typing over Lumen is a barge-in: the same interrupted path, cut
+          // at the heard watermark the machine already holds. The cut turn
+          // finalizes now rather than at Gemini's turnComplete, so the
+          // `interrupted` Gemini sends for it (an unknown boundary) finds no
+          // active turn to discard.
+          effects.addAll(_interruptAssistant(speaking.heardChars));
+          effects.addAll(_finalize(speaking, speaking.finalText ?? '', true));
         }
-        final heard = truncateToHeard(active.text, event.heardChars!);
-        active.interrupted = true;
-        active.heardChars = event.heardChars;
-        active.text = heard;
-        // Locking finalText here is what prevents later output transcription
-        // from re-attaching the unheard tail.
-        active.finalText = heard;
-        active.transcriptVersion += 1;
+        // A new turn of its own — active and awaiting voice turns are left
+        // exactly as they were.
+        final typed = ActiveTurn(
+          turnId: _newTurnId(),
+          speaker: Speaker.user,
+          startedAt: event.submittedAt,
+          text: text,
+          transcriptVersion: 1,
+          finalText: text,
+          turnCompleted: true,
+          input: TurnInput.typed,
+        );
+        effects.addAll(_finalize(typed, text, false));
         return effects;
 
       case ProvisionalExtractionSettled():
@@ -919,6 +964,32 @@ class TurnMachine {
         state.pending.insertAll(0, usable);
         return _driveQueue();
     }
+  }
+
+  /// Barge-in on the active assistant turn: flush playback, gate later output
+  /// transcription, and cut the text to the heard prefix.
+  List<TurnEffect> _interruptAssistant(int? heardChars) {
+    final effects = <TurnEffect>[const FlushPlayback()];
+    _assistantGate = _AssistantTranscriptGate.discardingInterruptedTurn;
+    final active = state.activeAssistant;
+    if (active == null) return effects;
+
+    if (heardChars == null) {
+      // Boundary unknown: mark it so turnCompleted discards the turn.
+      active.interrupted = true;
+      active.heardChars = null;
+      active.finalText = null;
+      return effects;
+    }
+    final heard = truncateToHeard(active.text, heardChars);
+    active.interrupted = true;
+    active.heardChars = heardChars;
+    active.text = heard;
+    // Locking finalText here is what prevents later output transcription
+    // from re-attaching the unheard tail.
+    active.finalText = heard;
+    active.transcriptVersion += 1;
+    return effects;
   }
 
   TurnIdentity _keyOf(ActiveTurn turn) => TurnIdentity(

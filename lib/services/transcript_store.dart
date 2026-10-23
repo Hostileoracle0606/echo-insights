@@ -26,7 +26,7 @@ class SupabaseTranscriptStore implements TranscriptStore {
   }) async {
     final rows = await _client
         .from(_table)
-        .select('turn_id, speaker, text, spoken_at')
+        .select('turn_id, speaker, text, spoken_at, input')
         .eq('notebook_id', notebookId)
         .order('spoken_at', ascending: false)
         .limit(limit);
@@ -52,6 +52,7 @@ Map<String, dynamic> turnToRow(String notebookId, ConversationTurn turn) => {
       'speaker': turn.role == Speaker.user ? 'user' : 'assistant',
       'text': turn.text,
       'spoken_at': DateTime.parse(turn.startedAt).toUtc().toIso8601String(),
+      'input': turn.input.name,
     };
 
 ConversationTurn turnFromRow(Map<String, dynamic> row) {
@@ -63,5 +64,6 @@ ConversationTurn turnFromRow(Map<String, dynamic> row) {
     text: row['text'] as String,
     createdAt: spokenAt,
     startedAt: spokenAt,
+    input: TurnInput.parse(row['input']),
   );
 }

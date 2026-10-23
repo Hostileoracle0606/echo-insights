@@ -20,6 +20,7 @@ void main() {
       'speaker': 'assistant',
       'text': 'How did it go?',
       'spoken_at': '2026-09-28T12:00:02.000Z',
+      'input': 'voice',
     });
     expect(row.containsKey('user_id'), isFalse,
         reason: 'the server sets the owner from the caller');
@@ -41,5 +42,39 @@ void main() {
     );
     expect(turnToRow('nb', turn)['speaker'], 'user');
     expect(turnFromRow(turnToRow('nb', turn)).role, Speaker.user);
+  });
+
+  test('a typed turn round-trips its input', () {
+    const turn = ConversationTurn(
+      turnId: 'typed-1',
+      role: Speaker.user,
+      text: 'Maya signed off.',
+      createdAt: '2026-09-28T12:00:00.000Z',
+      input: TurnInput.typed,
+    );
+
+    final row = turnToRow('nb', turn);
+
+    expect(row['input'], 'typed');
+    expect(turnFromRow(row).input, TurnInput.typed);
+    expect(
+      turnFromRow({...row, 'input': 'voice'}).input,
+      TurnInput.voice,
+    );
+  });
+
+  test('a row without the input column reads as voice', () {
+    final row = turnToRow(
+      'nb',
+      const ConversationTurn(
+        turnId: 't',
+        role: Speaker.user,
+        text: 'hi',
+        createdAt: '2026-09-28T12:00:00Z',
+      ),
+    )..remove('input');
+
+    expect(turnFromRow(row).input, TurnInput.voice);
+    expect(turnFromRow({...row, 'input': null}).input, TurnInput.voice);
   });
 }
