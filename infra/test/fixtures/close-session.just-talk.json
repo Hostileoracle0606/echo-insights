@@ -1,0 +1,53 @@
+{
+  "notebook": {
+    "id": "8e03b8f4-4f20-4df3-8398-d854adc32b14",
+    "revision": 7,
+    "conversation_mode": "just_talk"
+  },
+  "turns": [
+    { "turn_id": "lumen-greeting-1", "speaker": "assistant", "text": "Hi, I'm Lumen. What's on your mind today?", "spoken_at": "2026-10-23T21:00:00.000Z", "input": "voice" },
+    { "turn_id": "t1", "speaker": "user", "text": "Honestly it's been a lot. Maya is moving to Brooklyn next month and I told her I'd help her pack.", "spoken_at": "2026-10-23T21:00:10.000Z", "input": "voice" },
+    { "turn_id": "t2", "speaker": "assistant", "text": "That's a big move. How are you feeling about it?", "spoken_at": "2026-10-23T21:00:20.000Z", "input": "voice" },
+    { "turn_id": "t3", "speaker": "user", "text": "Happy for her. But the Atlas demo is Thursday and it's been eating all my evenings.", "spoken_at": "2026-10-23T21:00:40.000Z", "input": "voice" },
+    { "turn_id": "t4", "speaker": "assistant", "text": "Evenings too. What's left before Thursday?", "spoken_at": "2026-10-23T21:00:50.000Z", "input": "voice" },
+    { "turn_id": "t5", "speaker": "user", "text": "Mostly the data pipeline. And I miss my Sunday runs. I want them back after the demo.", "spoken_at": "2026-10-23T21:01:15.000Z", "input": "typed" },
+    { "turn_id": "t6", "speaker": "assistant", "text": "Sunday runs after Thursday, then. I'll remember that.", "spoken_at": "2026-10-23T21:01:25.000Z", "input": "voice" }
+  ],
+  "snapshot": {
+    "notebookId": "8e03b8f4-4f20-4df3-8398-d854adc32b14",
+    "revision": 7,
+    "suppressedEntityIds": ["ex_boss"],
+    "state": {
+      "entries": [],
+      "entities": {
+        "maya": { "id": "maya", "name": "Maya", "type": "person", "mentions": 3, "lastSeen": "2026-10-23T21:00:10.000Z" },
+        "project_atlas": { "id": "project_atlas", "name": "Project Atlas", "type": "project", "mentions": 2, "lastSeen": "2026-10-23T21:00:40.000Z" },
+        "running": { "id": "running", "name": "running", "type": "activity", "mentions": 1, "lastSeen": "2026-10-23T21:01:15.000Z" },
+        "brooklyn": { "id": "brooklyn", "name": "Brooklyn", "type": "place", "mentions": 1, "lastSeen": "2026-10-23T21:00:10.000Z" }
+      },
+      "relations": {},
+      "followUps": [],
+      "askedQuestions": []
+    }
+  },
+  "userEntities": [
+    { "id": "maya", "notebook_count": 4 },
+    { "id": "project_atlas", "notebook_count": 2 },
+    { "id": "running", "notebook_count": 1 },
+    { "id": "brooklyn", "notebook_count": 1 }
+  ],
+  "modelArgs": {
+    "title": "\"Maya's move and a slower week.\"",
+    "summary": "You talked about helping Maya move to Brooklyn, the Atlas demo taking your evenings, and wanting your Sunday runs back.",
+    "notes": [
+      "Maya is moving to Brooklyn next month, and you said you'd help her pack.",
+      "The Atlas demo is on Thursday; the data pipeline is what's left, and it's taken your evenings.",
+      "You miss your Sunday runs and want them back after the demo."
+    ],
+    "entityNotes": [
+      { "entityId": "maya", "note": "Moving to Brooklyn next month; you're helping her pack." },
+      { "entityId": "project_atlas", "note": "Demo on Thursday; the data pipeline is what's left." },
+      { "entityId": "running", "note": "You want your Sunday runs back after the demo." }
+    ]
+  }
+}
