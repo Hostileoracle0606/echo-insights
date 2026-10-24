@@ -25,11 +25,15 @@ List<String>? _mergeQuestions(List<String>? existing, List<String>? incoming) {
   return merged.isEmpty ? null : merged;
 }
 
+/// [suppressed] holds the ids the user removed from memory (LM-29): those
+/// entities, and every relation touching them, are skipped so a removal never
+/// reappears on the device. commit_notebook enforces the same rule.
 ({JournalState next, String entryId, ApplyTurnChange change}) merge(
   JournalState prev,
   String text,
-  GraphPatch patch,
-) {
+  GraphPatch patch, {
+  Set<String> suppressed = const {},
+}) {
   final now = DateTime.now().toUtc();
   final entities = Map<String, Entity>.from(prev.entities);
   final relations = Map<String, Relation>.from(prev.relations);
@@ -44,11 +48,13 @@ List<String>? _mergeQuestions(List<String>? existing, List<String>? incoming) {
   for (final e in patch.entities) {
     if (e.name.isEmpty) continue;
     final id = slugify(e.name);
+    if (suppressed.contains(id)) continue;
     nameToId[e.name.toLowerCase()] = id;
     final existing = entities[id];
     if (existing != null) {
       entities[id] = existing.copyWith(
-        description: e.description?.isNotEmpty == true
+        description: e.description?.isNotEmpty == true &&
+                existing.descriptionSource != 'user'
             ? e.description
             : existing.description,
         metadata: {...existing.metadata, ...(e.metadata ?? {})},
@@ -79,6 +85,7 @@ List<String>? _mergeQuestions(List<String>? existing, List<String>? incoming) {
     final src = nameToId[r.source.toLowerCase()] ?? slugify(r.source);
     final tgt = nameToId[r.target.toLowerCase()] ?? slugify(r.target);
     if (src.isEmpty || tgt.isEmpty || src == tgt) continue;
+    if (suppressed.contains(src) || suppressed.contains(tgt)) continue;
     final rid = '${src}__${r.label}__$tgt';
 
     final existing = relations[rid];
