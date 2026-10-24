@@ -2,6 +2,8 @@
 // isolation on LumenTheme.light() with the real bundled fonts and writes a PNG
 // per widget to docs/assets/, for per-widget visual review before stitching.
 // Run: flutter test test/preview_capture_test.dart
+import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' as ui;
 
@@ -19,6 +21,9 @@ import 'package:lumen/providers/auth_provider.dart';
 import 'package:lumen/providers/journal_provider.dart';
 import 'package:lumen/providers/notebooks_provider.dart';
 import 'package:lumen/providers/session_provider.dart';
+import 'package:lumen/providers/supabase_provider.dart';
+import 'package:lumen/models/session_card.dart';
+import 'package:lumen/screens/card/closing_card_screen.dart';
 import 'package:lumen/screens/dashboard/dashboard_screen.dart';
 import 'package:lumen/screens/journal/composer.dart';
 import 'package:lumen/screens/journal/graph_canvas.dart';
@@ -28,6 +33,9 @@ import 'package:lumen/screens/journal/journal_top_bar.dart';
 import 'package:lumen/screens/journal/transcript_page.dart';
 import 'package:lumen/screens/journal/voice_dock.dart';
 import 'package:lumen/theme/lumen_colors.dart';
+import 'package:lumen/services/memory_control_service.dart';
+import 'package:lumen/services/notebook_commit_service.dart';
+import 'package:lumen/services/session_card_service.dart';
 import 'package:lumen/theme/lumen_theme.dart';
 import 'package:lumen/widgets/context_tile.dart';
 import 'package:lumen/widgets/graph_legend.dart';
@@ -121,6 +129,84 @@ Future<void> _capture(
   await _writeBoundaryPng(tester, key, name);
   // Unmount so any running ticker disposes before the test ends.
   if (!settle || frames > 0) await tester.pumpWidget(const SizedBox());
+}
+
+// LM-16: the closing card screen's services, fed from the contract fixtures.
+class _FixtureCards implements SessionCardService {
+  _FixtureCards(this._close);
+  final Future<SessionCard?> Function() _close;
+  @override
+  Future<SessionCard?> close(String notebookId, {int maxRetries = 2}) =>
+      _close();
+  @override
+  Future<SessionCard?> load(String notebookId) async => null;
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _FixtureCommits implements NotebookCommitService {
+  @override
+  Future<NotebookSnapshot?> getNotebookSnapshot(String notebookId) async =>
+      NotebookSnapshot(
+        notebookId: notebookId,
+        revision: 0,
+        state: JournalState.empty(),
+      );
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+SessionCard _fixtureCard(String mode) => SessionCard.fromJson(jsonDecode(
+      File('contracts/fixtures/session-card-v1.$mode.json').readAsStringSync(),
+    ));
+
+/// The real ClosingCardScreen at iPhone 17 size (status bar and home
+/// indicator insets included); [height] past 874 shows the whole scroll.
+Future<void> _captureCard(
+  WidgetTester tester, {
+  required String name,
+  required Future<SessionCard?> Function() close,
+  double height = 874,
+}) async {
+  await tester.binding.setSurfaceSize(Size(402, height));
+  addTearDown(() => tester.binding.setSurfaceSize(null));
+  final key = GlobalKey();
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        sessionCardServiceProvider.overrideWithValue(_FixtureCards(close)),
+        notebookCommitServiceProvider.overrideWithValue(_FixtureCommits()),
+        memoryControlServiceProvider.overrideWithValue(
+          MemoryControlService.withRpc((_, __) async => {'removedFrom': 0}),
+        ),
+      ],
+      child: MaterialApp(
+        debugShowCheckedModeBanner: false,
+        theme: LumenTheme.light(),
+        home: RepaintBoundary(
+          key: key,
+          child: Builder(
+            builder: (context) => MediaQuery(
+              data: MediaQuery.of(context).copyWith(
+                padding: const EdgeInsets.only(top: 62, bottom: 34),
+              ),
+              child: SizedBox(
+                width: 402,
+                height: height,
+                child: const ClosingCardScreen(notebookId: 'preview'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+  // The pill's pulse repeats forever: step frames, don't settle.
+  for (var i = 0; i < 40; i++) {
+    await tester.pump(const Duration(milliseconds: 16));
+  }
+  await _writeBoundaryPng(tester, key, name, pixelRatio: 2);
+  await tester.pumpWidget(const SizedBox());
 }
 
 class _SeededJournal extends JournalNotifier {
@@ -892,6 +978,42 @@ void main() {
           ],
         ),
       ),
+    );
+  });
+
+  // LM-16: the closing card, Just talk and weekly debrief, from the contract
+  // fixtures; plus its loading and failed states.
+  testWidgets('ClosingCard just talk', (tester) async {
+    final card = _fixtureCard('just_talk');
+    await _captureCard(tester, name: 'card-just-talk', close: () async => card);
+    await _captureCard(
+      tester,
+      name: 'card-just-talk-full',
+      close: () async => card,
+      height: 1240,
+    );
+  });
+
+  testWidgets('ClosingCard weekly debrief', (tester) async {
+    final card = _fixtureCard('weekly_debrief');
+    await _captureCard(
+      tester,
+      name: 'card-debrief-full',
+      close: () async => card,
+      height: 1240,
+    );
+  });
+
+  testWidgets('ClosingCard loading and failed', (tester) async {
+    await _captureCard(
+      tester,
+      name: 'card-loading',
+      close: () => Completer<SessionCard?>().future,
+    );
+    await _captureCard(
+      tester,
+      name: 'card-failed',
+      close: () async => throw const SessionCardException('down'),
     );
   });
 }

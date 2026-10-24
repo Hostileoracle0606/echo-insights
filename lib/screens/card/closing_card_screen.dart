@@ -381,7 +381,12 @@ class _ClosingCardScreenState extends ConsumerState<ClosingCardScreen> {
       case _Phase.failed:
         return _StatusMessage(
           text: "Couldn't write your card. Your conversation is saved.",
-          action: _TextAction(label: 'Try again', onTap: _tryAgain),
+          action: _TextAction(
+            label: 'Try again',
+            onTap: _tryAgain,
+            // Lines up with the message above it.
+            padding: const EdgeInsets.only(right: 12),
+          ),
         );
       case _Phase.ready:
         return card!.conversationMode == ConversationMode.weeklyDebrief
@@ -651,10 +656,15 @@ class _DoneButton extends StatelessWidget {
 
 /// A 44pt text button in ink, labelled for VoiceOver.
 class _TextAction extends StatelessWidget {
-  const _TextAction({required this.label, required this.onTap});
+  const _TextAction({
+    required this.label,
+    required this.onTap,
+    this.padding = const EdgeInsets.symmetric(horizontal: 12),
+  });
 
   final String label;
   final VoidCallback onTap;
+  final EdgeInsetsGeometry padding;
 
   @override
   Widget build(BuildContext context) {
@@ -667,7 +677,7 @@ class _TextAction extends StatelessWidget {
         onPressed: onTap,
         style: TextButton.styleFrom(
           minimumSize: const Size(44, 44),
-          padding: const EdgeInsets.symmetric(horizontal: 12),
+          padding: padding,
           foregroundColor: colors.ink,
           tapTargetSize: MaterialTapTargetSize.padded,
         ),
