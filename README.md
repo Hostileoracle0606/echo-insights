@@ -220,7 +220,7 @@ data model and the design decisions behind each layer.
 > See [Getting started](docs/guide/getting-started.md) for setting up your own backend.
 
 ```bash
-git clone git@github.com:Hostileoracle0606/Lumen..git echo-insights
+git clone https://github.com/Hostileoracle0606/echo-insights.git
 ```
 
 ```bash
