@@ -136,7 +136,7 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('home waits for notebook shutdown before navigating',
+  testWidgets('home waits for notebook shutdown, then shows its card',
       (tester) async {
     await tester.binding.setSurfaceSize(const Size(402, 874));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -151,6 +151,14 @@ void main() {
             notebookId: state.pathParameters['id'],
             autoStart: state.uri.queryParameters['start'] == 'true',
           ),
+          routes: [
+            GoRoute(
+              path: 'card',
+              builder: (_, state) => Scaffold(
+                body: Text('Card for ${state.pathParameters['id']}'),
+              ),
+            ),
+          ],
         ),
         GoRoute(
           path: '/dashboard',
@@ -178,7 +186,7 @@ void main() {
     await tester.pump();
 
     expect(journal.leaveCalls, 1);
-    expect(find.text('Dashboard ready'), findsNothing);
+    expect(find.text('Card for notebook-a'), findsNothing);
 
     journal.leaveCompleter.complete(
       const NotebookTransitionResult.success(),
@@ -186,6 +194,7 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 
-    expect(find.text('Dashboard ready'), findsOneWidget);
+    expect(find.text('Card for notebook-a'), findsOneWidget);
+    expect(find.text('Dashboard ready'), findsNothing);
   });
 }
