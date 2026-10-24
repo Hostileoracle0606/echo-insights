@@ -360,6 +360,10 @@ class _SamplePill extends StatelessWidget {
 class _PreviewJournalNotifier extends JournalNotifier {
   @override
   JournalState build() => _previewState;
+
+  // No live session here: accept typed turns so the composer clears.
+  @override
+  bool sendTypedTurn(String text) => text.trim().isNotEmpty;
 }
 
 final _now = DateTime.utc(2026, 6, 14, 10, 30);

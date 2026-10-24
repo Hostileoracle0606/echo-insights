@@ -20,6 +20,7 @@ import 'package:lumen/providers/journal_provider.dart';
 import 'package:lumen/providers/notebooks_provider.dart';
 import 'package:lumen/providers/session_provider.dart';
 import 'package:lumen/screens/dashboard/dashboard_screen.dart';
+import 'package:lumen/screens/journal/composer.dart';
 import 'package:lumen/screens/journal/graph_canvas.dart';
 import 'package:lumen/screens/journal/graph_drawer.dart';
 import 'package:lumen/screens/journal/journal_screen.dart';
@@ -434,6 +435,111 @@ void main() {
                     view: JournalView.transcript,
                     onMicTap: () {},
                     onViewChanged: (_) {},
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  });
+
+  // LM-12: the composer in the pill's slot, while Lumen answers a typed
+  // turn — and with a mode's quick replies on top.
+  for (final (name, replies) in [
+    ('voice-dock-composer', const <String>[]),
+    ('voice-dock-composer-quick-replies', const ['Same as last week', 'Skip']),
+  ]) {
+    testWidgets('VoiceDock $name', (tester) async {
+      await _capture(
+        tester,
+        name: name,
+        width: 402,
+        height: 240,
+        settle: false,
+        interact: (tester) async {
+          await tester.enterText(find.byType(TextField), 'Maya signed off');
+          // Let Send's colour and the pill's resize finish before capture.
+          for (var i = 0; i < 40; i++) {
+            await tester.pump(const Duration(milliseconds: 16));
+          }
+        },
+        child: MediaQuery(
+          data: const MediaQueryData(size: Size(402, 874)),
+          child: Align(
+            alignment: Alignment.bottomCenter,
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 28),
+              child: VoiceDock(
+                mode: DockMode.speaking,
+                liveAgent: 'That is a big milestone for Atlas.',
+                terms: _demoTerms,
+                onMicTap: () {},
+                onViewChanged: (_) {},
+                onTypeTap: () {},
+                composer: Composer(
+                  quickReplies: replies,
+                  autofocus: false,
+                  onSend: (_) => true,
+                  onVoiceTap: () {},
+                  onViewChanged: (_) {},
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    });
+  }
+
+  // LM-12: typed rows in the transcript ("typed · 9:44").
+  testWidgets('TranscriptPage with typed turns', (tester) async {
+    await _capture(
+      tester,
+      name: 'transcript-page-typed',
+      width: 402,
+      height: 874,
+      settle: false,
+      child: MediaQuery(
+        data: const MediaQueryData(size: Size(402, 874)),
+        child: ColoredBox(
+          color: LumenColors.light.paper,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              TranscriptPage(
+                turns: [
+                  ..._demoTurns,
+                  TranscriptTurn(DockSpeaker.you,
+                      'Maya signed off on the launch this morning.',
+                      id: 'd4', at: DateTime(2026, 9, 25, 9, 44), typed: true),
+                  TranscriptTurn(DockSpeaker.lumen,
+                      'That is a big milestone for Atlas. How did she take it?',
+                      id: 'd5', at: DateTime(2026, 9, 25, 9, 44)),
+                  TranscriptTurn(DockSpeaker.you, 'Relieved, honestly.',
+                      id: 'd6', at: DateTime(2026, 9, 25, 9, 45), typed: true),
+                ],
+                terms: _demoTerms,
+                topInset: 60,
+                bottomInset: 164,
+              ),
+              Align(
+                alignment: Alignment.bottomCenter,
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: 28),
+                  child: VoiceDock(
+                    view: JournalView.transcript,
+                    onMicTap: () {},
+                    onViewChanged: (_) {},
+                    onTypeTap: () {},
+                    composer: Composer(
+                      view: JournalView.transcript,
+                      autofocus: false,
+                      onSend: (_) => true,
+                      onVoiceTap: () {},
+                      onViewChanged: (_) {},
+                    ),
                   ),
                 ),
               ),

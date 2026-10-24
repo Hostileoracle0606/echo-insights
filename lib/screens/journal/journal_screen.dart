@@ -7,11 +7,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../logic/entity_highlighter.dart';
-import '../../logic/turn_state.dart' show Speaker;
+import '../../logic/turn_state.dart' show Speaker, TurnInput;
 import '../../models/entity.dart';
 import '../../providers/journal_provider.dart';
 import '../../providers/session_provider.dart';
 import '../../theme/lumen_colors.dart';
+import 'composer.dart';
 import 'entity_note_sheet.dart';
 import 'graph_canvas.dart';
 import 'graph_drawer.dart';
@@ -50,6 +51,10 @@ class _JournalScreenState extends ConsumerState<JournalScreen>
     reverseCurve: Curves.easeInCubic,
   );
   bool _leaving = false;
+
+  // The composer fills the pill while the user types; the mic stays paused
+  // until its own mic button switches back to voice.
+  bool _composing = false;
 
   // Highlight terms, rebuilt only when the graph's entity map changes.
   Map<String, Entity>? _termsSource;
@@ -157,6 +162,25 @@ class _JournalScreenState extends ConsumerState<JournalScreen>
     if (mounted && !result.succeeded) _showTransitionError(result);
   }
 
+  void _openComposer() {
+    unawaited(HapticFeedback.selectionClick());
+    setState(() => _composing = true);
+    unawaited(ref.read(journalProvider.notifier).pauseMic());
+  }
+
+  Future<void> _closeComposer() async {
+    unawaited(HapticFeedback.lightImpact());
+    setState(() => _composing = false);
+    final result = await ref.read(journalProvider.notifier).resumeMic();
+    if (mounted && !result.succeeded) _showTransitionError(result);
+  }
+
+  bool _sendTyped(String text) {
+    final sent = ref.read(journalProvider.notifier).sendTypedTurn(text);
+    if (sent) unawaited(HapticFeedback.lightImpact());
+    return sent;
+  }
+
   void _setView(JournalView view) {
     if (view == _view) return;
     unawaited(HapticFeedback.selectionClick());
@@ -236,6 +260,7 @@ class _JournalScreenState extends ConsumerState<JournalScreen>
         id: row.turn.turnId,
         pending: row.pending,
         at: DateTime.tryParse(row.turn.startedAt),
+        typed: row.turn.input == TurnInput.typed,
       );
 
   // The graph recedes as the page rises: it shrinks a touch, blurs and fades
@@ -332,6 +357,20 @@ class _JournalScreenState extends ConsumerState<JournalScreen>
         status == SessionStatus.connecting ||
         status == SessionStatus.paused;
     final insets = MediaQuery.paddingOf(context);
+    // Typing needs a session to send into; it ends when the session does.
+    final typeable =
+        status == SessionStatus.live || status == SessionStatus.paused;
+    ref.listen(sessionStatusProvider, (_, next) {
+      if (_composing &&
+          next != SessionStatus.live &&
+          next != SessionStatus.paused) {
+        setState(() => _composing = false);
+      }
+    });
+    final composing = _composing && typeable;
+    // The keyboard lifts only the pill; the graph and the page stay put.
+    final keyboard = MediaQuery.viewInsetsOf(context).bottom;
+    final dockBottom = keyboard > 0 ? keyboard + 8 : insets.bottom + 28;
     final relationCount =
         state.relations.values.where((relation) => relation.isActive).length;
 
@@ -343,6 +382,7 @@ class _JournalScreenState extends ConsumerState<JournalScreen>
       },
       child: Scaffold(
         key: _scaffoldKey,
+        resizeToAvoidBottomInset: false,
         drawer: GraphDrawer(onEntityTap: _openEntity),
         body: Stack(
           fit: StackFit.expand,
@@ -355,8 +395,8 @@ class _JournalScreenState extends ConsumerState<JournalScreen>
                 entrance: _page,
                 liveSpeaker: liveSpeaker,
                 topInset: insets.top + 68,
-                // Dock (~108) + its 28pt lift + a breath.
-                bottomInset: insets.bottom + 28 + 108 + 8,
+                // Dock (~108) + its lift + a breath.
+                bottomInset: dockBottom + 108 + 8,
               ),
             ),
             Positioned(
@@ -380,29 +420,42 @@ class _JournalScreenState extends ConsumerState<JournalScreen>
               ),
             ),
             Positioned(
-              bottom: 0,
+              bottom: keyboard,
               left: 0,
               right: 0,
               child: SafeArea(
+                bottom: keyboard == 0,
                 child: Padding(
-                  padding: const EdgeInsets.only(bottom: 28),
+                  padding: EdgeInsets.only(bottom: keyboard > 0 ? 8 : 28),
                   child: Align(
                     alignment: Alignment.bottomCenter,
                     child: VoiceDock(
-                      mode:
-                          _dockMode(status, agentSpeaking, openingInProgress),
+                      // Lumen answering a typed turn still holds the floor,
+                      // though the mic is paused.
+                      mode: composing && agentSpeaking
+                          ? DockMode.speaking
+                          : _dockMode(status, agentSpeaking, openingInProgress),
                       liveUser: liveUser,
                       liveAgent: liveAgent,
                       extracting: extracting,
                       openingInProgress: openingInProgress,
-                      paused: status == SessionStatus.paused,
+                      // Typing is not a paused session.
+                      paused: status == SessionStatus.paused && !composing,
                       reconnecting: reconnecting,
                       activity: activity,
                       view: _view,
                       terms: terms,
                       onMicTap: () => _toggleMic(status),
                       onViewChanged: _setView,
-                      onTypeTap: null,
+                      onTypeTap: typeable ? _openComposer : null,
+                      composer: composing
+                          ? Composer(
+                              onSend: _sendTyped,
+                              onVoiceTap: _closeComposer,
+                              onViewChanged: _setView,
+                              view: _view,
+                            )
+                          : null,
                     ),
                   ),
                 ),

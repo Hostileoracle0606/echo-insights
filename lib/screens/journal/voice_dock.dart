@@ -109,10 +109,9 @@ class VoiceDock extends StatefulWidget {
 class _VoiceDockState extends State<VoiceDock>
     with SingleTickerProviderStateMixin {
   // The mic pulse: the listening ring and the thinking breath share it.
-  late final AnimationController _pulse = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 2200),
-  );
+  // Created in initState, not lazily: with the composer open the mic never
+  // builds, and a lazy controller would first be created in dispose().
+  late final AnimationController _pulse;
 
   // The pill's spring, matching the web dock: a soft overshoot on open.
   static const Curve _spring = Cubic(0.34, 1.56, 0.64, 1);
@@ -129,6 +128,10 @@ class _VoiceDockState extends State<VoiceDock>
   @override
   void initState() {
     super.initState();
+    _pulse = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2200),
+    );
     if (_pulseActive) _pulse.repeat();
   }
 

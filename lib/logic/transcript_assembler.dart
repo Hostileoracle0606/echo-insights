@@ -155,6 +155,16 @@ class TranscriptAssembler {
   }
 
   List<TurnEvent> interrupted(int? heardChars) {
+    _cutOffAssistant();
+    return [AssistantInterrupted(heardChars: heardChars)];
+  }
+
+  /// A typed turn cut Lumen's reply off. The turn machine interrupts the
+  /// reply itself (`TypedTurnSubmitted`), so this emits nothing: it only
+  /// drops the reply's late chunks until Gemini completes the cut-off turn.
+  void typedTurnInterrupted() => _cutOffAssistant();
+
+  void _cutOffAssistant() {
     _assistantInterrupted = true;
     if (_assistantBuffer.trim().isNotEmpty) {
       final pending = _PendingTranscript(
@@ -164,7 +174,6 @@ class TranscriptAssembler {
       _pendingAssistant.add(pending);
     }
     _assistantBuffer = '';
-    return [AssistantInterrupted(heardChars: heardChars)];
   }
 
   /// Marks exactly the buffer governed by a fired fallback deadline. Keeping
