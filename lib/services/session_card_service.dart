@@ -36,6 +36,11 @@ class SessionCardService {
   final SessionCardReader? _readCard;
   final Duration _retryBaseDelay;
 
+  /// Calls still running, by notebook: leaving a notebook fires one in the
+  /// background and the closing card screen (LM-16) asks again on arrival,
+  /// so both share one request instead of writing the card twice.
+  final _inFlight = <String, Future<SessionCard?>>{};
+
   SessionCardService({
     required String baseUrl,
     required Future<String?> Function() accessTokenProvider,
@@ -50,8 +55,25 @@ class SessionCardService {
 
   /// Writes (or returns the current) card for [notebookId]. Null when the
   /// notebook's mode has no card yet (501) or the user said nothing to
-  /// summarize (422).
-  Future<SessionCard?> close(String notebookId, {int maxRetries = 2}) async {
+  /// summarize (422). While a call for [notebookId] is running, returns that
+  /// same future.
+  Future<SessionCard?> close(String notebookId, {int maxRetries = 2}) {
+    final running = _inFlight[notebookId];
+    if (running != null) return running;
+    final closing = _close(notebookId, maxRetries);
+    _inFlight[notebookId] = closing;
+    // whenComplete would hand the error to a second, unawaited future.
+    void settle() {
+      if (identical(_inFlight[notebookId], closing)) {
+        _inFlight.remove(notebookId);
+      }
+    }
+
+    closing.then((_) => settle(), onError: (Object _) => settle());
+    return closing;
+  }
+
+  Future<SessionCard?> _close(String notebookId, int maxRetries) async {
     if (_baseUrl.isEmpty) {
       throw StateError('The secure notebook runtime is not configured');
     }

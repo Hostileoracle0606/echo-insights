@@ -107,12 +107,17 @@ class ContextItem {
   /// VoiceOver label for the remove button; defaults to "Remove <title>".
   final String? removeLabel;
 
+  /// False for an item the list's onRemove doesn't apply to (an open item
+  /// next to things Lumen remembers): no × button, same row height.
+  final bool removable;
+
   const ContextItem({
     required this.title,
     this.note,
     this.dotColor,
     this.open = false,
     this.removeLabel,
+    this.removable = true,
   });
 }
 
@@ -198,7 +203,7 @@ class _ItemRow extends StatelessWidget {
               ),
             ),
           ),
-          if (onRemove != null)
+          if (onRemove != null && item.removable)
             Semantics(
               button: true,
               label: item.removeLabel ?? 'Remove ${item.title}',

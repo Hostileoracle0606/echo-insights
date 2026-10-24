@@ -108,4 +108,33 @@ void main() {
     );
     expect(find.bySemanticsLabel('Forget the Q4 plan'), findsOneWidget);
   });
+
+  testWidgets('an item can opt out of the remove button', (tester) async {
+    await _pump(
+      tester,
+      ContextList(
+        eyebrow: 'Lumen will remember',
+        items: const [
+          ContextItem(title: 'Priya'),
+          ContextItem(title: 'Staging DB access', open: true, removable: false),
+        ],
+        onRemove: (_) {},
+      ),
+    );
+    expect(find.bySemanticsLabel('Remove Priya'), findsOneWidget);
+    expect(find.bySemanticsLabel('Remove Staging DB access'), findsNothing);
+    expect(find.byIcon(Icons.close), findsOneWidget);
+    // It keeps the list's 44pt rhythm.
+    expect(
+      tester
+          .getSize(find
+              .ancestor(
+                of: find.textContaining('Staging DB access'),
+                matching: find.byType(ConstrainedBox),
+              )
+              .first)
+          .height,
+      greaterThanOrEqualTo(44),
+    );
+  });
 }

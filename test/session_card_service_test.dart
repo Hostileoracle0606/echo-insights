@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -10,7 +11,8 @@ import 'package:lumen/services/session_card_service.dart';
 void main() {
   const notebookId = '8e03b8f4-4f20-4df3-8398-d854adc32b14';
   final cardJson = jsonDecode(
-    File('contracts/fixtures/session-card-v1.just_talk.json').readAsStringSync(),
+    File('contracts/fixtures/session-card-v1.just_talk.json')
+        .readAsStringSync(),
   ) as Map<String, dynamic>;
 
   http.Response json(int status, Object body) => http.Response(
@@ -49,6 +51,49 @@ void main() {
     expect(card.notes, hasLength(3));
   });
 
+  test('close shares one request per notebook while it is in flight', () async {
+    var calls = 0;
+    final respond = Completer<http.Response>();
+    final cards = service((_) {
+      calls += 1;
+      return respond.future;
+    });
+
+    // Leaving fires one in the background; the card screen asks again.
+    final fromLeaving = cards.close(notebookId);
+    final fromScreen = cards.close(notebookId);
+    expect(identical(fromLeaving, fromScreen), isTrue);
+
+    respond.complete(json(200, {'status': 'ready', 'card': cardJson}));
+    expect((await fromScreen)!.title, cardJson['title']);
+    await fromLeaving;
+    expect(calls, 1);
+
+    // Once it settles, the next close is a new request.
+    final fresh = Completer<http.Response>();
+    final again = service((_) {
+      calls += 1;
+      return fresh.future;
+    });
+    expect(identical(again.close(notebookId), again.close('other')), isFalse);
+  });
+
+  test('a finished close does not hold the next one', () async {
+    var calls = 0;
+    final cards = service((_) async {
+      calls += 1;
+      return calls == 1
+          ? json(409, {'status': 'rejected', 'code': 'stale'})
+          : json(200, {'status': 'ready', 'card': cardJson});
+    });
+
+    await expectLater(
+        cards.close(notebookId), throwsA(isA<SessionCardException>()));
+    // Try again after a failure sends a new request.
+    expect(await cards.close(notebookId), isNotNull);
+    expect(calls, 2);
+  });
+
   test('close returns null when the mode has no card yet (501)', () async {
     final card = await service(
       (_) async => json(501, {'status': 'rejected', 'code': 'notImplemented'}),
@@ -56,9 +101,11 @@ void main() {
     expect(card, isNull);
   });
 
-  test('close returns null when there was nothing to summarize (422)', () async {
+  test('close returns null when there was nothing to summarize (422)',
+      () async {
     final card = await service(
-      (_) async => json(422, {'status': 'rejected', 'code': 'nothingToSummarize'}),
+      (_) async =>
+          json(422, {'status': 'rejected', 'code': 'nothingToSummarize'}),
     ).close(notebookId);
     expect(card, isNull);
   });
@@ -136,7 +183,10 @@ void main() {
 
   test('a malformed 200 is a format error', () async {
     final closing = service(
-      (_) async => json(200, {'status': 'ready', 'card': {'version': 1}}),
+      (_) async => json(200, {
+        'status': 'ready',
+        'card': {'version': 1}
+      }),
     ).close(notebookId);
     await expectLater(closing, throwsFormatException);
   });

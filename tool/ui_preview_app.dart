@@ -1,18 +1,25 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:lumen/models/entity.dart';
 import 'package:lumen/models/journal_entry.dart';
 import 'package:lumen/models/journal_state.dart';
 import 'package:lumen/models/relation.dart';
+import 'package:lumen/models/session_card.dart';
 import 'package:lumen/providers/journal_provider.dart';
 import 'package:lumen/providers/session_provider.dart';
+import 'package:lumen/providers/supabase_provider.dart';
 import 'package:lumen/models/upsert_activity.dart';
 import 'package:lumen/screens/auth/login_screen.dart';
 import 'package:lumen/screens/auth/signup_screen.dart';
+import 'package:lumen/screens/card/closing_card_screen.dart';
 import 'package:lumen/screens/journal/graph_canvas.dart';
 import 'package:lumen/screens/journal/journal_screen.dart';
 import 'package:lumen/screens/journal/journal_top_bar.dart';
 import 'package:lumen/screens/journal/voice_dock.dart';
+import 'package:lumen/services/memory_control_service.dart';
+import 'package:lumen/services/notebook_commit_service.dart';
+import 'package:lumen/services/session_card_service.dart';
 import 'package:lumen/theme/lumen_colors.dart';
 import 'package:lumen/theme/lumen_text.dart';
 import 'package:lumen/theme/lumen_theme.dart';
@@ -32,6 +39,9 @@ class _PreviewApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (screen.startsWith('card-') || screen == 'card') {
+      return _ClosingCardPreview(screen: screen);
+    }
     final overrides = switch (screen) {
       'journal' => <Override>[
           journalProvider.overrideWith(_PreviewJournalNotifier.new),
@@ -441,3 +451,202 @@ final _previewState = JournalState(
   relations: {for (final relation in _previewRelations) relation.id: relation},
   followUps: const [],
 );
+
+// ─── LM-16: the closing card, from the contract fixtures ────────────────────
+//
+// SCREEN=card (Just talk), card-debrief or card-failed. The card arrives
+// after 1.2 s so the loading state shows; Done, Talk, Type and View land on
+// stand-in pages. Copies of contracts/fixtures/session-card-v1.*.json (the
+// app bundle can't read the repo's files).
+
+const _justTalkFixture = {
+  "version": 1,
+  "notebookId": "8e03b8f4-4f20-4df3-8398-d854adc32b14",
+  "conversationMode": "just_talk",
+  "sourceRevision": 7,
+  "generatedAt": "2026-10-23T21:14:05.000Z",
+  "title": "Maya's move and a slower week",
+  "summary":
+      "You talked about helping Maya move to Brooklyn, feeling stretched by the Atlas demo, and wanting your Sunday runs back.",
+  "remember": [
+    {
+      "entityId": "maya",
+      "name": "Maya",
+      "type": "person",
+      "note": "Moving to Brooklyn next month; you're helping her pack.",
+      "isNew": false,
+    },
+    {
+      "entityId": "project_atlas",
+      "name": "Project Atlas",
+      "type": "project",
+      "note": "The demo is Thursday and it's taking most of your evenings.",
+      "isNew": false,
+    },
+    {
+      "entityId": "running",
+      "name": "running",
+      "type": "activity",
+      "note": "You want your Sunday runs back.",
+      "isNew": true,
+    },
+    {
+      "entityId": "brooklyn",
+      "name": "Brooklyn",
+      "type": "place",
+      "note": null,
+      "isNew": true,
+    },
+  ],
+  "notes": [
+    "Maya is moving to Brooklyn next month, and you said you'd help her pack.",
+    "The Atlas demo is on Thursday and has taken most of your evenings this week.",
+    "You miss your Sunday runs and want to start them again after the demo.",
+  ],
+};
+
+const _debriefFixture = {
+  "version": 1,
+  "notebookId": "0b6f1d6e-3c1a-4a51-9d0e-2f7c9a1b4e21",
+  "conversationMode": "weekly_debrief",
+  "sourceRevision": 12,
+  "generatedAt": "2026-10-23T17:42:10.000Z",
+  "title": "CI fix landed",
+  "summary":
+      "You merged the CI fix on Tuesday, cut build time from 22 to 13 minutes with Priya, and you're still waiting on staging DB access.",
+  "remember": [
+    {
+      "entityId": "priya",
+      "name": "Priya",
+      "type": "person",
+      "note": "Figured out the cache keys for the CI fix.",
+      "isNew": false,
+    },
+    {
+      "entityId": "ci_pipeline",
+      "name": "CI pipeline",
+      "type": "project",
+      "note": "Builds went from 22 minutes to 13.",
+      "isNew": false,
+    },
+    {
+      "entityId": "staging_db",
+      "name": "Staging DB",
+      "type": "project",
+      "note": "Access still pending; ask next Friday.",
+      "isNew": true,
+    },
+  ],
+  "weekOf": "2026-10-19",
+  "nextDebriefOn": "2026-10-30",
+  "briefTotal": 41,
+  "wins": [
+    {
+      "text":
+          "Cut CI build time 41% (22 \u2192 13 min) by fixing cache keys, with Priya.",
+      "metric": {
+        "before": 22,
+        "after": 13,
+        "unit": "min",
+      },
+      "helpers": [
+        "Priya",
+      ],
+      "top": true,
+    },
+    {
+      "text": "Merged the CI fix on Tuesday, a day ahead of plan.",
+      "helpers": [],
+      "top": false,
+    },
+    {
+      "text": "Walked the new hire through the deploy runbook.",
+      "helpers": [],
+      "top": false,
+    },
+  ],
+  "openItems": {
+    "created": [
+      {
+        "id": "4d2c7a90-8b1e-4f3a-a6d5-1e9b0c7f2a34",
+        "text": "Staging DB access",
+        "dueOn": "2026-10-30",
+      },
+    ],
+    "resolvedIds": [
+      "c1f8e2b4-6a3d-4e7f-9b0a-5d2c8e1f4a67",
+    ],
+  },
+};
+
+class _PreviewCards implements SessionCardService {
+  _PreviewCards(this.screen);
+  final String screen;
+
+  @override
+  Future<SessionCard?> close(String notebookId, {int maxRetries = 2}) async {
+    await Future<void>.delayed(const Duration(milliseconds: 1200));
+    return switch (screen) {
+      'card-failed' => throw const SessionCardException('preview'),
+      'card-debrief' => SessionCard.fromJson(_debriefFixture),
+      _ => SessionCard.fromJson(_justTalkFixture),
+    };
+  }
+
+  @override
+  Future<SessionCard?> load(String notebookId) async => null;
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _PreviewCommits implements NotebookCommitService {
+  @override
+  Future<NotebookSnapshot?> getNotebookSnapshot(String notebookId) async =>
+      NotebookSnapshot(
+          notebookId: notebookId, revision: 0, state: _previewState);
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _ClosingCardPreview extends StatelessWidget {
+  const _ClosingCardPreview({required this.screen});
+  final String screen;
+
+  @override
+  Widget build(BuildContext context) {
+    Widget standIn(String text) => Scaffold(body: Center(child: Text(text)));
+    final router = GoRouter(
+      initialLocation: '/notebook/preview/card',
+      routes: [
+        GoRoute(path: '/dashboard', builder: (_, __) => standIn('Dashboard')),
+        GoRoute(
+          path: '/notebook/:id',
+          builder: (_, state) => standIn('Notebook ${state.uri}'),
+          routes: [
+            GoRoute(
+              path: 'card',
+              builder: (_, state) =>
+                  ClosingCardScreen(notebookId: state.pathParameters['id']!),
+            ),
+          ],
+        ),
+      ],
+    );
+    return ProviderScope(
+      overrides: [
+        sessionCardServiceProvider.overrideWithValue(_PreviewCards(screen)),
+        notebookCommitServiceProvider.overrideWithValue(_PreviewCommits()),
+        memoryControlServiceProvider.overrideWithValue(
+          MemoryControlService.withRpc((_, __) async => {'removedFrom': 1}),
+        ),
+      ],
+      child: MaterialApp.router(
+        debugShowCheckedModeBanner: false,
+        theme: LumenTheme.light(),
+        routerConfig: router,
+      ),
+    );
+  }
+}

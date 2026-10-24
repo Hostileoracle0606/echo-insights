@@ -6,6 +6,7 @@ import 'providers/auth_provider.dart';
 import 'providers/voice_services_provider.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/auth/signup_screen.dart';
+import 'screens/card/closing_card_screen.dart';
 import 'screens/dashboard/dashboard_screen.dart';
 import 'screens/journal/journal_screen.dart';
 import 'theme/lumen_theme.dart';
@@ -37,7 +38,16 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (_, state) => JournalScreen(
           notebookId: state.pathParameters['id'],
           autoStart: state.uri.queryParameters['start'] == 'true',
+          compose: state.uri.queryParameters['compose'] == 'true',
         ),
+        routes: [
+          GoRoute(
+            path: 'card',
+            builder: (_, state) => ClosingCardScreen(
+              notebookId: state.pathParameters['id']!,
+            ),
+          ),
+        ],
       ),
     ],
   );

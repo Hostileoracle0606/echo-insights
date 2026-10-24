@@ -27,7 +27,16 @@ class JournalScreen extends ConsumerStatefulWidget {
   // created via the dashboard's "New notebook" button) has finished loading.
   final bool autoStart;
 
-  const JournalScreen({super.key, this.notebookId, this.autoStart = false});
+  // When true (`?compose=true`, Type on the closing card), opens the
+  // composer once the notebook has loaded.
+  final bool compose;
+
+  const JournalScreen({
+    super.key,
+    this.notebookId,
+    this.autoStart = false,
+    this.compose = false,
+  });
 
   @override
   ConsumerState<JournalScreen> createState() => _JournalScreenState();
@@ -98,7 +107,8 @@ class _JournalScreenState extends ConsumerState<JournalScreen>
   void didUpdateWidget(covariant JournalScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.notebookId != widget.notebookId ||
-        oldWidget.autoStart != widget.autoStart) {
+        oldWidget.autoStart != widget.autoStart ||
+        oldWidget.compose != widget.compose) {
       _scheduleNotebookEntry();
     }
   }
@@ -107,18 +117,38 @@ class _JournalScreenState extends ConsumerState<JournalScreen>
     final id = widget.notebookId;
     if (id == null) return;
     final autoStart = widget.autoStart;
+    final compose = widget.compose;
     // Provider state cannot be mutated during initState/build. The provider
     // owns the whole transition so loading and optional startup cannot race.
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted || widget.notebookId != id) return;
-      final result = await ref
-          .read(journalProvider.notifier)
-          .enterNotebook(id, autoStart: autoStart);
-      if (!mounted || widget.notebookId != id || result.succeeded) return;
+      final notifier = ref.read(journalProvider.notifier);
+      final result = await notifier.enterNotebook(id, autoStart: autoStart);
+      if (!mounted || widget.notebookId != id) return;
+      if (result.succeeded) {
+        if (autoStart || compose) await _keepGoing(compose: compose);
+        return;
+      }
       // Lumen failing to join has its own banner with Retry.
       if (ref.read(joiningPhaseProvider) != JoiningPhase.none) return;
       _showTransitionError(result);
     });
+  }
+
+  /// Talk or Type from the closing card. A notebook with an earlier
+  /// conversation opens quietly, so the session starts here; typing needs
+  /// one to send into, and the composer then pauses the mic.
+  Future<void> _keepGoing({required bool compose}) async {
+    if (ref.read(sessionStatusProvider) == SessionStatus.idle &&
+        ref.read(joiningPhaseProvider) == JoiningPhase.none) {
+      final started = await ref.read(journalProvider.notifier).startSession();
+      if (!mounted) return;
+      if (!started.succeeded) {
+        _showTransitionError(started);
+        return;
+      }
+    }
+    if (compose && mounted) _openComposer();
   }
 
   // Sidepane row tap: close the drawer, then open the entity note sheet over
@@ -200,13 +230,16 @@ class _JournalScreenState extends ConsumerState<JournalScreen>
     return _terms;
   }
 
-  Future<void> _leaveToDashboard() async {
+  /// Leaving lands on the conversation's closing card (LM-16); the
+  /// dashboard is one tap from there.
+  Future<void> _leaveToCard() async {
     if (_leaving) return;
     setState(() => _leaving = true);
     final result = await ref.read(journalProvider.notifier).leaveNotebook();
     if (!mounted) return;
     if (result.succeeded) {
-      context.go('/dashboard');
+      final id = widget.notebookId;
+      context.go(id == null ? '/dashboard' : '/notebook/$id/card');
       return;
     }
     setState(() => _leaving = false);
@@ -410,7 +443,7 @@ class _JournalScreenState extends ConsumerState<JournalScreen>
                     entityCount: state.entities.length,
                     relationCount: relationCount,
                     onMenuTap: () => _scaffoldKey.currentState?.openDrawer(),
-                    onHomeTap: _leaving ? null : _leaveToDashboard,
+                    onHomeTap: _leaving ? null : _leaveToCard,
                     muted: muted,
                     onMuteTap: () =>
                         ref.read(journalProvider.notifier).toggleMute(),
