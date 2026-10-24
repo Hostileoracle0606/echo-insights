@@ -3,7 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../models/entity.dart';
 import '../../models/journal_state.dart';
+import '../../providers/export_provider.dart';
 import '../../providers/journal_provider.dart';
+import '../../services/markdown_export.dart';
 import '../../theme/lumen_colors.dart';
 import '../../theme/lumen_text.dart';
 
@@ -11,7 +13,8 @@ import '../../theme/lumen_text.dart';
 /// sections by type. Tapping a row reports the entity via [onEntityTap] — the
 /// screen closes the drawer and opens the entity note sheet. Read-only over
 /// [journalProvider]; navigation is the parent's responsibility, so this widget
-/// stays decoupled from the Navigator.
+/// stays decoupled from the Navigator. The footer exports the open notebook
+/// as an Obsidian vault through [shareVaultProvider].
 class GraphDrawer extends ConsumerWidget {
   final void Function(String entityId) onEntityTap;
 
@@ -66,6 +69,8 @@ class GraphDrawer extends ConsumerWidget {
                   ? _empty(colors)
                   : _list(state, colors),
             ),
+            Divider(height: 1, color: colors.border),
+            const _ExportFooter(),
           ],
         ),
       ),
@@ -166,6 +171,100 @@ class GraphDrawer extends ConsumerWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// "Export notebook": builds the open notebook's vault and opens the share
+/// sheet on it, with a spinner while that runs and a plain error if it fails.
+class _ExportFooter extends ConsumerStatefulWidget {
+  const _ExportFooter();
+
+  @override
+  ConsumerState<_ExportFooter> createState() => _ExportFooterState();
+}
+
+class _ExportFooterState extends ConsumerState<_ExportFooter> {
+  bool _busy = false;
+  bool _failed = false;
+
+  Future<void> _export() async {
+    setState(() {
+      _busy = true;
+      _failed = false;
+    });
+    final state = ref.read(journalProvider);
+    final share = ref.read(shareVaultProvider);
+    final box = context.findRenderObject() as RenderBox?;
+    final origin = box == null
+        ? null
+        : box.localToGlobal(Offset.zero) & box.size;
+    try {
+      // Let the spinner paint before the synchronous build runs.
+      await WidgetsBinding.instance.endOfFrame;
+      await share(buildVault(state), origin: origin);
+    } catch (error, stack) {
+      debugPrint('Markdown export failed: $error\n$stack');
+      if (mounted) setState(() => _failed = true);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.lumenColors;
+    final state = ref.watch(journalProvider);
+    final empty = state.entities.isEmpty && state.entries.isEmpty;
+    final labelStyle = TextStyle(
+      fontFamily: LumenText.sansFontFamily,
+      fontSize: 15,
+      fontWeight: FontWeight.w500,
+      color: empty ? colors.mutedForeground : colors.ink,
+    );
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextButton.icon(
+            onPressed: _busy || empty ? null : _export,
+            style: TextButton.styleFrom(
+              minimumSize: const Size.fromHeight(48),
+              alignment: Alignment.centerLeft,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              foregroundColor: colors.ink,
+            ),
+            icon: _busy
+                ? SizedBox.square(
+                    dimension: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: colors.mutedForeground,
+                    ),
+                  )
+                : Icon(Icons.ios_share, size: 20, color: labelStyle.color),
+            label: Text(
+              _busy ? 'Building export…' : 'Export notebook',
+              style: labelStyle,
+            ),
+          ),
+          if (_failed)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 2, 8, 4),
+              child: Text(
+                "Couldn't build the export. Try again.",
+                style: TextStyle(
+                  fontFamily: LumenText.sansFontFamily,
+                  fontSize: 13,
+                  color: colors.destructive,
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
