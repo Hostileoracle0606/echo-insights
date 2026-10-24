@@ -7,6 +7,7 @@ import '../services/fresh_access_token.dart';
 import '../services/memory_control_service.dart';
 import '../services/notebook_commit_service.dart';
 import '../services/notebook_runtime_service.dart';
+import '../services/session_card_service.dart';
 import '../services/supabase_service.dart';
 import '../services/transcript_store.dart';
 
@@ -52,6 +53,24 @@ final extractGraphServiceProvider = Provider<ExtractGraphService>((ref) {
   return ExtractGraphService(
     baseUrl: Env.notebookRuntimeUrl,
     accessTokenProvider: () => _accessToken(client),
+  );
+});
+
+/// The closing card for a conversation (LM-15): written by the notebook
+/// runtime, read back from `session_cards` (owner-only RLS).
+final sessionCardServiceProvider = Provider<SessionCardService>((ref) {
+  final client = ref.watch(supabaseClientProvider);
+  return SessionCardService(
+    baseUrl: Env.notebookRuntimeUrl,
+    accessTokenProvider: () => _accessToken(client),
+    readCard: (notebookId) async {
+      final row = await client
+          .from('session_cards')
+          .select('card')
+          .eq('notebook_id', notebookId)
+          .maybeSingle();
+      return row?['card'];
+    },
   );
 });
 

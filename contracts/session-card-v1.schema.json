@@ -1,0 +1,202 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://echo-insights.local/contracts/session-card-v1.schema.json",
+  "title": "Session Card V1",
+  "description": "The result card stored in session_cards.card and returned by POST /v1/notebooks/{notebookId}/close. Common fields first; each conversation mode adds its own top-level fields. Fields may be added; removing or renaming one needs v2.",
+  "type": "object",
+  "required": [
+    "version",
+    "notebookId",
+    "conversationMode",
+    "sourceRevision",
+    "generatedAt",
+    "title",
+    "summary",
+    "remember"
+  ],
+  "properties": {
+    "version": { "const": 1 },
+    "notebookId": { "type": "string", "minLength": 1 },
+    "conversationMode": {
+      "enum": ["just_talk", "weekly_debrief", "session_prep", "first_session", "what_landed"]
+    },
+    "sourceRevision": { "type": "integer", "minimum": 0 },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "title": { "type": "string", "minLength": 1, "maxLength": 60 },
+    "summary": { "type": "string", "minLength": 1, "maxLength": 280 },
+    "remember": {
+      "description": "What Lumen will remember. Chosen in code from the notebook's graph (never by the model), at most 8, most-mentioned first.",
+      "type": "array",
+      "maxItems": 8,
+      "items": { "$ref": "#/$defs/rememberItem" }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "conversationMode": { "const": "just_talk" } } },
+      "then": { "$ref": "#/$defs/justTalk" }
+    },
+    {
+      "if": { "properties": { "conversationMode": { "const": "weekly_debrief" } } },
+      "then": { "$ref": "#/$defs/weeklyDebrief" }
+    },
+    {
+      "if": { "properties": { "conversationMode": { "const": "session_prep" } } },
+      "then": { "$ref": "#/$defs/sessionPrep" }
+    },
+    {
+      "if": { "properties": { "conversationMode": { "const": "first_session" } } },
+      "then": { "$ref": "#/$defs/firstSession" }
+    },
+    {
+      "if": { "properties": { "conversationMode": { "const": "what_landed" } } },
+      "then": { "$ref": "#/$defs/whatLanded" }
+    }
+  ],
+  "$defs": {
+    "isoDate": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+    "entityType": {
+      "enum": [
+        "person",
+        "place",
+        "organization",
+        "project",
+        "event",
+        "activity",
+        "concept",
+        "emotion",
+        "other"
+      ]
+    },
+    "rememberItem": {
+      "type": "object",
+      "required": ["entityId", "name", "type", "note", "isNew"],
+      "properties": {
+        "entityId": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 },
+        "type": { "$ref": "#/$defs/entityType" },
+        "note": {
+          "description": "A short line about it in this conversation, or null when the model wrote none.",
+          "type": ["string", "null"],
+          "maxLength": 80
+        },
+        "isNew": {
+          "description": "True when this conversation is the only one that mentions it.",
+          "type": "boolean"
+        }
+      }
+    },
+    "justTalk": {
+      "required": ["notes"],
+      "properties": {
+        "notes": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 5,
+          "items": { "type": "string", "minLength": 1, "maxLength": 200 }
+        }
+      }
+    },
+    "weeklyDebrief": {
+      "required": ["weekOf", "nextDebriefOn", "briefTotal", "wins", "openItems"],
+      "properties": {
+        "weekOf": { "$ref": "#/$defs/isoDate" },
+        "nextDebriefOn": { "$ref": "#/$defs/isoDate" },
+        "briefTotal": { "type": "integer", "minimum": 0 },
+        "wins": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["text", "helpers", "top"],
+            "properties": {
+              "text": { "type": "string", "minLength": 1 },
+              "metric": {
+                "type": "object",
+                "required": ["before", "after", "unit"],
+                "properties": {
+                  "before": { "type": "number" },
+                  "after": { "type": "number" },
+                  "unit": { "type": "string" }
+                }
+              },
+              "helpers": { "type": "array", "items": { "type": "string" } },
+              "top": { "type": "boolean" }
+            }
+          }
+        },
+        "openItems": {
+          "type": "object",
+          "required": ["created", "resolvedIds"],
+          "properties": {
+            "created": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["id", "text", "dueOn"],
+                "properties": {
+                  "id": { "type": "string", "minLength": 1 },
+                  "text": { "type": "string", "minLength": 1 },
+                  "dueOn": { "$ref": "#/$defs/isoDate" }
+                }
+              }
+            },
+            "resolvedIds": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      }
+    },
+    "sessionPrep": {
+      "required": ["sessionAt", "conversationCount", "topics", "ask", "sinceLastTime"],
+      "properties": {
+        "sessionAt": { "type": "string", "format": "date-time" },
+        "conversationCount": { "type": "integer", "minimum": 0 },
+        "topics": {
+          "description": "Ranked by the generator; screens never re-sort.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["rank", "title", "mentionCount", "days", "quotes", "entityIds"],
+            "properties": {
+              "rank": { "type": "integer", "minimum": 1 },
+              "title": { "type": "string", "minLength": 1 },
+              "mentionCount": { "type": "integer", "minimum": 1 },
+              "days": { "type": "array", "items": { "$ref": "#/$defs/isoDate" } },
+              "quotes": {
+                "description": "Each text is a verbatim substring of one of the user's own turns (validateQuotes).",
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["entryId", "day", "text"],
+                  "properties": {
+                    "entryId": { "type": "string", "minLength": 1 },
+                    "day": { "$ref": "#/$defs/isoDate" },
+                    "text": { "type": "string", "minLength": 1 }
+                  }
+                }
+              },
+              "context": { "type": "string" },
+              "entityIds": { "type": "array", "items": { "type": "string" } }
+            }
+          }
+        },
+        "ask": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "sinceLastTime": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+      }
+    },
+    "firstSession": {
+      "required": ["win", "onYourMind", "entityIds"],
+      "properties": {
+        "win": { "type": "string", "minLength": 1 },
+        "onYourMind": { "type": "string", "minLength": 1 },
+        "entityIds": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "whatLanded": {
+      "required": ["coveredRanks", "carryForward"],
+      "properties": {
+        "coveredRanks": { "type": "array", "items": { "type": "integer", "minimum": 1 } },
+        "carryForward": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+      }
+    }
+  }
+}

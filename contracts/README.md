@@ -24,3 +24,19 @@ requires the new version.
 `fixtures/extract-graph-v1.conversation.json` fixes the canonical conversation
 roles at the graph-extraction seam to `user` and `assistant`. UI labels such as
 `agent` or `Lumen` must be mapped before crossing that seam.
+
+`session-card-v1.schema.json` is the result card a conversation ends with:
+what `POST /v1/notebooks/{notebookId}/close` returns and `session_cards.card`
+stores (one card per notebook, kept current by `sourceRevision`). Every card
+has `version`, `notebookId`, `conversationMode`, `sourceRevision`,
+`generatedAt`, `title` (≤ 60 characters), `summary` (≤ 280) and `remember`
+(≤ 8 items, chosen in code from the notebook's graph, never by the model).
+Each mode adds its own top-level fields, required only for that mode:
+`just_talk` has `notes`; `weekly_debrief`, `session_prep`, `first_session`
+and `what_landed` have the fields in the schema's `$defs`. Only `just_talk`
+is generated today (LM-15); the other modes' fixtures exist so their screens
+can be built before their generators (LM-36). Fields may be added; removing
+or renaming one needs v2. The fixtures are
+`session-card-v1.{just_talk,weekly_debrief,session_prep,first_session,what_landed}.json`,
+checked by `infra/test/session-card-contract.test.mjs` and
+`test/session_card_test.dart`.

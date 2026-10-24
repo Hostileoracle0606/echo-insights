@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "notebookId": "2c7d4e1f-9a3b-4c5d-8e6f-7a8b9c0d1e2f",
+  "conversationMode": "first_session",
+  "sourceRevision": 3,
+  "generatedAt": "2026-10-23T09:12:44.000Z",
+  "title": "Your week with Priya and the CI fix",
+  "summary": "You worked with Priya on the CI fix and with Sam on onboarding. The CI fix is your win; staging access is on your mind.",
+  "remember": [
+    {
+      "entityId": "priya",
+      "name": "Priya",
+      "type": "person",
+      "note": "Works with you on the CI pipeline.",
+      "isNew": true
+    },
+    {
+      "entityId": "sam",
+      "name": "Sam",
+      "type": "person",
+      "note": "New hire you're onboarding.",
+      "isNew": true
+    },
+    {
+      "entityId": "ci_pipeline",
+      "name": "CI pipeline",
+      "type": "project",
+      "note": "Builds are down to 13 minutes.",
+      "isNew": true
+    }
+  ],
+  "win": "Got CI builds down from 22 to 13 minutes with Priya.",
+  "onYourMind": "Still no staging DB access, and the release is close.",
+  "entityIds": ["priya", "sam", "ci_pipeline", "staging_db"]
+}

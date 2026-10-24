@@ -25,12 +25,14 @@ import '../models/graph_patch.dart';
 import '../models/journal_entry.dart';
 import '../models/journal_state.dart';
 import '../models/recall_activity.dart';
+import '../models/session_card.dart';
 import '../models/upsert_activity.dart';
 import '../services/gemini_live_client.dart';
 import '../services/memory_control_service.dart';
 import '../services/notebook_commit_service.dart' as commit_service;
 import '../services/notebook_runtime_service.dart';
 import '../services/retrieve_memory_service.dart';
+import '../services/session_card_service.dart';
 import '../services/turn_journal_service.dart';
 import 'supabase_provider.dart';
 import 'voice_services_provider.dart';
@@ -1961,6 +1963,8 @@ class JournalNotifier extends Notifier<JournalState> {
     await _closeLiveTransportUnlocked();
     _dispatchTurn(const SessionEnded());
 
+    // Set only once the notebook is really over (ended_at saved).
+    String? closedNotebookId;
     if (notebookId != null) {
       final outcome = await drain();
       if (!outcome.isCompleted) {
@@ -1992,6 +1996,7 @@ class JournalNotifier extends Notifier<JournalState> {
             'Try leaving again.',
           );
         }
+        closedNotebookId = notebookId;
       }
     }
 
@@ -2008,7 +2013,30 @@ class JournalNotifier extends Notifier<JournalState> {
     _lastMemoryQuery = null;
     _memoryCallsThisTurn = 0;
     _setStatus(SessionStatus.idle);
+    if (closedNotebookId != null) _writeSessionCard(closedNotebookId);
     return const NotebookTransitionResult.success();
+  }
+
+  /// Asks the runtime for the notebook's closing card (LM-15) without
+  /// waiting for it: leaving is already done and never fails because of the
+  /// card. A card that isn't written now is written the next time the
+  /// notebook is left, or when the closing screen (LM-16) retries.
+  void _writeSessionCard(String notebookId) {
+    unawaited(
+      Future<SessionCard?>.sync(
+        () => ref.read(sessionCardServiceProvider).close(notebookId),
+      ).then(
+        (card) => vlog(
+          'session',
+          'session card ${card == null ? 'skipped' : 'ready'} for $notebookId',
+        ),
+        onError: (Object error) => vlog(
+          'session',
+          'session card failed for $notebookId: ${error.runtimeType}'
+              '${error is SessionCardException ? ' ${error.statusCode} ${error.code}' : ''}',
+        ),
+      ),
+    );
   }
 }
 

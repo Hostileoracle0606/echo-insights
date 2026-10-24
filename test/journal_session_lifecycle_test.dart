@@ -1,6 +1,7 @@
 // Phase 2 of the voice session lifecycle plan, end to end through the real
 // JournalNotifier and GeminiLiveClient: only the socket, the microphone, the
 // speaker and the token source are fakes.
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -14,6 +15,7 @@ import 'package:lumen/models/follow_up.dart';
 import 'package:lumen/models/graph_patch.dart';
 import 'package:lumen/models/journal_entry.dart';
 import 'package:lumen/models/journal_state.dart';
+import 'package:lumen/models/session_card.dart';
 import 'package:lumen/providers/journal_provider.dart';
 import 'package:lumen/providers/supabase_provider.dart';
 import 'package:lumen/providers/voice_services_provider.dart';
@@ -24,6 +26,7 @@ import 'package:lumen/services/live_credentials.dart';
 import 'package:lumen/services/notebook_commit_service.dart';
 import 'package:lumen/services/notebook_runtime_service.dart';
 import 'package:lumen/services/retrieve_memory_service.dart';
+import 'package:lumen/services/session_card_service.dart';
 import 'package:lumen/services/supabase_service.dart';
 import 'package:lumen/services/transcript_store.dart';
 import 'package:lumen/services/turn_journal_service.dart';
@@ -185,11 +188,39 @@ class _NoNotebookInserts implements SupabaseService {
       fail('unexpected Supabase call: ${invocation.memberName}');
 }
 
+/// Records notebooks marked ended; any other Supabase call fails the test.
+class _EndingNotebooks implements SupabaseService {
+  final ended = <String>[];
+
+  @override
+  Future<void> endNotebook(String notebookId) async => ended.add(notebookId);
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) =>
+      fail('unexpected Supabase call: ${invocation.memberName}');
+}
+
+/// Records close-session requests; [onClose] decides how each one ends.
+class _FakeCards implements SessionCardService {
+  final closed = <String>[];
+  Future<SessionCard?> Function(String notebookId)? onClose;
+
+  @override
+  Future<SessionCard?> close(String notebookId, {int maxRetries = 2}) {
+    closed.add(notebookId);
+    return onClose?.call(notebookId) ?? Future.value(null);
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
 class _Harness {
   _Harness({
     JournalState? state,
     List<ConversationTurn> history = const [],
     Duration openingTimeout = const Duration(seconds: 10),
+    SupabaseService? supabase,
   })  : transcripts = _FakeTranscripts(history),
         commits = _FakeCommits(state ?? JournalState.empty()) {
     credentials = LiveCredentials(fetch: () async {
@@ -209,7 +240,8 @@ class _Harness {
       turnJournalServiceProvider.overrideWithValue(_FakeTurnJournal()),
       transcriptStoreProvider.overrideWithValue(transcripts),
       openingTimeoutProvider.overrideWithValue(openingTimeout),
-      supabaseServiceProvider.overrideWithValue(_NoNotebookInserts()),
+      supabaseServiceProvider.overrideWithValue(supabase ?? _NoNotebookInserts()),
+      sessionCardServiceProvider.overrideWithValue(cards),
       liveCredentialsProvider.overrideWithValue(credentials),
       audioOutputProvider.overrideWithValue(
         AudioOutput(createPlayer: () => PcmPlayer(backend: _Backend())),
@@ -237,6 +269,7 @@ class _Harness {
   final _FakeTranscripts transcripts;
   final _FakeCommits commits;
   final extractor = _FakeExtractor();
+  final cards = _FakeCards();
   late final ProviderContainer container;
   late final LiveCredentials credentials;
   final mic = _FakeMic();
@@ -445,12 +478,74 @@ void main() {
     expect(h.journal.status, SessionStatus.idle);
     expect(h.mic.recording, isFalse);
     expect(h.socket.sinkImpl.closed, isTrue);
+    expect(h.cards.closed, isEmpty, reason: 'a resumable session is not over');
 
     // The next tap continues in the same notebook.
     final again = await h.startLive();
     expect(again.succeeded, isTrue);
     expect(h.sockets, hasLength(2));
     expect(h.socket.kindsAfterSetup.first, 'client_content');
+  });
+
+  test('leaving a notebook asks for its card without waiting for it',
+      () async {
+    final notebooks = _EndingNotebooks();
+    h = _Harness(
+      state: JournalState.empty().copyWith(entries: [_entry('Earlier.')]),
+      supabase: notebooks,
+    );
+    final never = Completer<SessionCard?>();
+    h.cards.onClose = (_) => never.future;
+    await h.journal.enterNotebook(_notebookId);
+    await h.startLive();
+
+    final left = await h.journal.leaveNotebook();
+
+    expect(left.succeeded, isTrue);
+    expect(h.journal.status, SessionStatus.idle);
+    expect(notebooks.ended, [_notebookId]);
+    expect(h.cards.closed, [_notebookId]);
+  });
+
+  for (final (name, failure) in <(String, Future<SessionCard?> Function(String))>[
+    ('throws', (_) => throw StateError('runtime not configured')),
+    (
+      'fails',
+      (_) => Future<SessionCard?>.error(
+            const SessionCardException('down', statusCode: 503),
+          ),
+    ),
+  ]) {
+    test('leaving still succeeds when writing the card $name', () async {
+      final notebooks = _EndingNotebooks();
+      h = _Harness(
+        state: JournalState.empty().copyWith(entries: [_entry('Earlier.')]),
+        supabase: notebooks,
+      );
+      h.cards.onClose = failure;
+      await h.journal.enterNotebook(_notebookId);
+      await h.startLive();
+
+      final left = await h.journal.leaveNotebook();
+      await Future<void>.delayed(Duration.zero);
+
+      expect(left.succeeded, isTrue);
+      expect(h.journal.status, SessionStatus.idle);
+      expect(notebooks.ended, [_notebookId]);
+      expect(h.cards.closed, [_notebookId]);
+    });
+  }
+
+  test('a notebook that never went live is left without a card', () async {
+    h = _Harness(
+      state: JournalState.empty().copyWith(entries: [_entry('Earlier.')]),
+    );
+    await h.journal.enterNotebook(_notebookId);
+
+    final left = await h.journal.leaveNotebook();
+
+    expect(left.succeeded, isTrue);
+    expect(h.cards.closed, isEmpty);
   });
 
   test('an old notebook opens quietly with its saved conversation', () async {
