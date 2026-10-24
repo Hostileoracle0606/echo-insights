@@ -11,7 +11,8 @@ import 'package:lumen/services/session_card_service.dart';
 void main() {
   const notebookId = '8e03b8f4-4f20-4df3-8398-d854adc32b14';
   final cardJson = jsonDecode(
-    File('contracts/fixtures/session-card-v1.just_talk.json').readAsStringSync(),
+    File('contracts/fixtures/session-card-v1.just_talk.json')
+        .readAsStringSync(),
   ) as Map<String, dynamic>;
 
   http.Response json(int status, Object body) => http.Response(
@@ -50,8 +51,7 @@ void main() {
     expect(card.notes, hasLength(3));
   });
 
-  test('close shares one request per notebook while it is in flight',
-      () async {
+  test('close shares one request per notebook while it is in flight', () async {
     var calls = 0;
     final respond = Completer<http.Response>();
     final cards = service((_) {
@@ -87,7 +87,8 @@ void main() {
           : json(200, {'status': 'ready', 'card': cardJson});
     });
 
-    await expectLater(cards.close(notebookId), throwsA(isA<SessionCardException>()));
+    await expectLater(
+        cards.close(notebookId), throwsA(isA<SessionCardException>()));
     // Try again after a failure sends a new request.
     expect(await cards.close(notebookId), isNotNull);
     expect(calls, 2);
@@ -100,9 +101,11 @@ void main() {
     expect(card, isNull);
   });
 
-  test('close returns null when there was nothing to summarize (422)', () async {
+  test('close returns null when there was nothing to summarize (422)',
+      () async {
     final card = await service(
-      (_) async => json(422, {'status': 'rejected', 'code': 'nothingToSummarize'}),
+      (_) async =>
+          json(422, {'status': 'rejected', 'code': 'nothingToSummarize'}),
     ).close(notebookId);
     expect(card, isNull);
   });
@@ -180,7 +183,10 @@ void main() {
 
   test('a malformed 200 is a format error', () async {
     final closing = service(
-      (_) async => json(200, {'status': 'ready', 'card': {'version': 1}}),
+      (_) async => json(200, {
+        'status': 'ready',
+        'card': {'version': 1}
+      }),
     ).close(notebookId);
     await expectLater(closing, throwsFormatException);
   });

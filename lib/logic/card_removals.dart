@@ -38,8 +38,7 @@ class CardRemovals extends ChangeNotifier with WidgetsBindingObserver {
   void remove(String entityId) {
     if (_hidden.contains(entityId)) return;
     _hidden.add(entityId);
-    _pending[entityId] =
-        _startTimer(window, () => unawaited(_send(entityId)));
+    _pending[entityId] = _startTimer(window, () => unawaited(_send(entityId)));
     _changed();
   }
 
