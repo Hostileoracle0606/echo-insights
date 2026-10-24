@@ -1,0 +1,44 @@
+{
+  "version": 1,
+  "notebookId": "8e03b8f4-4f20-4df3-8398-d854adc32b14",
+  "conversationMode": "just_talk",
+  "sourceRevision": 7,
+  "generatedAt": "2026-10-23T21:14:05.000Z",
+  "title": "Maya's move and a slower week",
+  "summary": "You talked about helping Maya move to Brooklyn, feeling stretched by the Atlas demo, and wanting your Sunday runs back.",
+  "remember": [
+    {
+      "entityId": "maya",
+      "name": "Maya",
+      "type": "person",
+      "note": "Moving to Brooklyn next month; you're helping her pack.",
+      "isNew": false
+    },
+    {
+      "entityId": "project_atlas",
+      "name": "Project Atlas",
+      "type": "project",
+      "note": "The demo is Thursday and it's taking most of your evenings.",
+      "isNew": false
+    },
+    {
+      "entityId": "running",
+      "name": "running",
+      "type": "activity",
+      "note": "You want your Sunday runs back.",
+      "isNew": true
+    },
+    {
+      "entityId": "brooklyn",
+      "name": "Brooklyn",
+      "type": "place",
+      "note": null,
+      "isNew": true
+    }
+  ],
+  "notes": [
+    "Maya is moving to Brooklyn next month, and you said you'd help her pack.",
+    "The Atlas demo is on Thursday and has taken most of your evenings this week.",
+    "You miss your Sunday runs and want to start them again after the demo."
+  ]
+}

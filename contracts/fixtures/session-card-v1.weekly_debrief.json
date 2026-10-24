@@ -1,0 +1,63 @@
+{
+  "version": 1,
+  "notebookId": "0b6f1d6e-3c1a-4a51-9d0e-2f7c9a1b4e21",
+  "conversationMode": "weekly_debrief",
+  "sourceRevision": 12,
+  "generatedAt": "2026-10-23T17:42:10.000Z",
+  "title": "CI fix landed",
+  "summary": "You merged the CI fix on Tuesday, cut build time from 22 to 13 minutes with Priya, and you're still waiting on staging DB access.",
+  "remember": [
+    {
+      "entityId": "priya",
+      "name": "Priya",
+      "type": "person",
+      "note": "Figured out the cache keys for the CI fix.",
+      "isNew": false
+    },
+    {
+      "entityId": "ci_pipeline",
+      "name": "CI pipeline",
+      "type": "project",
+      "note": "Builds went from 22 minutes to 13.",
+      "isNew": false
+    },
+    {
+      "entityId": "staging_db",
+      "name": "Staging DB",
+      "type": "project",
+      "note": "Access still pending; ask next Friday.",
+      "isNew": true
+    }
+  ],
+  "weekOf": "2026-10-19",
+  "nextDebriefOn": "2026-10-30",
+  "briefTotal": 41,
+  "wins": [
+    {
+      "text": "Cut CI build time 41% (22 → 13 min) by fixing cache keys, with Priya.",
+      "metric": { "before": 22, "after": 13, "unit": "min" },
+      "helpers": ["Priya"],
+      "top": true
+    },
+    {
+      "text": "Merged the CI fix on Tuesday, a day ahead of plan.",
+      "helpers": [],
+      "top": false
+    },
+    {
+      "text": "Walked the new hire through the deploy runbook.",
+      "helpers": [],
+      "top": false
+    }
+  ],
+  "openItems": {
+    "created": [
+      {
+        "id": "4d2c7a90-8b1e-4f3a-a6d5-1e9b0c7f2a34",
+        "text": "Staging DB access",
+        "dueOn": "2026-10-30"
+      }
+    ],
+    "resolvedIds": ["c1f8e2b4-6a3d-4e7f-9b0a-5d2c8e1f4a67"]
+  }
+}
