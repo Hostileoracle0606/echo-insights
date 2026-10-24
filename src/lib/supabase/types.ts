@@ -423,6 +423,44 @@ export type Database = {
         }
         Relationships: []
       }
+      session_cards: {
+        Row: {
+          card: Json
+          conversation_mode: string
+          created_at: string
+          notebook_id: string
+          source_revision: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          card: Json
+          conversation_mode: string
+          created_at?: string
+          notebook_id: string
+          source_revision: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          card?: Json
+          conversation_mode?: string
+          created_at?: string
+          notebook_id?: string
+          source_revision?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "session_cards_notebook_id_fkey"
+            columns: ["notebook_id"]
+            isOneToOne: true
+            referencedRelation: "notebooks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       user_entities: {
@@ -515,6 +553,16 @@ export type Database = {
         }[]
       }
       remove_entity: { Args: { p_entity_id: string }; Returns: Json }
+      save_session_card: {
+        Args: {
+          p_card: Json
+          p_notebook_id: string
+          p_source_revision: number
+          p_summary: string
+          p_title: string
+        }
+        Returns: Json
+      }
     }
     Enums: {
       [_ in never]: never

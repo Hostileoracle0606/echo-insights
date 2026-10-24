@@ -123,6 +123,23 @@ export class InfraStack extends cdk.Stack {
     geminiApiKey.grantRead(graphExtractor);
     extractionCache.grantReadWriteData(graphExtractor);
 
+    // Writes the card a conversation ends with (session_cards). Reads and
+    // writes Supabase only with the caller's token, so it needs no table.
+    const sessionCloser = new lambda.Function(this, "SessionCloserFunction", {
+      ...commonFunctionProperties,
+      description: "Writes the closing card for a conversation without exposing Gemini credentials",
+      handler: "index.handler",
+      code: lambda.Code.fromAsset(path.join(lambdaDirectory, "close-session")),
+      timeout: cdk.Duration.seconds(30),
+      environment: {
+        ...sharedEnvironment,
+        GEMINI_SECRET_ARN: geminiApiKey.secretArn,
+        GEMINI_CARD_MODEL: "gemini-2.5-flash",
+      },
+    });
+    reserveConcurrency(sessionCloser);
+    geminiApiKey.grantRead(sessionCloser);
+
     const api = new apigatewayv2.HttpApi(this, "NotebookRuntimeApi", {
       apiName: "echo-insights-notebook-runtime",
       description: "Authenticated runtime routes for Echo Insights",
@@ -184,6 +201,16 @@ export class InfraStack extends cdk.Stack {
       integration: new integrations.HttpLambdaIntegration(
         "GraphExtractionIntegration",
         graphExtractor,
+      ),
+    });
+
+    api.addRoutes({
+      path: "/v1/notebooks/{notebookId}/close",
+      methods: [apigatewayv2.HttpMethod.POST],
+      authorizer,
+      integration: new integrations.HttpLambdaIntegration(
+        "SessionCloseIntegration",
+        sessionCloser,
       ),
     });
 

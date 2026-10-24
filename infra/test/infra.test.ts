@@ -25,10 +25,10 @@ test("keeps the Gemini credential in a retained secret without template plaintex
   expect(Object.values(secrets)[0]).not.toHaveProperty("Properties.SecretString");
 });
 
-test("exposes authenticated live-session and graph-extraction routes", () => {
+test("exposes authenticated live-session, graph-extraction and close-session routes", () => {
   const template = synthesizeTemplate();
 
-  template.resourceCountIs("AWS::Lambda::Function", 3);
+  template.resourceCountIs("AWS::Lambda::Function", 4);
   template.hasResourceProperties("AWS::ApiGatewayV2::Authorizer", {
     AuthorizerType: "REQUEST",
     EnableSimpleResponses: true,
@@ -43,8 +43,12 @@ test("exposes authenticated live-session and graph-extraction routes", () => {
     AuthorizationType: "CUSTOM",
     RouteKey: "POST /v1/notebooks/{notebookId}/extractions",
   });
+  template.hasResourceProperties("AWS::ApiGatewayV2::Route", {
+    AuthorizationType: "CUSTOM",
+    RouteKey: "POST /v1/notebooks/{notebookId}/close",
+  });
   template.resourceCountIs("AWS::ApiGatewayV2::Authorizer", 1);
-  template.resourceCountIs("AWS::ApiGatewayV2::Route", 3);
+  template.resourceCountIs("AWS::ApiGatewayV2::Route", 4);
   template.hasResourceProperties("AWS::ApiGatewayV2::Stage", {
     StageName: "$default",
     AutoDeploy: true,
@@ -132,4 +136,35 @@ test("keeps the web origin and worker reservations optional", () => {
     Description: "Extracts validated graph patches without exposing Gemini credentials",
     ReservedConcurrentExecutions: reservation,
   });
+  template.hasResourceProperties("AWS::Lambda::Function", {
+    Description: "Writes the closing card for a conversation without exposing Gemini credentials",
+    ReservedConcurrentExecutions: reservation,
+  });
+});
+
+test("runs the session closer with its own card model and a 30 s timeout", () => {
+  const template = synthesizeTemplate();
+
+  template.hasResourceProperties("AWS::Lambda::Function", {
+    Description: "Writes the closing card for a conversation without exposing Gemini credentials",
+    Timeout: 30,
+    Environment: {
+      Variables: Match.objectLike({
+        GEMINI_SECRET_ARN: Match.anyValue(),
+        GEMINI_CARD_MODEL: "gemini-2.5-flash",
+      }),
+    },
+  });
+
+  const routes = Object.values(template.findResources("AWS::ApiGatewayV2::Route")) as Array<{
+    Properties: Record<string, unknown>;
+  }>;
+  const closeRoute = routes.find(
+    (route) => route.Properties.RouteKey === "POST /v1/notebooks/{notebookId}/close",
+  );
+  const extractionRoute = routes.find(
+    (route) => route.Properties.RouteKey === "POST /v1/notebooks/{notebookId}/extractions",
+  );
+  expect(closeRoute!.Properties.AuthorizerId).toEqual(extractionRoute!.Properties.AuthorizerId);
+  expect(closeRoute!.Properties.Target).not.toEqual(extractionRoute!.Properties.Target);
 });
