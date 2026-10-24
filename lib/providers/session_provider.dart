@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../logic/turn_state.dart' show ConversationTurn;
+import '../models/recall_activity.dart';
 import '../models/upsert_activity.dart';
 import 'journal_provider.dart';
 
@@ -43,6 +44,14 @@ final extractingProvider = Provider<bool>((ref) {
 final upsertActivityProvider = Provider<UpsertActivity?>((ref) {
   ref.watch(journalProvider);
   return ref.watch(journalProvider.notifier).activity;
+});
+
+/// What Lumen last recalled in this session (entities and quotes, with ids);
+/// null until a lookup finds something, and again once the session ends.
+/// For citations (LM-13) and recall rings (LM-14).
+final recallActivityProvider = Provider<RecallActivity?>((ref) {
+  ref.watch(journalProvider);
+  return ref.watch(journalProvider.notifier).recall;
 });
 
 final conversationProvider = Provider<List<ConversationTurn>>((ref) {

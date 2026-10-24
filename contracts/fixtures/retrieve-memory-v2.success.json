@@ -1,0 +1,25 @@
+{
+  "version": 2,
+  "context": "## Entities\n- Priya (person): runs the CI rotation [mentions: 4]",
+  "entityIds": ["priya", "ci-fix"],
+  "quotes": [
+    {
+      "entryId": "2c7d6a51-3f0e-4c1b-9f43-8a1de2b7c901",
+      "notebookId": "6f1c0a9e-1b2d-4e8f-a3c4-5d6e7f809a1b",
+      "turnId": "turn-7f3a",
+      "spokenAt": "2026-10-16T17:42:10.000Z",
+      "createdAt": "2026-10-16T17:42:13.000Z",
+      "notebookTitle": "Friday wrap-up",
+      "text": "Priya said the CI fix is next, right after the release branch is cut."
+    },
+    {
+      "entryId": "9b8e0f12-6c4d-4a7e-8b1f-2d3c4e5f6a70",
+      "notebookId": "0d9e8c7b-6a5f-4e3d-9c2b-1a0f9e8d7c6b",
+      "turnId": null,
+      "spokenAt": null,
+      "createdAt": "2026-10-09T09:05:00.000Z",
+      "notebookTitle": "Standup notes",
+      "text": "I paired with Priya on the flaky test."
+    }
+  ]
+}

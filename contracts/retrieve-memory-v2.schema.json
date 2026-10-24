@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://echo-insights.local/contracts/retrieve-memory-v2.schema.json",
+  "title": "Retrieve Memory V2 Response",
+  "type": "object",
+  "required": ["version", "context", "entityIds", "quotes"],
+  "properties": {
+    "version": {
+      "const": 2
+    },
+    "context": {
+      "type": "string"
+    },
+    "entityIds": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "quotes": {
+      "type": "array",
+      "maxItems": 3,
+      "items": {
+        "type": "object",
+        "required": [
+          "entryId",
+          "notebookId",
+          "turnId",
+          "spokenAt",
+          "createdAt",
+          "notebookTitle",
+          "text"
+        ],
+        "properties": {
+          "entryId": {
+            "type": "string"
+          },
+          "notebookId": {
+            "type": "string"
+          },
+          "turnId": {
+            "type": ["string", "null"]
+          },
+          "spokenAt": {
+            "type": ["string", "null"]
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "notebookTitle": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 280
+          }
+        }
+      }
+    }
+  }
+}
