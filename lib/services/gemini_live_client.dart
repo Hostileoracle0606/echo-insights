@@ -61,6 +61,10 @@ class GeminiLiveClient {
   int _framesSent = 0;
   int _audioChunksIn = 0;
 
+  // Whether the reply in progress has already sent audio. Logs each reply's
+  // first chunk, so device logs show when Lumen starts answering.
+  bool _replyAudioStarted = false;
+
   OnTranscript? onTranscript;
   OnTranscript? onAgentTranscript;
   OnAudio? onAudio;
@@ -477,6 +481,10 @@ class GeminiLiveClient {
           if (b64 != null &&
               (mimeType == null || mimeType.startsWith('audio/'))) {
             _audioChunksIn++;
+            if (!_replyAudioStarted) {
+              _replyAudioStarted = true;
+              vlog('client', 'gemini → reply audio starts');
+            }
             if (_audioChunksIn == 1 || _audioChunksIn % 25 == 0) {
               vlog('client', 'gemini → audio chunk #$_audioChunksIn');
             }
@@ -517,11 +525,13 @@ class GeminiLiveClient {
       // use the pair to tell a completed answer from a cut-off one.
       if (content['interrupted'] == true) {
         vlog('client', 'gemini → interrupted');
+        _replyAudioStarted = false;
         onInterrupted?.call();
       }
 
       if (turnComplete) {
         vlog('client', 'gemini → turnComplete');
+        _replyAudioStarted = false;
         onTurnComplete?.call();
       }
     }

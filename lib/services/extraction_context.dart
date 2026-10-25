@@ -1,3 +1,4 @@
+import '../logic/name_matcher.dart';
 import '../logic/noise_filter.dart';
 import '../logic/turn_state.dart' show Speaker;
 import '../models/entity.dart';
@@ -99,18 +100,21 @@ ExtractionContext compileExtractionContext({
   int budget = defaultExtractionTokenBudget,
   int Function(String text) countTokens = estimateExtractionTokens,
 }) {
+  // Entities named in the utterance: one trie walk over the normalised text
+  // (O(T · L)) instead of one substring search per entity (O(V · T)).
   final normalizedTranscript = normalizeName(transcript);
-  final exactIds = <String>[];
-  for (final entity in state.entities.values) {
-    final normalized = normalizeName(entity.name);
-    if (normalized.length >= 2 && normalizedTranscript.contains(normalized)) {
-      exactIds.add(entity.id);
-    }
-  }
+  final all = state.entities.values.toList(growable: false);
+  final normalizedNames = [for (final e in all) normalizeName(e.name)];
+  final named = NameTrie(normalizedNames).containedIn(normalizedTranscript);
+  final exactIds = <String>[
+    for (var i = 0; i < all.length; i++)
+      if (normalizedNames[i].length >= 2 && named.contains(i)) all[i].id,
+  ];
 
+  final exactIdSet = exactIds.toSet();
   final candidateIds = <String>[
     ...exactIds,
-    ...retrievedEntityIds.where((id) => !exactIds.contains(id)),
+    ...retrievedEntityIds.where((id) => !exactIdSet.contains(id)),
   ];
   final entities = <Entity>[];
   final relations = <Relation>[];
@@ -141,13 +145,14 @@ ExtractionContext compileExtractionContext({
   // The finalized utterance is never truncated. If it consumes the budget on
   // its own, no grounding material is added.
   if (fits()) {
+    final includedIds = <String>{};
     for (final id in candidateIds) {
       if (entities.length >= _maxEntities) break;
       final entity = state.entities[id];
-      if (entity == null || entities.any((item) => item.id == id)) continue;
+      if (entity == null || !includedIds.add(id)) continue;
       entities.add(entity);
       if (!fits()) {
-        entities.removeLast();
+        includedIds.remove(entities.removeLast().id);
         break;
       }
     }

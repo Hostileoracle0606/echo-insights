@@ -129,11 +129,50 @@ export function userGraphToState(data: unknown): GraphState {
   return { entities, relations, entries: [] };
 }
 
-async function rank(g: GraphState, query: string, extraSeeds: Map<string, number> | undefined) {
-  const index = new SearchIndex();
-  await index.sync(Object.values(g.entities));
-  const communities = buildCommunities(g);
-  return await retrieve(g, query, { mode: "lexical" }, { index, communities, extraSeeds });
+// Search indexes survive between requests while the edge isolate stays warm.
+// SearchIndex.sync diffs by content hash, so a warm request re-indexes only
+// the entities that changed instead of rebuilding all of them. Keys always
+// start with the authenticated user's id, so an index never serves another
+// user. Requests for the same key run one at a time, because sync and search
+// share the index.
+const INDEX_CACHE_LIMIT = 32;
+const indexCache = new Map<string, { index: SearchIndex; tail: Promise<unknown> }>();
+
+export function indexCacheSize(): number {
+  return indexCache.size;
+}
+
+function withIndex<T>(key: string, work: (index: SearchIndex) => Promise<T>): Promise<T> {
+  let slot = indexCache.get(key);
+  if (slot) {
+    indexCache.delete(key); // re-insert below: Map order is the LRU order
+  } else {
+    slot = { index: new SearchIndex(), tail: Promise.resolve() };
+    while (indexCache.size >= INDEX_CACHE_LIMIT) {
+      indexCache.delete(indexCache.keys().next().value!);
+    }
+  }
+  indexCache.set(key, slot);
+  const run = slot.tail.then(() => work(slot!.index));
+  slot.tail = run.catch(() => {});
+  return run;
+}
+
+async function rank(
+  cacheKey: string,
+  g: GraphState,
+  query: string,
+  extraSeeds: Map<string, number> | undefined,
+) {
+  return await withIndex(cacheKey, async (index) => {
+    await index.sync(Object.values(g.entities));
+    // Communities are only used when nothing matches the query.
+    return await retrieve(g, query, { mode: "lexical" }, {
+      index,
+      communitiesFor: () => buildCommunities(g),
+      extraSeeds,
+    });
+  });
 }
 
 export function createHandler(deps: RetrieveMemoryDeps): (req: Request) => Promise<Response> {
@@ -212,7 +251,7 @@ export function createHandler(deps: RetrieveMemoryDeps): (req: Request) => Promi
         if (Object.keys(g.entities).length === 0) {
           return json(200, retrieveMemoryResponseV2("", [], []));
         }
-        const result = await rank(g, query, extraSeeds);
+        const result = await rank(`${user.id}:user`, g, query, extraSeeds);
         const context = buildContext(result);
         const entityIds = result.entities.map((entity) => entity.id);
         const quotes = await loadQuotes(supa, entityIds, notebookId);
@@ -249,7 +288,7 @@ export function createHandler(deps: RetrieveMemoryDeps): (req: Request) => Promi
         args: { p_notebook_id: notebookId, p_query: vector, p_limit: SEED_LIMIT, p_model: model },
       }));
       const g = { entities, relations, entries } as unknown as GraphState;
-      const result = await rank(g, query, extraSeeds);
+      const result = await rank(`${user.id}:notebook:${notebookId}`, g, query, extraSeeds);
       const context = buildContext(result);
       logTelemetry({
         ok: true,
