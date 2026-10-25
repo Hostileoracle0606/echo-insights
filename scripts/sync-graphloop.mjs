@@ -7,7 +7,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const SRC = join(root, "src/lib/graphloop");
-const FILES = ["types.ts", "noise.ts", "graph-ops.ts", "search-index.ts", "communities.ts", "retrieve.ts"];
+const FILES = ["types.ts", "noise.ts", "graph-ops.ts", "search-index.ts", "communities.ts", "name-matcher.ts", "retrieve.ts"];
 
 // embed.ts is value-imported by retrieve.ts but never invoked in lexical mode.
 // Stub it so the vendored copy carries no dependency on the `ai` package.

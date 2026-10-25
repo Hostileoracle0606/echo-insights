@@ -10,6 +10,7 @@ import type {
 import { DEFAULT_RANK_WEIGHTS } from "./types";
 import { activeRelations, buildNeighbors, relationUncertainty, wordCount } from "./graph-ops";
 import { normalizeName } from "./noise";
+import { NameTrie } from "./name-matcher";
 import { embedTexts } from "./embed";
 import type { SearchIndex } from "./search-index";
 import type { EmbeddingModel } from "ai";
@@ -18,6 +19,11 @@ export interface RetrieveDeps {
   index: SearchIndex;
   embedModel?: EmbeddingModel;
   communities?: CommunitySummary[];
+  /**
+   * Computes communities on demand. They are only needed when no entity
+   * matches the query, so callers can skip Louvain on every other request.
+   */
+  communitiesFor?: () => CommunitySummary[];
   now?: number;
   /** Externally-computed semantic seeds (entity-id → relevance in [0,1]); unioned with lexical seeds. */
   extraSeeds?: Map<string, number>;
@@ -72,12 +78,15 @@ export async function retrieve(
   const seedScore = new Map<string, number>();
   for (const h of hits) seedScore.set(h.id, Math.max(seedScore.get(h.id) ?? 0, h.score));
 
-  // always include exact normalized-name matches
+  // always include exact normalized-name matches: one trie walk over the
+  // query instead of one substring search per entity
   const nq = normalizeName(q);
-  for (const e of Object.values(state.entities)) {
-    const nn = normalizeName(e.name);
-    if (nn.length >= 2 && nq.includes(nn))
-      seedScore.set(e.id, Math.max(seedScore.get(e.id) ?? 0, 1));
+  const all = Object.values(state.entities);
+  const names = all.map((e) => normalizeName(e.name));
+  const named = new NameTrie(names).containedIn(nq);
+  for (let i = 0; i < all.length; i++) {
+    if (names[i].length >= 2 && named.has(i))
+      seedScore.set(all[i].id, Math.max(seedScore.get(all[i].id) ?? 0, 1));
   }
 
   // externally-supplied semantic seeds (hybrid) — union by max score
@@ -90,11 +99,14 @@ export async function retrieve(
   const seeds = [...seedScore.keys()].filter((id) => state.entities[id]);
 
   // normalize seed scores to [0,1]
-  const maxSeed = Math.max(1, ...seeds.map((id) => seedScore.get(id) ?? 0));
+  // A loop, not Math.max(...spread): spreading thousands of seeds into
+  // arguments can exceed the engine's argument limit.
+  let maxSeed = 1;
+  for (const id of seeds) maxSeed = Math.max(maxSeed, seedScore.get(id) ?? 0);
   const seedRel = new Map(seeds.map((id) => [id, (seedScore.get(id) ?? 0) / maxSeed]));
 
   if (seeds.length === 0 || o.tier === "global") {
-    return globalResult(deps.communities ?? []);
+    return globalResult(deps.communities ?? deps.communitiesFor?.() ?? []);
   }
 
   // ---- 2. expansion (BFS k-hop over active relations) ----
@@ -125,7 +137,8 @@ export async function retrieve(
     relByEntity.get(r.source)!.push(r);
     relByEntity.get(r.target)!.push(r);
   }
-  const maxMentions = Math.max(1, ...Object.values(state.entities).map((e) => e.mentions));
+  let maxMentions = 1;
+  for (const e of Object.values(state.entities)) maxMentions = Math.max(maxMentions, e.mentions);
 
   const scored = [...hop.keys()]
     .map((id) => {

@@ -9,12 +9,12 @@ import '../audio/audio_output.dart';
 import '../audio/pcm_capture.dart';
 import '../audio/pcm_player.dart';
 import '../audio/standard_opening.dart';
-import '../logic/agenda.dart' as agenda_logic;
 import '../logic/conversation_policy.dart';
 import '../logic/live_session_guard.dart';
 import '../logic/live_signal_gate.dart';
 import '../logic/resume_context.dart';
 import '../logic/memory_removal.dart';
+import '../logic/graph_summary.dart';
 import '../logic/merge.dart' as merge_logic;
 import '../logic/session_opening_coordinator.dart';
 import '../logic/transcript_assembler.dart';
@@ -913,60 +913,27 @@ class JournalNotifier extends Notifier<JournalState> {
   // method's bespoke "retry once, replacing the optimistic base" recovery in
   // favour of ordered replay over a freshly reloaded snapshot.
 
+  // The notebook-derived part of the get_graph_summary answer. JournalState
+  // is immutable and replaced on every commit, so repeat tool calls within a
+  // turn, and any call before the next commit, reuse it.
+  ({JournalState state, String text, Map<String, dynamic> body})? _summaryCache;
+
   Map<String, dynamic> _buildGraphSummary() {
-    final agenda =
-        agenda_logic.buildAgenda(state, lastUserText: _lastTranscript);
+    final cached = _summaryCache;
+    final Map<String, dynamic> body;
+    if (cached != null &&
+        identical(cached.state, state) &&
+        cached.text == _lastTranscript) {
+      body = cached.body;
+    } else {
+      body = graphSummaryBody(state, lastUserText: _lastTranscript);
+      _summaryCache = (state: state, text: _lastTranscript, body: body);
+    }
     final sessionElapsedMin = _sessionStartedAt == null
         ? 0
         : DateTime.now().difference(_sessionStartedAt!).inMinutes;
     return {
-      'mode': 'granular',
-      'entityCount': agenda.entityCount,
-      'relationCount': agenda.relationCount,
-      'entities': state.entities.values
-          .map(
-            (entity) => {
-              'name': entity.name,
-              'type': entity.type.name,
-              'coverage': agenda.thinEntities.contains(entity.name)
-                  ? 'thin'
-                  : 'developing',
-              'mentions': entity.mentions,
-              'relationCount': state.relations.values
-                  .where(
-                    (relation) =>
-                        relation.isActive &&
-                        (relation.source == entity.id ||
-                            relation.target == entity.id),
-                  )
-                  .length,
-              'openQuestions': entity.questions ?? const <String>[],
-            },
-          )
-          .toList(),
-      'thinEntities': agenda.thinEntities.take(5).toList(),
-      'justMentioned': agenda.justMentioned,
-      'uncertainRelations': agenda.uncertainRelations
-          .map(
-            (relation) => {
-              'source': relation.source,
-              'label': relation.label,
-              'target': relation.target,
-              'score': relation.score,
-            },
-          )
-          .toList(),
-      'bridgeCandidates':
-          agenda.bridgeCandidates.map((pair) => [pair.$1, pair.$2]).toList(),
-      'openQuestionsTop': agenda.openQuestions
-          .take(5)
-          .map(
-            (question) => {
-              'entity': question.entity,
-              'question': question.question,
-            },
-          )
-          .toList(),
+      ...body,
       'recentAgentQuestions': _conversation
           .where((turn) => turn.role == Speaker.assistant)
           .map((turn) => turn.text)
