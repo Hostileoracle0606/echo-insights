@@ -1,4 +1,5 @@
 import 'dart:math';
+import 'dart:typed_data';
 import 'dart:ui' show Offset, Size;
 
 /// One simulated body. [radius] is the drawn disc radius; collide and camera
@@ -33,6 +34,12 @@ class GraphLayout {
   static const alphaDecay = 0.0228; // d3 default: 1 - 0.001^(1/300)
   static const alphaMin = 0.001;
   static const reheatAlpha = 0.8;
+
+  /// Up to this many bodies, charge runs the exact all-pairs loop. Above it,
+  /// a Barnes–Hut quadtree with opening angle [theta] (d3-force's default,
+  /// as on the web) approximates distant clusters by their centre of mass.
+  static const exactChargeLimit = 64;
+  static const theta = 0.9;
 
   /// Chrome the graph must stay clear of: top bar above, voice dock below.
   static const topInset = 68.0;
@@ -109,19 +116,23 @@ class GraphLayout {
     }
 
     // Charge (d3.forceManyBody): v += d · strength·α / d².
-    const maxD2 = chargeMaxDistance * chargeMaxDistance;
-    for (final n in bodies) {
-      for (final other in bodies) {
-        if (identical(n, other)) continue;
-        var delta = other.position - n.position;
-        var d2 = delta.distanceSquared;
-        if (d2 >= maxD2) continue;
-        if (d2 < 1) {
-          delta = _jiggle();
-          d2 = 1;
+    if (bodies.length <= exactChargeLimit) {
+      const maxD2 = chargeMaxDistance * chargeMaxDistance;
+      for (final n in bodies) {
+        for (final other in bodies) {
+          if (identical(n, other)) continue;
+          var delta = other.position - n.position;
+          var d2 = delta.distanceSquared;
+          if (d2 >= maxD2) continue;
+          if (d2 < 1) {
+            delta = _jiggle();
+            d2 = 1;
+          }
+          n.velocity += delta * (charge * a / d2);
         }
-        n.velocity += delta * (charge * a / d2);
       }
+    } else {
+      _ChargeTree(bodies).apply(bodies, charge * a, _random);
     }
 
     // Gravity well (d3.forceX/forceY) toward the visible centre.
@@ -191,4 +202,211 @@ class GraphLayout {
         (_random.nextDouble() - 0.5) * 1e-3,
         (_random.nextDouble() - 0.5) * 1e-3,
       );
+}
+
+/// Barnes–Hut quadtree for one charge pass, rebuilt each tick from the
+/// bodies' positions (which the pass doesn't move).
+///
+/// Every cell owns a contiguous run of [_order]. A cell is skipped when its
+/// bodies' bounding box lies wholly beyond [GraphLayout.chargeMaxDistance],
+/// and stands in for its bodies (total charge at their centre of mass) only
+/// when the box lies wholly inside it and d3's opening test passes. Cells
+/// that straddle the cutoff are opened, so no body pushes from beyond it.
+/// Opened leaves apply each body exactly, with the all-pairs jiggle rule.
+class _ChargeTree {
+  static const _leafSize = 8;
+  static const _maxDepth = 24;
+
+  _ChargeTree(List<LayoutNode> bodies)
+      : _xs = Float64List(bodies.length),
+        _ys = Float64List(bodies.length),
+        _order = Int32List(bodies.length),
+        _scratch = Int32List(bodies.length) {
+    for (var i = 0; i < bodies.length; i++) {
+      final p = bodies[i].position;
+      _xs[i] = p.dx;
+      _ys[i] = p.dy;
+      _order[i] = i;
+    }
+    var minX = double.infinity, minY = double.infinity;
+    var maxX = double.negativeInfinity, maxY = double.negativeInfinity;
+    for (var i = 0; i < bodies.length; i++) {
+      minX = min(minX, _xs[i]);
+      maxX = max(maxX, _xs[i]);
+      minY = min(minY, _ys[i]);
+      maxY = max(maxY, _ys[i]);
+    }
+    final width = max(max(maxX - minX, maxY - minY), 1.0);
+    _reserve(1);
+    _build(0, minX, minY, width, 0, bodies.length, 0);
+  }
+
+  final Float64List _xs, _ys;
+  final Int32List _order, _scratch;
+
+  // Per cell: quadrant width, bounding box and centre of its bodies, the
+  // body run [_start, _start + _count), and its children (_kidCount of them
+  // from _firstKid; none for a leaf).
+  int _cells = 0;
+  Float64List _width = Float64List(0);
+  Float64List _minX = Float64List(0), _minY = Float64List(0);
+  Float64List _maxX = Float64List(0), _maxY = Float64List(0);
+  Float64List _cx = Float64List(0), _cy = Float64List(0);
+  Int32List _start = Int32List(0), _count = Int32List(0);
+  Int32List _firstKid = Int32List(0), _kidCount = Int32List(0);
+
+  /// Adds `velocity += d · strength / d²` from every body within the cutoff
+  /// (approximated for far cells) to each of [bodies].
+  void apply(List<LayoutNode> bodies, double strength, Random random) {
+    const maxD2 = GraphLayout.chargeMaxDistance * GraphLayout.chargeMaxDistance;
+    const theta2 = GraphLayout.theta * GraphLayout.theta;
+    final stack = Int32List(3 * _maxDepth + 8);
+    for (var i = 0; i < bodies.length; i++) {
+      final px = _xs[i], py = _ys[i];
+      var vx = 0.0, vy = 0.0;
+      var top = 0;
+      stack[top++] = 0;
+      while (top > 0) {
+        final c = stack[--top];
+        final x0 = _minX[c], x1 = _maxX[c], y0 = _minY[c], y1 = _maxY[c];
+        final nx = px < x0 ? x0 - px : (px > x1 ? px - x1 : 0.0);
+        final ny = py < y0 ? y0 - py : (py > y1 ? py - y1 : 0.0);
+        final near2 = nx * nx + ny * ny;
+        if (near2 >= maxD2) continue;
+        if (near2 > 0) {
+          var dx = _cx[c] - px, dy = _cy[c] - py;
+          var l = dx * dx + dy * dy;
+          final w = _width[c];
+          final fx = max(px - x0, x1 - px), fy = max(py - y0, y1 - py);
+          if (w * w < theta2 * l && fx * fx + fy * fy < maxD2) {
+            if (l < 1) {
+              dx = (random.nextDouble() - 0.5) * 1e-3;
+              dy = (random.nextDouble() - 0.5) * 1e-3;
+              l = 1;
+            }
+            final k = strength * _count[c] / l;
+            vx += dx * k;
+            vy += dy * k;
+            continue;
+          }
+        }
+        final kids = _kidCount[c];
+        if (kids > 0) {
+          final first = _firstKid[c];
+          for (var k = 0; k < kids; k++) {
+            stack[top++] = first + k;
+          }
+          continue;
+        }
+        final end = _start[c] + _count[c];
+        for (var s = _start[c]; s < end; s++) {
+          final j = _order[s];
+          if (j == i) continue;
+          var dx = _xs[j] - px, dy = _ys[j] - py;
+          var d2 = dx * dx + dy * dy;
+          if (d2 >= maxD2) continue;
+          if (d2 < 1) {
+            dx = (random.nextDouble() - 0.5) * 1e-3;
+            dy = (random.nextDouble() - 0.5) * 1e-3;
+            d2 = 1;
+          }
+          final k = strength / d2;
+          vx += dx * k;
+          vy += dy * k;
+        }
+      }
+      bodies[i].velocity += Offset(vx, vy);
+    }
+  }
+
+  /// Fills cell [c] (quadrant at [x0],[y0], side [width]) from the run of
+  /// [count] bodies at [start], splitting it into quadrants while it holds
+  /// more than [_leafSize] bodies that aren't all coincident.
+  void _build(
+      int c, double x0, double y0, double width, int start, int count, int depth) {
+    var minX = double.infinity, minY = double.infinity;
+    var maxX = double.negativeInfinity, maxY = double.negativeInfinity;
+    var sumX = 0.0, sumY = 0.0;
+    final end = start + count;
+    for (var s = start; s < end; s++) {
+      final x = _xs[_order[s]], y = _ys[_order[s]];
+      sumX += x;
+      sumY += y;
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+    }
+    _width[c] = width;
+    _minX[c] = minX;
+    _maxX[c] = maxX;
+    _minY[c] = minY;
+    _maxY[c] = maxY;
+    _cx[c] = sumX / count;
+    _cy[c] = sumY / count;
+    _start[c] = start;
+    _count[c] = count;
+    _kidCount[c] = 0;
+    if (count <= _leafSize ||
+        depth >= _maxDepth ||
+        (minX == maxX && minY == maxY)) {
+      return;
+    }
+
+    // Counting sort of the run into quadrants 0..3 (bit 0: right, bit 1:
+    // below), through the scratch buffer.
+    final half = width / 2, mx = x0 + half, my = y0 + half;
+    final sizes = [0, 0, 0, 0];
+    for (var s = start; s < end; s++) {
+      final b = _order[s];
+      sizes[(_xs[b] >= mx ? 1 : 0) | (_ys[b] >= my ? 2 : 0)]++;
+    }
+    final offsets = [start, 0, 0, 0];
+    for (var q = 1; q < 4; q++) {
+      offsets[q] = offsets[q - 1] + sizes[q - 1];
+    }
+    final cursor = [...offsets];
+    for (var s = start; s < end; s++) {
+      final b = _order[s];
+      _scratch[cursor[(_xs[b] >= mx ? 1 : 0) | (_ys[b] >= my ? 2 : 0)]++] = b;
+    }
+    _order.setRange(start, end, _scratch, start);
+
+    var kids = 0;
+    for (var q = 0; q < 4; q++) {
+      if (sizes[q] > 0) kids++;
+    }
+    final first = _cells;
+    _reserve(kids);
+    _firstKid[c] = first;
+    _kidCount[c] = kids;
+    var k = first;
+    for (var q = 0; q < 4; q++) {
+      if (sizes[q] == 0) continue;
+      _build(k++, (q & 1) == 0 ? x0 : mx, (q & 2) == 0 ? y0 : my, half,
+          offsets[q], sizes[q], depth + 1);
+    }
+  }
+
+  /// Claims [n] consecutive cells, growing the arrays as needed.
+  void _reserve(int n) {
+    final need = _cells + n;
+    if (need > _width.length) {
+      final capacity = max(need, max(16, _width.length * 2));
+      Float64List f(Float64List old) => Float64List(capacity)..setAll(0, old);
+      Int32List i(Int32List old) => Int32List(capacity)..setAll(0, old);
+      _width = f(_width);
+      _minX = f(_minX);
+      _minY = f(_minY);
+      _maxX = f(_maxX);
+      _maxY = f(_maxY);
+      _cx = f(_cx);
+      _cy = f(_cy);
+      _start = i(_start);
+      _count = i(_count);
+      _firstKid = i(_firstKid);
+      _kidCount = i(_kidCount);
+    }
+    _cells = need;
+  }
 }

@@ -6,7 +6,7 @@ This applies the fixes from [the complexity audit](complexity-audit.md), which b
 - the evidence that its output is unchanged;
 - what it measured.
 
-**The rule for every fix:** same output as before, in less time. There is one deliberate exception, described under [Intended behaviour change](#intended-behaviour-change). Fixes in app code ship with an equivalence test that runs the original code, kept verbatim under `test/support/`, side by side with the new code.
+**The rule for every fix:** same output as before, in less time. There are two deliberate exceptions: tie order, described under [Intended behaviour change](#intended-behaviour-change), and the graph layout's approximate charge, [6b](#6b-applied-separately-barneshut-charge-liblogicgraph_layoutdart). Fixes in app code ship with an equivalence test that runs the original code, kept verbatim under `test/support/`, side by side with the new code.
 
 **Notation:** V = entities, R = relations, N = journal entries, T = text length, L = longest entity name, k = items returned.
 
@@ -22,7 +22,7 @@ Measured at 1,000 entities, as host-VM medians; an iPhone is roughly 2–4× slo
 | 3 | Transcript highlighting | One regex per entity per call: O(V·T) | Trie, cached per term list: O(T·L) | 25 → 0.08 ms per turn (298×) | `entity_highlighter_equivalence_test` |
 | 4 | `get_entity_mentions` | Reads every entry of the user: O(N) | Posting list + B-tree: O(log N + k) | 9.4 ms → 0.036 ms at 60k entries (prototype) | migration, **not yet run** |
 | 5 | RLS policies | `auth.uid()` per row | `(select auth.uid())`, once per query | 45 ms → 15 ms on a 60k-row scan (prototype) | migration, **not yet run** |
-| 6 | Graph layout forces | O(n²) all pairs, twice | **not applied**: a grid measured slower, see below | — | — |
+| 6 | Graph layout forces | O(n²) all pairs, twice | Grid **not applied** (measured slower); charge now Barnes–Hut, see 6b | 2,000 bodies: 65 → 25 ms per tick (2.6×) | `graph_layout_quality_test` |
 | 7 | "Which names are in this text" (3 places) | O(V·T) | Trie: O(T·L) | same class as #3 | equivalence tests, Dart and TS |
 | 8 | `user_entities` view | Group-by on every read: O(M log M) | Trigger-maintained table: O(1) per slug read | 28 ms per call → index read (analysis) | migration, **not yet run** |
 | 9 | `retrieve-memory` index + communities | Rebuilt every request | Per-user LRU cache; communities only when needed | 77.6 → 13.3 ms per warm recall (5.8×) | `handler.cache.test.ts` |
@@ -126,7 +126,37 @@ The audit proposed a uniform grid for the charge and collision forces, on the gr
 - **The sort adds cost.** Keeping the sums bit-identical needs neighbours in index order, so each body also paid a sort.
 - **The collision-only grid isn't worth it.** It gains about 18%, but collision is order-sensitive within a tick, so it could only be checked on outcome, not on output. That's not worth it for a 2 ms tick at today's sizes.
 
-**What would work, and why it's your call:** the charge pass is the cost. An exact method can't remove it at this density. Barnes–Hut (a quadtree, O(n log n)) is what d3-force uses on the web app with θ = 0.9. It approximates distant bodies by their centre of mass, so positions would differ slightly from today's Flutter layout. That trade is worth taking before the Memory screen (LM-27) draws 2,000 nodes. It changes output, so it isn't included here.
+**What would work, and why it's your call:** the charge pass is the cost. An exact method can't remove it at this density. Barnes–Hut (a quadtree, O(n log n)) is what d3-force uses on the web app with θ = 0.9. It approximates distant bodies by their centre of mass, so positions would differ slightly from today's Flutter layout. That trade is worth taking before the Memory screen (LM-27) draws 2,000 nodes. It changes output, so it was done separately, as 6b.
+
+### 6b. Applied separately: Barnes–Hut charge (`lib/logic/graph_layout.dart`)
+
+**Before:** the charge pass compared every pair, O(n²) per tick.
+
+**After:** above 64 bodies (`GraphLayout.exactChargeLimit`), a quadtree is rebuilt each tick, with θ = 0.9 as on the web. At 64 bodies or fewer, the original all-pairs loop runs unchanged. Link, gravity, integration and collide are untouched.
+- **The cutoff stays exact.** d3 tests the 320px cutoff against a cell's centre of mass. That pulls in whole cells that straddle it. Here a cell is skipped only when its bodies' bounding box lies wholly beyond 320px. It stands in for its bodies only when the box lies wholly inside 320px and the opening test passes. Cells that straddle the cutoff are opened. d3's looser rule ran the pass twice as fast, but its median per-body error was 14% rather than 1.5%.
+- **The jiggle stays.** Opened leaves apply each body exactly, with the same rule: closer than 1px, a tiny random push at d² = 1.
+- **Typed arrays.** The hot loop reads `Float64List`s and allocates no `Offset` per pair, so 300 bodies get faster too.
+
+**Evidence:** `test/graph_layout_quality_test.dart` settles the same graphs with the new code and with the all-pairs original, kept as `test/support/legacy_graph_layout.dart`:
+
+| Settled graph | All pairs | Barnes–Hut |
+|---|---|---|
+| 300 bodies: overlaps, box | 0, 976×963 | 0, 979×954 |
+| 2,000 bodies: overlaps, box | 51, 1734×1732 | 70, 1739×1726 |
+
+- **Overlap counts vary between runs.** Settling is chaotic: across spawn seeds the all-pairs layout itself ends with 46–66 overlaps at 2,000 bodies, and Barnes–Hut with 45–70.
+- **Charge stays close.** On one tick from the same settled 600-body state, the median charge error is 1.5% of the typical charge; p95 is 3.9%.
+- **Small graphs are exact.** At 64 bodies, positions match the original bit for bit.
+- **The slow case is tagged.** The 2,000-body case is tagged `perf`, since the all-pairs reference takes about 25 s.
+
+**Measured** (`flutter test test/perf/graph_layout_bench_test.dart`, host-VM median per tick):
+
+| Layout state | 300 bodies | 2,000 bodies |
+|---|---|---|
+| Just spawned, in a pile | 1.81 → 1.28 ms | 48 → 20 ms (2.4×) |
+| Settled, reheated | 1.78 → 1.12 ms | 65 → 25 ms (2.6×) |
+
+**Collide is now the cost.** At 2,000 settled bodies, charge takes about 9 ms per tick (0.5 ms of it building the tree), down from about 45 ms. Collide, still all pairs, takes about 18 ms. A 2,000-body tick still misses a 60 fps frame, especially on a phone (2–4× slower). The next lever is collide, for example with the collision-only grid above, checked on outcome.
 
 ### 7. Name matching (`lib/logic/name_matcher.dart`, `src/lib/graphloop/name-matcher.ts`)
 
@@ -217,8 +247,8 @@ Run on this branch after all changes:
 
 | Suite | Result |
 |---|---|
-| `flutter test --exclude-tags perf` | 574 passed |
-| `flutter test test/perf/` | 30 passed |
+| `flutter test --exclude-tags perf` | 577 passed (after 6b) |
+| `flutter test test/perf/` | 34 passed (after 6b) |
 | `flutter analyze` | no issues |
 | `deno test --allow-env --no-check supabase/functions/` | 32 passed, including the 4 cache tests |
 | `npx vitest run` (graphloop and web) | 98 passed |
