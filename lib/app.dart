@@ -21,6 +21,30 @@ String? authRedirect({
   return null;
 }
 
+final List<RouteBase> appRoutes = [
+  GoRoute(path: '/auth/login', builder: (_, __) => const LoginScreen()),
+  GoRoute(path: '/auth/signup', builder: (_, __) => const SignupScreen()),
+  GoRoute(path: '/dashboard', builder: (_, __) => const DashboardScreen()),
+  GoRoute(
+    path: '/notebook/:id',
+    builder: (_, state) => JournalScreen(
+      notebookId: state.pathParameters['id'],
+      autoStart: state.uri.queryParameters['start'] == 'true',
+      compose: state.uri.queryParameters['compose'] == 'true',
+    ),
+  ),
+  // A sibling, not a child of /notebook/:id: as a child the JournalScreen
+  // stayed mounted beneath the card, rebuilt with the card's URL, and
+  // re-entered the notebook it had just left (a new one then started a live
+  // session, mic open, behind the card).
+  GoRoute(
+    path: '/notebook/:id/card',
+    builder: (_, state) => ClosingCardScreen(
+      notebookId: state.pathParameters['id']!,
+    ),
+  ),
+];
+
 final routerProvider = Provider<GoRouter>((ref) {
   final auth = ref.watch(authProvider);
   return GoRouter(
@@ -29,27 +53,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       isLoggedIn: auth.valueOrNull != null,
       location: state.matchedLocation,
     ),
-    routes: [
-      GoRoute(path: '/auth/login', builder: (_, __) => const LoginScreen()),
-      GoRoute(path: '/auth/signup', builder: (_, __) => const SignupScreen()),
-      GoRoute(path: '/dashboard', builder: (_, __) => const DashboardScreen()),
-      GoRoute(
-        path: '/notebook/:id',
-        builder: (_, state) => JournalScreen(
-          notebookId: state.pathParameters['id'],
-          autoStart: state.uri.queryParameters['start'] == 'true',
-          compose: state.uri.queryParameters['compose'] == 'true',
-        ),
-        routes: [
-          GoRoute(
-            path: 'card',
-            builder: (_, state) => ClosingCardScreen(
-              notebookId: state.pathParameters['id']!,
-            ),
-          ),
-        ],
-      ),
-    ],
+    routes: appRoutes,
   );
 });
 
