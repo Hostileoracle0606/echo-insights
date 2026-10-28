@@ -9,6 +9,7 @@ import 'package:lumen/models/entity.dart';
 import 'package:lumen/models/upsert_activity.dart';
 import 'package:lumen/screens/journal/voice_dock.dart';
 import 'package:lumen/theme/lumen_theme.dart';
+import 'package:lumen/widgets/breathing_dots.dart';
 
 Future<void> _pump(
   WidgetTester tester,
@@ -540,6 +541,56 @@ void main() {
       expect(find.text('Reconnecting'), findsOneWidget);
       expect(find.text('Listening'), findsNothing);
       await tester.pumpWidget(const SizedBox());
+    });
+  });
+
+  group('Lumen mulling it over', () {
+    testWidgets('the pill gives Lumen the floor, with breathing dots',
+        (tester) async {
+      await _pump(
+        tester,
+        VoiceDock(
+          mode: DockMode.listening,
+          awaitingReply: true,
+          onMicTap: () {},
+        ),
+      );
+      await _run(tester);
+
+      expect(find.text('Lumen'), findsOneWidget);
+      expect(find.text('Mulling it over'), findsOneWidget);
+      expect(find.byType(BreathingDots), findsOneWidget);
+      expect(find.text('Listening'), findsNothing,
+          reason: "the user's turn is over");
+    });
+
+    testWidgets('above the composer while typing', (tester) async {
+      await _pump(
+        tester,
+        VoiceDock(
+          mode: DockMode.idle,
+          awaitingReply: true,
+          onMicTap: () {},
+          composer: const SizedBox(height: 44, width: 300),
+        ),
+      );
+      await _run(tester);
+
+      expect(find.text('Mulling it over'), findsOneWidget);
+    });
+
+    testWidgets('Lumen speaking replaces it', (tester) async {
+      await _pump(
+        tester,
+        VoiceDock(
+          mode: DockMode.speaking,
+          onMicTap: () {},
+        ),
+      );
+      await _run(tester);
+
+      expect(find.text('Speaking'), findsOneWidget);
+      expect(find.byType(BreathingDots), findsNothing);
     });
   });
 }

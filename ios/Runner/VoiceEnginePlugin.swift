@@ -59,6 +59,16 @@ final class VoiceEnginePlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
         }
         try schedule(pcm16: pcm.data, sampleRate: rate.doubleValue)
         result(nil)
+      case "echoCancellation":
+        // The Simulator accepts voice processing but cancels nothing: the
+        // Mac's speakers reach the Mac's mic untouched.
+        // On a device the mic stream turns voice processing on before its
+        // first chunk and fails without it, so a mic that runs is cancelled.
+        #if targetEnvironment(simulator)
+          result(false)
+        #else
+          result(voiceProcessing || Self.micPermissionGranted)
+        #endif
       case "stopPlayback":
         player.stop()
         if engine.isRunning { player.play() }

@@ -5,16 +5,15 @@ import '../../theme/lumen_text.dart';
 import '../../theme/lumen_theme.dart';
 
 /// The journal screen's floating top bar (paper theme): a left "‹" back
-/// button ([onHomeTap] returns to the dashboard; VoiceOver reads "Your
-/// notebooks"), the session controls — mute Lumen ([onMuteTap]) and End
-/// ([onEndTap]) — and a right stats pill that opens the graph sidepane via a hamburger ([onMenuTap]) and
-/// shows the entity · relation counts. The view toggle lives in the pill, not
-/// here. The Lumen brand now lives on the dashboard.
+/// button ([onHomeTap] ends the session and opens the closing card, from
+/// which the user can talk or type on, or go to the dashboard; VoiceOver
+/// reads "Your notebooks"), mute Lumen ([onMuteTap]), and a right stats pill
+/// that opens the graph sidepane via a hamburger ([onMenuTap]) and shows the
+/// entity · relation counts. The view toggle lives in the pill, not here.
 ///
-/// Mute and End moved here from the dock (LM-10). Where mute finally lives is
-/// still open, so the pair is one self-contained [_SessionControls] widget.
-/// The back button is icon-only so all four fit a 375pt screen untruncated;
-/// with its "Your notebooks" label the bar needs ~400pt.
+/// There is no End button: back does the same and offers the way back in,
+/// for voice and typing alike. The back button stays icon-only so the bar
+/// fits a 375pt screen untruncated.
 class JournalTopBar extends StatelessWidget {
   final int entityCount;
   final int relationCount;
@@ -25,9 +24,6 @@ class JournalTopBar extends StatelessWidget {
   final bool muted;
   final VoidCallback? onMuteTap;
 
-  /// Ends the live session; null (drawn dimmed and inert) when there is none.
-  final VoidCallback? onEndTap;
-
   const JournalTopBar({
     super.key,
     required this.entityCount,
@@ -36,7 +32,6 @@ class JournalTopBar extends StatelessWidget {
     this.onHomeTap,
     this.muted = false,
     this.onMuteTap,
-    this.onEndTap,
   });
 
   @override
@@ -65,12 +60,7 @@ class JournalTopBar extends StatelessWidget {
           ),
         ),
         const Spacer(),
-        _SessionControls(
-          muted: muted,
-          onMuteTap: onMuteTap,
-          onEndTap: onEndTap,
-          colors: colors,
-        ),
+        _MuteButton(muted: muted, onTap: onMuteTap, colors: colors),
         const SizedBox(width: 8),
         Container(
           padding: const EdgeInsets.fromLTRB(11, 9, 16, 9),
@@ -137,76 +127,37 @@ class _MenuButton extends StatelessWidget {
   }
 }
 
-/// Mute Lumen and End, each with a 44pt hit box. End is dimmed and inert
-/// without a session.
-class _SessionControls extends StatelessWidget {
+/// Mute Lumen, with a 44pt hit box.
+class _MuteButton extends StatelessWidget {
   final bool muted;
-  final VoidCallback? onMuteTap;
-  final VoidCallback? onEndTap;
+  final VoidCallback? onTap;
   final LumenColors colors;
 
-  const _SessionControls({
+  const _MuteButton({
     required this.muted,
-    required this.onMuteTap,
-    required this.onEndTap,
+    required this.onTap,
     required this.colors,
   });
 
   @override
   Widget build(BuildContext context) {
-    final canEnd = onEndTap != null;
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Semantics(
-          button: true,
-          label: muted ? 'Unmute Lumen' : 'Mute Lumen',
-          excludeSemantics: true,
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: onMuteTap,
-            child: SizedBox(
-              width: 44,
-              height: 44,
-              child: Icon(
-                muted ? Icons.volume_off : Icons.volume_up,
-                size: 20,
-                color: colors.ink,
-              ),
-            ),
+    return Semantics(
+      button: true,
+      label: muted ? 'Unmute Lumen' : 'Mute Lumen',
+      excludeSemantics: true,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: SizedBox(
+          width: 44,
+          height: 44,
+          child: Icon(
+            muted ? Icons.volume_off : Icons.volume_up,
+            size: 20,
+            color: colors.ink,
           ),
         ),
-        Semantics(
-          button: true,
-          enabled: canEnd,
-          label: 'End session',
-          excludeSemantics: true,
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: onEndTap,
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
-              child: Center(
-                widthFactor: 1,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 6),
-                  child: Text(
-                    'End',
-                    style: TextStyle(
-                      fontFamily: LumenText.sansFontFamily,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: canEnd
-                          ? colors.ink
-                          : colors.mutedForeground.withValues(alpha: 0.45),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ],
+      ),
     );
   }
 }

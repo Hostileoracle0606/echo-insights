@@ -69,6 +69,12 @@ final agentSpeakingProvider = Provider<bool>((ref) {
   return ref.watch(journalProvider.notifier).agentSpeaking;
 });
 
+/// The user's turn is over and Lumen hasn't started answering.
+final awaitingReplyProvider = Provider<bool>((ref) {
+  ref.watch(journalProvider);
+  return ref.watch(journalProvider.notifier).awaitingReply;
+});
+
 /// A dropped or recycled connection is being restored by resumption handle.
 final reconnectingProvider = Provider<bool>((ref) {
   ref.watch(journalProvider);

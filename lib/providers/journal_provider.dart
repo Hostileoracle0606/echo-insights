@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart' show rootBundle;
@@ -9,8 +10,10 @@ import '../audio/audio_output.dart';
 import '../audio/pcm_capture.dart';
 import '../audio/pcm_player.dart';
 import '../audio/standard_opening.dart';
+import '../audio/voice_engine.dart';
 import '../logic/agenda.dart' as agenda_logic;
 import '../logic/conversation_policy.dart';
+import '../logic/echo_gate.dart';
 import '../logic/live_session_guard.dart';
 import '../logic/live_signal_gate.dart';
 import '../logic/resume_context.dart';
@@ -224,6 +227,36 @@ class JournalNotifier extends Notifier<JournalState> {
   bool get muted => _muted;
   bool get agentSpeaking => _agentSpeaking;
 
+  /// The user's turn is over and Lumen hasn't started answering: from a
+  /// typed send, or [speechEndGraceProvider] after the last of their speech,
+  /// until Lumen's first word or sound (or a turn it chose to leave silent).
+  bool get awaitingReply => _awaitingReply;
+  bool _awaitingReply = false;
+  Timer? _speechEndTimer;
+
+  void _setAwaitingReply(bool awaiting) {
+    if (!awaiting) {
+      _speechEndTimer?.cancel();
+      _speechEndTimer = null;
+    }
+    if (_awaitingReply == awaiting) return;
+    _awaitingReply = awaiting;
+    _notifyUi();
+  }
+
+  /// More of the user's speech arrived: not waiting yet, but if nothing
+  /// follows for the grace period (just past Gemini's own end-of-speech
+  /// silence), their turn is over.
+  void _userStillSpeaking() {
+    _setAwaitingReply(false);
+    _speechEndTimer = Timer(ref.read(speechEndGraceProvider), () {
+      _speechEndTimer = null;
+      if (_status == SessionStatus.live && !_agentSpeaking) {
+        _setAwaitingReply(true);
+      }
+    });
+  }
+
   /// Lumen owns the floor: the session is starting and its opening has not
   /// finished playing yet. The dock shows Lumen, never "You", meanwhile —
   /// user audio is not accepted until this clears.
@@ -283,6 +316,8 @@ class JournalNotifier extends Notifier<JournalState> {
   void _setAgentSpeaking(bool speaking) {
     if (_agentSpeaking == speaking) return;
     _agentSpeaking = speaking;
+    _echoGate.lumenAudible(speaking, at: DateTime.now());
+    if (speaking) _setAwaitingReply(false);
     if (!speaking) {
       if (_agentTurnDone) {
         _agentTurnDone = false;
@@ -1010,13 +1045,19 @@ class JournalNotifier extends Notifier<JournalState> {
   }
 
   Future<void> _loadNotebookUnlocked(String notebookId) async {
+    final clock = Stopwatch()..start();
     final commitService = ref.read(notebookCommitServiceProvider);
+    // The snapshot and the saved conversation are independent reads, so they
+    // share one round trip's wait. _loadHistory never throws.
+    final history = _loadHistory(notebookId);
     final snapshot = await commitService.getNotebookSnapshot(notebookId);
+    vlog('timing', 'open: snapshot +${clock.elapsedMilliseconds}ms');
     _activeNotebookId = notebookId;
     _greetingRows.clear();
     _history
       ..clear()
-      ..addAll(await _loadHistory(notebookId));
+      ..addAll(await history);
+    vlog('timing', 'open: saved turns +${clock.elapsedMilliseconds}ms');
     _savedTurnIds
       ..clear()
       ..addAll(_history.map((turn) => turn.turnId));
@@ -1024,6 +1065,7 @@ class JournalNotifier extends Notifier<JournalState> {
     _revision = snapshot?.revision ?? 0;
     state = snapshot == null ? JournalState.empty() : _adoptSnapshot(snapshot);
     await _restoreTurnsForNotebook(notebookId);
+    vlog('timing', 'open: turn journal +${clock.elapsedMilliseconds}ms');
   }
 
   /// The saved conversation, or none if it can't be read right now (the
@@ -1101,7 +1143,8 @@ class JournalNotifier extends Notifier<JournalState> {
     });
   }
 
-  /// Starts the session behind the "Lumen is joining…" loader. After
+  /// Starts the session as the page opens: the greeting plays while the
+  /// socket connects, with nothing covering the page. After
   /// [openingTimeoutProvider] without going live, the attempt is dropped and
   /// the page offers Retry or opening without voice.
   Future<NotebookTransitionResult> _openWithLumenUnlocked() async {
@@ -1269,6 +1312,7 @@ class JournalNotifier extends Notifier<JournalState> {
       // Gemini already completed the reply; only its audio is still queued.
       unawaited(_flushPlayback());
     }
+    _setAwaitingReply(true);
     _dispatchTurn(TypedTurnSubmitted(
       text: typed,
       submittedAt: DateTime.now().toUtc().toIso8601String(),
@@ -1342,11 +1386,16 @@ class JournalNotifier extends Notifier<JournalState> {
   final List<Uint8List> _preconnectAudio = [];
   int _preconnectBytes = 0;
 
-  void _onMicFrame(LiveSessionLease lease, Uint8List pcm) {
+  // Mutes the mic while Lumen plays where nothing cancels its echo. Trusts
+  // the mic until a session learns otherwise.
+  EchoGate _echoGate = EchoGate(echoCancelled: true);
+
+  void _onMicFrame(LiveSessionLease lease, Uint8List frame) {
     if (!_liveSessionGuard.isCurrent(lease)) return;
     if (_status == SessionStatus.paused) return;
     // Lumen's greeting has the floor on a new notebook's first session.
     if (!(_opening?.acceptsUserAudio ?? false)) return;
+    final pcm = _echoGate.admit(frame, at: DateTime.now());
     final live = _live;
     if (live != null) {
       live.sendAudio(pcm);
@@ -1402,7 +1451,13 @@ class JournalNotifier extends Notifier<JournalState> {
       _capture = capture;
       await capture.start((pcm) => _onMicFrame(lease, pcm));
       if (!_liveSessionGuard.isCurrent(lease)) return _superseded;
-      vlog('session', 'mic capture started');
+      final echoCancelled = await ref.read(echoCancellationProvider)();
+      _echoGate = EchoGate(echoCancelled: echoCancelled)
+        ..lumenAudible(_agentSpeaking, at: DateTime.now());
+      vlog(
+          'session',
+          'mic capture started'
+              '${echoCancelled ? '' : ' (no echo cancellation: mic muted while Lumen plays)'}');
 
       final prepared =
           await _prepareLiveUnlocked(lease, continuing: continuing);
@@ -1509,9 +1564,7 @@ class JournalNotifier extends Notifier<JournalState> {
       ..onToolCall = (name, args) async {
         if (!isCurrent()) return const <String, dynamic>{};
         Map<String, dynamic> result;
-        if (name == 'get_graph_summary') {
-          result = _buildGraphSummary();
-        } else if (name == 'get_relevant_memory') {
+        if (name == 'get_relevant_memory') {
           result = await _retrieveMemory(args, isCurrent);
         } else {
           result = const {};
@@ -1582,16 +1635,20 @@ class JournalNotifier extends Notifier<JournalState> {
     prepared.gate.activate((signal) {
       if (isCurrent()) _handleSignal(signal);
     });
-    if (continuing) {
-      prepared.live.sendHistory(
-        resumeContext(
-          conversation: _earlierConversation,
-          entries: state.entries,
-        ),
-        note: resumeNote,
-      );
-      prepared.live.releaseInput();
-    }
+    // Gemini plans from the graph summary given up front, ahead of anything
+    // the user says, instead of stopping to fetch it with a tool call before
+    // each reply (~0.5 s a turn). Continuing, the earlier turns follow it.
+    prepared.live.sendHistory(
+      continuing
+          ? resumeContext(
+              conversation: _earlierConversation,
+              entries: state.entries,
+            )
+          : const [],
+      note: continuing ? resumeNote : null,
+      context: '[graph summary] ${jsonEncode(_buildGraphSummary())}',
+    );
+    if (continuing) prepared.live.releaseInput();
     vlog('timing', 'live');
     return const NotebookTransitionResult.success();
   }
@@ -1739,6 +1796,7 @@ class JournalNotifier extends Notifier<JournalState> {
       // transcript may reach the graph.
       case UserTranscript(:final text, :final isFinal):
         if (text.isEmpty && !isFinal) return;
+        if (text.trim().isNotEmpty) _userStillSpeaking();
         final events =
             isFinal ? _assembler.userFinal(text) : _assembler.userChunk(text);
         for (final event in events) {
@@ -1746,6 +1804,11 @@ class JournalNotifier extends Notifier<JournalState> {
           _dispatchTurn(event);
         }
       case AgentTranscript(:final text, :final isFinal):
+        // A reply cut off by a typed turn still trails words; they don't
+        // answer the new turn.
+        if (text.trim().isNotEmpty && !_droppingCutOffReply) {
+          _setAwaitingReply(false);
+        }
         final events = isFinal
             ? _assembler.assistantFinal(text)
             : _assembler.assistantChunk(text);
@@ -1773,6 +1836,9 @@ class JournalNotifier extends Notifier<JournalState> {
           _dispatchTurn(event);
         }
       case TurnCompleteSignal():
+        // Lumen may end a turn without speaking; that ends the wait too,
+        // unless it is the cut-off reply's own completion.
+        if (!_droppingCutOffReply) _setAwaitingReply(false);
         _droppingCutOffReply = false;
         _memoryCallsThisTurn = 0;
         _lastMemoryQuery = null;
@@ -1853,15 +1919,9 @@ class JournalNotifier extends Notifier<JournalState> {
     {
       'function_declarations': [
         {
-          'name': 'get_graph_summary',
-          'description':
-              'Returns the current knowledge graph state and agenda for the agent to plan its next question.',
-          'parameters': {'type': 'object', 'properties': {}},
-        },
-        {
           'name': 'get_relevant_memory',
           'description':
-              'Retrieve past memory relevant to a query: related entities and how they connect. Use when the user references something from earlier, or when grounding your reply in prior context would help. Distinct from get_graph_summary. For planning only — never read aloud.',
+              'Retrieve past memory relevant to a query: related entities and how they connect. Use when the user references something from earlier, or when grounding your reply in prior context would help. Distinct from the graph summary given at the start. For planning only — never read aloud.',
           'parameters': {
             'type': 'object',
             'properties': {
@@ -1894,6 +1954,7 @@ class JournalNotifier extends Notifier<JournalState> {
     // Invalidate before the first await. A socket or microphone callback may
     // already be queued even though resource shutdown has started.
     _liveSessionGuard.invalidate();
+    _setAwaitingReply(false);
     for (final timer in _finalizationTimers.values) {
       timer.cancel();
     }
@@ -2085,6 +2146,25 @@ final openingTimeoutProvider = Provider<Duration>(
 /// Makes the session's microphone; tests substitute a fake.
 final micCaptureFactoryProvider = Provider<MicCapture Function()>(
   (ref) => EngineMicCapture.new,
+);
+
+/// How long after the last of the user's speech their turn counts as over
+/// for the "mulling it over" cue: just past Gemini's 700 ms end-of-speech
+/// silence. Tests shorten it.
+final speechEndGraceProvider = Provider<Duration>(
+  (ref) => const Duration(milliseconds: 900),
+);
+
+/// Whether the platform removes Lumen's voice from the mic. Where it can't
+/// say (no voice engine, as in tests), the mic is trusted as before.
+final echoCancellationProvider = Provider<Future<bool> Function()>(
+  (ref) => () async {
+    try {
+      return await VoiceEngine.instance.echoCancellation();
+    } catch (_) {
+      return true;
+    }
+  },
 );
 
 /// Makes the session's Gemini Live client; tests substitute a fake socket.

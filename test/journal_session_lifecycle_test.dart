@@ -301,6 +301,25 @@ class _Harness {
   }
 }
 
+/// The texts of the one context message sent before Lumen's first reply.
+List<Object?> _contextTexts(FakeLiveSocket socket) {
+  final context = socket.sent
+      .map((m) => m['client_content'])
+      .whereType<Map<String, dynamic>>()
+      .single;
+  expect(context['turn_complete'], isFalse);
+  return [
+    for (final turn in context['turns'] as List)
+      (((turn as Map)['parts'] as List).single as Map)['text'],
+  ];
+}
+
+List<String> _toolNames(List<Map<String, dynamic>> tools) => [
+      for (final tool in tools)
+        for (final declaration in tool['function_declarations'] as List)
+          (declaration as Map)['name'] as String,
+    ];
+
 JournalEntry _entry(String text) => JournalEntry(
       id: 'entry-1',
       text: text,
@@ -338,7 +357,11 @@ void main() {
     expect(result.succeeded, isTrue);
     expect(h.journal.joining, JoiningPhase.none);
     expect(h.journal.status, SessionStatus.live);
-    expect(h.socket.kindsAfterSetup, isNot(contains('client_content')));
+    // Gemini gets the graph summary up front, as context before its first
+    // reply (the only time gemini-3.1-flash-live reads client_content), so
+    // it never has to stop and ask for it with a tool call.
+    expect(_contextTexts(h.socket), [startsWith('[graph summary] ')]);
+    expect(_toolNames(JournalNotifier.liveTools), ['get_relevant_memory']);
     expect(
       h.journal.transcriptRows.where((row) => row.turn.turnId.startsWith('lumen-greeting')),
       hasLength(1),
@@ -372,13 +395,9 @@ void main() {
       isEmpty,
     );
     expect(h.socket.kindsAfterSetup.first, 'client_content');
-    final context = h.socket.sent[1]['client_content'] as Map;
-    expect(context['turn_complete'], isFalse);
-    final texts = [
-      for (final turn in context['turns'] as List)
-        (((turn as Map)['parts'] as List).single as Map)['text'],
-    ];
-    expect(texts, ['I met Maya.', resumeNote]);
+    expect(_contextTexts(h.socket),
+        [startsWith('[graph summary] '), 'I met Maya.', resumeNote]);
+    expect(_contextTexts(h.socket).first, contains('"entityCount"'));
     expect(h.socket.sentAudioBytes, [1, 1, 2, 2, 3, 3]);
   });
 
@@ -577,11 +596,14 @@ void main() {
 
     await h.startLive();
     final context = h.socket.sent[1]['client_content'] as Map;
+    final turns = [
+      for (final turn in context['turns'] as List)
+        ((turn as Map)['role'], ((turn['parts'] as List).single as Map)['text']),
+    ];
+    expect(turns.first.$2, startsWith('[graph summary] '),
+        reason: 'the summary leads, then the saved conversation');
     expect(
-      [
-        for (final turn in context['turns'] as List)
-          ((turn as Map)['role'], ((turn['parts'] as List).single as Map)['text']),
-      ],
+      turns.skip(1),
       [
         ('user', 'I met Maya.'),
         ('model', 'How did it go?'),

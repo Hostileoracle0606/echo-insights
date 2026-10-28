@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../audio/pcm_player.dart' show geminiOutputSampleRate;
+import '../logic/reply_timer.dart';
 import '../logic/voice_log.dart';
 
 typedef OnTranscript = void Function(String text, bool isFinal);
@@ -60,6 +61,12 @@ class GeminiLiveClient {
   static const maxPendingAudioBytes = 32000 * 15;
   int _framesSent = 0;
   int _audioChunksIn = 0;
+
+  // Per-turn latency and main-isolate freezes, logged under [latency].
+  final _replyTimer = ReplyTimer();
+  final _stallWatch = StallWatch();
+  Timer? _stallTimer;
+  final _stallClock = Stopwatch();
 
   OnTranscript? onTranscript;
   OnTranscript? onAgentTranscript;
@@ -137,6 +144,7 @@ class GeminiLiveClient {
             '${_resumptionHandle == null ? '' : ', resuming'})…');
     final channel = _channelFactory(uri);
     _channel = channel;
+    _startStallWatch();
 
     // Await the actual WebSocket handshake (the web client awaits `open` the
     // same way); otherwise a failed handshake surfaces later as silence.
@@ -293,10 +301,24 @@ class GeminiLiveClient {
     }));
   }
 
-  /// Earlier turns of this conversation, as context for a new connection.
-  /// `turn_complete: false` asks for no reply; [note] follows as the user's.
-  void sendHistory(List<HistoryTurn> turns, {String? note}) {
+  /// Context for a new connection, sent before Lumen's first reply: the
+  /// only time gemini-3.1-flash-live reads `client_content` (later ones are
+  /// ignored). [context] leads (the graph summary), then earlier turns of
+  /// the conversation; `turn_complete: false` asks for no reply; [note]
+  /// follows as the user's.
+  void sendHistory(
+    List<HistoryTurn> turns, {
+    String? note,
+    String? context,
+  }) {
     final content = [
+      if (context != null)
+        {
+          'role': 'user',
+          'parts': [
+            {'text': context},
+          ],
+        },
       for (final turn in turns)
         if (turn.text.trim().isNotEmpty)
           {
@@ -320,20 +342,16 @@ class GeminiLiveClient {
     }));
   }
 
-  void sendText(String text, {bool endOfTurn = true}) {
+  /// A typed user turn. gemini-3.1-flash-live answers `realtime_input.text`
+  /// as a complete turn; `client_content` it reads only as context before
+  /// its first reply and ignores after (measured, and noted in the web
+  /// client's sendText), so typed turns use realtime input as web does.
+  void sendText(String text) {
+    _replyTimer.userTurn(DateTime.now(), typed: true);
+    vlog('client', 'typed turn → gemini (${text.length} chars)');
     _channel?.sink.add(
       jsonEncode({
-        'client_content': {
-          'turns': [
-            {
-              'role': 'user',
-              'parts': [
-                {'text': text},
-              ],
-            },
-          ],
-          'turn_complete': endOfTurn,
-        },
+        'realtime_input': {'text': text},
       }),
     );
   }
@@ -424,6 +442,7 @@ class GeminiLiveClient {
         final callMap = call as Map<String, dynamic>;
         final name = callMap['name'] as String? ?? '';
         vlog('client', 'toolCall: $name');
+        _logLatency(_replyTimer.toolCall(DateTime.now()));
         final id = callMap['id'] as String? ?? '';
         final args = (callMap['args'] as Map<String, dynamic>?) ?? {};
         final handler = onToolCall;
@@ -477,6 +496,7 @@ class GeminiLiveClient {
           if (b64 != null &&
               (mimeType == null || mimeType.startsWith('audio/'))) {
             _audioChunksIn++;
+            _logLatency(_replyTimer.replyAudio(DateTime.now()));
             if (_audioChunksIn == 1 || _audioChunksIn % 25 == 0) {
               vlog('client', 'gemini → audio chunk #$_audioChunksIn');
             }
@@ -495,6 +515,7 @@ class GeminiLiveClient {
         // "this text is authoritative" with "the model stopped talking".
         final finished = transcript['finished'] as bool? ?? turnComplete;
         vlog('client', 'gemini → user transcript (+${text.length} chars)');
+        if (text.trim().isNotEmpty) _replyTimer.userTurn(DateTime.now());
         onTranscript?.call(text, finished);
       }
 
@@ -517,11 +538,13 @@ class GeminiLiveClient {
       // use the pair to tell a completed answer from a cut-off one.
       if (content['interrupted'] == true) {
         vlog('client', 'gemini → interrupted');
+        _replyTimer.replyEnded();
         onInterrupted?.call();
       }
 
       if (turnComplete) {
         vlog('client', 'gemini → turnComplete');
+        _replyTimer.replyEnded();
         onTurnComplete?.call();
       }
     }
@@ -537,7 +560,27 @@ class GeminiLiveClient {
     await _closeChannel();
   }
 
+  void _logLatency(String? line) {
+    if (line != null) vlog('latency', line);
+  }
+
+  /// Ticks while connected; a tick far later than scheduled means the app
+  /// froze, and every message timestamp logged in that window is late too.
+  void _startStallWatch() {
+    _stallTimer?.cancel();
+    _stallClock
+      ..reset()
+      ..start();
+    _stallTimer = Timer.periodic(_stallWatch.interval, (_) {
+      final line = _stallWatch.tick(_stallClock.elapsed);
+      _stallClock.reset();
+      if (line != null) vlog('latency', line);
+    });
+  }
+
   Future<void> _closeChannel() async {
+    _stallTimer?.cancel();
+    _stallTimer = null;
     _closing = true;
     _setupComplete = false;
     // Anyone still waiting for this connection's setup stops waiting now.

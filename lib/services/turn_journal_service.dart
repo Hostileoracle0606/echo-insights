@@ -153,11 +153,31 @@ class TurnJournalService {
     return result;
   }
 
-  Future<Directory> _journalDirectory() async {
-    final root = await _directoryProvider();
-    final directory = Directory('${root.path}/turn-journal-v$_version');
-    await directory.create(recursive: true);
-    return directory;
+  /// Finds the journal folder ahead of the first notebook open. The first
+  /// file-system access after launch costs over a second on the simulator,
+  /// which otherwise lands between tapping New notebook and the greeting.
+  Future<void> warmUp() async {
+    try {
+      await _journalDirectory();
+    } catch (_) {
+      // The next read looks again and reports a real failure itself.
+    }
+  }
+
+  Future<Directory>? _directory;
+
+  /// The folder is looked up once; a failed lookup is retried next time.
+  Future<Directory> _journalDirectory() {
+    return _directory ??= () async {
+      final root = await _directoryProvider();
+      final directory = Directory('${root.path}/turn-journal-v$_version');
+      await directory.create(recursive: true);
+      return directory;
+    }()
+        .catchError((Object error) {
+      _directory = null;
+      throw error;
+    });
   }
 
   Future<File> _journalFile(String notebookId) async {

@@ -186,12 +186,6 @@ class _JournalScreenState extends ConsumerState<JournalScreen>
     await ref.read(journalProvider.notifier).retryJoining();
   }
 
-  Future<void> _endSession() async {
-    unawaited(HapticFeedback.lightImpact());
-    final result = await ref.read(journalProvider.notifier).endSession();
-    if (mounted && !result.succeeded) _showTransitionError(result);
-  }
-
   void _openComposer() {
     unawaited(HapticFeedback.selectionClick());
     setState(() => _composing = true);
@@ -377,18 +371,16 @@ class _JournalScreenState extends ConsumerState<JournalScreen>
     final muted = ref.watch(mutedProvider);
     final agentSpeaking = ref.watch(agentSpeakingProvider);
     final reconnecting = ref.watch(reconnectingProvider);
+    final awaitingReply = ref.watch(awaitingReplyProvider);
     final joining = ref.watch(joiningPhaseProvider);
     final turns =
         ref.watch(transcriptRowsProvider).map(_toTurn).toList(growable: false);
     final terms = _termsFor(state.entities);
-    final liveSpeaker = agentSpeaking || openingInProgress
+    final liveSpeaker = agentSpeaking || openingInProgress || awaitingReply
         ? DockSpeaker.lumen
         : status == SessionStatus.live
             ? DockSpeaker.you
             : null;
-    final sessionActive = status == SessionStatus.live ||
-        status == SessionStatus.connecting ||
-        status == SessionStatus.paused;
     final insets = MediaQuery.paddingOf(context);
     // Typing needs a session to send into; it ends when the session does.
     final typeable =
@@ -427,6 +419,7 @@ class _JournalScreenState extends ConsumerState<JournalScreen>
                 terms: terms,
                 entrance: _page,
                 liveSpeaker: liveSpeaker,
+                lumenMulling: awaitingReply,
                 topInset: insets.top + 68,
                 // Dock (~108) + its lift + a breath.
                 bottomInset: dockBottom + 108 + 8,
@@ -447,7 +440,6 @@ class _JournalScreenState extends ConsumerState<JournalScreen>
                     muted: muted,
                     onMuteTap: () =>
                         ref.read(journalProvider.notifier).toggleMute(),
-                    onEndTap: sessionActive ? _endSession : null,
                   ),
                 ),
               ),
@@ -475,6 +467,7 @@ class _JournalScreenState extends ConsumerState<JournalScreen>
                       // Typing is not a paused session.
                       paused: status == SessionStatus.paused && !composing,
                       reconnecting: reconnecting,
+                      awaitingReply: awaitingReply,
                       activity: activity,
                       view: _view,
                       terms: terms,
@@ -492,16 +485,6 @@ class _JournalScreenState extends ConsumerState<JournalScreen>
                     ),
                   ),
                 ),
-              ),
-            ),
-            // A new notebook waits for Lumen behind this cover.
-            IgnorePointer(
-              ignoring: joining != JoiningPhase.joining,
-              child: AnimatedOpacity(
-                opacity: joining == JoiningPhase.joining ? 1 : 0,
-                duration: const Duration(milliseconds: 320),
-                curve: Curves.easeOut,
-                child: const LumenJoiningCover(),
               ),
             ),
             if (joining == JoiningPhase.failed)

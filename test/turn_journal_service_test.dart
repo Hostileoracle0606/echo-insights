@@ -41,6 +41,36 @@ void main() {
     if (await directory.exists()) await directory.delete(recursive: true);
   });
 
+  test('warming up finds the journal folder once, for every later read',
+      () async {
+    var lookups = 0;
+    final warmed = TurnJournalService(directoryProvider: () async {
+      lookups += 1;
+      return directory;
+    });
+
+    await warmed.warmUp();
+    await warmed.loadCheckpoints('notebook-1');
+    await warmed.persistTurn(turn());
+    await warmed.loadTurns('notebook-1');
+
+    expect(lookups, 1, reason: 'the first open pays no folder lookup');
+    expect(await warmed.loadTurns('notebook-1'), hasLength(1));
+  });
+
+  test('a failed warm-up is retried by the next read', () async {
+    var lookups = 0;
+    final flaky = TurnJournalService(directoryProvider: () async {
+      lookups += 1;
+      if (lookups == 1) throw const FileSystemException('not yet');
+      return directory;
+    });
+
+    await flaky.warmUp();
+    expect(await flaky.loadCheckpoints('notebook-1'), isEmpty);
+    expect(lookups, 2);
+  });
+
   test('restores a finalized turn after the service is recreated', () async {
     await journal.persistTurn(turn());
 
