@@ -80,6 +80,23 @@ void main() {
     expect(warmUps, 1);
   });
 
+  test('resuming calls onResume', () async {
+    var resumes = 0;
+    final binding = VoiceServicesBinding(
+      credentials: credentials,
+      audioOutput: output,
+      onResume: () async => resumes += 1,
+    );
+
+    binding.lifecycleChanged(AppLifecycleState.resumed);
+    expect(resumes, 0, reason: 'ignored while signed out');
+    binding.signedInChanged(true);
+    binding.lifecycleChanged(AppLifecycleState.resumed);
+    await pumpEventQueue();
+
+    expect(resumes, 1);
+  });
+
   test('repeated auth events do not restart the services', () async {
     final binding =
         VoiceServicesBinding(credentials: credentials, audioOutput: output);

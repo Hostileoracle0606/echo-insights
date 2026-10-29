@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../providers/opening_prep_provider.dart';
 import '../../providers/supabase_provider.dart';
 
 class SignupScreen extends ConsumerStatefulWidget {
@@ -41,6 +42,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
     try {
       final service = ref.read(supabaseServiceProvider);
       await service.signUpWithEmail(_email.text.trim(), _password.text);
+      ref.read(openingPrepProvider).markNewAccount();
       setState(() {
         _message = 'Account created. Check your email if confirmation is on.';
       });

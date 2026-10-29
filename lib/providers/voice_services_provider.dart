@@ -5,6 +5,7 @@ import '../audio/audio_output.dart';
 import '../services/live_credentials.dart';
 import 'auth_provider.dart';
 import 'journal_provider.dart' show turnJournalServiceProvider;
+import 'opening_prep_provider.dart';
 import 'supabase_provider.dart';
 
 /// App-level voice services: they live for the signed-in user, not for a
@@ -30,6 +31,7 @@ class VoiceServicesBinding {
     required this.audioOutput,
     this.runtimeConfigured = true,
     this.warmUp,
+    this.onResume,
   });
 
   final LiveCredentials credentials;
@@ -38,6 +40,10 @@ class VoiceServicesBinding {
   /// Readies what the first notebook open reads, so it isn't paid between
   /// tapping New notebook and Lumen's greeting.
   final Future<void> Function()? warmUp;
+
+  /// Runs when the app returns to the foreground (signed in): refreshes the
+  /// session brief.
+  final Future<void> Function()? onResume;
 
   /// Without a runtime URL there is nothing to fetch tokens from.
   final bool runtimeConfigured;
@@ -63,6 +69,7 @@ class VoiceServicesBinding {
         credentials.resume();
         // A start that failed earlier (or never ran) gets another chance.
         audioOutput.start();
+        onResume?.call();
       case AppLifecycleState.paused:
       case AppLifecycleState.hidden:
         credentials.pause();
@@ -91,13 +98,20 @@ class _VoiceServicesScopeState extends ConsumerState<VoiceServicesScope>
 
   void _signedInChanged(bool signedIn) {
     if (!signedIn && _binding == null) return;
-    (_binding ??= VoiceServicesBinding(
-      credentials: ref.read(liveCredentialsProvider),
-      audioOutput: ref.read(audioOutputProvider),
-      runtimeConfigured: ref.read(notebookRuntimeServiceProvider).isConfigured,
-      warmUp: ref.read(turnJournalServiceProvider).warmUp,
-    ))
-        .signedInChanged(signedIn);
+    if (_binding == null) {
+      final journal = ref.read(turnJournalServiceProvider);
+      final openingPrep = ref.read(openingPrepProvider);
+      _binding = VoiceServicesBinding(
+        credentials: ref.read(liveCredentialsProvider),
+        audioOutput: ref.read(audioOutputProvider),
+        runtimeConfigured:
+            ref.read(notebookRuntimeServiceProvider).isConfigured,
+        // Both are best-effort and independent; neither blocks a session.
+        warmUp: () => Future.wait([journal.warmUp(), openingPrep.refresh()]),
+        onResume: openingPrep.refresh,
+      );
+    }
+    _binding!.signedInChanged(signedIn);
   }
 
   @override
