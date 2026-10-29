@@ -32,6 +32,7 @@ class VoiceServicesBinding {
     this.runtimeConfigured = true,
     this.warmUp,
     this.onResume,
+    this.onSignedOut,
   });
 
   final LiveCredentials credentials;
@@ -44,6 +45,9 @@ class VoiceServicesBinding {
   /// Runs when the app returns to the foreground (signed in): refreshes the
   /// session brief.
   final Future<void> Function()? onResume;
+
+  /// Runs on sign-out: drops per-account state held for the opening.
+  final void Function()? onSignedOut;
 
   /// Without a runtime URL there is nothing to fetch tokens from.
   final bool runtimeConfigured;
@@ -59,6 +63,7 @@ class VoiceServicesBinding {
     } else {
       credentials.stop();
       audioOutput.stop();
+      onSignedOut?.call();
     }
   }
 
@@ -109,6 +114,7 @@ class _VoiceServicesScopeState extends ConsumerState<VoiceServicesScope>
         // Both are best-effort and independent; neither blocks a session.
         warmUp: () => Future.wait([journal.warmUp(), openingPrep.refresh()]),
         onResume: openingPrep.refresh,
+        onSignedOut: openingPrep.clear,
       );
     }
     _binding!.signedInChanged(signedIn);

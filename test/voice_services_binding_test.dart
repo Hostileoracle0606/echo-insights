@@ -97,6 +97,22 @@ void main() {
     expect(resumes, 1);
   });
 
+  test('sign-out calls onSignedOut', () async {
+    var cleared = 0;
+    final binding = VoiceServicesBinding(
+      credentials: credentials,
+      audioOutput: output,
+      onSignedOut: () => cleared += 1,
+    );
+
+    binding.signedInChanged(true);
+    expect(cleared, 0);
+    binding.signedInChanged(false);
+    await pumpEventQueue();
+
+    expect(cleared, 1);
+  });
+
   test('repeated auth events do not restart the services', () async {
     final binding =
         VoiceServicesBinding(credentials: credentials, audioOutput: output);
