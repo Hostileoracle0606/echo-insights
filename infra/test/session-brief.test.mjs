@@ -342,6 +342,14 @@ test("briefPrompt carries the opener copy rules", () => {
   }
 });
 
+test("every example opening line in briefPrompt has exactly one question", () => {
+  const examples = [...briefPrompt.matchAll(/"(Hey[^"]*)"/g)].map((match) => match[1]);
+  assert.ok(examples.length >= 2, "expected example opening lines in the prompt");
+  for (const example of examples) {
+    assert.equal(example.split("?").length - 1, 1, `not exactly one question: ${example}`);
+  }
+});
+
 test("TTS request: the TTS model, voice Aoede, audio only", async () => {
   const { state, handle } = world();
   await handle(requestEvent());
