@@ -3,7 +3,11 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import { createSessionBriefHandler } from "../lambda/close-session/brief.mjs";
-import { briefPrompt, briefFromModel } from "../lambda/close-session/brief-prompts.mjs";
+import {
+  briefPrompt,
+  briefFromModel,
+  writeSessionBriefFunction,
+} from "../lambda/close-session/brief-prompts.mjs";
 
 const fixture = JSON.parse(
   await readFile(new URL("./fixtures/close-session.just-talk.json", import.meta.url), "utf8"),
@@ -256,6 +260,37 @@ test("an empty openingLine is an invalid provider response, nothing saved", asyn
   assert.equal(ttsCalls(state).length, 0);
 });
 
+test("no safe thread: a greeting with an empty openingThread is saved", async () => {
+  const greeting = { ...goodArgs, openingThread: "", openingLine: "Hey, good to see you. How are you doing?" };
+  const { state, handle } = world({ state: { modelArgs: greeting } });
+  const response = await handle(requestEvent());
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(parse(response), { status: "ready" });
+  assert.equal(ttsCalls(state).length, 1);
+  assert.equal(state.saves.length, 1);
+  assert.equal(state.saves[0].p_brief.openingThread, "");
+  assert.equal(state.saves[0].p_brief.openingLine, greeting.openingLine);
+});
+
+test("no safe thread with an empty line is still a 502, nothing saved", async () => {
+  const { state, handle } = world({
+    state: { modelArgs: { ...goodArgs, openingThread: "", openingLine: "" } },
+  });
+  const response = await handle(requestEvent());
+  assert.equal(response.statusCode, 502);
+  assert.deepEqual(parse(response), { status: "rejected", code: "invalidProviderResponse" });
+  assert.equal(state.saves.length, 0);
+  assert.equal(ttsCalls(state).length, 0);
+});
+
+test("the prompt and schema allow an empty openingThread for no safe thread", () => {
+  assert.match(briefPrompt, /leave openingThread empty/);
+  assert.match(briefPrompt, /Never invent a thread/);
+  const thread = writeSessionBriefFunction().parameters.properties.openingThread;
+  assert.equal(thread.minLength, undefined);
+  assert.match(thread.description, /Empty \(""\) when the line asks nothing specific/);
+});
+
 test("an overlong line is clamped to 160", async () => {
   const { state, handle } = world({
     state: { modelArgs: { ...goodArgs, openingLine: "Hello there. ".repeat(40) } },
@@ -369,7 +404,12 @@ test("TTS request: the TTS model, voice Aoede, audio only", async () => {
 test("briefFromModel cleans and bounds the fields", () => {
   assert.equal(briefFromModel(null), null);
   assert.equal(briefFromModel({ ...goodArgs, focus: [] }), null);
-  assert.equal(briefFromModel({ ...goodArgs, openingThread: "" }), null);
+  assert.equal(briefFromModel({ ...goodArgs, openingLine: "" }), null);
+  assert.equal(briefFromModel({ ...goodArgs, focus: ["  "] }), null);
+  assert.deepEqual(briefFromModel({ ...goodArgs, openingThread: "  " }), {
+    ...goodArgs,
+    openingThread: "",
+  });
   const brief = briefFromModel({
     ...goodArgs,
     focus: ["a", "b", "c", "d", "e", "", "x".repeat(300)],

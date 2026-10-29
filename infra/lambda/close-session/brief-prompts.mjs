@@ -19,7 +19,7 @@ THE OPENING LINE (openingLine, at most ${briefLimits.openingLine} characters)
 
 WHAT TO WRITE (call write_session_brief exactly once)
 - focus: 1 to ${briefLimits.focusItems} short lines, each at most ${briefLimits.focus} characters, on what matters most to this person right now across everything below, not only the last conversation. Plain facts in their words. Carry open plans and unresolved things forward from the previous brief until the conversation shows they are settled.
-- openingThread: at most ${briefLimits.openingThread} characters. The one thread the opening line asks about and why it is worth asking, so Lumen can follow up naturally after the person answers.
+- openingThread: at most ${briefLimits.openingThread} characters. The one thread the opening line asks about and why it is worth asking, so Lumen can follow up naturally after the person answers. If no thread is safe and the opening line is a warm greeting with no specific question, leave openingThread empty (""). Never invent a thread to fill it.
 - openingLine: as above.
 
 Never invent. Every fact comes from what the person said, the previous brief, or the memory lists. Lumen's own lines are context only; never turn Lumen's suggestions into the person's plans. If little was said, write less.`;
@@ -37,7 +37,12 @@ export function writeSessionBriefFunction() {
           maxItems: briefLimits.focusItems,
           items: { type: "string", maxLength: briefLimits.focus },
         },
-        openingThread: { type: "string", maxLength: briefLimits.openingThread },
+        openingThread: {
+          type: "string",
+          maxLength: briefLimits.openingThread,
+          description:
+            'The thread the opening line asks about, and why. Empty ("") when the line asks nothing specific.',
+        },
         openingLine: { type: "string", maxLength: briefLimits.openingLine },
       },
       required: ["focus", "openingThread", "openingLine"],
@@ -47,7 +52,9 @@ export function writeSessionBriefFunction() {
 
 /**
  * The model's arguments, cleaned and bounded, or null when anything the
- * opener needs is missing. Nothing is saved for a null.
+ * opener needs is missing (no focus line, or no opening line). Nothing is
+ * saved for a null. An empty openingThread is valid: the "no safe thread"
+ * case, where the line is a warm greeting with no specific question.
  */
 export function briefFromModel(args) {
   if (!args || typeof args !== "object") return null;
@@ -57,7 +64,7 @@ export function briefFromModel(args) {
     .slice(0, briefLimits.focusItems);
   const openingThread = cleanText(args.openingThread, briefLimits.openingThread);
   const openingLine = cleanText(args.openingLine, briefLimits.openingLine);
-  if (focus.length === 0 || !openingThread || !openingLine) return null;
+  if (focus.length === 0 || !openingLine) return null;
   return { focus, openingThread, openingLine };
 }
 
@@ -66,7 +73,7 @@ const section = (title, lines) => `${title}:\n${lines.length ? lines.join("\n") 
 export function buildBriefMessage({ transcript, trimmed, previous, followUps, questions, topEntities }) {
   const previousLines = previous
     ? [
-        `Opening thread: ${previous.openingThread ?? ""}`,
+        `Opening thread: ${previous.openingThread || "(none: the greeting asked nothing specific)"}`,
         ...(Array.isArray(previous.focus) ? previous.focus.map((item) => `- ${item}`) : []),
       ]
     : [];

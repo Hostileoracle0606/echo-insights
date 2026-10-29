@@ -53,12 +53,17 @@ the most-mentioned entities across all notebooks. One forced
 | Field | Type | Limit |
 |---|---|---|
 | `focus` | string[] | 1 to 4 items, each at most 140 characters |
-| `openingThread` | string | at most 200 characters |
+| `openingThread` | string | 0 to 200 characters; empty when the line asks nothing specific |
 | `openingLine` | string | 1 to 160 characters |
 
 The server trims whitespace and clamps over-long text before saving (an
-over-long line ends with "…"). A missing or empty field is a 502 and nothing is
-saved. The save function independently rejects an empty or over-160 line, or
+over-long line ends with "…"). An empty or missing `openingLine`, or no
+non-empty `focus` item, is a 502 and nothing is saved. An empty `openingThread`
+is valid: when no thread is safe to raise (a painful topic the person didn't
+ask to follow up on), the line is a warm greeting with no specific question and
+the thread is left empty, rather than the model inventing one. `focus` still
+needs at least one line: a 422 already covers a notebook where nothing was
+said, so there is always something to note as context. The save function independently rejects an empty or over-160 line, or
 empty audio, with Postgres `22023`.
 
 ## Opening audio
@@ -108,3 +113,6 @@ created in this app run.
 ## Changes
 
 Fields may be added. Removing or renaming one, or changing a limit, needs v2.
+
+- 2026-10-29 (before first deploy): `openingThread` may be empty. Readers
+  already treated a missing thread as `""`.
