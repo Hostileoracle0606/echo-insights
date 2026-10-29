@@ -5,6 +5,9 @@ enum OpeningChoice { intro, brief, fallback }
 /// Which opening to play when a new notebook starts. Never waits on
 /// anything: [state] is whatever the sign-in load had by now.
 ///
+/// - a known returning account never gets the intro, even if this app run
+///   signed up (Supabase's signUp "succeeds" on an existing email when
+///   confirmation is on);
 /// - an account signed up in this app run gets the intro;
 /// - unknown state means fallback (never the intro for a returning user);
 /// - a known new account gets the intro;
@@ -14,7 +17,7 @@ OpeningChoice chooseOpening({
   required bool knownNewAccount,
   required DateTime now,
 }) {
-  if (knownNewAccount) return OpeningChoice.intro;
+  if (knownNewAccount && state?.returning != true) return OpeningChoice.intro;
   if (state == null) return OpeningChoice.fallback;
   if (!state.returning) return OpeningChoice.intro;
   final brief = state.brief;

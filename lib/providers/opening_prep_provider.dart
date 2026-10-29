@@ -22,6 +22,11 @@ class OpeningPrep {
   /// issued before the server heard about it must not bring it back.
   DateTime? _locallyPlayed;
 
+  /// Set by [markReturning]: this device knows the account has history, so
+  /// a load that lands later (issued before the server saw it) cannot make
+  /// it look new again. Cleared only by [clear].
+  bool _knownReturning = false;
+
   SessionOpeningState? get current => _current;
   bool get knownNewAccount => _knownNewAccount;
 
@@ -43,14 +48,16 @@ class OpeningPrep {
   SessionOpeningState _keepLocalPlayed(SessionOpeningState loaded) {
     final brief = loaded.brief;
     final played = _locallyPlayed;
+    final returning = loaded.returning || _knownReturning;
     if (brief == null ||
         played == null ||
         brief.playedAt != null ||
         !brief.createdAt.isAtSameMomentAs(played)) {
-      return loaded;
+      if (returning == loaded.returning) return loaded;
+      return SessionOpeningState(returning: returning, brief: brief);
     }
     return SessionOpeningState(
-      returning: loaded.returning,
+      returning: returning,
       brief: brief.copyWith(playedAt: DateTime.now()),
     );
   }
@@ -60,6 +67,15 @@ class OpeningPrep {
 
   /// The intro clip played: later sessions are no longer a first one.
   void markIntroPlayed() => _knownNewAccount = false;
+
+  /// A session with something the user said just closed: the account is
+  /// returning from now on, without waiting for the next [refresh] (which
+  /// may be seconds away, or never come if the brief request fails). Keeps
+  /// whatever brief is current; a later refresh can still replace it.
+  void markReturning() {
+    _knownReturning = true;
+    _current = SessionOpeningState(returning: true, brief: _current?.brief);
+  }
 
   /// The brief just played: this device sees it as played before the next
   /// refresh lands.
@@ -81,6 +97,7 @@ class OpeningPrep {
     _current = null;
     _locallyPlayed = null;
     _knownNewAccount = false;
+    _knownReturning = false;
   }
 }
 
