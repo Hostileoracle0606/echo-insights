@@ -6,6 +6,7 @@ import '../../logic/entity_highlighter.dart';
 import '../../theme/lumen_colors.dart';
 import '../../theme/lumen_text.dart';
 import '../../theme/lumen_theme.dart';
+import '../../widgets/breathing_dots.dart';
 import 'voice_dock.dart' show DockSpeaker, highlightSpans;
 
 /// One utterance on the transcript page.
@@ -52,6 +53,10 @@ class TranscriptPage extends StatefulWidget {
   /// Who is speaking right now, for the jump chip's label.
   final DockSpeaker? liveSpeaker;
 
+  /// Lumen is mulling over a reply: a Lumen row with breathing dots holds
+  /// its place under the last turn until the reply arrives.
+  final bool lumenMulling;
+
   const TranscriptPage({
     super.key,
     required this.turns,
@@ -60,6 +65,7 @@ class TranscriptPage extends StatefulWidget {
     this.topInset = 0,
     this.bottomInset = 0,
     this.liveSpeaker,
+    this.lumenMulling = false,
   });
 
   @override
@@ -120,9 +126,21 @@ class _TranscriptPageState extends State<TranscriptPage> {
             reverse: true,
             padding: EdgeInsets.fromLTRB(
                 24, widget.topInset + 8, 24, widget.bottomInset + 16),
-            // +1: the day header sits above the oldest turn.
-            itemCount: turns.length + 1,
-            itemBuilder: (context, i) {
+            // +1: the day header sits above the oldest turn; +1 more for
+            // Lumen's waiting row, newest of all.
+            itemCount: turns.length + 1 + (widget.lumenMulling ? 1 : 0),
+            itemBuilder: (context, index) {
+              if (widget.lumenMulling && index == 0) {
+                return Padding(
+                  key: const ValueKey('lumen-mulling'),
+                  padding: const EdgeInsets.only(top: 22),
+                  child: _Arrival(
+                    animate: true,
+                    child: _MullingView(colors: colors),
+                  ),
+                );
+              }
+              final i = widget.lumenMulling ? index - 1 : index;
               if (i == turns.length) {
                 return _Staggered(
                   entrance: widget.entrance,
@@ -383,6 +401,43 @@ class _TurnView extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Lumen's place in the transcript while it mulls over a reply: its row
+/// header, and breathing dots where its words will appear.
+class _MullingView extends StatelessWidget {
+  final LumenColors colors;
+
+  const _MullingView({required this.colors});
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      label: 'Lumen is mulling it over',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 6,
+                height: 6,
+                decoration:
+                    BoxDecoration(color: colors.sage, shape: BoxShape.circle),
+              ),
+              const SizedBox(width: 8),
+              Text('LUMEN', style: LumenText.eyebrow(colors.sage)),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Padding(
+            padding: const EdgeInsets.only(left: 2),
+            child: BreathingDots(color: colors.sage, size: 6),
+          ),
+        ],
+      ),
     );
   }
 }

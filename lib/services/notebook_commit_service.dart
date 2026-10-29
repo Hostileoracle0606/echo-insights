@@ -147,12 +147,18 @@ class ApplyTurnChange extends NotebookChange {
           'entityIds': entryEntityIds,
           'relationIds': entryRelationIds,
         },
-        'entities': entities.map((e) => e.toJson()).toList(),
-        'relations': relations.map((r) => r.toJson()).toList(),
+        // Absent, never null: the server's upsert reads `value->'questions'`,
+        // and a JSON null there is not SQL NULL — it raises 22023 inside the
+        // apply block and the whole turn comes back as commitFailed.
+        'entities': entities.map((e) => _withoutNulls(e.toJson())).toList(),
+        'relations': relations.map((r) => _withoutNulls(r.toJson())).toList(),
         if (followUp != null) 'followUp': followUp!.toJson(),
         if (askedQuestion != null) 'askedQuestion': askedQuestion!.toJson(),
       };
 }
+
+Map<String, dynamic> _withoutNulls(Map<String, dynamic> json) =>
+    json..removeWhere((_, value) => value == null);
 
 class AnswerFollowUpChange extends NotebookChange {
   final String followUpId;

@@ -123,6 +123,64 @@ void main() {
       });
     });
 
+    // commit_notebook's entity upsert tests `value->'questions' is null`, which
+    // is false for a JSON null, so `"questions": null` reached
+    // jsonb_array_elements_text and raised 22023 "cannot extract elements from
+    // a scalar" — surfaced only as commitFailed, losing every new entity that
+    // had no questions. Absent, not null, is how "none" travels on the wire.
+    test('applyTurn omits null entity/relation fields instead of sending null',
+        () {
+      final change = ApplyTurnChange(
+        entryText: 'Had coffee with Maya about Atlas.',
+        entryEntityIds: const ['maya', 'atlas'],
+        entryRelationIds: const ['maya__works_on__atlas'],
+        entities: [
+          Entity(
+            id: 'maya',
+            name: 'Maya',
+            type: EntityType.person,
+            metadata: const {},
+            mentions: 1,
+            firstSeen: DateTime.utc(2026, 8, 21),
+            lastSeen: DateTime.utc(2026, 8, 21),
+          ),
+          Entity(
+            id: 'atlas',
+            name: 'Atlas',
+            type: EntityType.project,
+            description: 'A side project',
+            metadata: const {},
+            mentions: 1,
+            firstSeen: DateTime.utc(2026, 8, 21),
+            lastSeen: DateTime.utc(2026, 8, 21),
+            questions: const ['When does it launch?'],
+          ),
+        ],
+        relations: [
+          Relation(
+            id: 'maya__works_on__atlas',
+            source: 'maya',
+            target: 'atlas',
+            label: 'works_on',
+            metadata: const {},
+            createdAt: DateTime.utc(2026, 8, 21),
+          ),
+        ],
+      );
+      final json = change.toJson();
+      final entities = (json['entities'] as List).cast<Map<String, dynamic>>();
+      final relations =
+          (json['relations'] as List).cast<Map<String, dynamic>>();
+
+      expect(entities[0].containsKey('questions'), isFalse);
+      expect(entities[0].containsKey('description'), isFalse);
+      expect(entities[0].values, isNot(contains(null)));
+      expect(entities[1]['questions'], ['When does it launch?']);
+      expect(entities[1]['description'], 'A side project');
+      expect(relations.single.containsKey('supersededAt'), isFalse);
+      expect(relations.single.values, isNot(contains(null)));
+    });
+
     test('answerFollowUp and clearNotebook serialize to their minimal shape',
         () {
       expect(const AnswerFollowUpChange('fu-1').toJson(),

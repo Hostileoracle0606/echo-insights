@@ -1,4 +1,4 @@
-// Phase 3: a new notebook waits for Lumen behind a cover; if Lumen can't
+// Phase 3: a new notebook opens at once while Lumen joins; if Lumen can't
 // join, a banner offers Retry and opening without voice.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -51,11 +51,14 @@ Future<_JoiningJournal> _pump(WidgetTester tester, JoiningPhase phase) async {
 }
 
 void main() {
-  testWidgets('while Lumen joins, the page waits behind the cover',
+  testWidgets('while Lumen joins, the page shows at once, with no loader',
       (tester) async {
     await _pump(tester, JoiningPhase.joining);
 
-    expect(find.text('Lumen is joining…'), findsOneWidget);
+    // The greeting plays while the socket connects; the dock says who has
+    // the floor, so nothing covers the page.
+    expect(find.text('Lumen is joining…'), findsNothing);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
     expect(find.text("Lumen couldn't join"), findsNothing);
     await tester.pumpWidget(const SizedBox());
   });
@@ -75,13 +78,7 @@ void main() {
   testWidgets('an opened notebook shows neither', (tester) async {
     await _pump(tester, JoiningPhase.none);
 
-    final cover = tester.widget<AnimatedOpacity>(find
-        .ancestor(
-          of: find.text('Lumen is joining…'),
-          matching: find.byType(AnimatedOpacity),
-        )
-        .first);
-    expect(cover.opacity, 0);
+    expect(find.text('Lumen is joining…'), findsNothing);
     expect(find.text("Lumen couldn't join"), findsNothing);
     await tester.pumpWidget(const SizedBox());
   });

@@ -1,7 +1,7 @@
-// JournalTopBar session controls: mute and End moved here from the dock.
-// Mute reflects its state and fires onMuteTap; End fires onEndTap and is
-// dimmed and inert without a session; both keep a 44pt hit box. And the bar
-// fits a 375pt screen with the real fonts.
+// JournalTopBar: back, mute and the stats pill. Mute reflects its state and
+// fires onMuteTap with a 44pt hit box. There is no End: back ends the
+// session and opens the closing card, which can resume it. And the bar fits
+// a 375pt screen with the real fonts.
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -75,46 +75,25 @@ void main() {
     expect(find.bySemanticsLabel('Unmute Lumen'), findsOneWidget);
   });
 
-  testWidgets('End fires onEndTap, and is inert without a session',
-      (tester) async {
-    var ends = 0;
+  testWidgets('there is no End button: back ends the session', (tester) async {
     await _pump(
       tester,
-      const JournalTopBar(entityCount: 3, relationCount: 2),
+      JournalTopBar(entityCount: 3, relationCount: 2, onHomeTap: () {}),
     );
-    await tester.tap(find.text('End'));
-    expect(
-      tester.getSemantics(find.bySemanticsLabel('End session')),
-      isSemantics(isButton: true, hasEnabledState: true, isEnabled: false),
-    );
-
-    await _pump(
-      tester,
-      JournalTopBar(
-        entityCount: 3,
-        relationCount: 2,
-        onEndTap: () => ends++,
-      ),
-    );
-    await tester.tap(find.text('End'));
-    expect(ends, 1);
-    expect(
-      tester.getSemantics(find.bySemanticsLabel('End session')),
-      isSemantics(isButton: true, hasEnabledState: true, isEnabled: true),
-    );
+    expect(find.text('End'), findsNothing);
+    expect(find.bySemanticsLabel('End session'), findsNothing);
   });
 
-  testWidgets('mute and End keep a 44pt hit box', (tester) async {
+  testWidgets('mute keeps a 44pt hit box', (tester) async {
     await _pump(
       tester,
       JournalTopBar(
         entityCount: 3,
         relationCount: 2,
         onMuteTap: () {},
-        onEndTap: () {},
       ),
     );
-    for (final label in ['Mute Lumen', 'End session']) {
+    for (final label in ['Mute Lumen']) {
       final size = tester.getSize(find.bySemanticsLabel(label));
       expect(size.width, greaterThanOrEqualTo(44), reason: label);
       expect(size.height, greaterThanOrEqualTo(44), reason: label);
@@ -131,7 +110,7 @@ void main() {
       if (File(icons).existsSync()) await _loadFont('MaterialIcons', icons);
     });
 
-    testWidgets('back, mute, End and stats fit with no overflow',
+    testWidgets('back, mute and stats fit with no overflow',
         (tester) async {
       var homes = 0;
       await _pump(
@@ -142,7 +121,6 @@ void main() {
           onHomeTap: () => homes++,
           onMenuTap: () {},
           onMuteTap: () {},
-          onEndTap: () {},
         ),
         width: 375,
       );
@@ -154,11 +132,10 @@ void main() {
       await tester.tap(back);
       expect(homes, 1);
 
-      // Left to right: back · mute · End · stats, all on screen.
+      // Left to right: back · mute · stats, all on screen.
       final xs = [
         tester.getRect(back).right,
         tester.getCenter(find.bySemanticsLabel('Mute Lumen')).dx,
-        tester.getCenter(find.text('End')).dx,
         tester.getCenter(find.text('128')).dx,
       ];
       for (var i = 1; i < xs.length; i++) {

@@ -32,6 +32,8 @@ class _FakeMic implements MicCapture {
   void Function(Uint8List)? _onChunk;
   bool get recording => _onChunk != null;
 
+  void speak(int n) => _onChunk?.call(Uint8List.fromList([n, n]));
+
   @override
   Future<bool> hasPermission() async => true;
 
@@ -116,7 +118,7 @@ class _NoNotebookInserts implements SupabaseService {
 }
 
 class _Harness {
-  _Harness() {
+  _Harness({bool echoCancelled = true}) {
     credentials = LiveCredentials(fetch: () async {
       final now = DateTime.now();
       return LiveSessionReady(
@@ -136,6 +138,8 @@ class _Harness {
         AudioOutput(createPlayer: () => PcmPlayer(backend: speaker)),
       ),
       micCaptureFactoryProvider.overrideWithValue(() => mic),
+      echoCancellationProvider.overrideWithValue(() async => echoCancelled),
+      speechEndGraceProvider.overrideWithValue(const Duration(milliseconds: 20)),
       liveClientFactoryProvider.overrideWithValue(
         ({required String sessionToken, required String model}) =>
             GeminiLiveClient(
@@ -198,15 +202,12 @@ class _Harness {
 }
 
 /// The text of every typed turn sent to Gemini on [socket], in order.
+// Typed turns go out as realtime text, as the web client sends them:
+// gemini-3.1-flash-live answers `realtime_input.text`, while `client_content`
+// counts only before the first reply.
 List<String> _typedSent(FakeLiveSocket socket) => [
       for (final message in socket.sent)
-        if (message['client_content'] case {
-          'turns': [
-            {'role': 'user', 'parts': [{'text': final String text}]},
-          ],
-          'turn_complete': true,
-        })
-          text,
+        if (message['realtime_input'] case {'text': final String text}) text,
     ];
 
 /// One streamed chunk of Lumen's output transcription.
@@ -411,4 +412,93 @@ void main() {
     expect(h.journal.reconnecting, isFalse);
     expect(_typedSent(h.socket), isEmpty, reason: 'not replayed later either');
   }, timeout: const Timeout(Duration(seconds: 30)));
+
+  test('without echo cancellation, the mic goes out silent while Lumen plays',
+      () async {
+    h = _Harness(echoCancelled: false);
+    await h.startLive();
+    h.mic.speak(7);
+    await h.settle();
+    h.socket.serverSends(_lumenAudio());
+    await h.settle();
+    expect(h.journal.agentSpeaking, isTrue);
+
+    h.mic.speak(9);
+    await h.settle();
+
+    expect(h.socket.sentAudioBytes, [7, 7, 0, 0],
+        reason: "Lumen's voice in the mic would read as the user");
+  });
+
+  test('with echo cancellation, the user can talk over Lumen', () async {
+    h = _Harness();
+    await h.startLive();
+    h.socket.serverSends(_lumenAudio());
+    await h.settle();
+    expect(h.journal.agentSpeaking, isTrue);
+
+    h.mic.speak(9);
+    await h.settle();
+
+    expect(h.socket.sentAudioBytes, [9, 9]);
+  });
+
+  group('Lumen mulling it over', () {
+    Map<String, dynamic> userSaid(String text) => {
+          'serverContent': {
+            'inputTranscription': {'text': text},
+          },
+        };
+
+    test('from a typed send until Lumen\'s voice starts', () async {
+      h = _Harness();
+      await h.startLive();
+      expect(h.journal.awaitingReply, isFalse);
+
+      h.journal.sendTypedTurn('What should I build next?');
+      await h.settle();
+      expect(h.journal.awaitingReply, isTrue);
+
+      h.socket.serverSends(_lumenAudio());
+      await h.settle();
+      expect(h.journal.awaitingReply, isFalse);
+      expect(h.journal.agentSpeaking, isTrue);
+    });
+
+    test('a reply that stays silent ends the wait', () async {
+      h = _Harness();
+      await h.startLive();
+      h.journal.sendTypedTurn('mm');
+      await h.settle();
+      expect(h.journal.awaitingReply, isTrue);
+
+      h.socket.serverSends({
+        'serverContent': {'turnComplete': true},
+      });
+      await h.settle();
+      expect(h.journal.awaitingReply, isFalse);
+    });
+
+    test('speech then a pause starts it; more speech cancels it', () async {
+      h = _Harness();
+      await h.startLive();
+
+      h.socket.serverSends(userSaid('I spent the weekend'));
+      await h.settle();
+      expect(h.journal.awaitingReply, isFalse, reason: 'still talking');
+
+      await Future<void>.delayed(const Duration(milliseconds: 60));
+      expect(h.journal.awaitingReply, isTrue, reason: 'the pause ended the turn');
+
+      h.socket.serverSends(userSaid(' fixing the bike'));
+      await h.settle();
+      expect(h.journal.awaitingReply, isFalse, reason: 'the user went on');
+
+      await Future<void>.delayed(const Duration(milliseconds: 60));
+      expect(h.journal.awaitingReply, isTrue);
+      h.socket.serverSends(_lumenSays('Nice. '));
+      await h.settle();
+      expect(h.journal.awaitingReply, isFalse);
+    });
+  });
 }

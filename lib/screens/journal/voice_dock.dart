@@ -7,6 +7,7 @@ import '../../models/upsert_activity.dart';
 import '../../theme/lumen_colors.dart';
 import '../../theme/lumen_text.dart';
 import '../../theme/lumen_theme.dart';
+import '../../widgets/breathing_dots.dart';
 import '../../widgets/node_glyph.dart';
 
 /// Dock state — drives the mic and the status label. Mapped from
@@ -63,6 +64,10 @@ class VoiceDock extends StatefulWidget {
   /// The connection is being restored; the conversation keeps its context.
   final bool reconnecting;
 
+  /// The user's turn is over and Lumen hasn't started answering: Lumen holds
+  /// the floor, "Mulling it over", with breathing dots.
+  final bool awaitingReply;
+
   /// The latest graph upsert, shown as a chip above the pill.
   final UpsertActivity? activity;
   final JournalView view;
@@ -89,6 +94,7 @@ class VoiceDock extends StatefulWidget {
     this.openingInProgress = false,
     this.paused = false,
     this.reconnecting = false,
+    this.awaitingReply = false,
     this.activity,
     this.view = JournalView.graph,
     this.terms = const [],
@@ -164,6 +170,7 @@ class _VoiceDockState extends State<VoiceDock>
   bool get _lumenHolds =>
       widget.reconnecting ||
       widget.openingInProgress ||
+      widget.awaitingReply ||
       _speaking ||
       widget.liveAgent.isNotEmpty;
   bool get _youHold => !_lumenHolds && (_listening || widget.paused);
@@ -179,6 +186,7 @@ class _VoiceDockState extends State<VoiceDock>
     if (_speaking) return 'Speaking';
     if (widget.openingInProgress) return 'Connecting';
     if (widget.liveAgent.isNotEmpty) return 'Speaking';
+    if (widget.awaitingReply) return 'Mulling it over';
     if (!_listening && widget.extracting) return 'Mapping';
     return null;
   }
@@ -249,6 +257,7 @@ class _VoiceDockState extends State<VoiceDock>
                         name: lumen ? 'Lumen' : 'You',
                         status: status,
                         color: lumen ? colors.sage : colors.amber,
+                        mulling: lumen && status == 'Mulling it over',
                         words: _drawerOpen
                             ? _Drawer(
                                 text: lumenWords
@@ -422,10 +431,14 @@ class _Tier extends StatelessWidget {
   final bool fadeIn;
   final LumenColors colors;
 
+  /// Lumen is mulling over a reply: breathing dots follow the status.
+  final bool mulling;
+
   const _Tier({
     required this.name,
     required this.status,
     required this.color,
+    this.mulling = false,
     required this.words,
     required this.fadeIn,
     required this.colors,
@@ -471,6 +484,10 @@ class _Tier extends StatelessWidget {
               ),
             ),
           ),
+          if (mulling) ...[
+            const SizedBox(width: 6),
+            BreathingDots(color: color, size: 3.5),
+          ],
         ],
       ),
     );

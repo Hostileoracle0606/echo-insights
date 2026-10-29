@@ -32,6 +32,11 @@ class VoiceEngine {
         {'pcm': pcm16, 'sampleRate': sampleRate},
       );
 
+  /// Whether Apple's echo cancellation removes Lumen's voice from the mic:
+  /// true on a device once voice processing is on, never on the Simulator.
+  Future<bool> echoCancellation() async =>
+      await _methods.invokeMethod<bool>('echoCancellation') ?? false;
+
   /// Drops everything queued; the engine keeps running.
   Future<void> stopPlayback() => _methods.invokeMethod<void>('stopPlayback');
 

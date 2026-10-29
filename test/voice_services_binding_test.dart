@@ -65,6 +65,21 @@ void main() {
     expect(output.player, isNull);
   });
 
+  test('sign-in warms what the first notebook open reads, once', () async {
+    var warmUps = 0;
+    final binding = VoiceServicesBinding(
+      credentials: credentials,
+      audioOutput: output,
+      warmUp: () async => warmUps += 1,
+    );
+
+    binding.signedInChanged(true);
+    binding.signedInChanged(true);
+    await pumpEventQueue();
+
+    expect(warmUps, 1);
+  });
+
   test('repeated auth events do not restart the services', () async {
     final binding =
         VoiceServicesBinding(credentials: credentials, audioOutput: output);

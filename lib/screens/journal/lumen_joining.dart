@@ -2,41 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../../theme/lumen_colors.dart';
 
-/// Covers a new notebook while Lumen joins (plan: Flow 2), so the page is
-/// revealed with Lumen already there and its greeting playing.
-class LumenJoiningCover extends StatelessWidget {
-  const LumenJoiningCover({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.lumenColors;
-    final textTheme = Theme.of(context).textTheme;
-    return ColoredBox(
-      color: colors.paper,
-      child: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            SizedBox(
-              width: 28,
-              height: 28,
-              child: CircularProgressIndicator(
-                strokeWidth: 2.4,
-                color: colors.amber,
-              ),
-            ),
-            const SizedBox(height: 18),
-            Text(
-              'Lumen is joining…',
-              style: textTheme.titleMedium?.copyWith(color: colors.ink),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 /// Shown when Lumen couldn't join a new notebook in time.
 class LumenJoinFailedBanner extends StatelessWidget {
   const LumenJoinFailedBanner({

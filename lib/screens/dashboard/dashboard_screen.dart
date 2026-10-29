@@ -20,17 +20,22 @@ const double _displayCornerRadius = 55;
 /// top half — black type with an amber period accent, the words sliding in
 /// staggered on load — over the user's notebooks grouped by when they were
 /// started, with a full-width "New notebook" button docked at the bottom.
+/// Today / This week / Earlier, by the session's start date in the user's
+/// local day. started_at arrives in UTC: compared as UTC, an evening session
+/// west of UTC fell on "tomorrow" and dropped out of Today.
+@visibleForTesting
+String notebookGroup(DateTime startedAt, DateTime now) {
+  final localNow = now.toLocal();
+  final local = startedAt.toLocal();
+  final today = DateTime(localNow.year, localNow.month, localNow.day);
+  final day = DateTime(local.year, local.month, local.day);
+  if (day == today) return 'Today';
+  if (now.difference(startedAt).inDays < 7) return 'This week';
+  return 'Earlier';
+}
+
 class DashboardScreen extends ConsumerWidget {
   const DashboardScreen({super.key});
-
-  // Today / This week / Earlier, by the session's start date.
-  String _group(DateTime startedAt, DateTime now) {
-    final today = DateTime(now.year, now.month, now.day);
-    final day = DateTime(startedAt.year, startedAt.month, startedAt.day);
-    if (day == today) return 'Today';
-    if (now.difference(startedAt).inDays < 7) return 'This week';
-    return 'Earlier';
-  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -53,7 +58,9 @@ class DashboardScreen extends ConsumerWidget {
           data: (list) {
             final isEmpty = list.isEmpty;
             final greeting = isEmpty
-                ? (name.isEmpty ? 'Welcome to Lumen' : 'Welcome to Lumen, $name')
+                ? (name.isEmpty
+                    ? 'Welcome to Lumen'
+                    : 'Welcome to Lumen, $name')
                 : (name.isEmpty ? 'Welcome back' : 'Welcome back, $name');
             final totalEntities =
                 list.fold<int>(0, (sum, nb) => sum + nb.entityCount);
@@ -92,7 +99,9 @@ class DashboardScreen extends ConsumerWidget {
     final now = DateTime.now();
     final groups = <String, List<Notebook>>{};
     for (final notebook in list) {
-      groups.putIfAbsent(_group(notebook.startedAt, now), () => <Notebook>[])
+      groups
+          .putIfAbsent(
+              notebookGroup(notebook.startedAt, now), () => <Notebook>[])
           .add(notebook);
     }
 
@@ -255,8 +264,7 @@ class _NewNotebookButton extends ConsumerStatefulWidget {
   const _NewNotebookButton({required this.colors});
 
   @override
-  ConsumerState<_NewNotebookButton> createState() =>
-      _NewNotebookButtonState();
+  ConsumerState<_NewNotebookButton> createState() => _NewNotebookButtonState();
 }
 
 class _NewNotebookButtonState extends ConsumerState<_NewNotebookButton> {
@@ -278,8 +286,7 @@ class _NewNotebookButtonState extends ConsumerState<_NewNotebookButton> {
       setState(() => _creating = false);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content:
-              Text("Couldn't create a notebook — check your connection."),
+          content: Text("Couldn't create a notebook — check your connection."),
         ),
       );
       return;
@@ -406,7 +413,8 @@ class _AnimatedHeroState extends State<_AnimatedHero>
       builder: (context, _) => Text(
         '.',
         style: style?.copyWith(
-          color: widget.colors.amber.withValues(alpha: 0.4 + 0.6 * _pulse.value),
+          color:
+              widget.colors.amber.withValues(alpha: 0.4 + 0.6 * _pulse.value),
         ),
       ),
     );
