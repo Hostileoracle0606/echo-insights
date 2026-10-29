@@ -1,8 +1,7 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart' show rootBundle;
+import 'package:flutter/services.dart' show AssetBundle, rootBundle;
 import 'package:flutter/widgets.dart' show WidgetsBinding;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -16,6 +15,7 @@ import '../logic/conversation_policy.dart';
 import '../logic/echo_gate.dart';
 import '../logic/live_session_guard.dart';
 import '../logic/live_signal_gate.dart';
+import '../logic/opening_choice.dart';
 import '../logic/resume_context.dart';
 import '../logic/memory_removal.dart';
 import '../logic/merge.dart' as merge_logic;
@@ -28,6 +28,7 @@ import '../models/graph_patch.dart';
 import '../models/journal_entry.dart';
 import '../models/journal_state.dart';
 import '../models/recall_activity.dart';
+import '../models/session_brief.dart';
 import '../models/session_card.dart';
 import '../models/upsert_activity.dart';
 import '../services/gemini_live_client.dart';
@@ -35,8 +36,10 @@ import '../services/memory_control_service.dart';
 import '../services/notebook_commit_service.dart' as commit_service;
 import '../services/notebook_runtime_service.dart';
 import '../services/retrieve_memory_service.dart';
+import '../services/session_brief_service.dart';
 import '../services/session_card_service.dart';
 import '../services/turn_journal_service.dart';
+import 'opening_prep_provider.dart';
 import 'supabase_provider.dart';
 import 'voice_services_provider.dart';
 
@@ -174,11 +177,18 @@ class JournalNotifier extends Notifier<JournalState> {
   // until its greeting has been heard. Null outside a session.
   SessionOpeningCoordinator? _opening;
 
-  // Lumen's bundled greeting (loaded once), and the display-only transcript
-  // rows of greetings played in this notebook. Greetings never reach the turn
-  // machine: there is nothing in them to extract.
-  StandardOpening? _standardOpening;
-  Future<StandardOpening?>? _standardOpeningLoad;
+  // The opening chosen once per new-session start: the clip that plays and
+  // the up-front context both follow this one choice. [_openingBrief] is the
+  // sign-in brief as it stood at the choice (sent to Gemini even when it
+  // did not play). All null when continuing a notebook.
+  OpeningChoice? _openingChoice;
+  SessionBrief? _openingBrief;
+  StandardOpening? _openingClip;
+
+  // The bundled clips (intro, fallback), each loaded once; and the
+  // display-only transcript rows of greetings played in this notebook.
+  // Greetings never reach the turn machine: there is nothing to extract.
+  final _bundledOpenings = <OpeningChoice, Future<StandardOpening?>>{};
   final _greetingRows = <ConversationTurn>[];
 
   // Optimistic-concurrency counter from the last-known server snapshot.
@@ -1427,6 +1437,9 @@ class JournalNotifier extends Notifier<JournalState> {
     // from the tap. A new notebook opens with Lumen's greeting.
     final continuing = _continuesConversation;
     final opening = _opening = SessionOpeningCoordinator();
+    _openingChoice = null;
+    _openingBrief = null;
+    _openingClip = null;
     if (continuing) opening.markOpeningHeard();
     final lease = _liveSessionGuard.begin();
 
@@ -1503,7 +1516,7 @@ class JournalNotifier extends Notifier<JournalState> {
     // the voice engine, which the mic and the player share.
     final playbackReady = _attachPlayer(ref.read(audioOutputProvider));
     final greetingReady =
-        continuing ? Future<StandardOpening?>.value() : _loadStandardOpening();
+        continuing ? Future<StandardOpening?>.value() : _loadOpening();
     if (!continuing) {
       // Greet as soon as the speaker is ready, while the socket is still
       // connecting — the greeting covers the connection time. The mic stays
@@ -1646,7 +1659,14 @@ class JournalNotifier extends Notifier<JournalState> {
             )
           : const [],
       note: continuing ? resumeNote : null,
-      context: '[graph summary] ${jsonEncode(_buildGraphSummary())}',
+      // A new notebook: the greeting's exact words and its brief lead, so
+      // Gemini never greets again or repeats the question.
+      context: openingContext(
+        openingLine: continuing ? null : _openingClip?.text,
+        brief: continuing ? null : _openingBrief,
+        briefAlreadyRaised: _openingChoice != OpeningChoice.brief,
+        graphSummary: _buildGraphSummary(),
+      ),
     );
     if (continuing) prepared.live.releaseInput();
     vlog('timing', 'live');
@@ -1730,13 +1750,13 @@ class JournalNotifier extends Notifier<JournalState> {
     }
   }
 
-  /// Plays Lumen's bundled greeting through this session's player, once.
+  /// Plays the chosen opening clip through this session's player, once.
   /// Without a clip or a speaker there is nothing to wait for, so the floor
   /// passes to the user immediately.
   void _startGreeting() {
     final opening = _opening;
     if (opening == null || !opening.claimGreeting()) return;
-    final clip = _standardOpening;
+    final clip = _openingClip;
     final player = _player;
     if (clip == null) {
       if (opening.markOpeningHeard()) vlog('session', 'no greeting clip');
@@ -1767,6 +1787,7 @@ class JournalNotifier extends Notifier<JournalState> {
     }
     if (fed) {
       vlog('timing', 'greeting playing (${clip.duration.inMilliseconds}ms)');
+      _openingPlayed();
     } else {
       _liveAgentText = '';
       _agentTurnDone = false;
@@ -1777,15 +1798,79 @@ class JournalNotifier extends Notifier<JournalState> {
     _notifyUi();
   }
 
-  Future<StandardOpening?> _loadStandardOpening() {
-    return _standardOpeningLoad ??= StandardOpening.load(rootBundle).then(
-      (clip) => _standardOpening = clip,
+  /// Chooses this session's opening — synchronously, over whatever the
+  /// sign-in load already has (never waiting on it) — and loads its clip.
+  /// Only a bundled clip's asset load is awaited; a brief carries its audio.
+  Future<StandardOpening?> _loadOpening() {
+    final prep = ref.read(openingPrepProvider);
+    final state = prep.current;
+    final choice = _openingChoice = chooseOpening(
+      state: state,
+      knownNewAccount: prep.knownNewAccount,
+      now: DateTime.now(),
+    );
+    final brief = _openingBrief = state?.brief;
+    vlog('session', 'opening: ${choice.name}');
+    final opening = _opening;
+    final clip = switch (choice) {
+      OpeningChoice.brief => Future<StandardOpening?>.value(StandardOpening(
+          text: brief!.openingLine,
+          pcm: brief.pcm,
+          sampleRate: brief.sampleRate,
+        )),
+      OpeningChoice.intro => _loadBundled(choice, StandardOpening.load),
+      OpeningChoice.fallback =>
+        _loadBundled(choice, StandardOpening.loadReturning),
+    };
+    return clip.then((loaded) {
+      // A load that lands after a newer session started is not its clip.
+      if (identical(_opening, opening)) _openingClip = loaded;
+      return loaded;
+    });
+  }
+
+  Future<StandardOpening?> _loadBundled(
+    OpeningChoice choice,
+    Future<StandardOpening> Function(AssetBundle) load,
+  ) {
+    return _bundledOpenings[choice] ??= load(rootBundle).then(
+      (clip) => clip,
       onError: (Object error) {
-        debugPrint('[journal] greeting clip unavailable: $error');
-        _standardOpeningLoad = null;
+        debugPrint('[journal] ${choice.name} clip unavailable: $error');
+        _bundledOpenings.remove(choice);
         return null;
       },
     );
+  }
+
+  /// The chosen clip actually played. The intro plays only in the first
+  /// session of a sign-up run; a brief plays once, on every device.
+  void _openingPlayed() {
+    final prep = ref.read(openingPrepProvider);
+    switch (_openingChoice) {
+      case OpeningChoice.intro:
+        prep.markIntroPlayed();
+      case OpeningChoice.brief:
+        final brief = _openingBrief!;
+        // A refresh may have landed a newer brief since the choice; only
+        // the one that played is marked here.
+        final current = prep.current?.brief;
+        if (current != null &&
+            current.createdAt.isAtSameMomentAs(brief.createdAt)) {
+          prep.markPlayedLocally();
+        }
+        unawaited(Future<void>.sync(
+          () =>
+              ref.read(sessionBriefServiceProvider).markPlayed(brief.createdAt),
+        ).then(
+          (_) => vlog('session', 'session brief marked played'),
+          onError: (Object error) => vlog(
+              'session', 'marking the session brief played failed: $error'),
+        ));
+      case OpeningChoice.fallback:
+      case null:
+        break;
+    }
   }
 
   /// One Gemini signal, now that the session is the user's.
@@ -2083,6 +2168,22 @@ class JournalNotifier extends Notifier<JournalState> {
   /// card. A card that isn't written now is written the next time the
   /// notebook is left, or when the closing screen (LM-16) retries.
   void _writeSessionCard(String notebookId) {
+    // The next session's brief is written from this notebook, in parallel
+    // with the card; it never blocks or fails leaving. Once written, the
+    // opening state reloads so the next new notebook can play it.
+    final prep = ref.read(openingPrepProvider);
+    final briefs = ref.read(sessionBriefServiceProvider);
+    unawaited(Future<void>.sync(() => briefs.requestBrief(notebookId)).then(
+      (_) {
+        vlog('session', 'session brief ready for $notebookId');
+        return prep.refresh();
+      },
+      onError: (Object error) => vlog(
+        'session',
+        'session brief failed for $notebookId: ${error.runtimeType}'
+            '${error is SessionBriefException ? ' ${error.statusCode}' : ''}',
+      ),
+    ));
     unawaited(
       Future<SessionCard?>.sync(
         () => ref.read(sessionCardServiceProvider).close(notebookId),

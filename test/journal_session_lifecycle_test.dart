@@ -2,6 +2,7 @@
 // JournalNotifier and GeminiLiveClient: only the socket, the microphone, the
 // speaker and the token source are fakes.
 import 'dart:async';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -15,8 +16,10 @@ import 'package:lumen/models/follow_up.dart';
 import 'package:lumen/models/graph_patch.dart';
 import 'package:lumen/models/journal_entry.dart';
 import 'package:lumen/models/journal_state.dart';
+import 'package:lumen/models/session_brief.dart';
 import 'package:lumen/models/session_card.dart';
 import 'package:lumen/providers/journal_provider.dart';
+import 'package:lumen/providers/opening_prep_provider.dart';
 import 'package:lumen/providers/supabase_provider.dart';
 import 'package:lumen/providers/voice_services_provider.dart';
 import 'package:lumen/services/extract_graph_service.dart';
@@ -26,6 +29,7 @@ import 'package:lumen/services/live_credentials.dart';
 import 'package:lumen/services/notebook_commit_service.dart';
 import 'package:lumen/services/notebook_runtime_service.dart';
 import 'package:lumen/services/retrieve_memory_service.dart';
+import 'package:lumen/services/session_brief_service.dart';
 import 'package:lumen/services/session_card_service.dart';
 import 'package:lumen/services/supabase_service.dart';
 import 'package:lumen/services/transcript_store.dart';
@@ -215,6 +219,46 @@ class _FakeCards implements SessionCardService {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
+/// The session-brief backend: [state] is what the sign-in load returns
+/// (null: the load fails), and every write is recorded.
+class _FakeBriefs implements SessionBriefService {
+  SessionOpeningState? state;
+  int loads = 0;
+  final requested = <String>[];
+  final played = <DateTime>[];
+  Future<void> Function(String notebookId)? onRequest;
+
+  @override
+  Future<SessionOpeningState> load() async {
+    loads += 1;
+    final loaded = state;
+    if (loaded == null) throw StateError('no brief state');
+    return loaded;
+  }
+
+  @override
+  Future<void> requestBrief(String notebookId) {
+    requested.add(notebookId);
+    return onRequest?.call(notebookId) ?? Future.value();
+  }
+
+  @override
+  Future<void> markPlayed(DateTime createdAt) async => played.add(createdAt);
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+SessionBrief _brief() => SessionBrief(
+      focus: const ['Maya', 'the move'],
+      openingThread: 'how the move to Lisbon went',
+      openingLine: 'Hey, welcome back. How did the move to Lisbon go?',
+      createdAt: DateTime.utc(2026, 10, 27, 9, 30, 0, 0, 123),
+      playedAt: null,
+      pcm: Uint8List(24000), // 0.5 s at 24 kHz
+      sampleRate: 24000,
+    );
+
 class _Harness {
   _Harness({
     JournalState? state,
@@ -242,6 +286,7 @@ class _Harness {
       openingTimeoutProvider.overrideWithValue(openingTimeout),
       supabaseServiceProvider.overrideWithValue(supabase ?? _NoNotebookInserts()),
       sessionCardServiceProvider.overrideWithValue(cards),
+      sessionBriefServiceProvider.overrideWithValue(briefs),
       liveCredentialsProvider.overrideWithValue(credentials),
       audioOutputProvider.overrideWithValue(
         AudioOutput(createPlayer: () => PcmPlayer(backend: _Backend())),
@@ -270,6 +315,7 @@ class _Harness {
   final _FakeCommits commits;
   final extractor = _FakeExtractor();
   final cards = _FakeCards();
+  final briefs = _FakeBriefs();
   late final ProviderContainer container;
   late final LiveCredentials credentials;
   final mic = _FakeMic();
@@ -277,6 +323,7 @@ class _Harness {
   int tokensMinted = 0;
 
   JournalNotifier get journal => container.read(journalProvider.notifier);
+  OpeningPrep get prep => container.read(openingPrepProvider);
   FakeLiveSocket get socket => sockets.last;
 
   Future<void> waitForSocket(int count) async {
@@ -313,6 +360,10 @@ List<Object?> _contextTexts(FakeLiveSocket socket) {
       (((turn as Map)['parts'] as List).single as Map)['text'],
   ];
 }
+
+/// The words of a bundled clip, as the app reads them.
+String _bundledText(String name) =>
+    File('assets/audio/$name.txt').readAsStringSync().trim();
 
 List<String> _toolNames(List<Map<String, dynamic>> tools) => [
       for (final tool in tools)
@@ -360,13 +411,110 @@ void main() {
     // Gemini gets the graph summary up front, as context before its first
     // reply (the only time gemini-3.1-flash-live reads client_content), so
     // it never has to stop and ask for it with a tool call.
-    expect(_contextTexts(h.socket), [startsWith('[graph summary] ')]);
+    // Unknown account state at the tap: the returning clip, and Gemini is
+    // told its exact words ahead of the summary.
+    final context = _contextTexts(h.socket).single as String;
+    expect(context,
+        startsWith('[opening said] "${_bundledText('lumen_returning')}"\n'));
+    expect(context, isNot(contains('[session brief]')));
+    expect(context.split('\n').last, startsWith('[graph summary] '));
     expect(_toolNames(JournalNotifier.liveTools), ['get_relevant_memory']);
     expect(
       h.journal.transcriptRows.where((row) => row.turn.turnId.startsWith('lumen-greeting')),
       hasLength(1),
       reason: 'the bundled greeting is Lumen\'s opening',
     );
+  });
+
+  test('a usable brief opens the session and Gemini is told what was said',
+      () async {
+    h = _Harness();
+    final brief = _brief();
+    h.briefs.state = SessionOpeningState(returning: true, brief: brief);
+    await h.prep.refresh();
+
+    final entering = h.journal.enterNotebook(_notebookId);
+    await h.waitForSocket(1);
+    h.socket.serverSends({'setupComplete': <String, dynamic>{}});
+    expect((await entering).succeeded, isTrue);
+
+    final context = _contextTexts(h.socket).single as String;
+    expect(context, startsWith('[opening said] "${brief.openingLine}"\n'));
+    expect(
+      context,
+      contains('[session brief] {"focus":["Maya","the move"],'
+          '"openingThread":"how the move to Lisbon went",'
+          '"alreadyRaised":false}'),
+    );
+    expect(context.split('\n').last, startsWith('[graph summary] '));
+    expect(
+      [
+        for (final row in h.journal.transcriptRows)
+          if (row.turn.turnId.startsWith('lumen-greeting')) row.turn.text,
+      ],
+      [brief.openingLine],
+    );
+    await Future<void>.delayed(Duration.zero);
+    expect(h.briefs.played, [brief.createdAt]);
+    expect(h.prep.current!.brief!.playedAt, isNotNull,
+        reason: 'this device sees it played before the next refresh');
+  });
+
+  test('without the sign-in state yet, the returning clip plays', () async {
+    h = _Harness();
+    await h.prep.refresh(); // fails: current stays null
+
+    final entering = h.journal.enterNotebook(_notebookId);
+    await h.waitForSocket(1);
+    h.socket.serverSends({'setupComplete': <String, dynamic>{}});
+    expect((await entering).succeeded, isTrue);
+
+    expect(h.prep.current, isNull);
+    expect(
+      _contextTexts(h.socket).single,
+      startsWith('[opening said] "${_bundledText('lumen_returning')}"\n'),
+    );
+    await Future<void>.delayed(Duration.zero);
+    expect(h.briefs.played, isEmpty);
+  });
+
+  test('a played brief is not replayed: fallback, and it was already raised',
+      () async {
+    h = _Harness();
+    final brief = _brief().copyWith(playedAt: DateTime.utc(2026, 10, 28));
+    h.briefs.state = SessionOpeningState(returning: true, brief: brief);
+    await h.prep.refresh();
+
+    final entering = h.journal.enterNotebook(_notebookId);
+    await h.waitForSocket(1);
+    h.socket.serverSends({'setupComplete': <String, dynamic>{}});
+    expect((await entering).succeeded, isTrue);
+
+    final context = _contextTexts(h.socket).single as String;
+    expect(context,
+        startsWith('[opening said] "${_bundledText('lumen_returning')}"\n'));
+    expect(context, contains('"alreadyRaised":true}'));
+    await Future<void>.delayed(Duration.zero);
+    expect(h.briefs.played, isEmpty);
+  });
+
+  test('an account signed up in this run hears the intro, once', () async {
+    h = _Harness();
+    h.prep.markNewAccount();
+
+    final entering = h.journal.enterNotebook(_notebookId);
+    await h.waitForSocket(1);
+    h.socket.serverSends({'setupComplete': <String, dynamic>{}});
+    expect((await entering).succeeded, isTrue);
+
+    expect(
+      _contextTexts(h.socket).single,
+      startsWith('[opening said] "${_bundledText('lumen_opening')}"\n'),
+    );
+    expect(h.prep.knownNewAccount, isFalse,
+        reason: 'the intro played: the next session is not a first one');
+    await Future<void>.delayed(Duration.zero);
+    expect(h.briefs.played, isEmpty);
   });
 
   test('an old notebook records from the tap, seeds context, then the audio',
@@ -397,6 +545,7 @@ void main() {
     expect(h.socket.kindsAfterSetup.first, 'client_content');
     expect(_contextTexts(h.socket),
         [startsWith('[graph summary] '), 'I met Maya.', resumeNote]);
+    expect(_contextTexts(h.socket).first, isNot(contains('[opening said]')));
     expect(_contextTexts(h.socket).first, contains('"entityCount"'));
     expect(h.socket.sentAudioBytes, [1, 1, 2, 2, 3, 3]);
   });
@@ -554,6 +703,70 @@ void main() {
       expect(h.cards.closed, [_notebookId]);
     });
   }
+
+  test('leaving asks for the next session brief, then reloads it', () async {
+    h = _Harness(
+      state: JournalState.empty().copyWith(entries: [_entry('Earlier.')]),
+      supabase: _EndingNotebooks(),
+    );
+    final briefWritten = Completer<void>();
+    h.briefs.onRequest = (_) => briefWritten.future;
+    await h.journal.enterNotebook(_notebookId);
+    await h.startLive();
+    final loadsBefore = h.briefs.loads;
+
+    final left = await h.journal.leaveNotebook();
+
+    expect(left.succeeded, isTrue, reason: 'leaving never waits on the brief');
+    expect(h.briefs.requested, [_notebookId]);
+    expect(h.cards.closed, [_notebookId], reason: 'in parallel with the card');
+    expect(h.briefs.loads, loadsBefore);
+    briefWritten.complete();
+    await Future<void>.delayed(Duration.zero);
+    expect(h.briefs.loads, loadsBefore + 1);
+  });
+
+  test('leaving still succeeds when asking for the brief fails', () async {
+    final notebooks = _EndingNotebooks();
+    h = _Harness(
+      state: JournalState.empty().copyWith(entries: [_entry('Earlier.')]),
+      supabase: notebooks,
+    );
+    h.briefs.onRequest =
+        (_) => Future<void>.error(const SessionBriefException('down'));
+    await h.journal.enterNotebook(_notebookId);
+    await h.startLive();
+    final loadsBefore = h.briefs.loads;
+
+    final left = await h.journal.leaveNotebook();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(left.succeeded, isTrue);
+    expect(notebooks.ended, [_notebookId]);
+    expect(h.briefs.requested, [_notebookId]);
+    expect(h.cards.closed, [_notebookId]);
+    expect(h.briefs.loads, loadsBefore, reason: 'nothing new to load');
+  });
+
+  test('a continuing notebook plays no opening, even with a usable brief',
+      () async {
+    h = _Harness(
+      state: JournalState.empty().copyWith(entries: [_entry('I met Maya.')]),
+    );
+    h.briefs.state = SessionOpeningState(returning: true, brief: _brief());
+    await h.prep.refresh();
+    await h.journal.enterNotebook(_notebookId);
+
+    expect((await h.startLive()).succeeded, isTrue);
+
+    final context = _contextTexts(h.socket);
+    expect(context.first, startsWith('[graph summary] '));
+    expect(context.first, isNot(contains('[opening said]')));
+    expect(context.first, isNot(contains('[session brief]')));
+    await Future<void>.delayed(Duration.zero);
+    expect(h.briefs.played, isEmpty);
+    expect(h.prep.current!.brief!.playedAt, isNull);
+  });
 
   test('a notebook that never went live is left without a card', () async {
     h = _Harness(
