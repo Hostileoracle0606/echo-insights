@@ -129,4 +129,55 @@ void main() {
     prep.markPlayedLocally();
     expect(prep.current!.brief, isNull);
   });
+
+  test('markReturning with no state yet makes the account returning', () {
+    prep.markReturning();
+    expect(prep.current!.returning, isTrue);
+    expect(prep.current!.brief, isNull);
+  });
+
+  test('markReturning keeps the current brief, played or not', () async {
+    final first = prep.refresh();
+    service.loads[0].complete(SessionOpeningState(
+      returning: false,
+      brief: _state().brief,
+    ));
+    await first;
+    prep.markPlayedLocally();
+    prep.markReturning();
+    expect(prep.current!.returning, isTrue);
+    expect(prep.current!.brief!.openingLine, 'Hi');
+    expect(prep.current!.brief!.playedAt, isNotNull);
+  });
+
+  test('a load issued before markReturning cannot make the account new again',
+      () async {
+    final inFlight = prep.refresh();
+    prep.markReturning();
+    service.loads[0]
+        .complete(const SessionOpeningState(returning: false, brief: null));
+    await inFlight;
+    expect(prep.current!.returning, isTrue);
+  });
+
+  test('a later refresh still replaces the brief after markReturning',
+      () async {
+    prep.markReturning();
+    final r = prep.refresh();
+    service.loads[0].complete(_state(line: 'fresh'));
+    await r;
+    expect(prep.current!.returning, isTrue);
+    expect(prep.current!.brief!.openingLine, 'fresh');
+  });
+
+  test('clear forgets markReturning', () async {
+    prep.markReturning();
+    prep.clear();
+    expect(prep.current, isNull);
+    final r = prep.refresh();
+    service.loads[0]
+        .complete(const SessionOpeningState(returning: false, brief: null));
+    await r;
+    expect(prep.current!.returning, isFalse);
+  });
 }

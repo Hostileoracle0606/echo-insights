@@ -43,11 +43,13 @@ class SessionBrief {
     );
   }
 
+  /// [sessionBriefMaxAge] (21 days) old or older: its thread is likely
+  /// stale, so it is neither played nor sent to the live prompt.
+  bool staleAt(DateTime now) => now.difference(createdAt) >= sessionBriefMaxAge;
+
   /// Unplayed, younger than 21 days, and has audio to play.
   bool usableAt(DateTime now) =>
-      playedAt == null &&
-      now.difference(createdAt) < sessionBriefMaxAge &&
-      pcm.isNotEmpty;
+      playedAt == null && !staleAt(now) && pcm.isNotEmpty;
 
   SessionBrief copyWith({DateTime? playedAt}) => SessionBrief(
         focus: focus,

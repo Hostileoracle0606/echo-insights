@@ -29,7 +29,25 @@ void main() {
       chooseOpening(state: s, knownNewAccount: isNew, now: now);
 
   test('a known new account gets the intro even with a brief', () {
-    expect(choose(state(brief()), isNew: true), OpeningChoice.intro);
+    expect(
+      choose(state(brief(), returning: false), isNew: true),
+      OpeningChoice.intro,
+    );
+  });
+
+  test('a known new account with no state yet gets the intro', () {
+    expect(choose(null, isNew: true), OpeningChoice.intro);
+  });
+
+  test(
+      'a known returning account never gets the intro, even if signed up '
+      'in this run', () {
+    expect(choose(state(brief()), isNew: true), OpeningChoice.brief);
+    expect(choose(state(null), isNew: true), OpeningChoice.fallback);
+    expect(
+      choose(state(brief(playedAt: now)), isNew: true),
+      OpeningChoice.fallback,
+    );
   });
 
   test('no state falls back', () {
@@ -58,6 +76,17 @@ void main() {
         createdAt: now.subtract(const Duration(days: 20, hours: 23)),
       ))),
       OpeningChoice.brief,
+    );
+  });
+
+  test('staleAt is true from 21 days on', () {
+    expect(
+        brief(createdAt: now.subtract(const Duration(days: 21))).staleAt(now),
+        isTrue);
+    expect(
+      brief(createdAt: now.subtract(const Duration(days: 20, hours: 23)))
+          .staleAt(now),
+      isFalse,
     );
   });
 
