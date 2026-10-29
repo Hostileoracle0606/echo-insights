@@ -180,7 +180,7 @@ class JournalNotifier extends Notifier<JournalState> {
   // The opening chosen once per new-session start: the clip that plays and
   // the up-front context both follow this one choice. [_openingBrief] is the
   // sign-in brief as it stood at the choice (sent to Gemini even when it
-  // did not play). All null when continuing a notebook.
+  // did not play, unless 21+ days old). All null when continuing a notebook.
   OpeningChoice? _openingChoice;
   SessionBrief? _openingBrief;
   StandardOpening? _openingClip;
@@ -1804,12 +1804,16 @@ class JournalNotifier extends Notifier<JournalState> {
   Future<StandardOpening?> _loadOpening() {
     final prep = ref.read(openingPrepProvider);
     final state = prep.current;
+    final now = DateTime.now();
     final choice = _openingChoice = chooseOpening(
       state: state,
       knownNewAccount: prep.knownNewAccount,
-      now: DateTime.now(),
+      now: now,
     );
-    final brief = _openingBrief = state?.brief;
+    // A brief 21+ days old is stale: neither played nor sent to Gemini.
+    final current = state?.brief;
+    final brief = _openingBrief =
+        current == null || current.staleAt(now) ? null : current;
     vlog('session', 'opening: ${choice.name}');
     final opening = _opening;
     final clip = switch (choice) {
@@ -2146,6 +2150,12 @@ class JournalNotifier extends Notifier<JournalState> {
       }
     }
 
+    // The user said something in this notebook (now or in an earlier
+    // session): the account is returning from here on, whatever the brief
+    // request below does. Read before the history is dropped.
+    final userSpoke = closedNotebookId != null &&
+        _earlierConversation.any((turn) => turn.role == Speaker.user);
+
     _muted = false;
     _sessionStartedAt = null;
     _activeNotebookId = null;
@@ -2159,6 +2169,7 @@ class JournalNotifier extends Notifier<JournalState> {
     _lastMemoryQuery = null;
     _memoryCallsThisTurn = 0;
     _setStatus(SessionStatus.idle);
+    if (userSpoke) ref.read(openingPrepProvider).markReturning();
     if (closedNotebookId != null) _writeSessionCard(closedNotebookId);
     return const NotebookTransitionResult.success();
   }
@@ -2169,8 +2180,10 @@ class JournalNotifier extends Notifier<JournalState> {
   /// notebook is left, or when the closing screen (LM-16) retries.
   void _writeSessionCard(String notebookId) {
     // The next session's brief is written from this notebook, in parallel
-    // with the card; it never blocks or fails leaving. Once written, the
-    // opening state reloads so the next new notebook can play it.
+    // with the card; it never blocks or fails leaving. Either way the
+    // opening state reloads: written, so the next new notebook can play it;
+    // failed, so the server's view (returning, the previous brief) still
+    // lands.
     final prep = ref.read(openingPrepProvider);
     final briefs = ref.read(sessionBriefServiceProvider);
     unawaited(Future<void>.sync(() => briefs.requestBrief(notebookId)).then(
@@ -2178,11 +2191,14 @@ class JournalNotifier extends Notifier<JournalState> {
         vlog('session', 'session brief ready for $notebookId');
         return prep.refresh();
       },
-      onError: (Object error) => vlog(
-        'session',
-        'session brief failed for $notebookId: ${error.runtimeType}'
-            '${error is SessionBriefException ? ' ${error.statusCode}' : ''}',
-      ),
+      onError: (Object error) {
+        vlog(
+          'session',
+          'session brief failed for $notebookId: ${error.runtimeType}'
+              '${error is SessionBriefException ? ' ${error.statusCode}' : ''}',
+        );
+        return prep.refresh();
+      },
     ));
     unawaited(
       Future<SessionCard?>.sync(

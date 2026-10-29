@@ -88,6 +88,25 @@ void main() {
     expect(geminiLiveSystemInstruction, isNot(contains(returning)));
   });
 
+  test('the prompt explains alreadyRaised both ways and an empty thread', () {
+    final opening = geminiLiveSystemInstruction
+        .split('SESSION OPENING:')
+        .last
+        .split('SILENCE:')
+        .first;
+    expect(opening, contains('`alreadyRaised: false`: the greeting asked about '
+        '`openingThread`'));
+    expect(opening, contains("don't ask it again"));
+    expect(opening, contains('`alreadyRaised: true`: the greeting did NOT ask '
+        'about it'));
+    expect(opening, contains('background only'));
+    expect(opening, contains("don't steer back to it"));
+    expect(opening, contains('If `openingThread` is empty, the greeting asked '
+        'nothing specific'));
+    expect(opening, isNot(contains('its `openingThread` is what the greeting '
+        'asked about')), reason: 'no longer unconditional');
+  });
+
   test('the opening context: what was said, the brief, then the graph', () {
     final brief = SessionBrief(
       focus: const ['Maya'],

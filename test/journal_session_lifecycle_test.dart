@@ -38,6 +38,7 @@ import 'package:lumen/services/turn_journal_service.dart';
 import 'support/fake_live_socket.dart';
 
 const _notebookId = '8e03b8f4-4f20-4df3-8398-d854adc32b14';
+const _otherNotebookId = '5c1d2a9e-7b3f-4e8a-9d61-0f2b7c4e8a13';
 
 class _FakeMic implements MicCapture {
   void Function(Uint8List)? _onChunk;
@@ -745,7 +746,106 @@ void main() {
     expect(notebooks.ended, [_notebookId]);
     expect(h.briefs.requested, [_notebookId]);
     expect(h.cards.closed, [_notebookId]);
-    expect(h.briefs.loads, loadsBefore, reason: 'nothing new to load');
+    expect(h.briefs.loads, loadsBefore + 1,
+        reason: "the server's view still reloads when the brief fails");
+  });
+
+  /// A fresh account: the intro opens the first notebook, the user says
+  /// something, then leaves while the server still reports a new account.
+  Future<void> firstSessionThenLeave(
+      Future<void> Function(String notebookId) onRequest) async {
+    h = _Harness(supabase: _EndingNotebooks());
+    h.briefs.state = const SessionOpeningState(returning: false, brief: null);
+    h.briefs.onRequest = onRequest;
+    h.prep.markNewAccount();
+    await h.prep.refresh();
+
+    final entering = h.journal.enterNotebook(_notebookId);
+    await h.waitForSocket(1);
+    h.socket.serverSends({'setupComplete': <String, dynamic>{}});
+    expect((await entering).succeeded, isTrue);
+    expect(
+      _contextTexts(h.socket).single,
+      startsWith('[opening said] "${_bundledText('lumen_opening')}"\n'),
+    );
+    h.socket
+      ..serverSends({
+        'serverContent': {
+          'inputTranscription': {'text': 'I started a new job.', 'finished': true},
+        },
+      })
+      ..serverSends({
+        'serverContent': {'turnComplete': true},
+      });
+    for (var i = 0; i < 50 && h.transcripts.saved.isEmpty; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+    }
+    expect(h.transcripts.saved.map((t) => t.role), contains(Speaker.user));
+
+    expect((await h.journal.leaveNotebook()).succeeded, isTrue);
+    await Future<void>.delayed(Duration.zero);
+    expect(h.briefs.requested, [_notebookId]);
+  }
+
+  Future<String> nextNotebookOpening() async {
+    final entering = h.journal.enterNotebook(_otherNotebookId);
+    await h.waitForSocket(2);
+    h.socket.serverSends({'setupComplete': <String, dynamic>{}});
+    expect((await entering).succeeded, isTrue);
+    return _contextTexts(h.socket).single as String;
+  }
+
+  test('after a first session with speech, a failed brief still means the '
+      'fallback next, not the intro', () async {
+    await firstSessionThenLeave(
+        (_) => Future<void>.error(const SessionBriefException('down')));
+    // The reload after the failure still says "new" (server lag); the
+    // device knows better.
+    expect(h.prep.current!.returning, isTrue);
+
+    expect(
+      await nextNotebookOpening(),
+      startsWith('[opening said] "${_bundledText('lumen_returning')}"\n'),
+    );
+  });
+
+  test('after a first session with speech, a slow brief still means the '
+      'fallback next, not the intro', () async {
+    final never = Completer<void>();
+    await firstSessionThenLeave((_) => never.future);
+
+    expect(
+      await nextNotebookOpening(),
+      startsWith('[opening said] "${_bundledText('lumen_returning')}"\n'),
+    );
+  });
+
+  test('a brief 21+ days old is neither played nor sent to Gemini', () async {
+    h = _Harness();
+    final stale = SessionBrief(
+      focus: const ['Maya'],
+      openingThread: 'how the move to Lisbon went',
+      openingLine: 'Hey! How did the move go?',
+      createdAt: DateTime.now().subtract(const Duration(days: 22)),
+      playedAt: null,
+      pcm: Uint8List(24000),
+      sampleRate: 24000,
+    );
+    h.briefs.state = SessionOpeningState(returning: true, brief: stale);
+    await h.prep.refresh();
+
+    final entering = h.journal.enterNotebook(_notebookId);
+    await h.waitForSocket(1);
+    h.socket.serverSends({'setupComplete': <String, dynamic>{}});
+    expect((await entering).succeeded, isTrue);
+
+    final context = _contextTexts(h.socket).single as String;
+    expect(context,
+        startsWith('[opening said] "${_bundledText('lumen_returning')}"\n'));
+    expect(context, isNot(contains('[session brief]')));
+    expect(context, isNot(contains('Lisbon')));
+    await Future<void>.delayed(Duration.zero);
+    expect(h.briefs.played, isEmpty);
   });
 
   test('a continuing notebook plays no opening, even with a usable brief',
