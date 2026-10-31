@@ -181,7 +181,10 @@ void main() {
 
     expect(tester.getRect(find.byKey(VoiceDock.pillKey)).bottom,
         moreOrLessEquals(874 - 336 - 8, epsilon: 0.5));
-    expect(tester.getSize(find.byType(GraphCanvas)), const Size(402, 874));
+    // The graph sits behind the transcript (the default view) but keeps its
+    // full size: the keyboard moves only the pill.
+    expect(tester.getSize(find.byType(GraphCanvas, skipOffstage: false)),
+        const Size(402, 874));
     await tester.pumpWidget(const SizedBox());
   });
 
@@ -252,9 +255,7 @@ void main() {
       ),
     ]);
 
-    await tester.tap(find.bySemanticsLabel('Show transcript'));
-    await _frames(tester);
-
+    // A notebook opens on its transcript.
     expect(find.textContaining('typed · '), findsOneWidget);
     final label = tester.widget<Text>(find.textContaining('typed · '));
     final local = DateTime.parse('2026-10-23T17:04:00Z').toLocal();
