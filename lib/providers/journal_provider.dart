@@ -36,7 +36,6 @@ import '../services/memory_control_service.dart';
 import '../services/notebook_commit_service.dart' as commit_service;
 import '../services/notebook_runtime_service.dart';
 import '../services/retrieve_memory_service.dart';
-import '../services/session_brief_service.dart';
 import '../services/session_card_service.dart';
 import '../services/turn_journal_service.dart';
 import 'opening_prep_provider.dart';
@@ -2180,26 +2179,10 @@ class JournalNotifier extends Notifier<JournalState> {
   /// notebook is left, or when the closing screen (LM-16) retries.
   void _writeSessionCard(String notebookId) {
     // The next session's brief is written from this notebook, in parallel
-    // with the card; it never blocks or fails leaving. Either way the
-    // opening state reloads: written, so the next new notebook can play it;
-    // failed, so the server's view (returning, the previous brief) still
-    // lands.
-    final prep = ref.read(openingPrepProvider);
-    final briefs = ref.read(sessionBriefServiceProvider);
-    unawaited(Future<void>.sync(() => briefs.requestBrief(notebookId)).then(
-      (_) {
-        vlog('session', 'session brief ready for $notebookId');
-        return prep.refresh();
-      },
-      onError: (Object error) {
-        vlog(
-          'session',
-          'session brief failed for $notebookId: ${error.runtimeType}'
-              '${error is SessionBriefException ? ' ${error.statusCode}' : ''}',
-        );
-        return prep.refresh();
-      },
-    ));
+    // with the card; it never blocks or fails leaving. OpeningPrep reloads
+    // the opening state either way, and keeps retrying a brief that failed
+    // for a reason that can pass (Gemini's rate limit, a server error).
+    unawaited(ref.read(openingPrepProvider).requestBrief(notebookId));
     unawaited(
       Future<SessionCard?>.sync(
         () => ref.read(sessionCardServiceProvider).close(notebookId),
