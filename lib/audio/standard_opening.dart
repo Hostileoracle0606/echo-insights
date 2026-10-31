@@ -19,6 +19,10 @@ class StandardOpening {
   static const textAsset = 'assets/audio/lumen_opening.txt';
   static const audioAsset = 'assets/audio/lumen_opening.wav';
 
+  /// The shorter hello for someone who has been here before.
+  static const returningTextAsset = 'assets/audio/lumen_returning.txt';
+  static const returningAudioAsset = 'assets/audio/lumen_returning.wav';
+
   final String text;
 
   /// PCM16 mono samples.
@@ -28,9 +32,19 @@ class StandardOpening {
   Duration get duration =>
       Duration(microseconds: (pcm.length / 2 / sampleRate * 1e6).round());
 
-  static Future<StandardOpening> load(AssetBundle bundle) async {
-    final text = (await bundle.loadString(textAsset)).trim();
-    final wav = await bundle.load(audioAsset);
+  static Future<StandardOpening> load(AssetBundle bundle) =>
+      _load(bundle, textAsset, audioAsset);
+
+  static Future<StandardOpening> loadReturning(AssetBundle bundle) =>
+      _load(bundle, returningTextAsset, returningAudioAsset);
+
+  static Future<StandardOpening> _load(
+    AssetBundle bundle,
+    String textPath,
+    String audioPath,
+  ) async {
+    final text = (await bundle.loadString(textPath)).trim();
+    final wav = await bundle.load(audioPath);
     final clip = parsePcm16Wav(wav.buffer.asUint8List(
       wav.offsetInBytes,
       wav.lengthInBytes,
