@@ -189,7 +189,15 @@ export class InfraStack extends cdk.Stack {
       supabaseAuthorizer,
       {
         responseTypes: [authorizers.HttpLambdaResponseType.SIMPLE],
-        resultsCacheTtl: cdk.Duration.seconds(0),
+        // Cached per Authorization header (the identity source), so a call
+        // within 5 minutes of another with the same token skips the
+        // authorizer's Supabase round trip (~0.5-1 s). The answer is the same
+        // for every route. Data access still needs an unexpired token: each
+        // Lambda forwards it to Supabase, where RLS checks it. A token signed
+        // out of Supabase can still pass here for up to 5 minutes. Denials
+        // are cached too, so the authorizer throws (500, not cached) when
+        // Supabase can't answer rather than denying a valid token.
+        resultsCacheTtl: cdk.Duration.minutes(5),
       },
     );
 
