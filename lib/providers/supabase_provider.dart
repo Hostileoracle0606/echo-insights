@@ -8,6 +8,7 @@ import '../services/memory_control_service.dart';
 import '../services/notebook_commit_service.dart';
 import '../services/notebook_runtime_service.dart';
 import '../services/session_brief_service.dart';
+import '../logic/card_drafter.dart';
 import '../services/session_card_service.dart';
 import '../services/supabase_service.dart';
 import '../services/transcript_store.dart';
@@ -72,6 +73,17 @@ final sessionCardServiceProvider = Provider<SessionCardService>((ref) {
           .maybeSingle();
       return row?['card'];
     },
+  );
+});
+
+/// Drafts the closing card in the background while a conversation goes on,
+/// so leaving shows it at once (see CardDrafter).
+final cardDrafterProvider = Provider<CardDrafter>((ref) {
+  // Read lazily: building the drafter must never touch the runtime, since
+  // it is called from the turn-commit path; a failing draft is caught there.
+  return CardDrafter(
+    draft: (notebookId) =>
+        ref.read(sessionCardServiceProvider).draft(notebookId),
   );
 });
 

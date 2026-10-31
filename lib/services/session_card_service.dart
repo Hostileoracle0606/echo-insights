@@ -73,7 +73,18 @@ class SessionCardService {
     return closing;
   }
 
-  Future<SessionCard?> _close(String notebookId, int maxRetries) async {
+  /// A draft of the card from the conversation so far, written in the
+  /// background while it goes on (see CardDrafter). Best-effort: one
+  /// attempt, never shared with [close]. Null when there is nothing to
+  /// summarize yet or the mode has no card.
+  Future<SessionCard?> draft(String notebookId) =>
+      _close(notebookId, 0, draft: true);
+
+  Future<SessionCard?> _close(
+    String notebookId,
+    int maxRetries, {
+    bool draft = false,
+  }) async {
     if (_baseUrl.isEmpty) {
       throw StateError('The secure notebook runtime is not configured');
     }
@@ -95,7 +106,7 @@ class SessionCardService {
             'authorization': 'Bearer $accessToken',
             'content-type': 'application/json',
           },
-          body: '{}',
+          body: draft ? '{"draft":true}' : '{}',
         );
       } on http.ClientException {
         if (attempt == maxRetries) rethrow;

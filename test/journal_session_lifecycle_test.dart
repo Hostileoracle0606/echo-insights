@@ -114,10 +114,12 @@ class _FakeTurnJournal implements TurnJournalService {
   }) async {}
 
   @override
-  Future<void> forgetTurn({required String notebookId, required String turnId}) async {}
+  Future<void> forgetTurn(
+      {required String notebookId, required String turnId}) async {}
 
   @override
-  Future<List<TurnJournalCheckpoint>> loadCheckpoints(String notebookId) async =>
+  Future<List<TurnJournalCheckpoint>> loadCheckpoints(
+          String notebookId) async =>
       const [];
 
   @override
@@ -179,7 +181,8 @@ class _FakeTranscripts implements TranscriptStore {
   final saved = <ConversationTurn>[];
 
   @override
-  Future<List<ConversationTurn>> load(String notebookId, {int limit = 500}) async =>
+  Future<List<ConversationTurn>> load(String notebookId,
+          {int limit = 500}) async =>
       turns;
 
   @override
@@ -208,12 +211,19 @@ class _EndingNotebooks implements SupabaseService {
 /// Records close-session requests; [onClose] decides how each one ends.
 class _FakeCards implements SessionCardService {
   final closed = <String>[];
+  final drafted = <String>[];
   Future<SessionCard?> Function(String notebookId)? onClose;
 
   @override
   Future<SessionCard?> close(String notebookId, {int maxRetries = 2}) {
     closed.add(notebookId);
     return onClose?.call(notebookId) ?? Future.value(null);
+  }
+
+  @override
+  Future<SessionCard?> draft(String notebookId) {
+    drafted.add(notebookId);
+    return Future.value(null);
   }
 
   @override
@@ -285,7 +295,8 @@ class _Harness {
       turnJournalServiceProvider.overrideWithValue(_FakeTurnJournal()),
       transcriptStoreProvider.overrideWithValue(transcripts),
       openingTimeoutProvider.overrideWithValue(openingTimeout),
-      supabaseServiceProvider.overrideWithValue(supabase ?? _NoNotebookInserts()),
+      supabaseServiceProvider
+          .overrideWithValue(supabase ?? _NoNotebookInserts()),
       sessionCardServiceProvider.overrideWithValue(cards),
       sessionBriefServiceProvider.overrideWithValue(briefs),
       liveCredentialsProvider.overrideWithValue(credentials),
@@ -335,7 +346,8 @@ class _Harness {
   }
 
   /// Taps the mic in the open notebook and plays the server's setup ack.
-  Future<NotebookTransitionResult> startLive({void Function()? beforeSetup}) async {
+  Future<NotebookTransitionResult> startLive(
+      {void Function()? beforeSetup}) async {
     final starting = journal.startSession();
     await waitForSocket(sockets.length + 1);
     beforeSetup?.call();
@@ -421,7 +433,8 @@ void main() {
     expect(context.split('\n').last, startsWith('[graph summary] '));
     expect(_toolNames(JournalNotifier.liveTools), ['get_relevant_memory']);
     expect(
-      h.journal.transcriptRows.where((row) => row.turn.turnId.startsWith('lumen-greeting')),
+      h.journal.transcriptRows
+          .where((row) => row.turn.turnId.startsWith('lumen-greeting')),
       hasLength(1),
       reason: 'the bundled greeting is Lumen\'s opening',
     );
@@ -540,7 +553,8 @@ void main() {
 
     expect(h.journal.openingInProgress, isFalse, reason: 'no greeting');
     expect(
-      h.journal.transcriptRows.where((row) => row.turn.turnId.startsWith('lumen-greeting')),
+      h.journal.transcriptRows
+          .where((row) => row.turn.turnId.startsWith('lumen-greeting')),
       isEmpty,
     );
     expect(h.socket.kindsAfterSetup.first, 'client_content');
@@ -656,8 +670,7 @@ void main() {
     expect(h.socket.kindsAfterSetup.first, 'client_content');
   });
 
-  test('leaving a notebook asks for its card without waiting for it',
-      () async {
+  test('leaving a notebook asks for its card without waiting for it', () async {
     final notebooks = _EndingNotebooks();
     h = _Harness(
       state: JournalState.empty().copyWith(entries: [_entry('Earlier.')]),
@@ -676,7 +689,8 @@ void main() {
     expect(h.cards.closed, [_notebookId]);
   });
 
-  for (final (name, failure) in <(String, Future<SessionCard?> Function(String))>[
+  for (final (name, failure)
+      in <(String, Future<SessionCard?> Function(String))>[
     ('throws', (_) => throw StateError('runtime not configured')),
     (
       'fails',
@@ -771,7 +785,10 @@ void main() {
     h.socket
       ..serverSends({
         'serverContent': {
-          'inputTranscription': {'text': 'I started a new job.', 'finished': true},
+          'inputTranscription': {
+            'text': 'I started a new job.',
+            'finished': true
+          },
         },
       })
       ..serverSends({
@@ -795,7 +812,8 @@ void main() {
     return _contextTexts(h.socket).single as String;
   }
 
-  test('after a first session with speech, a failed brief still means the '
+  test(
+      'after a first session with speech, a failed brief still means the '
       'fallback next, not the intro', () async {
     await firstSessionThenLeave(
         (_) => Future<void>.error(const SessionBriefException('down')));
@@ -809,7 +827,8 @@ void main() {
     );
   });
 
-  test('after a first session with speech, a slow brief still means the '
+  test(
+      'after a first session with speech, a slow brief still means the '
       'fallback next, not the intro', () async {
     final never = Completer<void>();
     await firstSessionThenLeave((_) => never.future);
@@ -911,7 +930,10 @@ void main() {
     final context = h.socket.sent[1]['client_content'] as Map;
     final turns = [
       for (final turn in context['turns'] as List)
-        ((turn as Map)['role'], ((turn['parts'] as List).single as Map)['text']),
+        (
+          (turn as Map)['role'],
+          ((turn['parts'] as List).single as Map)['text']
+        ),
     ];
     expect(turns.first.$2, startsWith('[graph summary] '),
         reason: 'the summary leads, then the saved conversation');
@@ -935,12 +957,18 @@ void main() {
     h.socket
       ..serverSends({
         'serverContent': {
-          'inputTranscription': {'text': 'I finished the Atlas draft.', 'finished': true},
+          'inputTranscription': {
+            'text': 'I finished the Atlas draft.',
+            'finished': true
+          },
         },
       })
       ..serverSends({
         'serverContent': {
-          'outputTranscription': {'text': 'How does it feel?', 'finished': true},
+          'outputTranscription': {
+            'text': 'How does it feel?',
+            'finished': true
+          },
         },
       })
       ..serverSends({
@@ -959,9 +987,47 @@ void main() {
     );
     // Later changes don't save them again.
     h.journal.toggleMute();
-    h.socket.serverSends({'serverContent': {'turnComplete': true}});
+    h.socket.serverSends({
+      'serverContent': {'turnComplete': true}
+    });
     await Future<void>.delayed(const Duration(milliseconds: 20));
     expect(h.transcripts.saved, hasLength(2));
+  });
+
+  test(
+      'saved turns draft the card; leaving stops drafting before the final card',
+      () async {
+    final notebooks = _EndingNotebooks();
+    h = _Harness(
+      state: JournalState.empty().copyWith(entries: [_entry('Earlier.')]),
+      supabase: notebooks,
+    );
+    await h.journal.enterNotebook(_notebookId);
+    await h.startLive();
+
+    h.socket
+      ..serverSends({
+        'serverContent': {
+          'inputTranscription': {
+            'text': 'I finished the Atlas draft.',
+            'finished': true,
+          },
+        },
+      })
+      ..serverSends({
+        'serverContent': {'turnComplete': true},
+      });
+    for (var i = 0; i < 200 && h.commits.commits < 1; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+    }
+    expect(h.cards.drafted, [_notebookId]);
+
+    final left = await h.journal.leaveNotebook();
+    await Future<void>.delayed(Duration.zero);
+    expect(left.succeeded, isTrue);
+    expect(h.cards.closed, [_notebookId]);
+    // Nothing drafted after leaving began, though the drain may commit.
+    expect(h.cards.drafted, [_notebookId]);
   });
 
   test("Lumen's turns commit without a model call of their own", () async {

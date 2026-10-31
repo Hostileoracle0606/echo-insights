@@ -206,4 +206,39 @@ void main() {
     expect(await cards.load('another-notebook'), isNull);
     expect(requested, [notebookId, 'another-notebook']);
   });
+
+  test('draft posts {"draft": true} to the close route, once, as the user',
+      () async {
+    final requests = <http.Request>[];
+    final card = await service((request) async {
+      requests.add(request);
+      return json(200, {'status': 'ready', 'card': cardJson});
+    }).draft(notebookId);
+
+    expect(requests, hasLength(1));
+    expect(requests.single.url.path, '/v1/notebooks/$notebookId/close');
+    expect(jsonDecode(requests.single.body), {'draft': true});
+    expect(
+        requests.single.headers['authorization'], 'Bearer signed-user-token');
+    expect(card!.title, cardJson['title']);
+  });
+
+  test('a draft is best-effort: no retries, and it never joins a close',
+      () async {
+    var calls = 0;
+    final svc = service((request) async {
+      calls += 1;
+      return json(503, {'status': 'rejected', 'code': 'providerUnavailable'});
+    });
+    await expectLater(
+        svc.draft(notebookId), throwsA(isA<SessionCardException>()));
+    expect(calls, 1);
+  });
+
+  test('a draft with nothing to summarize yet is null', () async {
+    final card = await service((request) async =>
+            json(422, {'status': 'rejected', 'code': 'nothingToSummarize'}))
+        .draft(notebookId);
+    expect(card, isNull);
+  });
 }
