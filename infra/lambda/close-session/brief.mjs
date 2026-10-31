@@ -21,7 +21,31 @@ const defaultDeadlineMs = 27_000;
 const defaultSampleRate = 24_000;
 const speakPrefix = "Say warmly, unhurried and natural, like a friend catching up: ";
 
+// The TTS preview model's per-minute limit is tight: a 429 needs seconds,
+// not the closing card's sub-second retries. callGemini's deadline guard
+// still stops before the save would miss the Lambda's budget.
+const briefRetryDelaysMs = [2000, 4000, 8000];
+const weekdays = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
 const timeOf = (value) => (typeof value === "string" ? Date.parse(value) : Number.NaN);
+
+/** "2026-10-31 (Saturday)", in UTC. */
+function conversationDate(milliseconds) {
+  const date = new Date(milliseconds);
+  return `${date.toISOString().slice(0, 10)} (${weekdays[date.getUTCDay()]})`;
+}
+
+/** Runs one Gemini call, noting in the log which call a rate limit hit. */
+async function rateLimitTagged(metrics, label, call) {
+  try {
+    return await call();
+  } catch (error) {
+    if (error instanceof Rejection && error.response.statusCode === 429) {
+      metrics.rateLimitedBy = label;
+    }
+    throw error;
+  }
+}
 const strings = (value) => (Array.isArray(value) ? value.filter((item) => typeof item === "string") : []);
 
 /**
@@ -139,10 +163,20 @@ export function createSessionBriefHandler({
     metrics.transcriptChars = transcript.text.length;
     metrics.transcriptTrimmed = transcript.trimmed;
 
+    const lastSpoken = timeOf(userTurns.at(-1)?.spoken_at);
     const apiKey = await credential();
-    const gemini = { fetchImpl, credential: apiKey, startedAt, deadlineMs, now, sleep, metrics };
+    const gemini = {
+      fetchImpl,
+      credential: apiKey,
+      startedAt,
+      deadlineMs,
+      now,
+      sleep,
+      metrics,
+      retryDelaysMs: briefRetryDelaysMs,
+    };
 
-    const payload = await callGemini({
+    const payload = await rateLimitTagged(metrics, "text", () => callGemini({
       ...gemini,
       model,
       body: {
@@ -153,6 +187,7 @@ export function createSessionBriefHandler({
             parts: [
               {
                 text: buildBriefMessage({
+                  conversationDate: conversationDate(Number.isNaN(lastSpoken) ? now() : lastSpoken),
                   transcript: transcript.text,
                   trimmed: transcript.trimmed,
                   previous: stored?.brief && typeof stored.brief === "object" ? stored.brief : null,
@@ -170,21 +205,27 @@ export function createSessionBriefHandler({
         },
         generationConfig: { temperature: 0, thinkingConfig: { thinkingBudget: 0 } },
       },
-    });
+    }));
     const brief = briefFromModel(functionArgs(payload, "write_session_brief"));
     if (!brief) throw new Rejection(502, "invalidProviderResponse");
 
-    const speech = await callGemini({
-      ...gemini,
-      model: ttsModel,
-      body: {
-        contents: [{ parts: [{ text: `${speakPrefix}${brief.openingLine}` }] }],
-        generationConfig: {
-          responseModalities: ["AUDIO"],
-          speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } },
+    const callsBeforeSpeech = metrics.modelCalls;
+    let speech;
+    try {
+      speech = await rateLimitTagged(metrics, "tts", () => callGemini({
+        ...gemini,
+        model: ttsModel,
+        body: {
+          contents: [{ parts: [{ text: `${speakPrefix}${brief.openingLine}` }] }],
+          generationConfig: {
+            responseModalities: ["AUDIO"],
+            speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } },
+          },
         },
-      },
-    });
+      }));
+    } finally {
+      metrics.ttsCalls = metrics.modelCalls - callsBeforeSpeech;
+    }
     const inline = speech?.candidates?.[0]?.content?.parts?.find((part) => part?.inlineData?.data)
       ?.inlineData;
     if (typeof inline?.data !== "string" || inline.data.length === 0) {

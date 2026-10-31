@@ -65,6 +65,8 @@ function world(overrides = {}) {
     if (url.hostname === "generativelanguage.googleapis.com") {
       state.providerCalls.push(call);
       if (url.pathname.includes("tts")) {
+        const throttled = state.ttsStatuses?.shift();
+        if (throttled) return { ok: false, status: throttled, json: async () => ({}) };
         const parts = state.tts ? [{ inlineData: state.tts }] : [{ text: "no audio" }];
         return ok({ candidates: [{ content: { parts } }] });
       }
@@ -372,17 +374,66 @@ test("the model call is forced, deterministic, and uses briefPrompt", async () =
 });
 
 test("briefPrompt carries the opener copy rules", () => {
-  for (const phrase of ["one question", "never", "I remember", "painful", "follow up"]) {
+  for (const phrase of [
+    "one thread",
+    "follow-up",
+    "never",
+    "I remember",
+    "painful",
+    "follow up",
+    "hours or weeks later",
+    "either way",
+    "conversation that just ended",
+  ]) {
     assert.ok(briefPrompt.includes(phrase), `missing "${phrase}"`);
   }
 });
 
-test("every example opening line in briefPrompt has exactly one question", () => {
+test("example opening lines: one or two questions, no day names, nothing that assumes it already happened", () => {
   const examples = [...briefPrompt.matchAll(/"(Hey[^"]*)"/g)].map((match) => match[1]);
   assert.ok(examples.length >= 2, "expected example opening lines in the prompt");
   for (const example of examples) {
-    assert.equal(example.split("?").length - 1, 1, `not exactly one question: ${example}`);
+    const questions = example.split("?").length - 1;
+    assert.ok(questions >= 1 && questions <= 2, `expected 1–2 questions: ${example}`);
+    assert.doesNotMatch(example, /(Mon|Tues|Wednes|Thurs|Fri|Satur|Sun)day|tomorrow|tonight/i, example);
+    assert.doesNotMatch(example, /\bhow did\b|\bdid (the|your)\b.*\bgo\b/i, example);
   }
+});
+
+test("the model is told the conversation's date", async () => {
+  const { state, handle } = world();
+  await handle(requestEvent());
+  const message = textCalls(state)[0].body.contents[0].parts[0].text;
+  assert.match(message, /^CONVERSATION DATE: \d{4}-\d{2}-\d{2} \((Mon|Tues|Wednes|Thurs|Fri|Satur|Sun)day\)$/m);
+});
+
+test("a rate-limited TTS call backs off for seconds, then saves", async () => {
+  const sleeps = [];
+  const { state, handle } = world({
+    state: { ttsStatuses: [429] },
+    deps: { sleep: async (ms) => sleeps.push(ms) },
+  });
+  const response = await handle(requestEvent());
+  assert.equal(response.statusCode, 200);
+  assert.equal(ttsCalls(state).length, 2);
+  assert.deepEqual(sleeps, [2000]);
+  assert.equal(state.saves.length, 1);
+  const log = JSON.parse(state.logs.at(-1));
+  assert.equal(log.ttsCalls, 2);
+});
+
+test("TTS still rate-limited after its retries: 429, logged as the TTS call, nothing saved", async () => {
+  const sleeps = [];
+  const { state, handle } = world({
+    state: { ttsStatuses: [429, 429, 429, 429] },
+    deps: { sleep: async (ms) => sleeps.push(ms) },
+  });
+  const response = await handle(requestEvent());
+  assert.equal(response.statusCode, 429);
+  assert.equal(parse(response).code, "rateLimited");
+  assert.deepEqual(sleeps, [2000, 4000, 8000]);
+  assert.equal(state.saves.length, 0);
+  assert.equal(JSON.parse(state.logs.at(-1)).rateLimitedBy, "tts");
 });
 
 test("TTS request: the TTS model, voice Aoede, audio only", async () => {

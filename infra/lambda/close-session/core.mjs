@@ -12,7 +12,8 @@ import {
 const defaultDeadlineMs = 27_000;
 const supabaseTimeoutMs = 5_000;
 const providerTimeoutMs = 7_000;
-const maxProviderAttempts = 3;
+// Waits between attempts: three attempts, 0.5 s then 1 s apart.
+const defaultRetryDelaysMs = [500, 1000];
 
 export function jsonResponse(statusCode, body) {
   return {
@@ -111,7 +112,8 @@ export function functionArgs(payload, name) {
 /**
  * One Gemini generateContent call with retries on network errors and 429,
  * inside the Lambda's deadline. Shared by the closing card and the session
- * brief (text model and TTS model alike).
+ * brief (text model and TTS model alike). [retryDelaysMs] are the waits
+ * between attempts, so it makes one more attempt than it has delays.
  */
 export async function callGemini({
   fetchImpl,
@@ -123,11 +125,16 @@ export async function callGemini({
   now,
   sleep,
   metrics,
+  retryDelaysMs = defaultRetryDelaysMs,
 }) {
-  for (let attempt = 0; attempt < maxProviderAttempts; attempt += 1) {
+  const attempts = retryDelaysMs.length + 1;
+  // What the last attempt hit, so running out of time after a 429 still
+  // reports the rate limit rather than a generic outage.
+  let lastFailure = null;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
     // Leave room for the save after the model answers.
     if (now() - startedAt + providerTimeoutMs + supabaseTimeoutMs > deadlineMs) {
-      throw new Rejection(503, "providerUnavailable");
+      throw lastFailure ?? new Rejection(503, "providerUnavailable");
     }
     metrics.modelCalls += 1;
     let response;
@@ -142,18 +149,20 @@ export async function callGemini({
         },
       );
     } catch {
-      if (attempt < maxProviderAttempts - 1) {
-        await sleep(500 * 2 ** attempt);
+      lastFailure = new Rejection(503, "providerUnavailable");
+      if (attempt < attempts - 1) {
+        await sleep(retryDelaysMs[attempt]);
         continue;
       }
-      throw new Rejection(503, "providerUnavailable");
+      throw lastFailure;
     }
     if (response.status === 429) {
-      if (attempt < maxProviderAttempts - 1) {
-        await sleep(500 * 2 ** attempt);
+      lastFailure = new Rejection(429, "rateLimited");
+      if (attempt < attempts - 1) {
+        await sleep(retryDelaysMs[attempt]);
         continue;
       }
-      throw new Rejection(429, "rateLimited");
+      throw lastFailure;
     }
     if (!response.ok) throw new Rejection(503, "providerUnavailable");
     try {
