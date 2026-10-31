@@ -19,6 +19,7 @@ import 'package:lumen/models/journal_state.dart';
 import 'package:lumen/models/session_brief.dart';
 import 'package:lumen/models/session_card.dart';
 import 'package:lumen/providers/journal_provider.dart';
+import 'package:lumen/providers/leaving_notebooks_provider.dart';
 import 'package:lumen/providers/opening_prep_provider.dart';
 import 'package:lumen/providers/supabase_provider.dart';
 import 'package:lumen/providers/voice_services_provider.dart';
@@ -130,6 +131,9 @@ class _FakeTurnJournal implements TurnJournalService {
 class _FakeExtractor implements ExtractGraphService {
   final texts = <String>[];
 
+  /// When set, each extraction waits for it (a slow model call).
+  Completer<void>? hold;
+
   @override
   Future<GraphPatch> extract({
     required String notebookId,
@@ -145,6 +149,7 @@ class _FakeExtractor implements ExtractGraphService {
     int maxRetries = 2,
   }) async {
     texts.add(text);
+    await hold?.future;
     return GraphPatch.empty();
   }
 
@@ -200,8 +205,14 @@ class _NoNotebookInserts implements SupabaseService {
 class _EndingNotebooks implements SupabaseService {
   final ended = <String>[];
 
+  /// When set, ending a notebook throws it.
+  Object? failWith;
+
   @override
-  Future<void> endNotebook(String notebookId) async => ended.add(notebookId);
+  Future<void> endNotebook(String notebookId) async {
+    if (failWith != null) throw failWith!;
+    ended.add(notebookId);
+  }
 
   @override
   dynamic noSuchMethod(Invocation invocation) =>
@@ -718,6 +729,93 @@ void main() {
       expect(h.cards.closed, [_notebookId]);
     });
   }
+
+  /// The user says something; its extraction model call is still running.
+  Future<void> speakWithSlowExtraction() async {
+    h.extractor.hold = Completer<void>();
+    h.socket
+      ..serverSends({
+        'serverContent': {
+          'inputTranscription': {
+            'text': 'I finished the Atlas draft.',
+            'finished': true,
+          },
+        },
+      })
+      ..serverSends({
+        'serverContent': {'turnComplete': true},
+      });
+    for (var i = 0; i < 400 && h.extractor.texts.isEmpty; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+    }
+    expect(h.extractor.texts, ['I finished the Atlas draft.']);
+  }
+
+  test(
+      'leaving for the card returns once the transport is closed; the drain, '
+      'ending and final card finish in the background', () async {
+    final notebooks = _EndingNotebooks();
+    h = _Harness(
+      state: JournalState.empty().copyWith(entries: [_entry('Earlier.')]),
+      supabase: notebooks,
+    );
+    await h.journal.enterNotebook(_notebookId);
+    await h.startLive();
+    await speakWithSlowExtraction();
+
+    final left = await h.journal.leaveNotebookForCard();
+
+    expect(left.succeeded, isTrue);
+    expect(h.mic.stops, greaterThan(0), reason: 'the mic is closed');
+    expect(notebooks.ended, isEmpty, reason: 'the drain is still running');
+    expect(h.cards.closed, isEmpty,
+        reason: 'no final card from a stale revision');
+    final leaving = h.container.read(leavingNotebooksProvider);
+    final pending = leaving.pending(_notebookId);
+    expect(pending, isNotNull);
+
+    h.extractor.hold!.complete();
+    await pending;
+
+    expect(notebooks.ended, [_notebookId]);
+    expect(h.cards.closed, [_notebookId]);
+    expect(h.journal.status, SessionStatus.idle);
+    expect(leaving.pending(_notebookId), isNull);
+  });
+
+  test(
+      'a leave that fails after the card shows fails its pending future; '
+      'retrying leaves again', () async {
+    final notebooks = _EndingNotebooks()..failWith = StateError('offline');
+    h = _Harness(
+      state: JournalState.empty().copyWith(entries: [_entry('Earlier.')]),
+      supabase: notebooks,
+    );
+    await h.journal.enterNotebook(_notebookId);
+    await h.startLive();
+
+    final left = await h.journal.leaveNotebookForCard();
+    expect(left.succeeded, isTrue);
+
+    final leaving = h.container.read(leavingNotebooksProvider);
+    LeaveIncomplete? failure;
+    try {
+      await leaving.pending(_notebookId);
+    } on LeaveIncomplete catch (error) {
+      failure = error;
+    }
+    expect(failure, isNotNull);
+    expect(h.journal.status, SessionStatus.error);
+    expect(h.cards.closed, isEmpty);
+
+    notebooks.failWith = null;
+    await failure!.retry();
+    await leaving.pending(_notebookId);
+
+    expect(notebooks.ended, [_notebookId]);
+    expect(h.cards.closed, [_notebookId]);
+    expect(h.journal.status, SessionStatus.idle);
+  });
 
   test('leaving asks for the next session brief, then reloads it', () async {
     h = _Harness(

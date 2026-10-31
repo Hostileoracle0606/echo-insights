@@ -38,6 +38,7 @@ import '../services/notebook_runtime_service.dart';
 import '../services/retrieve_memory_service.dart';
 import '../services/session_card_service.dart';
 import '../services/turn_journal_service.dart';
+import 'leaving_notebooks_provider.dart';
 import 'opening_prep_provider.dart';
 import 'supabase_provider.dart';
 import 'voice_services_provider.dart';
@@ -2086,9 +2087,48 @@ class JournalNotifier extends Notifier<JournalState> {
     _assembler.reset();
   }
 
+  /// Leaving for the closing card: returns as soon as the live transport is
+  /// closed, so the card can show at once. Draining the last writes, marking
+  /// the notebook ended and asking for its final card finish in the
+  /// background, tracked in [leavingNotebooksProvider]; a failure there is a
+  /// [LeaveIncomplete] the card screen shows and can retry.
+  Future<NotebookTransitionResult> leaveNotebookForCard() {
+    final transportClosed = Completer<NotebookTransitionResult>();
+    final finished = Completer<void>();
+    String? closedId;
+    leaveNotebook(onTransportClosed: (notebookId) {
+      closedId = notebookId;
+      ref.read(leavingNotebooksProvider).track(notebookId, finished.future);
+      transportClosed.complete(const NotebookTransitionResult.success());
+    }).then((result) {
+      if (!transportClosed.isCompleted) {
+        // Ended (or was superseded) before the transport closed: nothing
+        // runs in the background, so the caller gets the result itself.
+        transportClosed.complete(result);
+        return;
+      }
+      if (result.succeeded) {
+        finished.complete();
+      } else {
+        finished.completeError(LeaveIncomplete(
+          message: result.message,
+          retry: () async {
+            // Only if the notebook is still the one this leave left.
+            if (_activeNotebookId == closedId) await leaveNotebookForCard();
+          },
+        ));
+      }
+    });
+    return transportClosed.future;
+  }
+
   /// Stops realtime input, drains notebook-scoped writes, and then releases
   /// the active notebook identity. Callers may navigate only after success.
-  Future<NotebookTransitionResult> leaveNotebook() {
+  /// [onTransportClosed] runs once the live input is closed, before the
+  /// drain.
+  Future<NotebookTransitionResult> leaveNotebook({
+    void Function(String notebookId)? onTransportClosed,
+  }) {
     // The operation itself is serialized, but stale realtime callbacks must be
     // rejected immediately while it waits for an in-progress start operation.
     final intent = ++_lifecycleIntent;
@@ -2102,11 +2142,13 @@ class JournalNotifier extends Notifier<JournalState> {
           ),
         );
       }
-      return _leaveNotebookUnlocked();
+      return _leaveNotebookUnlocked(onTransportClosed: onTransportClosed);
     });
   }
 
-  Future<NotebookTransitionResult> _leaveNotebookUnlocked() async {
+  Future<NotebookTransitionResult> _leaveNotebookUnlocked({
+    void Function(String notebookId)? onTransportClosed,
+  }) async {
     final notebookId = _activeNotebookId;
     final shouldEndNotebook = _sessionStartedAt != null;
     if (notebookId == null && _status == SessionStatus.idle) {
@@ -2118,6 +2160,7 @@ class JournalNotifier extends Notifier<JournalState> {
     if (notebookId != null) ref.read(cardDrafterProvider).stop(notebookId);
     await _closeLiveTransportUnlocked();
     _dispatchTurn(const SessionEnded());
+    if (notebookId != null) onTransportClosed?.call(notebookId);
 
     // Set only once the notebook is really over (ended_at saved).
     String? closedNotebookId;
