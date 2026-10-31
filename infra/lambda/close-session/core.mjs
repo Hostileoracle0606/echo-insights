@@ -12,9 +12,10 @@ import {
 const defaultDeadlineMs = 27_000;
 const supabaseTimeoutMs = 5_000;
 const providerTimeoutMs = 7_000;
-const maxProviderAttempts = 3;
+// Waits between attempts: three attempts, 0.5 s then 1 s apart.
+const defaultRetryDelaysMs = [500, 1000];
 
-function jsonResponse(statusCode, body) {
+export function jsonResponse(statusCode, body) {
   return {
     statusCode,
     headers: { "content-type": "application/json" },
@@ -22,26 +23,26 @@ function jsonResponse(statusCode, body) {
   };
 }
 
-const rejected = (statusCode, code) => jsonResponse(statusCode, { status: "rejected", code });
+export const rejected = (statusCode, code) => jsonResponse(statusCode, { status: "rejected", code });
 
-class Rejection extends Error {
+export class Rejection extends Error {
   constructor(statusCode, code) {
     super(code);
     this.response = rejected(statusCode, code);
   }
 }
 
-function authorizedUserId(event) {
+export function authorizedUserId(event) {
   const value = event?.requestContext?.authorizer?.lambda?.userId;
   return typeof value === "string" && value.length > 0 ? value : null;
 }
 
-function bearerAuthorization(headers = {}) {
+export function bearerAuthorization(headers = {}) {
   const value = headers.authorization ?? headers.Authorization;
   return typeof value === "string" && /^Bearer\s+\S+/i.test(value) ? value : null;
 }
 
-function notebookIdFrom(event) {
+export function notebookIdFrom(event) {
   const value = event?.pathParameters?.notebookId;
   return typeof value === "string" &&
     /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
@@ -55,7 +56,7 @@ function inList(values) {
 }
 
 /** Supabase REST as the signed-in user: RLS decides what is visible. */
-function supabaseClient({ supabaseUrl, publishableKey, authorization, fetchImpl }) {
+export function supabaseClient({ supabaseUrl, publishableKey, authorization, fetchImpl }) {
   async function send(url, init) {
     let response;
     try {
@@ -99,13 +100,78 @@ function supabaseClient({ supabaseUrl, publishableKey, authorization, fetchImpl 
   };
 }
 
-function functionArgs(payload, name) {
+export function functionArgs(payload, name) {
   const parts = payload?.candidates?.[0]?.content?.parts;
   if (!Array.isArray(parts)) return null;
   for (const part of parts) {
     if (part?.functionCall?.name === name) return part.functionCall.args ?? null;
   }
   return null;
+}
+
+/**
+ * One Gemini generateContent call with retries on network errors and 429,
+ * inside the Lambda's deadline. Shared by the closing card and the session
+ * brief (text model and TTS model alike). [retryDelaysMs] are the waits
+ * between attempts, so it makes one more attempt than it has delays.
+ */
+export async function callGemini({
+  fetchImpl,
+  credential,
+  model,
+  body,
+  startedAt,
+  deadlineMs,
+  now,
+  sleep,
+  metrics,
+  retryDelaysMs = defaultRetryDelaysMs,
+}) {
+  const attempts = retryDelaysMs.length + 1;
+  // What the last attempt hit, so running out of time after a 429 still
+  // reports the rate limit rather than a generic outage.
+  let lastFailure = null;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    // Leave room for the save after the model answers.
+    if (now() - startedAt + providerTimeoutMs + supabaseTimeoutMs > deadlineMs) {
+      throw lastFailure ?? new Rejection(503, "providerUnavailable");
+    }
+    metrics.modelCalls += 1;
+    let response;
+    try {
+      response = await fetchImpl(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json", "x-goog-api-key": credential },
+          body: JSON.stringify(body),
+          signal: AbortSignal.timeout(providerTimeoutMs),
+        },
+      );
+    } catch {
+      lastFailure = new Rejection(503, "providerUnavailable");
+      if (attempt < attempts - 1) {
+        await sleep(retryDelaysMs[attempt]);
+        continue;
+      }
+      throw lastFailure;
+    }
+    if (response.status === 429) {
+      lastFailure = new Rejection(429, "rateLimited");
+      if (attempt < attempts - 1) {
+        await sleep(retryDelaysMs[attempt]);
+        continue;
+      }
+      throw lastFailure;
+    }
+    if (!response.ok) throw new Rejection(503, "providerUnavailable");
+    try {
+      return await response.json();
+    } catch {
+      throw new Rejection(502, "invalidProviderResponse");
+    }
+  }
+  throw new Rejection(503, "providerUnavailable");
 }
 
 export function createCloseSessionHandler({
@@ -128,46 +194,17 @@ export function createCloseSessionHandler({
     } catch {
       throw new Rejection(503, "providerUnavailable");
     }
-
-    for (let attempt = 0; attempt < maxProviderAttempts; attempt += 1) {
-      // Leave room for the save after the model answers.
-      if (now() - startedAt + providerTimeoutMs + supabaseTimeoutMs > deadlineMs) {
-        throw new Rejection(503, "providerUnavailable");
-      }
-      metrics.modelCalls += 1;
-      let response;
-      try {
-        response = await fetchImpl(
-          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
-          {
-            method: "POST",
-            headers: { "content-type": "application/json", "x-goog-api-key": credential },
-            body: JSON.stringify(providerBody),
-            signal: AbortSignal.timeout(providerTimeoutMs),
-          },
-        );
-      } catch {
-        if (attempt < maxProviderAttempts - 1) {
-          await sleep(500 * 2 ** attempt);
-          continue;
-        }
-        throw new Rejection(503, "providerUnavailable");
-      }
-      if (response.status === 429) {
-        if (attempt < maxProviderAttempts - 1) {
-          await sleep(500 * 2 ** attempt);
-          continue;
-        }
-        throw new Rejection(429, "rateLimited");
-      }
-      if (!response.ok) throw new Rejection(503, "providerUnavailable");
-      try {
-        return await response.json();
-      } catch {
-        throw new Rejection(502, "invalidProviderResponse");
-      }
-    }
-    throw new Rejection(503, "providerUnavailable");
+    return callGemini({
+      fetchImpl,
+      credential,
+      model,
+      body: providerBody,
+      startedAt,
+      deadlineMs,
+      now,
+      sleep,
+      metrics,
+    });
   }
 
   async function generateJustTalk({ db, notebookId, startedAt, metrics }) {
