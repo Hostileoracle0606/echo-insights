@@ -1,6 +1,7 @@
-// Barnes–Hut charge vs the all-pairs original (test/support/): the settled
-// layouts may differ body by body, but must look the same — as few overlaps,
-// the same footprint — and the per-tick charge must stay close.
+// Barnes–Hut charge and grid collide vs the all-pairs original
+// (test/support/): the settled layouts may differ body by body, but must
+// look the same — as few overlaps, the same footprint — and the per-tick
+// charge must stay close.
 //
 // The 2,000-body case takes about half a minute (the all-pairs reference is
 // the slow part), so it is tagged perf.
@@ -31,8 +32,9 @@ void _compareSettled(int n) {
 
   expect(ticks, legacyTicks, reason: 'alpha cooling is unchanged');
   // Settling is chaotic: across spawn seeds the all-pairs layout itself ends
-  // with 46–66 overlaps at 2,000 bodies (Barnes–Hut: 45–70), so the bound
-  // is that spread, not an exact count. Footprints agree within 1.5%.
+  // with 46–66 overlaps at 2,000 bodies (Barnes–Hut with grid collide:
+  // 50–60), so the bound is that spread, not an exact count. Footprints
+  // agree within 1.5%.
   expect(newOverlaps, lessThanOrEqualTo(max(10, (legacyOverlaps * 1.5).ceil())));
   expect(newBox.width / legacyBox.width, closeTo(1, 0.05));
   expect(newBox.height / legacyBox.height, closeTo(1, 0.05));
@@ -106,8 +108,8 @@ void main() {
     expect(p95, lessThan(0.08));
   });
 
-  test('graphs up to the limit keep the exact all-pairs charge', () {
-    final graph = SyntheticGraph(GraphLayout.exactChargeLimit);
+  test('graphs up to the limit keep the exact all-pairs charge and collide', () {
+    final graph = SyntheticGraph(GraphLayout.exactPairsLimit);
     final legacy = graph.legacyLayout();
     final layout = graph.layout();
     for (var i = 0; i < 120; i++) {

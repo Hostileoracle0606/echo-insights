@@ -35,10 +35,12 @@ class GraphLayout {
   static const alphaMin = 0.001;
   static const reheatAlpha = 0.8;
 
-  /// Up to this many bodies, charge runs the exact all-pairs loop. Above it,
-  /// a Barnes–Hut quadtree with opening angle [theta] (d3-force's default,
-  /// as on the web) approximates distant clusters by their centre of mass.
-  static const exactChargeLimit = 64;
+  /// Up to this many bodies, charge and collide run the exact all-pairs
+  /// loops. Above it, charge uses a Barnes–Hut quadtree with opening angle
+  /// [theta] (d3-force's default, as on the web), which approximates distant
+  /// clusters by their centre of mass, and collide only meets neighbours on
+  /// a grid.
+  static const exactPairsLimit = 64;
   static const theta = 0.9;
 
   /// Chrome the graph must stay clear of: top bar above, voice dock below.
@@ -116,7 +118,7 @@ class GraphLayout {
     }
 
     // Charge (d3.forceManyBody): v += d · strength·α / d².
-    if (bodies.length <= exactChargeLimit) {
+    if (bodies.length <= exactPairsLimit) {
       const maxD2 = chargeMaxDistance * chargeMaxDistance;
       for (final n in bodies) {
         for (final other in bodies) {
@@ -148,6 +150,10 @@ class GraphLayout {
     }
 
     // Collide: separate overlapping discs (radius + label breathing room).
+    if (bodies.length > exactPairsLimit) {
+      _collideOnGrid(bodies);
+      return;
+    }
     for (var i = 0; i < bodies.length; i++) {
       for (var j = i + 1; j < bodies.length; j++) {
         final p = bodies[i], q = bodies[j];
@@ -163,6 +169,76 @@ class GraphLayout {
         p.position -= push;
         q.position += push;
       }
+    }
+  }
+
+  /// The collide pass above, with each body meeting only the bodies in its
+  /// own and the eight surrounding cells of a grid at least one reach wide,
+  /// binned where the pass starts. Pairs are visited in a different order,
+  /// and as pushes compound within the pass the result differs slightly from
+  /// all pairs; a pair a push carries into reach is caught next tick.
+  void _collideOnGrid(List<LayoutNode> bodies) {
+    final n = bodies.length;
+    final xs = Float64List(n), ys = Float64List(n), rs = Float64List(n);
+    var minX = double.infinity, minY = double.infinity;
+    var maxX = double.negativeInfinity, maxY = double.negativeInfinity;
+    var maxRadius = 0.0;
+    for (var i = 0; i < n; i++) {
+      final b = bodies[i];
+      xs[i] = b.position.dx;
+      ys[i] = b.position.dy;
+      rs[i] = b.radius;
+      minX = min(minX, xs[i]);
+      maxX = max(maxX, xs[i]);
+      minY = min(minY, ys[i]);
+      maxY = max(maxY, ys[i]);
+      maxRadius = max(maxRadius, b.radius);
+    }
+    // Widen the cells for a sparse graph so the grid stays near 4n cells.
+    final cell = max(2 * maxRadius + 2 * collidePad,
+        sqrt((maxX - minX) * (maxY - minY) / (4 * n)));
+    final cols = ((maxX - minX) / cell).floor() + 1;
+    final rows = ((maxY - minY) / cell).floor() + 1;
+
+    // Each cell's bodies as a linked list in ascending index order.
+    final head = Int32List(cols * rows)..fillRange(0, cols * rows, -1);
+    final next = Int32List(n), col = Int32List(n), row = Int32List(n);
+    for (var i = n - 1; i >= 0; i--) {
+      col[i] = ((xs[i] - minX) / cell).floor();
+      row[i] = ((ys[i] - minY) / cell).floor();
+      final c = row[i] * cols + col[i];
+      next[i] = head[c];
+      head[c] = i;
+    }
+
+    for (var i = 0; i < n; i++) {
+      final r0 = max(0, row[i] - 1), r1 = min(rows - 1, row[i] + 1);
+      final c0 = max(0, col[i] - 1), c1 = min(cols - 1, col[i] + 1);
+      for (var r = r0; r <= r1; r++) {
+        for (var c = c0; c <= c1; c++) {
+          for (var j = head[r * cols + c]; j != -1; j = next[j]) {
+            if (j <= i) continue;
+            final reach = rs[i] + rs[j] + 2 * collidePad;
+            var dx = xs[j] - xs[i], dy = ys[j] - ys[i];
+            var distance = sqrt(dx * dx + dy * dy);
+            if (distance >= reach) continue;
+            if (distance == 0) {
+              final jiggle = _jiggle();
+              dx = jiggle.dx;
+              dy = jiggle.dy;
+              distance = jiggle.distance;
+            }
+            final k = (reach - distance) / distance * 0.35;
+            xs[i] -= dx * k;
+            ys[i] -= dy * k;
+            xs[j] += dx * k;
+            ys[j] += dy * k;
+          }
+        }
+      }
+    }
+    for (var i = 0; i < n; i++) {
+      bodies[i].position = Offset(xs[i], ys[i]);
     }
   }
 
