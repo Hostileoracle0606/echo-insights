@@ -21,6 +21,7 @@ import 'package:lumen/services/live_credentials.dart';
 import 'package:lumen/services/notebook_commit_service.dart';
 import 'package:lumen/services/notebook_runtime_service.dart';
 import 'package:lumen/services/retrieve_memory_service.dart';
+import 'package:lumen/services/session_brief_service.dart';
 import 'package:lumen/services/supabase_service.dart';
 import 'package:lumen/services/transcript_store.dart';
 import 'package:lumen/services/turn_journal_service.dart';
@@ -106,6 +107,12 @@ class _Harness {
       turnJournalServiceProvider.overrideWithValue(_FakeTurnJournal()),
       transcriptStoreProvider.overrideWithValue(_FakeTranscripts()),
       supabaseServiceProvider.overrideWithValue(_NoNotebookInserts()),
+      // No sign-in brief state: a new notebook opens with the fallback clip.
+      sessionBriefServiceProvider.overrideWithValue(SessionBriefService(
+        baseUrl: '',
+        accessTokenProvider: () async => null,
+        rpc: (fn, [params]) async => throw StateError('offline'),
+      )),
       liveCredentialsProvider.overrideWithValue(credentials),
       audioOutputProvider.overrideWithValue(
         AudioOutput(createPlayer: () => PcmPlayer(backend: _Backend())),

@@ -140,6 +140,25 @@ export class InfraStack extends cdk.Stack {
     reserveConcurrency(sessionCloser);
     geminiApiKey.grantRead(sessionCloser);
 
+    // Writes the next session's opening (a brief and its spoken line) into
+    // session_briefs. Same code directory as the closer; separate function so
+    // the closing card never waits on text-to-speech.
+    const sessionBriefWriter = new lambda.Function(this, "SessionBriefFunction", {
+      ...commonFunctionProperties,
+      description: "Writes the next session's opening brief and audio without exposing Gemini credentials",
+      handler: "brief-index.handler",
+      code: lambda.Code.fromAsset(path.join(lambdaDirectory, "close-session")),
+      timeout: cdk.Duration.seconds(30),
+      environment: {
+        ...sharedEnvironment,
+        GEMINI_SECRET_ARN: geminiApiKey.secretArn,
+        GEMINI_BRIEF_MODEL: "gemini-2.5-flash",
+        GEMINI_TTS_MODEL: "gemini-2.5-flash-preview-tts",
+      },
+    });
+    reserveConcurrency(sessionBriefWriter);
+    geminiApiKey.grantRead(sessionBriefWriter);
+
     const api = new apigatewayv2.HttpApi(this, "NotebookRuntimeApi", {
       apiName: "echo-insights-notebook-runtime",
       description: "Authenticated runtime routes for Echo Insights",
@@ -211,6 +230,16 @@ export class InfraStack extends cdk.Stack {
       integration: new integrations.HttpLambdaIntegration(
         "SessionCloseIntegration",
         sessionCloser,
+      ),
+    });
+
+    api.addRoutes({
+      path: "/v1/notebooks/{notebookId}/brief",
+      methods: [apigatewayv2.HttpMethod.POST],
+      authorizer,
+      integration: new integrations.HttpLambdaIntegration(
+        "SessionBriefIntegration",
+        sessionBriefWriter,
       ),
     });
 

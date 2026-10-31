@@ -57,13 +57,14 @@ This also catches people who used Lumen before this ships, or whose closes faile
 
 ### 3.2 What a good opening sounds like
 
-- **Shape:** a warm hello, then **one** specific question, then Lumen listens. One or two sentences, about 3–6 s spoken.
+- **Shape:** a warm hello, then a question about **one** thread, then Lumen listens. A short, natural follow-up about the same thread is fine ("How's the marathon coming along? Is the knee holding up?", the user's preference, 2026-10-31). One or two sentences, about 3–6 s spoken.
+- **The thread comes from the conversation that just ended.** Earlier threads stay in the brief's focus as background but don't open the next session unless the person raised them again (verified 2026-10-31: answered and ignored threads both stop after one session).
 - **Thread choice, in priority order:**
   1. something left open: an unresolved question, a plan with a date ("ship the beta by Friday"), or something they said they'd do;
   2. failing that, the most relevant recent thread from memory.
 - **Feels like a friend catching up:** "Hey, how's it going? Did the Atlas beta make it out on Friday?"
 - **It is not:** a recap of last session, a list, a reintroduction, or database-sounding phrasing ("I remember you said…", "According to my notes…").
-- **Time-aware where it matters.** The brief records when it was written. If the opening line names a day ("on Friday"), it must still read sensibly whenever it's played. The wording is written for "the next time we talk", not for a specific date.
+- **Tense-safe.** The line may be heard hours or weeks later, so it never assumes a planned event has or hasn't happened ("How are things with the marathon?", not "How did the marathon go?"), and uses no dates or day names. The brief writer is told the conversation's date.
 
 ### 3.3 Sensitive topics (confirmed)
 
