@@ -3,9 +3,11 @@
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lumen/audio/standard_opening.dart';
 import 'package:lumen/logic/conversation_policy.dart';
+import 'package:lumen/models/session_brief.dart';
 
 Uint8List wav({int rate = 24000, int channels = 1, int bits = 16, int samples = 4}) {
   final pcm = Uint8List(samples * channels * bits ~/ 8);
@@ -73,9 +75,78 @@ void main() {
     expect(clip.duration, lessThan(const Duration(seconds: 6)));
   });
 
-  test('Gemini is told the exact greeting the app plays', () {
-    // If these drift, Gemini believes it said something the user never heard.
-    final text = File('assets/audio/lumen_opening.txt').readAsStringSync().trim();
-    expect(geminiLiveSystemInstruction, contains('saying exactly: "$text"'));
+  test('the prompt points at [opening said], never a hard-coded greeting', () {
+    // Which clip played varies (intro, brief, fallback); the exact words go
+    // in the up-front context, so the prompt must not name one of them.
+    final intro =
+        File('assets/audio/lumen_opening.txt').readAsStringSync().trim();
+    final returning =
+        File('assets/audio/lumen_returning.txt').readAsStringSync().trim();
+    expect(geminiLiveSystemInstruction, contains('[opening said]'));
+    expect(geminiLiveSystemInstruction, contains('[session brief]'));
+    expect(geminiLiveSystemInstruction, isNot(contains(intro)));
+    expect(geminiLiveSystemInstruction, isNot(contains(returning)));
+  });
+
+  test('the prompt explains alreadyRaised both ways and an empty thread', () {
+    final opening = geminiLiveSystemInstruction
+        .split('SESSION OPENING:')
+        .last
+        .split('SILENCE:')
+        .first;
+    expect(opening, contains('`alreadyRaised: false`: the greeting asked about '
+        '`openingThread`'));
+    expect(opening, contains("don't ask it again"));
+    expect(opening, contains('`alreadyRaised: true`: the greeting did NOT ask '
+        'about it'));
+    expect(opening, contains('background only'));
+    expect(opening, contains("don't steer back to it"));
+    expect(opening, contains('If `openingThread` is empty, the greeting asked '
+        'nothing specific'));
+    expect(opening, isNot(contains('its `openingThread` is what the greeting '
+        'asked about')), reason: 'no longer unconditional');
+  });
+
+  test('the opening context: what was said, the brief, then the graph', () {
+    final brief = SessionBrief(
+      focus: const ['Maya'],
+      openingThread: 'the new job',
+      openingLine: 'Hey! How is the new job?',
+      createdAt: DateTime.utc(2026, 10, 27),
+      playedAt: null,
+      pcm: Uint8List(2),
+      sampleRate: 24000,
+    );
+    expect(
+      openingContext(
+        openingLine: 'Hey! How is the new job?',
+        brief: brief,
+        briefAlreadyRaised: false,
+        graphSummary: const {'entityCount': 0},
+      ),
+      '[opening said] "Hey! How is the new job?"\n'
+      '[session brief] {"focus":["Maya"],"openingThread":"the new job",'
+      '"alreadyRaised":false}\n'
+      '[graph summary] {"entityCount":0}',
+    );
+    expect(
+      openingContext(
+        openingLine: null,
+        brief: null,
+        briefAlreadyRaised: true,
+        graphSummary: const {'entityCount': 0},
+      ),
+      '[graph summary] {"entityCount":0}',
+    );
+  });
+
+  test('the returning-user greeting is a bundled 24kHz clip that skips the intro', () async {
+    TestWidgetsFlutterBinding.ensureInitialized();
+    final clip = await StandardOpening.loadReturning(rootBundle);
+    final text = File('assets/audio/lumen_returning.txt').readAsStringSync().trim();
+    expect(clip.sampleRate, 24000);
+    expect(clip.pcm, isNotEmpty);
+    expect(clip.text, text);
+    expect(clip.text, isNot(contains("I'm Lumen")));
   });
 }

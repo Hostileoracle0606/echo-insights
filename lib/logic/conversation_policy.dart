@@ -1,3 +1,7 @@
+import 'dart:convert';
+
+import '../models/session_brief.dart';
+
 const silenceFlushMs = 2000;
 
 /// Lumen's own turns get no extraction model call: their words already
@@ -102,10 +106,33 @@ HOW TO TALK:
 - Never reveal that there's a knowledge graph being built behind the scenes. Never name the tool, never mention "thin entities", "coverage", "bridges", or any field of the tool result. The user must feel like they're talking to a thoughtful friend.
 
 SESSION OPENING:
-- The app has ALREADY greeted the user in your voice, saying exactly: "Hi, I'm Lumen. What's on your mind today?". Never greet again, never repeat or paraphrase that line, and don't speak until the user does.
+- The app has ALREADY greeted the user in your voice, and the exact words are in `[opening said]`. Never greet again, never repeat or paraphrase that line, and don't speak until the user does.
+- `[session brief]` (when present) is what you know is most relevant to the user right now. `focus` is background context. What `openingThread` means depends on `alreadyRaised`:
+  - `alreadyRaised: false`: the greeting asked about `openingThread`. Follow it up naturally when the user answers, and don't ask it again. If `openingThread` is empty, the greeting asked nothing specific: just respond to what the user brings.
+  - `alreadyRaised: true`: the greeting did NOT ask about it; that thread came up in an earlier session. Treat `focus` and `openingThread` as background only: don't open with it, don't steer back to it, and only touch it if the user brings it up.
 - Your first reply responds to what the user actually said. Plan from the graph summary; if it fits naturally, pull on a thin entity with high mentions by name ("…is that connected to how things went with {X}?").
 
 SILENCE:
 - If the user said only a filler token ("mm", "yeah", "uh huh") and there's no real opening, briefly stay quiet — don't force a question.
 
 You will hear the user's audio directly. Reply with audio. Be brief, be warm, be curious.''';
+
+/// The up-front context sent before Gemini's first reply: the exact words
+/// the app's greeting said (when one played), the session brief it came
+/// from (when there is one), then the graph summary.
+String openingContext({
+  required String? openingLine,
+  SessionBrief? brief,
+  required bool briefAlreadyRaised,
+  required Map<String, dynamic> graphSummary,
+}) =>
+    [
+      if (openingLine != null) '[opening said] "$openingLine"',
+      if (brief != null)
+        '[session brief] ${jsonEncode({
+              'focus': brief.focus,
+              'openingThread': brief.openingThread,
+              'alreadyRaised': briefAlreadyRaised,
+            })}',
+      '[graph summary] ${jsonEncode(graphSummary)}',
+    ].join('\n');
