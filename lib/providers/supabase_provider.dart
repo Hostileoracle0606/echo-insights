@@ -7,6 +7,7 @@ import '../services/fresh_access_token.dart';
 import '../services/memory_control_service.dart';
 import '../services/notebook_commit_service.dart';
 import '../services/notebook_runtime_service.dart';
+import '../services/session_brief_service.dart';
 import '../services/session_card_service.dart';
 import '../services/supabase_service.dart';
 import '../services/transcript_store.dart';
@@ -76,4 +77,15 @@ final sessionCardServiceProvider = Provider<SessionCardService>((ref) {
 
 final transcriptStoreProvider = Provider<TranscriptStore>((ref) {
   return SupabaseTranscriptStore(ref.watch(supabaseClientProvider));
+});
+
+/// The session brief (LM-40): written by the notebook runtime, read and
+/// marked played through owner-scoped RPCs.
+final sessionBriefServiceProvider = Provider<SessionBriefService>((ref) {
+  final client = ref.watch(supabaseClientProvider);
+  return SessionBriefService(
+    baseUrl: Env.notebookRuntimeUrl,
+    accessTokenProvider: () => _accessToken(client),
+    rpc: (fn, [params]) => client.rpc(fn, params: params),
+  );
 });
