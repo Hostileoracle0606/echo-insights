@@ -12,7 +12,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lumen/logic/turn_state.dart';
 import 'package:lumen/models/journal_state.dart';
+import 'package:lumen/models/upsert_activity.dart';
 import 'package:lumen/providers/journal_provider.dart';
+import 'package:lumen/providers/session_provider.dart';
 import 'package:lumen/screens/journal/graph_canvas.dart';
 import 'package:lumen/screens/journal/journal_screen.dart';
 import 'package:lumen/screens/journal/transcript_page.dart';
@@ -90,26 +92,13 @@ void main() {
     );
     await tester.pump(const Duration(milliseconds: 16));
 
-    // Graph view: the transcript page is not mounted.
-    expect(find.byType(TranscriptPage), findsNothing);
-    expect(
-      find.text('Had coffee with Maya about the Atlas launch.'),
-      findsNothing,
-    );
-
-    // Hand-drive the 580ms transition. pumpAndSettle would hang on
-    // GraphCanvas's perpetual force-sim ticker, so step frames instead.
-    await tester.tap(find.byIcon(Icons.article_outlined));
-    for (var i = 0; i < 45; i++) {
-      await tester.pump(const Duration(milliseconds: 16));
-    }
-
+    // A notebook opens on its transcript, with no transition to sit through.
     expect(
       find.text('Had coffee with Maya about the Atlas launch.'),
       findsOneWidget,
     );
     expect(find.text('When did the Atlas launch slip?'), findsOneWidget);
-    // The same button now offers the graph.
+    // The button offers the graph.
     expect(find.byIcon(Icons.article_outlined), findsNothing);
     expect(find.byIcon(Icons.hub_outlined), findsOneWidget);
     // The page covers the graph fully, so the graph stops painting.
@@ -124,7 +113,9 @@ void main() {
       findsOneWidget,
     );
 
-    // And back: the page drops away and unmounts.
+    // Hand-drive the transitions. pumpAndSettle would hang on
+    // GraphCanvas's perpetual force-sim ticker, so step frames instead.
+    // To the graph: the page drops away and unmounts.
     await tester.tap(find.byIcon(Icons.hub_outlined));
     for (var i = 0; i < 40; i++) {
       await tester.pump(const Duration(milliseconds: 16));
@@ -132,7 +123,55 @@ void main() {
     expect(find.byType(TranscriptPage), findsNothing);
     expect(find.byIcon(Icons.article_outlined), findsOneWidget);
 
+    // And back to the conversation.
+    await tester.tap(find.byIcon(Icons.article_outlined));
+    for (var i = 0; i < 45; i++) {
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    expect(
+      find.text('Had coffee with Maya about the Atlas launch.'),
+      findsOneWidget,
+    );
+
     // Unmount so the GraphCanvas ticker disposes before the test ends.
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('the upsert chip shows only while the graph is in view',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(402, 874));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          journalProvider.overrideWith(() => _SeededJournal(const [])),
+          upsertActivityProvider.overrideWithValue(const UpsertActivity(
+            id: 1,
+            entityNames: ['Maya'],
+            insertedEntities: 1,
+            updatedEntities: 0,
+            createdRelations: 0,
+          )),
+        ],
+        child: MaterialApp(
+          debugShowCheckedModeBanner: false,
+          theme: LumenTheme.light(),
+          home: const JournalScreen(),
+        ),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 16));
+
+    // Transcript (the default): no chip.
+    expect(find.text('UPSERTING'), findsNothing);
+
+    await tester.tap(find.byIcon(Icons.hub_outlined));
+    for (var i = 0; i < 40; i++) {
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    expect(find.text('UPSERTING'), findsOneWidget);
+
     await tester.pumpWidget(const SizedBox());
   });
 

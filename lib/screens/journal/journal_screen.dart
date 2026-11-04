@@ -46,8 +46,10 @@ class _JournalScreenState extends ConsumerState<JournalScreen>
     with WidgetsBindingObserver, SingleTickerProviderStateMixin {
   // Graph or transcript behind the dock. The dock's outer buttons flip it;
   // [_page] runs the page transition between them (0 graph → 1 transcript).
-  JournalView _view = JournalView.graph;
+  // A notebook opens on its transcript, already in place.
+  JournalView _view = JournalView.transcript;
   late final AnimationController _page = AnimationController(
+    value: 1,
     vsync: this,
     duration: const Duration(milliseconds: 580),
     reverseDuration: const Duration(milliseconds: 420),
@@ -399,11 +401,11 @@ class _JournalScreenState extends ConsumerState<JournalScreen>
     final relationCount =
         state.relations.values.where((relation) => relation.isActive).length;
 
-    // In transcript view the back gesture returns to the graph first.
+    // In graph view the back gesture returns to the transcript first.
     return PopScope(
-      canPop: _view == JournalView.graph,
+      canPop: _view == JournalView.transcript,
       onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) _setView(JournalView.graph);
+        if (!didPop) _setView(JournalView.transcript);
       },
       child: Scaffold(
         key: _scaffoldKey,
@@ -468,7 +470,8 @@ class _JournalScreenState extends ConsumerState<JournalScreen>
                       paused: status == SessionStatus.paused && !composing,
                       reconnecting: reconnecting,
                       awaitingReply: awaitingReply,
-                      activity: activity,
+                      // Upserts are graph news: the chip shows only there.
+                      activity: _view == JournalView.graph ? activity : null,
                       view: _view,
                       terms: terms,
                       onMicTap: () => _toggleMic(status),

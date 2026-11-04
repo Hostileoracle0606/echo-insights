@@ -113,7 +113,9 @@ class _VoiceServicesScopeState extends ConsumerState<VoiceServicesScope>
             ref.read(notebookRuntimeServiceProvider).isConfigured,
         // Both are best-effort and independent; neither blocks a session.
         warmUp: () => Future.wait([journal.warmUp(), openingPrep.refresh()]),
-        onResume: openingPrep.refresh,
+        // Coming back also re-asks for a brief that failed earlier.
+        onResume: () => Future.wait(
+            [openingPrep.refresh(), openingPrep.retryPendingBrief()]),
         onSignedOut: openingPrep.clear,
       );
     }
