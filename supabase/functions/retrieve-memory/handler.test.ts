@@ -155,6 +155,51 @@ Deno.test("an unknown scope is rejected", async () => {
   assertEquals(res.status, 400);
 });
 
+Deno.test("malformed or oversized request fields are a generic 400", async () => {
+  const bad: unknown[] = [
+    { query: "x".repeat(2001), notebookId: OPEN_NB },
+    { query: 42, notebookId: OPEN_NB },
+    { query: ["a"], notebookId: OPEN_NB },
+    { query: "x", notebookId: 7 },
+    { query: "x", notebookId: "n".repeat(101) },
+    { query: "x", notebookId: OPEN_NB, limit: 0 },
+    { query: "x", notebookId: OPEN_NB, limit: 51 },
+    { query: "x", notebookId: OPEN_NB, limit: 2.5 },
+    { query: "x", notebookId: OPEN_NB, limit: "5" },
+    { query: "x", notebookId: OPEN_NB, state: "nope" },
+    { query: "x", notebookId: OPEN_NB, state: { entities: [] } },
+    { query: "x", notebookId: OPEN_NB, state: { entries: {} } },
+    [1, 2],
+    "just a string",
+  ];
+  for (const body of bad) {
+    const h = harness({});
+    const res = await h.call(body);
+    assertEquals(res.status, 400, JSON.stringify(body).slice(0, 60));
+    assertEquals(res.body, { error: "invalid request" });
+    assertEquals(h.calls.length, 0, "no database call is made for a bad request");
+  }
+});
+
+Deno.test("a body that is not JSON is a 400", async () => {
+  const handler = createHandler({
+    userClient: () => fakeClient("user", [], {}),
+    adminClient: () => fakeClient("admin", [], {}),
+    embedder: () => { throw new Error("none"); },
+    log: () => {},
+  });
+  const res = await handler(new Request("http://local/retrieve-memory", {
+    method: "POST", headers: { Authorization: "Bearer j" }, body: "{not json",
+  }));
+  assertEquals(res.status, 400);
+});
+
+Deno.test("fields at their limits are accepted", async () => {
+  const h = harness({});
+  const res = await h.call({ query: "x".repeat(2000), notebookId: "n".repeat(100), limit: 50 });
+  assertEquals(res.status, 200);
+});
+
 // ── user scope ───────────────────────────────────────────────
 
 Deno.test("user scope ignores body.state and reads the user graph with the user's token", async () => {
