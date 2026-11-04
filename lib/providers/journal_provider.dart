@@ -199,6 +199,11 @@ class JournalNotifier extends Notifier<JournalState> {
   // LM-29: ids the user removed from memory (from the snapshot, plus any
   // removal still inside its undo window). merge() never adds them back.
   final Set<String> _suppressed = {};
+  // Ids removed or forgotten since launch. The server no longer sends its
+  // suppressed ids (they are keyed hashes, LM-49), so the device keeps its
+  // own so a later mention doesn't show the entity again before the server
+  // drops it.
+  final Set<String> _forgottenThisRun = {};
   final Map<String, _PendingRemoval> _pendingRemovals = {};
   BackgroundFlush? _backgroundFlush;
   Set<String> get suppressedEntityIds => Set.unmodifiable(_suppressed);
@@ -844,7 +849,8 @@ class JournalNotifier extends Notifier<JournalState> {
     _suppressed
       ..clear()
       ..addAll(snapshot.suppressedEntityIds)
-      ..addAll(_pendingRemovals.keys);
+      ..addAll(_pendingRemovals.keys)
+      ..addAll(_forgottenThisRun);
     var next = snapshot.state;
     for (final id in _pendingRemovals.keys) {
       next = withoutEntity(next, id);
@@ -913,6 +919,23 @@ class JournalNotifier extends Notifier<JournalState> {
     return true;
   }
 
+  /// Forgets [entityId] on the server (LM-49), then drops it here and
+  /// reloads the active notebook so the graph, the cards' source and the
+  /// suppression all match the server. Throws if the server call fails, with
+  /// nothing changed on the device.
+  Future<void> forgetEntity(String entityId) async {
+    await ref.read(memoryControlServiceProvider).forgetEntity(entityId);
+    // A removal still inside its undo window is superseded by this.
+    _pendingRemovals.remove(entityId)
+      ?..timer.cancel()
+      ..done.complete(RemovalOutcome.removed);
+    _syncBackgroundFlush();
+    _forgottenThisRun.add(entityId);
+    _suppressed.add(entityId);
+    state = withoutEntity(state, entityId);
+    await _reloadSnapshot();
+  }
+
   /// Sends every removal still inside its undo window, now.
   Future<void> flushPendingRemovals() => Future.wait([
         for (final id in _pendingRemovals.keys.toList()) _sendRemoval(id),
@@ -925,6 +948,7 @@ class JournalNotifier extends Notifier<JournalState> {
     _syncBackgroundFlush();
     try {
       await pending.service.removeEntity(entityId);
+      _forgottenThisRun.add(entityId);
       pending.done.complete(RemovalOutcome.removed);
     } catch (error) {
       // Not removed on the server, so not suppressed there either: show the

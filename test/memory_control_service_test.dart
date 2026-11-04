@@ -30,6 +30,29 @@ void main() {
       expect(calls.single.$2, {'p_entity_id': 'maya', 'p_text': 'My friend.'});
     });
 
+    test('previewForget and forgetEntity call their RPCs', () async {
+      response = {
+        'notebooks': 2,
+        'relations': 3,
+        'followUps': 1,
+        'askedQuestions': 0,
+        'cards': 1,
+        'briefDeleted': true,
+      };
+
+      final preview = await service.previewForget('priya');
+      expect(calls.last.$1, 'forget_entity_preview');
+      expect(calls.last.$2, {'p_entity_id': 'priya'});
+      expect(preview.notebooks, 2);
+      expect(preview.relations, 3);
+      expect(preview.cards, 1);
+      expect(preview.briefDeleted, isTrue);
+
+      final done = await service.forgetEntity('priya');
+      expect(calls.last.$1, 'forget_entity');
+      expect(done.followUps, 1);
+    });
+
     test('removeEntity calls remove_entity', () async {
       response = {'removedFrom': 3};
 
