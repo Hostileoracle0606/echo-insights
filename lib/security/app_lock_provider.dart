@@ -2,9 +2,22 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'app_lock.dart';
+import 'privacy_cover.dart';
 
 /// The clock the lock measures time in the background with.
 final lockClockProvider = Provider<DateTime Function()>((ref) => DateTime.now);
+
+final privacyCoverProvider =
+    Provider<PrivacyCoverChannel>((ref) => PrivacyCoverChannel());
+
+/// Waits for the frame just requested to be built and presented, plus one
+/// more for the raster to catch up.
+final lockFrameWaitProvider = Provider<Future<void> Function()>((ref) {
+  return () async {
+    await WidgetsBinding.instance.endOfFrame;
+    await WidgetsBinding.instance.endOfFrame;
+  };
+});
 
 final lockAuthenticatorProvider =
     Provider<LockAuthenticator>((ref) => LocalAuthAuthenticator());
@@ -18,6 +31,8 @@ final appLockProvider = ChangeNotifierProvider<AppLockController>((ref) {
     authenticator: ref.watch(lockAuthenticatorProvider),
     store: ref.watch(privacyPreferenceStoreProvider),
     now: ref.watch(lockClockProvider),
+    cover: ref.watch(privacyCoverProvider),
+    waitForFrame: ref.watch(lockFrameWaitProvider),
   );
   controller.load();
   return controller;

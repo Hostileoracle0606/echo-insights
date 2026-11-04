@@ -4,6 +4,8 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:local_auth/local_auth.dart';
 
+import 'privacy_cover.dart';
+
 /// How long the app may sit in the background before it locks again. Coming
 /// back sooner (a quick look at a text) needs no Face ID; coming back at or
 /// after this does.
@@ -116,7 +118,11 @@ class AppLockController extends ChangeNotifier {
     required PrivacyPreferenceStore store,
     DateTime Function()? now,
     Duration gracePeriod = kAppLockGracePeriod,
-  })  : _authenticator = authenticator,
+    PrivacyCoverChannel? cover,
+    Future<void> Function()? waitForFrame,
+  })  : _cover = cover,
+        _waitForFrame = waitForFrame,
+        _authenticator = authenticator,
         _store = store,
         _now = now ?? DateTime.now,
         _grace = gracePeriod;
@@ -125,9 +131,20 @@ class AppLockController extends ChangeNotifier {
   final PrivacyPreferenceStore _store;
   final DateTime Function() _now;
   final Duration _grace;
+  final PrivacyCoverChannel? _cover;
+
+  /// Completes once what the lock just decided has been built and presented.
+  final Future<void> Function()? _waitForFrame;
 
   AppLockStatus _status = AppLockStatus.loading;
-  bool _enabled = false;
+  bool __enabled = false;
+  bool get _enabled => __enabled;
+  set _enabled(bool value) {
+    __enabled = value;
+    // The native cover waits for the lock's say only while the lock is on.
+    unawaited(_cover?.setLockEnabled(value));
+  }
+
   bool _authenticating = false;
   bool _loadFailed = false;
   bool _shielded = false;
@@ -163,6 +180,8 @@ class AppLockController extends ChangeNotifier {
       _status = AppLockStatus.locked;
     }
     notifyListeners();
+    // A resume that came before the switch was read was ignored above.
+    unawaited(_releaseCover());
   }
 
   void lifecycleChanged(AppLifecycleState lifecycle) {
@@ -187,9 +206,19 @@ class AppLockController extends ChangeNotifier {
         // Decided above, so the content never shows before the lock does.
         _shielded = false;
         notifyListeners();
+        unawaited(_releaseCover());
       case AppLifecycleState.detached:
         break;
     }
+  }
+
+  /// Tells the native cover the screen is ready: after the frame that shows
+  /// the lock screen or the content has been built and presented.
+  Future<void> _releaseCover() async {
+    final cover = _cover;
+    if (cover == null) return;
+    await _waitForFrame?.call();
+    await cover.releaseCover();
   }
 
   void _setShield(bool on) {
@@ -262,6 +291,10 @@ class AppLockController extends ChangeNotifier {
       // Returning from the Face ID sheet is not a trip to the background.
       _backgroundedAt = null;
       notifyListeners();
+      // Lifecycle events were ignored while the sheet was up, but the native
+      // cover it raised is still waiting: pass or fail, whatever is showing
+      // now (content, or the lock screen) is what it should reveal.
+      unawaited(_releaseCover());
     }
   }
 }

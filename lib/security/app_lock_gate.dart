@@ -59,9 +59,11 @@ class _AppLockGateState extends ConsumerState<AppLockGate>
     final locked = lock.status != AppLockStatus.unlocked;
     final covered = locked || lock.shielded;
     if (lock.status == AppLockStatus.locked) {
-      // The keyboard must not stay up behind the lock screen.
-      FocusManager.instance.primaryFocus?.unfocus();
-      WidgetsBinding.instance.addPostFrameCallback((_) => _promptIfLocked());
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        // The keyboard must not stay up behind the lock screen.
+        FocusManager.instance.primaryFocus?.unfocus();
+        _promptIfLocked();
+      });
     } else {
       _prompted = false;
     }

@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lumen/security/app_lock.dart';
 import 'package:lumen/security/app_lock_gate.dart';
 import 'package:lumen/security/app_lock_provider.dart';
+import 'package:lumen/security/privacy_cover.dart';
 import 'package:lumen/theme/lumen_theme.dart';
 
 class FakeAuthenticator implements LockAuthenticator {
@@ -25,6 +26,24 @@ class FakeAuthenticator implements LockAuthenticator {
   Future<bool> authenticate(String reason) async {
     reasons.add(reason);
     return hold?.future ?? passes;
+  }
+}
+
+/// Records what the lock tells the native cover.
+class FakeCover extends PrivacyCoverChannel {
+  final calls = <String>[];
+
+  /// Runs at the moment releaseCover is called (to look at the screen then).
+  void Function()? onRelease;
+
+  @override
+  Future<void> setLockEnabled(bool enabled) async =>
+      calls.add('setLockEnabled($enabled)');
+
+  @override
+  Future<void> releaseCover() async {
+    calls.add('releaseCover');
+    onRelease?.call();
   }
 }
 
@@ -47,23 +66,28 @@ class MemoryStore implements PrivacyPreferenceStore {
 
 void main() {
   late FakeAuthenticator auth;
+  late FakeCover cover;
   late MemoryStore store;
   late DateTime clock;
 
   AppLockController build({bool enabled = true}) {
     auth = FakeAuthenticator();
+    cover = FakeCover();
     store = MemoryStore({lockEnabledKey: enabled});
     clock = DateTime(2026, 11, 4, 9);
     return AppLockController(
       authenticator: auth,
       store: store,
       now: () => clock,
+      cover: cover,
+      waitForFrame: () async {},
     );
   }
 
   Future<AppLockController> launched({bool enabled = true}) async {
     final lock = build(enabled: enabled);
     await lock.load();
+    await Future<void>.delayed(Duration.zero);
     return lock;
   }
 
@@ -151,6 +175,73 @@ void main() {
       auth.hold!.complete(true);
       expect(await pending, isTrue);
       expect(lock.status, AppLockStatus.unlocked);
+    });
+  });
+
+  group('native cover', () {
+    Future<void> settle() => Future<void>.delayed(Duration.zero);
+
+    test('is told the lock state, true on a read error', () async {
+      final on = await launched();
+      expect(cover.calls, ['setLockEnabled(true)', 'releaseCover']);
+      expect(on.enabled, isTrue);
+
+      final off = build(enabled: false);
+      await off.load();
+      expect(cover.calls.first, 'setLockEnabled(false)');
+
+      final broken = build();
+      store.failReads = true;
+      await broken.load();
+      expect(cover.calls.first, 'setLockEnabled(true)');
+    });
+
+    test('is told when the lock is turned on and off', () async {
+      final lock = await launched(enabled: false);
+      cover.calls.clear();
+      await lock.enable();
+      expect(cover.calls, contains('setLockEnabled(true)'));
+      cover.calls.clear();
+      await lock.disable();
+      expect(cover.calls, contains('setLockEnabled(false)'));
+    });
+
+    test('a resume with the lock off never touches the cover', () async {
+      final lock = await launched(enabled: false);
+      cover.calls.clear();
+      background(lock, const Duration(hours: 1));
+      await settle();
+      expect(cover.calls, isEmpty);
+    });
+
+    test('a resume with the lock on releases once the decision is made',
+        () async {
+      final lock = await launched();
+      await lock.unlock();
+      await settle();
+      cover.calls.clear();
+      background(lock, kAppLockGracePeriod);
+      await settle();
+      expect(cover.calls, ['releaseCover']);
+      expect(lock.status, AppLockStatus.locked);
+    });
+
+    test('releases after a failed Face ID, so the lock screen shows', () async {
+      final lock = await launched();
+      cover.calls.clear();
+      auth.passes = false;
+      expect(await lock.unlock(), isFalse);
+      await settle();
+      expect(cover.calls, ['releaseCover']);
+      expect(lock.status, AppLockStatus.locked);
+    });
+
+    test('releases after a passed Face ID too', () async {
+      final lock = await launched();
+      cover.calls.clear();
+      expect(await lock.unlock(), isTrue);
+      await settle();
+      expect(cover.calls, ['releaseCover']);
     });
   });
 
@@ -290,6 +381,7 @@ void main() {
         lockAuthenticatorProvider.overrideWithValue(auth),
         privacyPreferenceStoreProvider.overrideWithValue(store),
         lockClockProvider.overrideWithValue(() => clock),
+        privacyCoverProvider.overrideWithValue(cover),
       ]);
       addTearDown(container.dispose);
       await tester.pumpWidget(UncontrolledProviderScope(
@@ -438,6 +530,72 @@ void main() {
       expect(find.byKey(const Key('lockScreen')), findsOneWidget);
       expect(find.text('journal text'), findsNothing);
       expect(find.text("Couldn't check your lock setting."), findsOneWidget);
+    });
+
+    testWidgets('the cover is released only after the frame showing the lock',
+        (tester) async {
+      await pump(tester, passes: true);
+      final binding = tester.binding;
+      var lockScreenUp = false;
+      cover.onRelease = () => lockScreenUp =
+          find.byKey(const Key('lockScreen')).evaluate().isNotEmpty;
+      cover.calls.clear();
+      auth.passes = false;
+
+      for (final state in [
+        AppLifecycleState.inactive,
+        AppLifecycleState.hidden,
+        AppLifecycleState.paused,
+      ]) {
+        binding.handleAppLifecycleStateChanged(state);
+        await tester.pump();
+      }
+      clock = clock.add(kAppLockGracePeriod);
+      binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+      binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      // Decided, but no frame has been presented yet: the cover stays.
+      await tester.idle();
+      expect(cover.calls, isNot(contains('releaseCover')));
+
+      await tester.pump(); // the frame that shows the lock screen
+      expect(cover.calls, isNot(contains('releaseCover')));
+      await tester.pump(); // and one more
+      await tester.idle();
+      expect(cover.calls, contains('releaseCover'));
+      expect(lockScreenUp, isTrue);
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('a quick resume with the lock off has no cover traffic',
+        (tester) async {
+      await pump(tester, enabled: false);
+      cover.calls.clear();
+      final binding = tester.binding;
+      for (final state in [
+        AppLifecycleState.inactive,
+        AppLifecycleState.hidden,
+        AppLifecycleState.paused,
+        AppLifecycleState.hidden,
+        AppLifecycleState.inactive,
+        AppLifecycleState.resumed,
+      ]) {
+        binding.handleAppLifecycleStateChanged(state);
+        await tester.pump();
+      }
+      await tester.pumpAndSettle();
+      expect(cover.calls, isEmpty);
+      expect(find.text('journal text'), findsOneWidget);
+    });
+
+    testWidgets('a failed Face ID releases the cover onto the lock screen',
+        (tester) async {
+      await pump(tester); // launch prompt fails
+      cover.calls.clear();
+      await tester.tap(find.byKey(const Key('unlockButton')));
+      await tester.pumpAndSettle();
+      expect(cover.calls, contains('releaseCover'));
+      expect(find.byKey(const Key('lockScreen')), findsOneWidget);
     });
   });
 }
