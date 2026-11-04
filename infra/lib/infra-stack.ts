@@ -4,6 +4,7 @@ import * as authorizers from "aws-cdk-lib/aws-apigatewayv2-authorizers";
 import * as integrations from "aws-cdk-lib/aws-apigatewayv2-integrations";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as lambda from "aws-cdk-lib/aws-lambda";
+import * as logs from "aws-cdk-lib/aws-logs";
 import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
 import { Construct } from "constructs";
 import * as path from "node:path";
@@ -75,8 +76,17 @@ export class InfraStack extends cdk.Stack {
       loggingFormat: lambda.LoggingFormat.JSON,
     };
 
+    // Every function writes to a log group we own, kept 14 days (LM-44).
+    // Without one, Lambda makes a group that never expires.
+    const logGroupFor = (name: string) =>
+      new logs.LogGroup(this, `${name}Logs`, {
+        retention: logs.RetentionDays.TWO_WEEKS,
+        removalPolicy: cdk.RemovalPolicy.DESTROY,
+      });
+
     const supabaseAuthorizer = new lambda.Function(this, "SupabaseAuthorizerFunction", {
       ...commonFunctionProperties,
+      logGroup: logGroupFor("SupabaseAuthorizerFunction"),
       description: "Validates Supabase user access tokens for Echo Insights",
       handler: "index.handler",
       code: lambda.Code.fromAsset(path.join(lambdaDirectory, "supabase-authorizer")),
@@ -85,6 +95,7 @@ export class InfraStack extends cdk.Stack {
 
     const liveSessionBroker = new lambda.Function(this, "LiveSessionBrokerFunction", {
       ...commonFunctionProperties,
+      logGroup: logGroupFor("LiveSessionBrokerFunction"),
       description: "Issues short-lived, constrained Gemini Live credentials",
       handler: "index.handler",
       code: lambda.Code.fromAsset(path.join(lambdaDirectory, "live-session")),
@@ -108,6 +119,7 @@ export class InfraStack extends cdk.Stack {
 
     const graphExtractor = new lambda.Function(this, "GraphExtractorFunction", {
       ...commonFunctionProperties,
+      logGroup: logGroupFor("GraphExtractorFunction"),
       description: "Extracts validated graph patches without exposing Gemini credentials",
       handler: "index.handler",
       code: lambda.Code.fromAsset(path.join(lambdaDirectory, "extract-graph")),
@@ -127,6 +139,7 @@ export class InfraStack extends cdk.Stack {
     // writes Supabase only with the caller's token, so it needs no table.
     const sessionCloser = new lambda.Function(this, "SessionCloserFunction", {
       ...commonFunctionProperties,
+      logGroup: logGroupFor("SessionCloserFunction"),
       description: "Writes the closing card for a conversation without exposing Gemini credentials",
       handler: "index.handler",
       code: lambda.Code.fromAsset(path.join(lambdaDirectory, "close-session")),
@@ -145,6 +158,7 @@ export class InfraStack extends cdk.Stack {
     // the closing card never waits on text-to-speech.
     const sessionBriefWriter = new lambda.Function(this, "SessionBriefFunction", {
       ...commonFunctionProperties,
+      logGroup: logGroupFor("SessionBriefFunction"),
       description: "Writes the next session's opening brief and audio without exposing Gemini credentials",
       handler: "brief-index.handler",
       code: lambda.Code.fromAsset(path.join(lambdaDirectory, "close-session")),

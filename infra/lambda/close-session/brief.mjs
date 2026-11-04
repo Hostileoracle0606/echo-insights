@@ -1,3 +1,4 @@
+import { guardHandler, safeLog } from "./safe-log.mjs";
 import {
   Rejection,
   authorizedUserId,
@@ -65,7 +66,7 @@ export function createSessionBriefHandler({
   now = () => Date.now(),
   sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
   // Ids, counts and latency only: never transcript, brief or line text.
-  log = (fields) => console.log(JSON.stringify({ source: "session-brief", ...fields })),
+  log = (fields) => safeLog("session-brief", fields),
   deadlineMs = defaultDeadlineMs,
 }) {
   async function credential() {
@@ -247,7 +248,7 @@ export function createSessionBriefHandler({
     throw new Rejection(503, "providerUnavailable");
   }
 
-  return async function handle(event) {
+  async function handle(event) {
     const startedAt = now();
     const userId = authorizedUserId(event);
     if (!userId) return rejected(401, "unauthorized");
@@ -276,5 +277,7 @@ export function createSessionBriefHandler({
       ...metrics,
     });
     return response;
-  };
+  }
+
+  return guardHandler("session-brief", handle, () => rejected(503, "providerUnavailable"), log);
 }
