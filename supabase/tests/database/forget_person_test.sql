@@ -7,7 +7,7 @@
 create extension if not exists pgtap;
 
 begin;
-select plan(30);
+select plan(47);
 
 insert into auth.users (id) values
   ('11111111-1111-1111-1111-111111111111'),
@@ -116,6 +116,13 @@ select is(
   (select array_agg(revision order by id) from public.notebooks where user_id = '11111111-1111-1111-1111-111111111111'),
   array[6::bigint, 6, 5], 'revision is bumped where the graph changed, so devices reload');
 
+select is(
+  (select source_revision from public.session_cards where notebook_id = 'a1111111-0000-0000-0000-000000000001'),
+  6::bigint, 'forget: the redacted card is marked current, so it is not regenerated');
+select is(
+  (select (card->>'sourceRevision')::bigint from public.session_cards where notebook_id = 'a1111111-0000-0000-0000-000000000001'),
+  6::bigint, 'forget: and the card JSON says so too');
+
 -- ── the suppression is a keyed hash ────────────────────────────────────────
 select is(
   (select entity_hash from public.entity_suppressions where user_id = '11111111-1111-1111-1111-111111111111'),
@@ -149,6 +156,57 @@ select is((select count(*)::int from public.entities where id = 'maya' and noteb
 
 -- forgetting again is harmless
 select is((public.forget_entity('priya') ->> 'notebooks')::int, 0, 'forget twice: nothing left, no error');
+
+-- ── regeneration cannot bring the name back (R10) ──────────────────────────
+select is(public.redact_forgotten_text('I saw Priya and priya''s dog. PRIYA, hi!'),
+  'I saw someone and someone''s dog. someone, hi!', 'redact: any case, possessive, punctuation');
+select is(public.redact_forgotten_text('Priyanka and Maya went'), 'Priyanka and Maya went',
+  'redact: a different name that starts the same is left alone');
+select is(public.redact_forgotten_text(E'first\u0001Priya\u0001third'), E'first\u0001someone\u0001third',
+  'redact: separators between turns survive');
+
+-- the notebook moves on, and its card is regenerated with the name in it
+reset role;
+update public.notebooks set revision = 6 where id = 'a1111111-0000-0000-0000-000000000003';
+set local role authenticated;
+select public.save_session_card(
+  'a1111111-0000-0000-0000-000000000003'::uuid, 6::bigint,
+  '{"version":1,"notebookId":"a1111111-0000-0000-0000-000000000003","conversationMode":"just_talk","sourceRevision":6,
+    "title":"Walk with Priya","summary":"You and Priya walked.","notes":["Priya said hi"],
+    "remember":[{"entityId":"priya","name":"Priya","note":null,"isNew":true},{"entityId":"maya","name":"Maya","note":null,"isNew":false}]}'::jsonb,
+  'Walk with Priya', 'You and Priya walked.', true) as regen \gset
+select is((select card->>'summary' from public.session_cards where notebook_id = 'a1111111-0000-0000-0000-000000000003'),
+  'You and someone walked.', 'save_session_card: a summary with the name is stored redacted');
+select is((select card->'notes'->>0 from public.session_cards where notebook_id = 'a1111111-0000-0000-0000-000000000003'),
+  'someone said hi', 'save_session_card: notes are redacted');
+select is((select jsonb_array_length(card->'remember') from public.session_cards where notebook_id = 'a1111111-0000-0000-0000-000000000003'),
+  1, 'save_session_card: a "remember" item for the forgotten entity is dropped');
+select is((select card->>'notebookId' from public.session_cards where notebook_id = 'a1111111-0000-0000-0000-000000000003'),
+  'a1111111-0000-0000-0000-000000000003', 'save_session_card: ids are left alone');
+select is((select title from public.notebooks where id = 'a1111111-0000-0000-0000-000000000003'),
+  'Walk with someone', 'save_session_card: the notebook title is redacted');
+select is((select summary from public.notebooks where id = 'a1111111-0000-0000-0000-000000000003'),
+  'You and someone walked.', 'save_session_card: the notebook summary is redacted');
+
+-- briefs that name the person are not saved
+select is(
+  public.save_session_brief('a1111111-0000-0000-0000-000000000002'::uuid, 7::bigint,
+    '{"focus":[],"openingThread":"Priya''s move","openingLine":"How is it going?"}'::jsonb, 'AAAA', 24000),
+  '{"status":"unchanged"}'::jsonb, 'brief: a name in openingThread is not saved');
+select is(
+  public.save_session_brief('a1111111-0000-0000-0000-000000000002'::uuid, 7::bigint,
+    '{"focus":["rent",{"who":"Priya"}],"openingThread":"","openingLine":"Hi there"}'::jsonb, 'AAAA', 24000),
+  '{"status":"unchanged"}'::jsonb, 'brief: a name in focus is not saved');
+select is(
+  public.save_session_brief('a1111111-0000-0000-0000-000000000002'::uuid, 7::bigint,
+    '{"focus":[],"openingThread":"","openingLine":"Hey Priya, how are you?"}'::jsonb, 'AAAA', 24000),
+  '{"status":"unchanged"}'::jsonb, 'brief: a name in openingLine is not saved');
+select is((select count(*)::int from public.session_briefs), 0, 'brief: nothing was stored');
+select is(
+  public.save_session_brief('a1111111-0000-0000-0000-000000000002'::uuid, 7::bigint,
+    '{"focus":[],"openingThread":"rent","openingLine":"How is the week?"}'::jsonb, 'AAAA', 24000),
+  '{"status":"saved"}'::jsonb, 'brief: one without the name is saved');
+select is((select count(*)::int from public.session_briefs), 1, 'brief: and stored');
 
 -- ── B is untouched, and cannot see A's suppressions ────────────────────────
 set local request.jwt.claim.sub = '22222222-2222-2222-2222-222222222222';

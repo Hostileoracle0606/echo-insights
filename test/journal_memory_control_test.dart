@@ -69,7 +69,6 @@ class _FakeCommits implements NotebookCommitService {
       notebookId: notebookId,
       revision: 3,
       state: _serverState(),
-      suppressedEntityIds: const {'ravi'},
     );
   }
 
@@ -152,17 +151,6 @@ void main() {
     binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
   }
 
-  test('the snapshot loads the suppressed ids', () {
-    fakeAsync((async) {
-      final h = _Harness();
-      h.journal.enterNotebook(_notebookId);
-      async.flushMicrotasks();
-
-      expect(h.journal.suppressedEntityIds, {'ravi'});
-      h.container.dispose();
-    });
-  });
-
   test('remove hides the entity at once and sends after the undo window', () {
     fakeAsync((async) {
       final h = _Harness();
@@ -177,7 +165,7 @@ void main() {
       expect(h.state.relations, isEmpty);
       expect(h.state.entries.single.entityIds, ['maya']);
       expect(h.state.entries.single.relationIds, isEmpty);
-      expect(h.journal.suppressedEntityIds, containsAll(['priya', 'ravi']));
+      expect(h.journal.suppressedEntityIds, contains('priya'));
 
       async.elapse(const Duration(seconds: 4));
       expect(h.memory.removed, isEmpty, reason: 'still inside the undo window');

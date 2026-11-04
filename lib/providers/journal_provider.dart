@@ -196,13 +196,12 @@ class JournalNotifier extends Notifier<JournalState> {
   // _enqueueCommit / _commitApplyTurn.
   int _revision = 0;
 
-  // LM-29: ids the user removed from memory (from the snapshot, plus any
-  // removal still inside its undo window). merge() never adds them back.
+  // LM-29: ids the user removed from memory (removed or forgotten since
+  // launch, plus any removal still inside its undo window). merge() never
+  // adds them back. The server keeps only keyed hashes of its suppressions
+  // (LM-49) and drops them on commit, so it sends no list.
   final Set<String> _suppressed = {};
-  // Ids removed or forgotten since launch. The server no longer sends its
-  // suppressed ids (they are keyed hashes, LM-49), so the device keeps its
-  // own so a later mention doesn't show the entity again before the server
-  // drops it.
+  // Ids removed or forgotten since launch, kept across snapshot reloads.
   final Set<String> _forgottenThisRun = {};
   final Map<String, _PendingRemoval> _pendingRemovals = {};
   BackgroundFlush? _backgroundFlush;
@@ -848,7 +847,6 @@ class JournalNotifier extends Notifier<JournalState> {
   JournalState _adoptSnapshot(commit_service.NotebookSnapshot snapshot) {
     _suppressed
       ..clear()
-      ..addAll(snapshot.suppressedEntityIds)
       ..addAll(_pendingRemovals.keys)
       ..addAll(_forgottenThisRun);
     var next = snapshot.state;

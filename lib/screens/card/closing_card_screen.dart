@@ -45,7 +45,6 @@ class ClosingCardScreen extends ConsumerStatefulWidget {
 class _ClosingCardScreenState extends ConsumerState<ClosingCardScreen> {
   _Phase _phase = _Phase.loading;
   SessionCard? _card;
-  Set<String> _suppressed = const {};
 
   // A draft written while the conversation went on is showing, and the
   // final card (with the last few moments) is still on its way.
@@ -182,7 +181,6 @@ class _ClosingCardScreenState extends ConsumerState<ClosingCardScreen> {
     setState(() {
       _updating = updating;
       _card = card;
-      _suppressed = snapshot?.suppressedEntityIds ?? const {};
       _phase = switch (card.conversationMode) {
         ConversationMode.justTalk ||
         ConversationMode.weeklyDebrief =>
@@ -533,9 +531,7 @@ class _ClosingCardScreenState extends ConsumerState<ClosingCardScreen> {
   }) {
     final visible = [
       for (final item in card.remember)
-        if (!_suppressed.contains(item.entityId) &&
-            !_removals.isHidden(item.entityId))
-          item,
+        if (!_removals.isHidden(item.entityId)) item,
     ];
     final items = [
       for (final item in visible)

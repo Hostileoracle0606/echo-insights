@@ -73,6 +73,11 @@ function world(overrides = {}) {
     if (overrides[path]) return overrides[path](call, state);
     if (path === "/rest/v1/notebooks") return ok(state.notebook ? [state.notebook] : []);
     if (path === "/rest/v1/session_cards") return ok(state.storedCard ? [state.storedCard] : []);
+    if (path === "/rest/v1/rpc/redact_forgotten_text") {
+      state.redactions ??= [];
+      state.redactions.push(call);
+      return ok(redactWith(state.forgotten ?? [], call.body.p_text));
+    }
     if (path === "/rest/v1/rpc/get_notebook_snapshot") return ok(state.snapshot);
     if (path === "/rest/v1/conversation_turns") {
       return ok([...state.turns].sort((a, b) => b.spoken_at.localeCompare(a.spoken_at)));
@@ -105,6 +110,12 @@ function world(overrides = {}) {
     ...overrides.deps,
   });
   return { state, handle };
+}
+
+
+/** Stand-in for redact_forgotten_text: replaces each forgotten name. */
+function redactWith(forgotten, text) {
+  return forgotten.reduce((out, name) => out.replaceAll(name, "someone"), text);
 }
 
 const parse = (response) => JSON.parse(response.body);
@@ -240,7 +251,7 @@ test("the model is asked once, with the function forced and no randomness", asyn
   );
 });
 
-test("the remember list: by mentions, at most 8, never suppressed, isNew from notebook_count", async () => {
+test("the remember list: by mentions, at most 8, isNew from notebook_count", async () => {
   const entities = {};
   for (let index = 0; index < 12; index += 1) {
     entities[`e${index}`] = {
@@ -253,7 +264,6 @@ test("the remember list: by mentions, at most 8, never suppressed, isNew from no
   }
   const snapshot = {
     ...fixture.snapshot,
-    suppressedEntityIds: ["e10"],
     state: { ...fixture.snapshot.state, entities },
   };
   const userEntities = Array.from({ length: 12 }, (_, index) => ({
@@ -267,21 +277,21 @@ test("the remember list: by mentions, at most 8, never suppressed, isNew from no
 
   assert.deepEqual(
     card.remember.map((item) => item.entityId),
-    ["e11", "e9", "e8", "e7", "e6", "e5", "e4", "e3"],
+    ["e11", "e10", "e9", "e8", "e7", "e6", "e5", "e4"],
   );
   assert.deepEqual(
     card.remember.map((item) => item.isNew),
-    [false, false, true, false, true, false, true, false],
+    [false, true, false, true, false, true, false, true],
   );
   assert.ok(card.remember.every((item) => item.note === null));
   const declaration = state.providerBodies[0].tools[0].function_declarations[0];
   assert.deepEqual(
     declaration.parameters.properties.entityNotes.items.properties.entityId.enum,
-    ["e11", "e9", "e8", "e7", "e6", "e5", "e4", "e3"],
+    ["e11", "e10", "e9", "e8", "e7", "e6", "e5", "e4"],
   );
   const lookup = state.calls.find((call) => call.url.pathname === "/rest/v1/user_entities");
   assert.equal(lookup.url.searchParams.get("select"), "id,notebook_count");
-  assert.match(lookup.url.searchParams.get("id"), /^in\.\("e11","e9",/);
+  assert.match(lookup.url.searchParams.get("id"), /^in\.\("e11","e10",/);
 });
 
 test("the remember list's names and types come from the snapshot, not the model", async () => {
@@ -679,4 +689,47 @@ test("a base64-encoded draft body is read", async () => {
     requestEvent({ body: Buffer.from(JSON.stringify({ draft: true })).toString("base64"), isBase64Encoded: true }),
   );
   assert.equal(state.saves[0].p_draft, true);
+});
+
+// ── LM-49: a forgotten name never reaches the model ──────────────────────
+
+test("the transcript is redacted by one user-token call before the model sees it", async () => {
+  // The forgotten entity is already gone from the graph.
+  const snapshot = clone(fixture.snapshot);
+  delete snapshot.state.entities.brooklyn;
+  const { state, handle } = world({ state: { forgotten: ["Brooklyn"], snapshot } });
+  await handle(requestEvent());
+  assert.equal(state.redactions.length, 1);
+  assert.equal(state.redactions[0].init.headers.authorization, "Bearer signed-user-token");
+  const prompt = JSON.stringify(state.providerBodies[0].contents);
+  assert.ok(!prompt.includes("Brooklyn"));
+  assert.ok(prompt.includes("someone"));
+});
+
+test("a draft is redacted too", async () => {
+  const snapshot = clone(fixture.snapshot);
+  delete snapshot.state.entities.brooklyn;
+  const { state, handle } = world({ state: { forgotten: ["Brooklyn"], snapshot } });
+  await handle(requestEvent({ body: JSON.stringify({ draft: true }) }));
+  assert.equal(state.redactions.length, 1);
+  assert.ok(!JSON.stringify(state.providerBodies[0].contents).includes("Brooklyn"));
+});
+
+test("if redaction fails the model is never called", async () => {
+  const { state, handle } = world({
+    "/rest/v1/rpc/redact_forgotten_text": () => status(500),
+  });
+  const response = await handle(requestEvent());
+  assert.equal(response.statusCode, 503);
+  assert.equal(state.providerBodies.length, 0);
+  assert.equal(state.saves.length, 0);
+});
+
+test("a redaction answer that does not line up with the turns is refused", async () => {
+  const { state, handle } = world({
+    "/rest/v1/rpc/redact_forgotten_text": () => ok("one blob, no separators"),
+  });
+  const response = await handle(requestEvent());
+  assert.equal(response.statusCode, 503);
+  assert.equal(state.providerBodies.length, 0);
 });

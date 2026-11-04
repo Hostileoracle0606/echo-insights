@@ -65,10 +65,9 @@ void main() {
   });
 
   group('NotebookSnapshot', () {
-    Map<String, dynamic> snapshotJson({List<String>? suppressed}) => {
+    Map<String, dynamic> snapshotJson() => {
           'notebookId': 'nb',
           'revision': 4,
-          if (suppressed != null) 'suppressedEntityIds': suppressed,
           'state': {
             'entries': <dynamic>[],
             'entities': {
@@ -91,17 +90,10 @@ void main() {
           },
         };
 
-    test('reads suppressedEntityIds and descriptionSource', () {
-      final snapshot =
-          NotebookSnapshot.fromJson(snapshotJson(suppressed: ['priya']));
+    test('reads descriptionSource', () {
+      final snapshot = NotebookSnapshot.fromJson(snapshotJson());
 
-      expect(snapshot.suppressedEntityIds, {'priya'});
       expect(snapshot.state.entities['maya']!.descriptionSource, 'user');
-    });
-
-    test('has no suppressed ids when the server sends none', () {
-      expect(NotebookSnapshot.fromJson(snapshotJson()).suppressedEntityIds,
-          isEmpty);
     });
   });
 }
