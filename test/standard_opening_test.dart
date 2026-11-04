@@ -149,4 +149,14 @@ void main() {
     expect(clip.text, text);
     expect(clip.text, isNot(contains("I'm Lumen")));
   });
+
+  test('the returning-user greeting is a bundled 24kHz clip that skips the intro', () async {
+    TestWidgetsFlutterBinding.ensureInitialized();
+    final clip = await StandardOpening.loadReturning(rootBundle);
+    final text = File('assets/audio/lumen_returning.txt').readAsStringSync().trim();
+    expect(clip.sampleRate, 24000);
+    expect(clip.pcm, isNotEmpty);
+    expect(clip.text, text);
+    expect(clip.text, isNot(contains("I'm Lumen")));
+  });
 }
