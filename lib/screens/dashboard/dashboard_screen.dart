@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -9,6 +11,7 @@ import '../../providers/notebooks_provider.dart';
 import '../../providers/supabase_provider.dart';
 import '../../theme/lumen_colors.dart';
 import '../../theme/lumen_text.dart';
+import '../../widgets/delete_session.dart';
 
 // Matches the iPhone's display corner radius so the docked button's curvature
 // echoes the screen's rounded corners. Flutter exposes no API for the real
@@ -192,6 +195,7 @@ class DashboardScreen extends ConsumerWidget {
                             ?.copyWith(fontSize: 18),
                       ),
                     ),
+                    _NotebookMenu(notebookId: notebook.id, colors: colors),
                   ],
                 ),
                 if (summary != null && summary.isNotEmpty) ...[
@@ -248,6 +252,39 @@ class DashboardScreen extends ConsumerWidget {
             color: colors.mutedForeground,
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// The notebook's overflow menu: today just "Delete this session" (LM-48).
+class _NotebookMenu extends ConsumerWidget {
+  const _NotebookMenu({required this.notebookId, required this.colors});
+
+  final String notebookId;
+  final LumenColors colors;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return SizedBox.square(
+      dimension: 28,
+      child: PopupMenuButton<String>(
+        tooltip: 'Notebook options',
+        padding: EdgeInsets.zero,
+        iconSize: 20,
+        icon: Icon(Icons.more_horiz, color: colors.mutedForeground),
+        onSelected: (_) => unawaited(
+          confirmAndDeleteSession(context, ref, notebookId),
+        ),
+        itemBuilder: (_) => [
+          PopupMenuItem<String>(
+            value: 'delete',
+            child: Text(
+              'Delete this session',
+              style: TextStyle(color: colors.destructive),
+            ),
+          ),
+        ],
       ),
     );
   }

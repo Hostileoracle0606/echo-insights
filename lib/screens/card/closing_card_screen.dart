@@ -19,6 +19,7 @@ import '../../services/notebook_commit_service.dart';
 import '../../theme/lumen_colors.dart';
 import '../../theme/lumen_text.dart';
 import '../../widgets/context_tile.dart';
+import '../../widgets/delete_session.dart';
 import '../../widgets/eyebrow.dart';
 import '../../widgets/mode_header.dart';
 import '../../widgets/result_card.dart';
@@ -349,7 +350,26 @@ class _ClosingCardScreenState extends ConsumerState<ClosingCardScreen> {
                 Expanded(
                   child: SingleChildScrollView(
                     padding: EdgeInsets.fromLTRB(20, 18, 20, bottomClearance),
-                    child: _body(colors),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _body(colors),
+                        const SizedBox(height: 28),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: _TextAction(
+                            label: 'Delete this session',
+                            onTap: () => unawaited(confirmAndDeleteSession(
+                              context,
+                              ref,
+                              widget.notebookId,
+                            )),
+                            padding: EdgeInsets.zero,
+                            color: colors.destructive,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ],
@@ -718,11 +738,13 @@ class _TextAction extends StatelessWidget {
     required this.label,
     required this.onTap,
     this.padding = const EdgeInsets.symmetric(horizontal: 12),
+    this.color,
   });
 
   final String label;
   final VoidCallback onTap;
   final EdgeInsetsGeometry padding;
+  final Color? color;
 
   @override
   Widget build(BuildContext context) {
@@ -736,7 +758,7 @@ class _TextAction extends StatelessWidget {
         style: TextButton.styleFrom(
           minimumSize: const Size(44, 44),
           padding: padding,
-          foregroundColor: colors.ink,
+          foregroundColor: color ?? colors.ink,
           tapTargetSize: MaterialTapTargetSize.padded,
         ),
         child: Text(
