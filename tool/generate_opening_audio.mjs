@@ -8,14 +8,21 @@
 // prebuilt voice Lumen uses in Gemini Live, via Gemini's TTS model.
 //
 // Usage (key from the environment, never on the command line):
-//   GEMINI_API_KEY=… node tool/generate_opening_audio.mjs
-// Output: assets/audio/lumen_opening.wav (PCM16 mono, 24kHz).
+//   GEMINI_API_KEY=… node tool/generate_opening_audio.mjs [asset-name]
+// asset-name defaults to lumen_opening; lumen_returning makes the clip for
+// returning users. Reads assets/audio/<name>.txt, writes <name>.wav
+// (PCM16 mono, 24kHz).
 import { readFileSync, writeFileSync } from "node:fs";
 
 const MODEL = "gemini-2.5-flash-preview-tts";
 const VOICE = "Aoede";
-const TEXT_PATH = new URL("../assets/audio/lumen_opening.txt", import.meta.url);
-const WAV_PATH = new URL("../assets/audio/lumen_opening.wav", import.meta.url);
+const NAME = process.argv[2] ?? "lumen_opening";
+if (!/^[a-z0-9_]+$/.test(NAME)) {
+  console.error(`Invalid asset name: ${NAME}`);
+  process.exit(1);
+}
+const TEXT_PATH = new URL(`../assets/audio/${NAME}.txt`, import.meta.url);
+const WAV_PATH = new URL(`../assets/audio/${NAME}.wav`, import.meta.url);
 
 const key = process.env.GEMINI_API_KEY;
 if (!key) {

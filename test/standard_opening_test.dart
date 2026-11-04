@@ -3,6 +3,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lumen/audio/standard_opening.dart';
 import 'package:lumen/logic/conversation_policy.dart';
@@ -77,5 +78,15 @@ void main() {
     // If these drift, Gemini believes it said something the user never heard.
     final text = File('assets/audio/lumen_opening.txt').readAsStringSync().trim();
     expect(geminiLiveSystemInstruction, contains('saying exactly: "$text"'));
+  });
+
+  test('the returning-user greeting is a bundled 24kHz clip that skips the intro', () async {
+    TestWidgetsFlutterBinding.ensureInitialized();
+    final clip = await StandardOpening.loadReturning(rootBundle);
+    final text = File('assets/audio/lumen_returning.txt').readAsStringSync().trim();
+    expect(clip.sampleRate, 24000);
+    expect(clip.pcm, isNotEmpty);
+    expect(clip.text, text);
+    expect(clip.text, isNot(contains("I'm Lumen")));
   });
 }
