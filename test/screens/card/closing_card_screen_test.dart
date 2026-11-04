@@ -239,18 +239,56 @@ void main() {
       await _unmount(tester);
     });
 
-    testWidgets('a stored card from an older revision waits for close',
+    testWidgets(
+        'a draft from an older revision shows at once, marked as updating, '
+        'then the final card replaces it', (tester) async {
+      final h = await _pump(
+        tester,
+        cards: _FakeCards(stored: _justTalk),
+        commits: _FakeCommits(revision: _justTalk.sourceRevision + 1),
+      );
+      expect(find.text('Writing your card…'), findsNothing);
+      expect(find.textContaining(_justTalk.summary), findsOneWidget);
+      expect(find.text('Adding the last few moments…'), findsOneWidget);
+
+      final finalCard = SessionCard.fromJson({
+        ..._fixture('just_talk'),
+        'title': 'The final word',
+        'sourceRevision': _justTalk.sourceRevision + 1,
+      });
+      h.cards.closeCompleter.complete(finalCard);
+      await _frames(tester);
+      expect(find.textContaining('The final word'), findsOneWidget);
+      expect(find.text('Adding the last few moments…'), findsNothing);
+      await _unmount(tester);
+    });
+
+    testWidgets('if the final card fails, the draft stays without the hint',
         (tester) async {
       final h = await _pump(
         tester,
         cards: _FakeCards(stored: _justTalk),
         commits: _FakeCommits(revision: _justTalk.sourceRevision + 1),
       );
-      expect(find.text('Writing your card…'), findsOneWidget);
-
-      h.cards.closeCompleter.complete(_justTalk);
+      h.cards.closeCompleter
+          .completeError(const SessionCardException('down', statusCode: 503));
       await _frames(tester);
       expect(find.textContaining(_justTalk.summary), findsOneWidget);
+      expect(find.text('Adding the last few moments…'), findsNothing);
+      expect(
+        find.text("Couldn't write your card. Your conversation is saved."),
+        findsNothing,
+      );
+      await _unmount(tester);
+    });
+
+    testWidgets('a current stored card shows no updating hint', (tester) async {
+      await _pump(
+        tester,
+        cards: _FakeCards(stored: _justTalk),
+        commits: _FakeCommits(revision: _justTalk.sourceRevision),
+      );
+      expect(find.text('Adding the last few moments…'), findsNothing);
       await _unmount(tester);
     });
 

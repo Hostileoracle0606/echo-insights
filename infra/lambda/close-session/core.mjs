@@ -100,6 +100,22 @@ export function supabaseClient({ supabaseUrl, publishableKey, authorization, fet
   };
 }
 
+/**
+ * A draft request ({"draft": true}) comes in the background while the
+ * conversation goes on; anything else is the final close.
+ */
+function isDraftRequest(event) {
+  let body = event?.body;
+  if (typeof body !== "string" || body.length === 0) return false;
+  try {
+    if (event.isBase64Encoded) body = Buffer.from(body, "base64").toString("utf8");
+    const parsed = JSON.parse(body);
+    return parsed !== null && typeof parsed === "object" && parsed.draft === true;
+  } catch {
+    return false;
+  }
+}
+
 export function functionArgs(payload, name) {
   const parts = payload?.candidates?.[0]?.content?.parts;
   if (!Array.isArray(parts)) return null;
@@ -300,7 +316,7 @@ export function createCloseSessionHandler({
 
   // One pass of steps 1–7. Returns a response, or "stale" when the
   // conversation changed while the card was being written.
-  async function closeOnce({ db, notebookId, startedAt, metrics }) {
+  async function closeOnce({ db, notebookId, startedAt, metrics, draft }) {
     const notebooks = await db.select("notebooks", {
       select: "id,revision,conversation_mode",
       id: `eq.${notebookId}`,
@@ -338,6 +354,9 @@ export function createCloseSessionHandler({
       p_card: card,
       p_title: card.title,
       p_summary: card.summary,
+      // A draft may be from a revision the conversation has since passed;
+      // the database keeps it unless a newer card is already stored.
+      ...(draft ? { p_draft: true } : {}),
     });
     if (saved?.status === "saved" && saved.card) {
       return jsonResponse(200, { status: "ready", card: saved.card });
@@ -357,12 +376,15 @@ export function createCloseSessionHandler({
     if (!notebookId) return rejected(400, "invalidRequest");
 
     const db = supabaseClient({ supabaseUrl, publishableKey, authorization, fetchImpl });
-    const metrics = { modelCalls: 0, passes: 0 };
+    const draft = isDraftRequest(event);
+    const metrics = { modelCalls: 0, passes: 0, ...(draft ? { draft: true } : {}) };
     let response;
     try {
-      for (let pass = 0; pass < 2 && !response; pass += 1) {
+      // A final close retries once if the conversation moved on mid-write;
+      // a draft never needs to (it saves from the revision it read).
+      for (let pass = 0; pass < (draft ? 1 : 2) && !response; pass += 1) {
         metrics.passes = pass + 1;
-        const outcome = await closeOnce({ db, notebookId, startedAt, metrics });
+        const outcome = await closeOnce({ db, notebookId, startedAt, metrics, draft });
         if (outcome !== "stale") response = outcome;
       }
       response ??= rejected(409, "stale");

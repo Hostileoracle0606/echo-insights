@@ -761,6 +761,9 @@ class JournalNotifier extends Notifier<JournalState> {
 
     if (outcome is commit_service.CommitCommitted) {
       _revision = outcome.revision;
+      // The conversation moved on: keep a draft of its card current, so
+      // leaving can show it at once.
+      ref.read(cardDrafterProvider).turnSaved(turn.notebookId);
       if (_restoredPreparedCommitIds.remove(turn.turnId)) {
         // A restored envelope has no corresponding optimistic state in this
         // process. Reload the committed server snapshot instead of attempting
@@ -1642,6 +1645,8 @@ class JournalNotifier extends Notifier<JournalState> {
       notebookId: prepared.notebookId,
       revision: _revision,
     ));
+    // A notebook continued after leaving drafts its card again.
+    ref.read(cardDrafterProvider).start(prepared.notebookId);
     _setStatus(SessionStatus.live);
     if (!continuing) _startGreeting();
     prepared.gate.activate((signal) {
@@ -2109,6 +2114,8 @@ class JournalNotifier extends Notifier<JournalState> {
     }
 
     _setStatus(SessionStatus.ending);
+    // The final card is written after the drain; no draft may race it.
+    if (notebookId != null) ref.read(cardDrafterProvider).stop(notebookId);
     await _closeLiveTransportUnlocked();
     _dispatchTurn(const SessionEnded());
 

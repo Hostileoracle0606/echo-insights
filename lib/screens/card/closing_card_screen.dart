@@ -46,6 +46,10 @@ class _ClosingCardScreenState extends ConsumerState<ClosingCardScreen> {
   SessionCard? _card;
   Set<String> _suppressed = const {};
 
+  // A draft written while the conversation went on is showing, and the
+  // final card (with the last few moments) is still on its way.
+  bool _updating = false;
+
   // Bumped by Try again, so a slower earlier attempt can't land late.
   int _attempt = 0;
 
@@ -133,10 +137,12 @@ class _ClosingCardScreenState extends ConsumerState<ClosingCardScreen> {
       return;
     }
     final snap = await snapshot;
-    if (stored == null || snap == null) return;
-    if (stored.sourceRevision != snap.revision) return;
+    if (stored == null) return;
     if (!_current(attempt) || _phase != _Phase.loading) return;
-    _show(stored, snap);
+    // A draft from earlier in the conversation still shows at once; close
+    // replaces it with the final card when that lands.
+    final current = snap != null && stored.sourceRevision == snap.revision;
+    _show(stored, snap, updating: !current);
   }
 
   Future<void> _showClosed(
@@ -149,20 +155,31 @@ class _ClosingCardScreenState extends ConsumerState<ClosingCardScreen> {
       final snap = await snapshot;
       if (!_current(attempt)) return;
       if (card == null) {
-        if (_phase != _Phase.ready) setState(() => _phase = _Phase.noCard);
+        setState(() {
+          _updating = false;
+          if (_phase != _Phase.ready) _phase = _Phase.noCard;
+        });
         return;
       }
       _show(card, snap);
     } catch (error) {
       debugPrint('Closing card failed: $error');
-      // A current stored card is already showing: keep it.
-      if (!_current(attempt) || _phase == _Phase.ready) return;
-      setState(() => _phase = _Phase.failed);
+      if (!_current(attempt)) return;
+      // A stored card (current, or a draft) is already showing: keep it.
+      setState(() {
+        _updating = false;
+        if (_phase != _Phase.ready) _phase = _Phase.failed;
+      });
     }
   }
 
-  void _show(SessionCard card, NotebookSnapshot? snapshot) {
+  void _show(
+    SessionCard card,
+    NotebookSnapshot? snapshot, {
+    bool updating = false,
+  }) {
     setState(() {
+      _updating = updating;
       _card = card;
       _suppressed = snapshot?.suppressedEntityIds ?? const {};
       _phase = switch (card.conversationMode) {
@@ -389,9 +406,18 @@ class _ClosingCardScreenState extends ConsumerState<ClosingCardScreen> {
           ),
         );
       case _Phase.ready:
-        return card!.conversationMode == ConversationMode.weeklyDebrief
+        final shown = card!.conversationMode == ConversationMode.weeklyDebrief
             ? _debrief(card, colors)
             : _justTalk(card, colors);
+        if (!_updating) return shown;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _UpdatingNote(colors: colors),
+            const SizedBox(height: 14),
+            shown,
+          ],
+        );
     }
   }
 
@@ -607,6 +633,38 @@ class _Heading extends StatelessWidget {
 }
 
 /// Loading, saved and failed: one calm line, an optional action.
+/// One quiet line above a draft card while the final one is written.
+class _UpdatingNote extends StatelessWidget {
+  const _UpdatingNote({required this.colors});
+
+  final LumenColors colors;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        SizedBox.square(
+          dimension: 12,
+          child: CircularProgressIndicator(
+            strokeWidth: 1.5,
+            color: colors.mutedForeground,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            'Adding the last few moments…',
+            style: Theme.of(context)
+                .textTheme
+                .bodySmall
+                ?.copyWith(color: colors.mutedForeground),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _StatusMessage extends StatelessWidget {
   const _StatusMessage({this.leading, required this.text, this.action});
 

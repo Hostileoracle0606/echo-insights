@@ -80,7 +80,10 @@ function world(overrides = {}) {
     if (path === "/rest/v1/user_entities") return ok(state.userEntities);
     if (path === "/rest/v1/rpc/save_session_card") {
       state.saves.push(call.body);
-      if (call.body.p_source_revision !== state.notebook.revision) {
+      const tooOld = call.body.p_draft
+        ? call.body.p_source_revision > state.notebook.revision
+        : call.body.p_source_revision !== state.notebook.revision;
+      if (tooOld) {
         return ok({ status: "stale", currentRevision: state.notebook.revision });
       }
       state.storedCard = { source_revision: call.body.p_source_revision, card: call.body.p_card };
@@ -631,4 +634,49 @@ test("the function declaration has no enum when there are no candidates", () => 
   assert.match(justTalkPrompt, /at most 60 characters/);
   assert.match(justTalkPrompt, /at most 280 characters/);
   assert.match(justTalkPrompt, /at most 80 characters/);
+});
+
+// ── Drafts: written while the conversation goes on ─────────────────────────
+
+const draftEvent = () => requestEvent({ body: JSON.stringify({ draft: true }) });
+
+test("a draft saves with p_draft from the revision it read, in one pass", async () => {
+  const { state, handle } = world();
+  state.notebook.revision = Number(state.snapshot.revision) + 1; // the user said more meanwhile
+  const response = await handle(draftEvent());
+  assert.equal(response.statusCode, 200);
+  assert.equal(parse(response).status, "ready");
+  assert.equal(state.saves.length, 1);
+  assert.equal(state.saves[0].p_draft, true);
+  assert.equal(state.saves[0].p_source_revision, Number(state.snapshot.revision));
+  assert.equal(state.providerBodies.length, 1);
+});
+
+test("a final close sends no p_draft, so the deployed SQL signature still matches", async () => {
+  const { state, handle } = world();
+  await handle(requestEvent());
+  assert.equal(state.saves.length, 1);
+  assert.equal("p_draft" in state.saves[0], false);
+});
+
+test("a draft is marked in the log", async () => {
+  const { state, handle } = world();
+  await handle(draftEvent());
+  assert.equal(JSON.parse(state.logs.at(-1)).draft, true);
+});
+
+test("a body that isn't a draft request is a final close", async () => {
+  for (const body of ["not json", JSON.stringify({ draft: "yes" }), JSON.stringify([true])]) {
+    const { state, handle } = world();
+    await handle(requestEvent({ body }));
+    assert.equal("p_draft" in state.saves[0], false, body);
+  }
+});
+
+test("a base64-encoded draft body is read", async () => {
+  const { state, handle } = world();
+  await handle(
+    requestEvent({ body: Buffer.from(JSON.stringify({ draft: true })).toString("base64"), isBase64Encoded: true }),
+  );
+  assert.equal(state.saves[0].p_draft, true);
 });
