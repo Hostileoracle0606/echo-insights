@@ -10,8 +10,10 @@ import '../../logic/entity_highlighter.dart';
 import '../../logic/turn_state.dart' show Speaker, TurnInput;
 import '../../models/entity.dart';
 import '../../providers/journal_provider.dart';
+import '../../providers/quiet_mode_provider.dart';
 import '../../providers/session_provider.dart';
 import '../../theme/lumen_colors.dart';
+import '../../theme/lumen_text.dart';
 import 'composer.dart';
 import 'entity_note_sheet.dart';
 import 'graph_canvas.dart';
@@ -371,6 +373,7 @@ class _JournalScreenState extends ConsumerState<JournalScreen>
     final openingInProgress = ref.watch(openingInProgressProvider);
     final activity = ref.watch(upsertActivityProvider);
     final muted = ref.watch(mutedProvider);
+    final quietSilenced = !ref.watch(quietPlaybackAllowedProvider);
     final agentSpeaking = ref.watch(agentSpeakingProvider);
     final reconnecting = ref.watch(reconnectingProvider);
     final awaitingReply = ref.watch(awaitingReplyProvider);
@@ -446,6 +449,22 @@ class _JournalScreenState extends ConsumerState<JournalScreen>
                 ),
               ),
             ),
+            if (quietSilenced)
+              Positioned(
+                top: insets.top + 64,
+                left: 16,
+                right: 16,
+                child: Text(
+                  'Quiet mode: connect headphones to hear Lumen',
+                  key: const Key('quietModeNote'),
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontFamily: LumenText.sansFontFamily,
+                    fontSize: 12,
+                    color: context.lumenColors.mutedForeground,
+                  ),
+                ),
+              ),
             Positioned(
               bottom: keyboard,
               left: 0,

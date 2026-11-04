@@ -9,6 +9,7 @@ import 'screens/auth/signup_screen.dart';
 import 'screens/card/closing_card_screen.dart';
 import 'screens/dashboard/dashboard_screen.dart';
 import 'screens/journal/journal_screen.dart';
+import 'security/app_lock_gate.dart';
 import 'theme/lumen_theme.dart';
 
 String? authRedirect({
@@ -68,8 +69,9 @@ class LumenApp extends ConsumerWidget {
       debugShowCheckedModeBanner: false,
       theme: LumenTheme.light(),
       routerConfig: router,
-      builder: (context, child) =>
-          VoiceServicesScope(child: child ?? const SizedBox.shrink()),
+      builder: (context, child) => AppLockGate(
+        child: VoiceServicesScope(child: child ?? const SizedBox.shrink()),
+      ),
     );
   }
 }

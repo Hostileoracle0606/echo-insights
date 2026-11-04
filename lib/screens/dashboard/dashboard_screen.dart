@@ -9,6 +9,7 @@ import '../../providers/notebooks_provider.dart';
 import '../../providers/supabase_provider.dart';
 import '../../theme/lumen_colors.dart';
 import '../../theme/lumen_text.dart';
+import 'privacy_sheet.dart';
 
 // Matches the iPhone's display corner radius so the docked button's curvature
 // echoes the screen's rounded corners. Flutter exposes no API for the real
@@ -39,6 +40,25 @@ class DashboardScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    return Stack(
+      children: [
+        _page(context, ref),
+        // App lock and quiet mode.
+        const Positioned(
+          top: 0,
+          right: 8,
+          child: SafeArea(
+            child: Material(
+              type: MaterialType.transparency,
+              child: PrivacyButton(),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _page(BuildContext context, WidgetRef ref) {
     final colors = context.lumenColors;
     final name = ref.watch(displayNameProvider);
     final notebooks = ref.watch(notebooksProvider);

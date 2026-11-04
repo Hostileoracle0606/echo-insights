@@ -39,6 +39,7 @@ import '../services/retrieve_memory_service.dart';
 import '../services/session_card_service.dart';
 import '../services/turn_journal_service.dart';
 import 'opening_prep_provider.dart';
+import 'quiet_mode_provider.dart';
 import 'supabase_provider.dart';
 import 'voice_services_provider.dart';
 
@@ -234,6 +235,11 @@ class JournalNotifier extends Notifier<JournalState> {
   List<ConversationTurn> get conversation => List.unmodifiable(_conversation);
   List<ConversationTurn> get inProgress => List.unmodifiable(_inProgress);
   bool get muted => _muted;
+
+  /// Lumen's voice reaches the speaker: not muted, and quiet mode (if on)
+  /// has headphones or Bluetooth to play into. Otherwise the audio still
+  /// runs the playback clock and the words show as text.
+  bool get _audible => !_muted && ref.read(quietPlaybackAllowedProvider);
   bool get agentSpeaking => _agentSpeaking;
 
   /// The user's turn is over and Lumen hasn't started answering: from a
@@ -282,6 +288,11 @@ class JournalNotifier extends Notifier<JournalState> {
 
   @override
   JournalState build() {
+    // Headphones pulled out in quiet mode: what is queued must not play on
+    // the speaker.
+    ref.listen(quietPlaybackAllowedProvider, (_, allowed) {
+      if (!allowed) unawaited(_player?.flush());
+    });
     ref.onDispose(() {
       _liveSessionGuard.invalidate();
       for (final timer in _finalizationTimers.values) {
@@ -1784,7 +1795,7 @@ class JournalNotifier extends Notifier<JournalState> {
         fed = player.feed(
               chunk,
               sampleRate: clip.sampleRate,
-              audible: !_muted,
+              audible: _audible,
             ) ||
             fed;
       }
@@ -1915,7 +1926,7 @@ class JournalNotifier extends Notifier<JournalState> {
         final fed = _player?.feed(
               pcm,
               sampleRate: sampleRate,
-              audible: !_muted,
+              audible: _audible,
             ) ??
             false;
         if (!fed) _markAgentSpeaking();

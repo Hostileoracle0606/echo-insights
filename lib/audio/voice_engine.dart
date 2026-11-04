@@ -1,17 +1,24 @@
 import 'package:flutter/services.dart';
 
+import 'audio_route.dart';
+
 /// Dart side of the native voice engine (ios/Runner/VoiceEnginePlugin.swift):
 /// one AVAudioEngine that records the mic with Apple voice processing and
 /// plays Lumen's voice, so echo cancellation hears what the speaker plays.
 class VoiceEngine {
-  VoiceEngine({MethodChannel? methods, EventChannel? mic})
-      : _methods = methods ?? const MethodChannel('lumen/voice_engine'),
-        _mic = mic ?? const EventChannel('lumen/voice_engine/mic');
+  VoiceEngine({
+    MethodChannel? methods,
+    EventChannel? mic,
+    EventChannel? route,
+  })  : _methods = methods ?? const MethodChannel('lumen/voice_engine'),
+        _mic = mic ?? const EventChannel('lumen/voice_engine/mic'),
+        _route = route ?? const EventChannel('lumen/voice_engine/route');
 
   static final instance = VoiceEngine();
 
   final MethodChannel _methods;
   final EventChannel _mic;
+  final EventChannel _route;
 
   /// Audio session and running engine. Idempotent; also recovers an engine
   /// iOS stopped (a phone call, Siri).
@@ -43,4 +50,14 @@ class VoiceEngine {
   /// 16 kHz PCM16 mono mic audio, while listened to.
   Stream<Uint8List> micChunks() =>
       _mic.receiveBroadcastStream().map((chunk) => chunk as Uint8List);
+
+  /// Where sound is going now.
+  Future<AudioRoute> outputRoute() async => AudioRoute.parse(
+        await _methods.invokeMethod<String>('outputRoute'),
+      );
+
+  /// The current output route, then each change (headphones plugged in or
+  /// out, Bluetooth connecting).
+  Stream<AudioRoute> routeChanges() =>
+      _route.receiveBroadcastStream().map(AudioRoute.parse);
 }
