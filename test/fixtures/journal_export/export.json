@@ -1,0 +1,64 @@
+{
+  "version": 1,
+  "exportedAt": "2026-11-04T09:30:00.123456+00:00",
+  "notebooks": [
+    {
+      "id": "a1111111-0000-0000-0000-000000000001",
+      "title": "Moving day / plans",
+      "titleSource": "ai",
+      "startedAt": "2026-10-01T10:00:00+00:00",
+      "endedAt": "2026-10-01T10:20:00+00:00",
+      "durationSeconds": 1200,
+      "entityCount": 2,
+      "summary": "You talked about Maya moving.",
+      "archivedAt": null,
+      "createdAt": "2026-10-01T10:00:00+00:00",
+      "updatedAt": "2026-10-01T10:20:00.5+00:00",
+      "conversationMode": "just_talk",
+      "modeContext": {"weekOf": "2026-10-01", "nested": {"a": [1, 2.5, null]}},
+      "turns": [
+        {"id": "t1", "speaker": "user", "text": "I saw Maya today.", "spokenAt": "2026-10-01T10:00:10+00:00", "input": "typed"},
+        {"id": "t2", "speaker": "assistant", "text": "Tell me more.", "spokenAt": "2026-10-01T10:00:20+00:00", "input": "voice"}
+      ],
+      "journalEntries": [
+        {"id": "e1", "text": "Saw Maya, café on Rue Saint-Honoré.", "createdAt": "2026-10-01T10:00:11+00:00", "entityIds": ["maya"], "relationIds": ["r1"]}
+      ],
+      "card": {"version": 1, "title": "A card", "summary": "Maya is moving.", "remember": ["Call her"], "notes": ["Lisbon in March"], "future": {"x": true}},
+      "entities": [
+        {"id": "lisbon", "name": "Lisbon", "type": "place", "description": null, "descriptionSource": "extracted", "metadata": {}, "mentions": 1, "firstSeen": "2026-10-01T10:00:00+00:00", "lastSeen": "2026-10-01T10:00:00+00:00", "questions": null},
+        {"id": "maya", "name": "Maya", "type": "person", "description": "A friend", "descriptionSource": "user", "metadata": {"k": 1}, "mentions": 2, "firstSeen": "2026-10-01T10:00:00+00:00", "lastSeen": "2026-10-01T10:00:11+00:00", "questions": ["Where is she moving?"]}
+      ],
+      "relations": [
+        {"id": "r1", "source": "maya", "target": "lisbon", "label": "moving_to", "metadata": {}, "createdAt": "2026-10-01T10:00:11+00:00", "supersededAt": null}
+      ],
+      "followUps": [
+        {"id": "f1", "question": "How is Maya?", "reason": "recent", "targetEntityIds": ["maya"], "createdAt": "2026-10-01T10:20:00+00:00", "answered": false}
+      ],
+      "askedQuestions": [
+        {"question": "Where is Lisbon?", "targetEntityIds": [], "askedAt": "2026-10-01T10:05:00+00:00"}
+      ]
+    },
+    {
+      "id": "a1111111-0000-0000-0000-000000000002",
+      "title": "Moving day / plans",
+      "titleSource": "auto",
+      "startedAt": "2026-10-01T18:00:00+00:00",
+      "endedAt": null,
+      "durationSeconds": null,
+      "entityCount": 0,
+      "summary": null,
+      "archivedAt": null,
+      "createdAt": "2026-10-01T18:00:00+00:00",
+      "updatedAt": "2026-10-01T18:00:00+00:00",
+      "conversationMode": "weekly_debrief",
+      "modeContext": {},
+      "turns": [],
+      "journalEntries": [],
+      "card": null,
+      "entities": [],
+      "relations": [],
+      "followUps": [],
+      "askedQuestions": []
+    }
+  ]
+}
