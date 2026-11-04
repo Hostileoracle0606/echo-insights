@@ -248,13 +248,13 @@ export class InfraStack extends cdk.Stack {
       stageName: "$default",
       autoDeploy: true,
       detailedMetricsEnabled: true,
-      // LM-46: the default applies to every route; the model-backed routes
-      // below get their own. API Gateway counts these per route across all
+      // LM-46: the default (unchanged) applies to every route; the
+      // model-backed routes below get their own. API Gateway counts these per route across all
       // callers, not per user, so they cap total load (and Gemini spend), and
       // sit well above one user's use (close-session fires about every 20 s).
       throttle: {
-        burstLimit: 100,
-        rateLimit: 50,
+        burstLimit: 20,
+        rateLimit: 10,
       },
     });
     const routeThrottle = { ThrottlingBurstLimit: 40, ThrottlingRateLimit: 20 };

@@ -57,8 +57,8 @@ test("exposes authenticated live-session, graph-extraction and close-session rou
     StageName: "$default",
     AutoDeploy: true,
     DefaultRouteSettings: {
-      ThrottlingBurstLimit: 100,
-      ThrottlingRateLimit: 50,
+      ThrottlingBurstLimit: 20,
+      ThrottlingRateLimit: 10,
     },
     // LM-46: every model-backed route has its own throttle.
     RouteSettings: {

@@ -35,9 +35,9 @@
 -- 1. commit_notebook caps
 --
 -- Private helper (no grant), called from commit_notebook after the ownership
--- check and outside its exception block, so a violation is a thrown 22023
--- rather than a 'commitFailed' outcome. The existing invalidChange checks in
--- _commit_apply_turn are untouched.
+-- check. It raises 22023 on a violation; commit_notebook catches that and
+-- returns {status: rejected, code: invalidChange} as data. The existing
+-- invalidChange checks in _commit_apply_turn are untouched.
 -- ────────────────────────────────────────────────────────────
 create or replace function public._commit_check_caps(p_change jsonb)
 returns void
@@ -159,8 +159,15 @@ begin
     return jsonb_build_object('status', 'rejected', 'code', 'notFound');
   end if;
 
-  -- LM-46: size and type caps, before anything is hashed or stored.
-  perform public._commit_check_caps(p_change);
+  -- LM-46: size and type caps, before anything is hashed or stored. A
+  -- violation is returned as data (invalidChange), like any other invalid
+  -- change: the client treats a thrown error as an unknown outcome and
+  -- resends the same commit forever.
+  begin
+    perform public._commit_check_caps(p_change);
+  exception when others then
+    return jsonb_build_object('status', 'rejected', 'code', 'invalidChange');
+  end;
 
   v_request_hash := md5(
     jsonb_build_object('change', p_change, 'expectedRevision', p_expected_revision)::text

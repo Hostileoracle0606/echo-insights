@@ -6,7 +6,7 @@
 create extension if not exists pgtap;
 
 begin;
-select plan(41);
+select plan(43);
 
 insert into auth.users (id) values ('11111111-1111-1111-1111-111111111111');
 insert into public.notebooks (id, user_id, title, started_at, revision, conversation_mode) values
@@ -155,50 +155,45 @@ select is((public.commit_notebook('a1111111-0000-0000-0000-000000000001', 0, gen
     public._t_turn(public._t_ent(repeat('n', 200), repeat('d', 2000),
       (select jsonb_agg(repeat('q', 500)) from generate_series(1, 20))))))->>'status',
   'committed', 'commit: entity at every limit is accepted');
-select throws_ok($$ select public.commit_notebook('a1111111-0000-0000-0000-000000000001', 1, gen_random_uuid(),
-    public._t_turn(public._t_ent(repeat('n', 201)))) $$,
-  '22023', 'an entity exceeds its field limits', 'commit: a 201-char entity name refused');
-select throws_ok($$ select public.commit_notebook('a1111111-0000-0000-0000-000000000001', 1, gen_random_uuid(),
-    public._t_turn(public._t_ent('n', repeat('d', 2001)))) $$,
-  '22023', 'an entity exceeds its field limits', 'commit: a 2001-char description refused');
-select throws_ok($$ select public.commit_notebook('a1111111-0000-0000-0000-000000000001', 1, gen_random_uuid(),
-    public._t_turn(public._t_ent('n', 'd', (select jsonb_agg('q'::text) from generate_series(1, 21))))) $$,
-  '22023', 'an entity exceeds its field limits', 'commit: 21 entity questions refused');
-select throws_ok($$ select public.commit_notebook('a1111111-0000-0000-0000-000000000001', 1, gen_random_uuid(),
-    public._t_turn(public._t_ent('n', 'd', jsonb_build_array(repeat('q', 501))))) $$,
-  '22023', 'an entity exceeds its field limits', 'commit: a 501-char question refused');
-select throws_ok($$ select public.commit_notebook('a1111111-0000-0000-0000-000000000001', 1, gen_random_uuid(),
-    public._t_turn(public._t_ent('n', 'd', '[1]'::jsonb))) $$,
-  '22023', 'an entity exceeds its field limits', 'commit: a non-string question refused');
-select throws_ok($$ select public.commit_notebook('a1111111-0000-0000-0000-000000000001', 1, gen_random_uuid(),
-    '{"kind":"applyTurn","entry":{"text":"x"},"entities":{"a":1}}'::jsonb) $$,
-  '22023', 'entities must be an array', 'commit: entities that is not an array refused');
-select throws_ok($$ select public.commit_notebook('a1111111-0000-0000-0000-000000000001', 1, gen_random_uuid(),
-    '[1]'::jsonb) $$,
-  '22023', 'change must be an object', 'commit: a non-object change refused');
+select is((public.commit_notebook('a1111111-0000-0000-0000-000000000001', 1, gen_random_uuid(),
+    public._t_turn(public._t_ent(repeat('n', 201)))))->>'code', 'invalidChange', 'commit: a 201-char entity name refused');
+select is((public.commit_notebook('a1111111-0000-0000-0000-000000000001', 1, gen_random_uuid(),
+    public._t_turn(public._t_ent('n', repeat('d', 2001)))))->>'code', 'invalidChange', 'commit: a 2001-char description refused');
+select is((public.commit_notebook('a1111111-0000-0000-0000-000000000001', 1, gen_random_uuid(),
+    public._t_turn(public._t_ent('n', 'd', (select jsonb_agg('q'::text) from generate_series(1, 21))))))->>'code', 'invalidChange', 'commit: 21 entity questions refused');
+select is((public.commit_notebook('a1111111-0000-0000-0000-000000000001', 1, gen_random_uuid(),
+    public._t_turn(public._t_ent('n', 'd', jsonb_build_array(repeat('q', 501))))))->>'code', 'invalidChange', 'commit: a 501-char question refused');
+select is((public.commit_notebook('a1111111-0000-0000-0000-000000000001', 1, gen_random_uuid(),
+    public._t_turn(public._t_ent('n', 'd', '[1]'::jsonb))))->>'code', 'invalidChange', 'commit: a non-string question refused');
+select is((public.commit_notebook('a1111111-0000-0000-0000-000000000001', 1, gen_random_uuid(),
+    '{"kind":"applyTurn","entry":{"text":"x"},"entities":{"a":1}}'::jsonb))->>'code', 'invalidChange', 'commit: entities that is not an array refused');
+select is((public.commit_notebook('a1111111-0000-0000-0000-000000000001', 1, gen_random_uuid(),
+    '[1]'::jsonb))->>'code', 'invalidChange', 'commit: a non-object change refused');
 
 -- Whole-change size: an entry just under and just over 256 KiB as text. The
 -- entry text itself is only allowed 8000 chars, so pad with an unused key.
 select is((public.commit_notebook('a1111111-0000-0000-0000-000000000001', 1, gen_random_uuid(),
     jsonb_build_object('kind', 'clearNotebook', 'pad', repeat('x', 262144 - 38))))->>'status',
   'committed', 'commit: a change just under 256 KiB is accepted');
-select throws_ok($$ select public.commit_notebook('a1111111-0000-0000-0000-000000000001', 2, gen_random_uuid(),
-    jsonb_build_object('kind', 'clearNotebook', 'pad', repeat('x', 262144))) $$,
-  '22023', 'change is too large (max 262144 bytes)', 'commit: a change over 256 KiB refused');
+select is((public.commit_notebook('a1111111-0000-0000-0000-000000000001', 2, gen_random_uuid(),
+    jsonb_build_object('kind', 'clearNotebook', 'pad', repeat('x', 262144))))->>'code', 'invalidChange', 'commit: a change over 256 KiB refused');
 
 -- relation label and follow-up text
-select throws_ok($$ select public.commit_notebook('a1111111-0000-0000-0000-000000000001', 2, gen_random_uuid(),
+select is((public.commit_notebook('a1111111-0000-0000-0000-000000000001', 2, gen_random_uuid(),
     jsonb_build_object('kind', 'applyTurn', 'entry', jsonb_build_object('text', 'x'),
-      'relations', jsonb_build_array(jsonb_build_object('id','r','source','a','target','b','label', repeat('l', 201))))) $$,
-  '22023', 'a relation label is too long', 'commit: a 201-char relation label refused');
-select throws_ok($$ select public.commit_notebook('a1111111-0000-0000-0000-000000000001', 2, gen_random_uuid(),
+      'relations', jsonb_build_array(jsonb_build_object('id','r','source','a','target','b','label', repeat('l', 201))))))->>'code', 'invalidChange', 'commit: a 201-char relation label refused');
+select is((public.commit_notebook('a1111111-0000-0000-0000-000000000001', 2, gen_random_uuid(),
     jsonb_build_object('kind', 'applyTurn', 'entry', jsonb_build_object('text', 'x'),
-      'followUp', jsonb_build_object('question', repeat('q', 1001)))) $$,
-  '22023', 'followUp text is too long', 'commit: a 1001-char follow-up question refused');
-select throws_ok($$ select public.commit_notebook('a1111111-0000-0000-0000-000000000001', 2, gen_random_uuid(),
+      'followUp', jsonb_build_object('question', repeat('q', 1001)))))->>'code', 'invalidChange', 'commit: a 1001-char follow-up question refused');
+select is((public.commit_notebook('a1111111-0000-0000-0000-000000000001', 2, gen_random_uuid(),
     jsonb_build_object('kind', 'applyTurn', 'entry', jsonb_build_object('text', 'x'),
-      'askedQuestion', 'oops')) $$,
-  '22023', 'askedQuestion must be an object', 'commit: a non-object askedQuestion refused');
+      'askedQuestion', 'oops')))->>'code', 'invalidChange', 'commit: a non-object askedQuestion refused');
+
+select is((public.commit_notebook('a1111111-0000-0000-0000-000000000001', 2, gen_random_uuid(),
+    null))->>'code', 'invalidChange', 'commit: a null change is invalidChange data, not an error');
+select is((public.commit_notebook('a1111111-0000-0000-0000-000000000001', 2, gen_random_uuid(),
+    '{"kind":"clearNotebook"}'::jsonb))->>'status', 'committed',
+  'commit: a rejected change leaves the notebook usable (revision unchanged)');
 
 select * from finish();
 rollback;
