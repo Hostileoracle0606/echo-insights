@@ -28,7 +28,7 @@ test("keeps the Gemini credential in a retained secret without template plaintex
 test("exposes authenticated live-session, graph-extraction and close-session routes", () => {
   const template = synthesizeTemplate();
 
-  template.resourceCountIs("AWS::Lambda::Function", 4);
+  template.resourceCountIs("AWS::Lambda::Function", 5);
   template.hasResourceProperties("AWS::ApiGatewayV2::Authorizer", {
     AuthorizerType: "REQUEST",
     EnableSimpleResponses: true,
@@ -47,8 +47,12 @@ test("exposes authenticated live-session, graph-extraction and close-session rou
     AuthorizationType: "CUSTOM",
     RouteKey: "POST /v1/notebooks/{notebookId}/close",
   });
+  template.hasResourceProperties("AWS::ApiGatewayV2::Route", {
+    AuthorizationType: "CUSTOM",
+    RouteKey: "POST /v1/notebooks/{notebookId}/brief",
+  });
   template.resourceCountIs("AWS::ApiGatewayV2::Authorizer", 1);
-  template.resourceCountIs("AWS::ApiGatewayV2::Route", 4);
+  template.resourceCountIs("AWS::ApiGatewayV2::Route", 5);
   template.hasResourceProperties("AWS::ApiGatewayV2::Stage", {
     StageName: "$default",
     AutoDeploy: true,
@@ -140,6 +144,10 @@ test("keeps the web origin and worker reservations optional", () => {
     Description: "Writes the closing card for a conversation without exposing Gemini credentials",
     ReservedConcurrentExecutions: reservation,
   });
+  template.hasResourceProperties("AWS::Lambda::Function", {
+    Handler: "brief-index.handler",
+    ReservedConcurrentExecutions: reservation,
+  });
 });
 
 test("runs the session closer with its own card model and a 30 s timeout", () => {
@@ -167,4 +175,28 @@ test("runs the session closer with its own card model and a 30 s timeout", () =>
   );
   expect(closeRoute!.Properties.AuthorizerId).toEqual(extractionRoute!.Properties.AuthorizerId);
   expect(closeRoute!.Properties.Target).not.toEqual(extractionRoute!.Properties.Target);
+});
+
+test("runs the session brief writer with its brief and TTS models and a 30 s timeout", () => {
+  const template = synthesizeTemplate();
+
+  template.hasResourceProperties("AWS::Lambda::Function", {
+    Handler: "brief-index.handler",
+    Timeout: 30,
+    Environment: {
+      Variables: Match.objectLike({
+        GEMINI_SECRET_ARN: Match.anyValue(),
+        GEMINI_BRIEF_MODEL: "gemini-2.5-flash",
+        GEMINI_TTS_MODEL: "gemini-2.5-flash-preview-tts",
+      }),
+    },
+  });
+
+  const routes = Object.values(template.findResources("AWS::ApiGatewayV2::Route")) as Array<{
+    Properties: Record<string, unknown>;
+  }>;
+  const find = (suffix: string) =>
+    routes.find((route) => route.Properties.RouteKey === `POST /v1/notebooks/{notebookId}/${suffix}`);
+  expect(find("brief")!.Properties.AuthorizerId).toEqual(find("close")!.Properties.AuthorizerId);
+  expect(find("brief")!.Properties.Target).not.toEqual(find("close")!.Properties.Target);
 });
