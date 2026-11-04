@@ -633,7 +633,8 @@ Future<void> shareVaultZip(MarkdownVault vault, {Rect? origin}) async {
 /// How old a `lumen-*.zip` export must be before it is swept.
 const kExportMaxAge = Duration(hours: 1);
 
-/// Deletes journal exports (`lumen-*.zip`) older than [maxAge] from
+/// Deletes journal exports (`lumen-*.zip`, and the per-notebook
+/// `Lumen Vault-*.zip`) older than [maxAge] from
 /// [directory] (the temporary directory by default). Younger files, which
 /// include the export being shared, and every other file stay. Best effort:
 /// never throws.
@@ -648,7 +649,10 @@ Future<void> sweepStaleExports({
     await for (final entity in dir.list(followLinks: false)) {
       if (entity is! File) continue;
       final name = entity.uri.pathSegments.last;
-      if (!name.startsWith('lumen-') || !name.endsWith('.zip')) continue;
+      final isExport =
+          (name.startsWith('lumen-') || name.startsWith('Lumen Vault-')) &&
+              name.endsWith('.zip');
+      if (!isExport) continue;
       try {
         if ((await entity.lastModified()).isBefore(cutoff)) {
           await entity.delete();

@@ -18,12 +18,14 @@ void main() {
     return f;
   }
 
-  test('removes old exports; keeps fresh, borderline and other files',
-      () async {
+  test('removes old exports and vaults; keeps fresh and other files', () async {
     final old = make('lumen-journal-2026-11-03.zip', const Duration(hours: 2));
     final fresh =
         make('lumen-journal-2026-11-04.zip', const Duration(minutes: 5));
-    final other = make('Lumen Vault-2026-10-01.zip', const Duration(days: 3));
+    final oldVault =
+        make('Lumen Vault-2026-10-01.zip', const Duration(days: 3));
+    final freshVault =
+        make('Lumen Vault-2026-11-04.zip', const Duration(minutes: 10));
     final notZip = make('lumen-notes.txt', const Duration(days: 3));
     final unrelated = make('cache.zip', const Duration(days: 3));
 
@@ -31,7 +33,8 @@ void main() {
 
     expect(old.existsSync(), isFalse);
     expect(fresh.existsSync(), isTrue);
-    expect(other.existsSync(), isTrue);
+    expect(oldVault.existsSync(), isFalse);
+    expect(freshVault.existsSync(), isTrue);
     expect(notZip.existsSync(), isTrue);
     expect(unrelated.existsSync(), isTrue);
   });
