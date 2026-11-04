@@ -16,6 +16,7 @@ import 'package:lumen/models/entity.dart';
 import 'package:lumen/models/journal_state.dart';
 import 'package:lumen/models/session_card.dart';
 import 'package:lumen/providers/export_provider.dart';
+import 'package:lumen/providers/leaving_notebooks_provider.dart';
 import 'package:lumen/providers/supabase_provider.dart';
 import 'package:lumen/screens/card/closing_card_screen.dart';
 import 'package:lumen/services/markdown_export.dart';
@@ -135,6 +136,7 @@ Future<_Harness> _pump(
   WidgetTester tester, {
   _FakeCards? cards,
   _FakeCommits? commits,
+  LeavingNotebooks? leaving,
   Future<void> Function(MarkdownVault vault)? share,
 }) async {
   tester.view
@@ -174,6 +176,7 @@ Future<_Harness> _pump(
         sessionCardServiceProvider.overrideWithValue(fakeCards),
         notebookCommitServiceProvider.overrideWithValue(fakeCommits),
         memoryControlServiceProvider.overrideWithValue(memory),
+        leavingNotebooksProvider.overrideWithValue(leaving ?? LeavingNotebooks()),
         shareVaultProvider.overrideWithValue(
           (vault, {Rect? origin}) async {
             shared.add(vault);
@@ -279,6 +282,81 @@ void main() {
         find.text("Couldn't write your card. Your conversation is saved."),
         findsNothing,
       );
+      await _unmount(tester);
+    });
+
+    testWidgets(
+        'while leaving still drains, the draft shows and the final card '
+        'waits for the drain', (tester) async {
+      final leaving = LeavingNotebooks();
+      final drained = Completer<void>();
+      leaving.track(_id, drained.future);
+      final h = await _pump(
+        tester,
+        cards: _FakeCards(stored: _justTalk),
+        commits: _FakeCommits(revision: _justTalk.sourceRevision + 1),
+        leaving: leaving,
+      );
+      expect(find.textContaining(_justTalk.summary), findsOneWidget);
+      expect(find.text('Adding the last few moments…'), findsOneWidget);
+      expect(h.cards.closeCalls, 0, reason: 'not from a stale revision');
+
+      drained.complete();
+      await _frames(tester);
+      expect(h.cards.closeCalls, 1);
+
+      final finalCard = SessionCard.fromJson({
+        ..._fixture('just_talk'),
+        'title': 'The final word',
+        'sourceRevision': _justTalk.sourceRevision + 1,
+      });
+      h.cards.closeCompleter.complete(finalCard);
+      await _frames(tester);
+      expect(find.textContaining('The final word'), findsOneWidget);
+      expect(find.text('Adding the last few moments…'), findsNothing);
+      await _unmount(tester);
+    });
+
+    testWidgets(
+        'a leave that fails keeps the draft, says the changes are still '
+        'saving, and Try again leaves again before writing the card',
+        (tester) async {
+      final leaving = LeavingNotebooks();
+      var retries = 0;
+      final failure = LeaveIncomplete(retry: () async {
+        retries += 1;
+        leaving.track(_id, Future<void>.value());
+      });
+      leaving.track(_id, Future<void>.error(failure));
+      final h = await _pump(
+        tester,
+        cards: _FakeCards(stored: _justTalk, onClose: () async => _justTalk),
+        commits: _FakeCommits(revision: _justTalk.sourceRevision + 1),
+        leaving: leaving,
+      );
+      expect(find.text('Your latest changes are still saving.'), findsOneWidget);
+      expect(find.textContaining(_justTalk.summary), findsOneWidget);
+      expect(find.text('Adding the last few moments…'), findsNothing);
+      expect(h.cards.closeCalls, 0);
+
+      await _tapVisible(tester, find.bySemanticsLabel('Try again'));
+      expect(retries, 1);
+      expect(h.cards.closeCalls, 1);
+      expect(find.text('Your latest changes are still saving.'), findsNothing);
+      await _unmount(tester);
+    });
+
+    testWidgets('a leave that fails with nothing stored still says so',
+        (tester) async {
+      final leaving = LeavingNotebooks()
+        ..track(
+          _id,
+          Future<void>.error(LeaveIncomplete(retry: () async {})),
+        );
+      final h = await _pump(tester, cards: _FakeCards(), leaving: leaving);
+      expect(find.text('Your latest changes are still saving.'), findsOneWidget);
+      expect(find.text('Writing your card…'), findsNothing);
+      expect(h.cards.closeCalls, 0);
       await _unmount(tester);
     });
 
