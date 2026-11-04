@@ -2,7 +2,7 @@
 create extension if not exists pgtap;
 
 begin;
-select plan(22);
+select plan(31);
 
 -- A keeps 30 days, B keeps forever (null), C keeps 7 days.
 insert into auth.users (id) values
@@ -111,6 +111,13 @@ select is((select count(*) from public.relations) + (select count(*) from public
           + (select count(*) from public.session_cards) + (select count(*) from public.session_briefs),
           12::bigint, 'relations, follow-ups, cards and briefs survive');
 
+select isnt((select transcript_forgotten_at from public.notebooks where title = 'A'), null,
+            'a notebook the sweep deleted from is marked');
+select isnt((select transcript_forgotten_at from public.notebooks where title = 'C'), null,
+            'C is marked too');
+select is((select transcript_forgotten_at from public.notebooks where title = 'B'), null,
+          'a notebook with nothing deleted is not marked');
+
 select is(public.forget_old_transcripts(), jsonb_build_object('turns', 0, 'entries', 0),
           'a second sweep finds nothing');
 
@@ -120,6 +127,38 @@ set local request.jwt.claim.sub = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
 select throws_ok($$ select public.forget_old_transcripts() $$, '42501', null,
                  'a signed-in user cannot run the sweep');
 reset role;
+
+-- ── the one-time offer flag ────────────────────────────────
+select is((select transcript_retention_offered_at from public.profiles
+            where user_id = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'), null,
+          'not offered yet');
+set local role anon;
+select throws_ok($$ select public.mark_transcript_retention_offered() $$, null, null,
+                 'anon cannot mark the offer');
+reset role;
+set local role authenticated;
+set local request.jwt.claim.sub = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
+select public.mark_transcript_retention_offered();
+select throws_ok($$ update public.profiles set transcript_retention_offered_at = null
+                    where user_id = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb' $$,
+                 '42501', null, 'the flag cannot be written directly');
+reset role;
+select isnt((select transcript_retention_offered_at from public.profiles
+              where user_id = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'), null,
+            'the owner marked it');
+create temp table first_offer on commit drop as
+  select transcript_retention_offered_at as at from public.profiles
+   where user_id = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
+set local role authenticated;
+set local request.jwt.claim.sub = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
+select public.mark_transcript_retention_offered();
+reset role;
+select is((select transcript_retention_offered_at from public.profiles
+            where user_id = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'),
+          (select at from first_offer), 'marking again keeps the first time');
+select is((select transcript_retention_offered_at from public.profiles
+            where user_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'), null,
+          'other users are untouched');
 
 -- ── the schedule ───────────────────────────────────────────
 select is((select count(*) from cron.job

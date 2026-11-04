@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../logic/retention_offer.dart';
 import '../providers/supabase_provider.dart';
@@ -8,40 +7,38 @@ import '../services/transcript_retention_service.dart';
 import '../theme/lumen_colors.dart';
 import '../theme/lumen_text.dart';
 
-/// Where the one-time offer is remembered. Overridable in tests.
-final retentionPrefsProvider = Provider<Future<SharedPreferences>>(
-  (ref) => SharedPreferences.getInstance(),
-);
-
 String retentionLabel(int? days) => days == null ? 'Forever' : '$days days';
 
 /// "Keep transcripts for…" (LM-51): the choice sheet, used from the
 /// dashboard's settings button and for the one-time offer.
-Future<void> showTranscriptRetentionSheet(BuildContext context) {
+Future<void> showTranscriptRetentionSheet(
+  BuildContext context, {
+  bool markOffered = false,
+}) {
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
     backgroundColor: context.lumenColors.paper,
-    builder: (_) => const TranscriptRetentionSheet(),
+    builder: (_) => TranscriptRetentionSheet(markOffered: markOffered),
   );
 }
 
-/// Shows the sheet once, after [retentionOfferAfterSessions] finished
-/// sessions. "Offered" is remembered on this device the moment it is shown,
-/// so dismissing it does not bring it back. Unreadable prefs mean no offer.
+/// Shows the sheet once per account, after [retentionOfferAfterSessions]
+/// finished sessions. The sheet records the offer on the profile once it is
+/// on screen, so dismissing it, a reinstall or a second device do not bring
+/// it back. If the profile can't be read, nothing is offered.
 Future<void> offerRetentionIfDue(
   BuildContext context,
   WidgetRef ref, {
   required int completedSessions,
 }) async {
   if (completedSessions < retentionOfferAfterSessions) return;
-  SharedPreferences prefs;
+  bool offered;
   try {
-    prefs = await ref.read(retentionPrefsProvider);
+    offered = await ref.read(transcriptRetentionServiceProvider).wasOffered();
   } catch (_) {
     return;
   }
-  final offered = prefs.getBool(retentionOfferedKey) ?? false;
   if (!shouldOfferRetention(
     completedSessions: completedSessions,
     alreadyOffered: offered,
@@ -49,13 +46,14 @@ Future<void> offerRetentionIfDue(
     return;
   }
   if (!context.mounted) return;
-  await prefs.setBool(retentionOfferedKey, true);
-  if (!context.mounted) return;
-  await showTranscriptRetentionSheet(context);
+  await showTranscriptRetentionSheet(context, markOffered: true);
 }
 
 class TranscriptRetentionSheet extends ConsumerStatefulWidget {
-  const TranscriptRetentionSheet({super.key});
+  const TranscriptRetentionSheet({super.key, this.markOffered = false});
+
+  /// Record on the profile that this sheet was shown (the one-time offer).
+  final bool markOffered;
 
   @override
   ConsumerState<TranscriptRetentionSheet> createState() =>
@@ -73,6 +71,16 @@ class _TranscriptRetentionSheetState
   void initState() {
     super.initState();
     _load();
+    if (widget.markOffered) {
+      // After the sheet has been built and is on screen.
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        try {
+          await ref.read(transcriptRetentionServiceProvider).markOffered();
+        } catch (_) {
+          // Offered again next time, which is the safe direction.
+        }
+      });
+    }
   }
 
   Future<void> _load() async {

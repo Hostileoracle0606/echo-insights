@@ -10,18 +10,31 @@ import 'package:lumen/providers/supabase_provider.dart';
 import 'package:lumen/screens/dashboard/dashboard_screen.dart';
 import 'package:lumen/services/transcript_retention_service.dart';
 import 'package:lumen/theme/lumen_theme.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 class _Fake {
-  _Fake(this.value);
+  _Fake(this.value, {this.offered = false});
   int? value;
+  bool offered;
+  int marks = 0;
+  bool unreadable = false;
   final calls = <Map<String, dynamic>>[];
   bool failSet = false;
 
   TranscriptRetentionService get service =>
       TranscriptRetentionService.withFunctions(
-        read: () async => value,
+        read: () async {
+          if (unreadable) throw StateError('offline');
+          return {
+            'transcript_retention_days': value,
+            'transcript_retention_offered_at': offered ? 'then' : null,
+          };
+        },
         rpc: (fn, params) async {
+          if (fn == 'mark_transcript_retention_offered') {
+            marks++;
+            offered = true;
+            return null;
+          }
           expect(fn, 'set_transcript_retention');
           if (failSet) throw StateError('nope');
           calls.add(params);
@@ -82,7 +95,6 @@ void main() {
 
   testWidgets('the third finished session offers the choice once',
       (tester) async {
-    SharedPreferences.setMockInitialValues({});
     final fake = _Fake(null);
     final three = [for (var i = 0; i < 3; i++) _nb(i, done: true)];
 
@@ -93,8 +105,9 @@ void main() {
       expect(find.text(label), findsOneWidget);
     }
 
-    final prefs = await SharedPreferences.getInstance();
-    expect(prefs.getBool(retentionOfferedKey), isTrue);
+    // Recorded on the account once the sheet is up.
+    expect(fake.marks, 1);
+    expect(fake.offered, isTrue);
 
     // Dismiss, then come back to the dashboard: no second offer.
     await tester.tap(find.text('Done'));
@@ -105,9 +118,28 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
+  testWidgets('an account that was already offered (another device) is not',
+      (tester) async {
+    final fake = _Fake(null, offered: true);
+    await _pumpDashboard(
+        tester, fake, [for (var i = 0; i < 4; i++) _nb(i, done: true)]);
+    expect(find.text('Keep transcripts for…'), findsNothing);
+    expect(fake.marks, 0);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('an unreadable profile offers nothing and marks nothing',
+      (tester) async {
+    final fake = _Fake(null)..unreadable = true;
+    await _pumpDashboard(
+        tester, fake, [for (var i = 0; i < 3; i++) _nb(i, done: true)]);
+    expect(find.text('Keep transcripts for…'), findsNothing);
+    expect(fake.marks, 0);
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('two finished sessions, or one still live, do not offer',
       (tester) async {
-    SharedPreferences.setMockInitialValues({});
     await _pumpDashboard(tester, _Fake(null), [
       _nb(0, done: true),
       _nb(1, done: true),
@@ -119,8 +151,7 @@ void main() {
 
   testWidgets('a choice goes through the setter; the current one is marked',
       (tester) async {
-    SharedPreferences.setMockInitialValues({retentionOfferedKey: true});
-    final fake = _Fake(90);
+    final fake = _Fake(90, offered: true);
     await _pumpDashboard(tester, fake, [_nb(0, done: true)]);
 
     await tester.tap(find.byKey(const Key('privacySettingsButton')));
@@ -144,8 +175,7 @@ void main() {
   });
 
   testWidgets('a failed save says so and keeps the old choice', (tester) async {
-    SharedPreferences.setMockInitialValues({retentionOfferedKey: true});
-    final fake = _Fake(30)..failSet = true;
+    final fake = _Fake(30, offered: true)..failSet = true;
     await _pumpDashboard(tester, fake, [_nb(0, done: true)]);
 
     await tester.tap(find.byKey(const Key('privacySettingsButton')));
