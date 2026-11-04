@@ -32,6 +32,7 @@ class _QuietJournal extends JournalNotifier {
   Future<NotebookTransitionResult> enterNotebook(
     String notebookId, {
     bool autoStart = false,
+    bool offTheRecord = false,
   }) async {
     enteredWithAutoStart = autoStart;
     current = afterEntry;

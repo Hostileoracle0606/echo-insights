@@ -24,6 +24,10 @@ class JournalTopBar extends StatelessWidget {
   final bool muted;
   final VoidCallback? onMuteTap;
 
+  /// Off the record (LM-50): the switch and its state.
+  final bool offTheRecord;
+  final VoidCallback? onOffTheRecordTap;
+
   const JournalTopBar({
     super.key,
     required this.entityCount,
@@ -32,6 +36,8 @@ class JournalTopBar extends StatelessWidget {
     this.onHomeTap,
     this.muted = false,
     this.onMuteTap,
+    this.offTheRecord = false,
+    this.onOffTheRecordTap,
   });
 
   @override
@@ -60,6 +66,11 @@ class JournalTopBar extends StatelessWidget {
           ),
         ),
         const Spacer(),
+        _OffTheRecordButton(
+          on: offTheRecord,
+          onTap: onOffTheRecordTap,
+          colors: colors,
+        ),
         _MuteButton(muted: muted, onTap: onMuteTap, colors: colors),
         const SizedBox(width: 8),
         Container(
@@ -155,6 +166,53 @@ class _MuteButton extends StatelessWidget {
             muted ? Icons.volume_off : Icons.volume_up,
             size: 20,
             color: colors.ink,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The off-the-record switch, with a 44pt hit box. Filled while on.
+class _OffTheRecordButton extends StatelessWidget {
+  final bool on;
+  final VoidCallback? onTap;
+  final LumenColors colors;
+
+  const _OffTheRecordButton({
+    required this.on,
+    required this.onTap,
+    required this.colors,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      toggled: on,
+      label: on ? 'Back on the record' : 'Go off the record',
+      excludeSemantics: true,
+      child: GestureDetector(
+        key: const Key('offTheRecordToggle'),
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: SizedBox(
+          width: 44,
+          height: 44,
+          child: Center(
+            child: Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: on ? colors.amberSoft : Colors.transparent,
+              ),
+              child: Icon(
+                on ? Icons.visibility_off : Icons.visibility_off_outlined,
+                size: 19,
+                color: on ? colors.youLabel : colors.ink,
+              ),
+            ),
           ),
         ),
       ),

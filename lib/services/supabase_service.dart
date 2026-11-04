@@ -109,4 +109,11 @@ class SupabaseService {
       'ended_at': DateTime.now().toUtc().toIso8601String(),
     }).eq('id', notebookId);
   }
+
+  /// Removes a notebook row that holds nothing (an off-the-record session in
+  /// a fresh notebook, LM-50). The owner-delete policy scopes it to the
+  /// caller's own row; children cascade.
+  Future<void> deleteNotebook(String notebookId) async {
+    await _client.from('notebooks').delete().eq('id', notebookId);
+  }
 }
