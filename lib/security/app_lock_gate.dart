@@ -56,8 +56,11 @@ class _AppLockGateState extends ConsumerState<AppLockGate>
   @override
   Widget build(BuildContext context) {
     final lock = ref.watch(appLockProvider);
-    final covered = lock.status != AppLockStatus.unlocked;
+    final locked = lock.status != AppLockStatus.unlocked;
+    final covered = locked || lock.shielded;
     if (lock.status == AppLockStatus.locked) {
+      // The keyboard must not stay up behind the lock screen.
+      FocusManager.instance.primaryFocus?.unfocus();
       WidgetsBinding.instance.addPostFrameCallback((_) => _promptIfLocked());
     } else {
       _prompted = false;
@@ -66,11 +69,18 @@ class _AppLockGateState extends ConsumerState<AppLockGate>
       fit: StackFit.expand,
       children: [
         Offstage(offstage: covered, child: widget.child),
-        if (covered)
+        if (locked)
           LockScreen(
             loading: lock.status == AppLockStatus.loading,
             busy: lock.authenticating,
+            loadFailed: lock.loadFailed,
             onUnlock: lock.unlock,
+          )
+        else if (covered)
+          // Blank paper while the app is leaving or returning.
+          ColoredBox(
+            key: const Key('privacyShield'),
+            color: context.lumenColors.paper,
           ),
       ],
     );
@@ -83,11 +93,15 @@ class LockScreen extends StatelessWidget {
     required this.onUnlock,
     this.loading = false,
     this.busy = false,
+    this.loadFailed = false,
   });
 
   final Future<bool> Function() onUnlock;
   final bool loading;
   final bool busy;
+
+  /// The saved lock setting couldn't be read; Unlock tries again.
+  final bool loadFailed;
 
   @override
   Widget build(BuildContext context) {
@@ -110,6 +124,17 @@ class LockScreen extends StatelessWidget {
                         .titleLarge
                         ?.copyWith(fontSize: 22),
                   ),
+                  if (loadFailed) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      "Couldn't check your lock setting.",
+                      style: TextStyle(
+                        fontFamily: LumenText.sansFontFamily,
+                        fontSize: 13,
+                        color: colors.mutedForeground,
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 22),
                   FilledButton(
                     key: const Key('unlockButton'),

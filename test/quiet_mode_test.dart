@@ -19,7 +19,7 @@ class _Store implements PrivacyPreferenceStore {
   _Store(this.quiet);
   final bool quiet;
   @override
-  Future<bool> read(String key) async => key == quietModeKey && quiet;
+  Future<bool?> read(String key) async => key == quietModeKey ? quiet : null;
   @override
   Future<void> write(String key, bool value) async {}
 }

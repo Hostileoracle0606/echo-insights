@@ -12,8 +12,21 @@ import 'package:lumen/models/journal_state.dart';
 import 'package:lumen/providers/export_provider.dart';
 import 'package:lumen/providers/journal_provider.dart';
 import 'package:lumen/screens/journal/graph_drawer.dart';
+import 'package:lumen/security/app_lock.dart';
+import 'package:lumen/security/app_lock_provider.dart';
 import 'package:lumen/services/markdown_export.dart';
 import 'package:lumen/theme/lumen_theme.dart';
+
+// Re-auth before export always passes here; its own tests are in
+// app_lock_test.dart.
+class _PassingAuth implements LockAuthenticator {
+  _PassingAuth({this.passes = true});
+  final bool passes;
+  @override
+  Future<bool> isAvailable() async => true;
+  @override
+  Future<bool> authenticate(String reason) async => passes;
+}
 
 class _SeededJournal extends JournalNotifier {
   _SeededJournal(this._seed);
@@ -42,7 +55,11 @@ JournalState _seedState() {
   );
 }
 
-Future<void> _pumpDrawer(WidgetTester tester, ShareVault share) async {
+Future<void> _pumpDrawer(
+  WidgetTester tester,
+  ShareVault share, {
+  bool authPasses = true,
+}) async {
   await tester.binding.setSurfaceSize(const Size(402, 874));
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(
@@ -50,6 +67,8 @@ Future<void> _pumpDrawer(WidgetTester tester, ShareVault share) async {
       overrides: [
         journalProvider.overrideWith(() => _SeededJournal(_seedState())),
         shareVaultProvider.overrideWithValue(share),
+        lockAuthenticatorProvider
+            .overrideWithValue(_PassingAuth(passes: authPasses)),
       ],
       child: MaterialApp(
         theme: LumenTheme.light(),
@@ -62,6 +81,16 @@ Future<void> _pumpDrawer(WidgetTester tester, ShareVault share) async {
 final _exportButton = find.widgetWithText(TextButton, 'Export notebook');
 
 void main() {
+  testWidgets('a failed re-auth shares nothing', (tester) async {
+    var shared = 0;
+    await _pumpDrawer(tester, (vault, {Rect? origin}) async => shared++,
+        authPasses: false);
+    await tester.tap(_exportButton);
+    await tester.pumpAndSettle();
+    expect(shared, 0);
+    expect(find.text('Building export…'), findsNothing);
+  });
+
   testWidgets('Export shows progress, then shares the notebook vault',
       (tester) async {
     final shared = <MarkdownVault>[];

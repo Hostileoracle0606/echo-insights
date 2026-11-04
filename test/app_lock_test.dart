@@ -1,5 +1,7 @@
 // The lock state machine and its gate: locked at launch, grace period in the
 // background, Face ID success and failure, re-auth before sensitive actions.
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -13,13 +15,16 @@ class FakeAuthenticator implements LockAuthenticator {
   bool passes = true;
   final reasons = <String>[];
 
+  /// While set, authenticate waits on it (a Face ID sheet that is still up).
+  Completer<bool>? hold;
+
   @override
   Future<bool> isAvailable() async => available;
 
   @override
   Future<bool> authenticate(String reason) async {
     reasons.add(reason);
-    return passes;
+    return hold?.future ?? passes;
   }
 }
 
@@ -27,8 +32,14 @@ class MemoryStore implements PrivacyPreferenceStore {
   MemoryStore([Map<String, bool>? initial]) : values = {...?initial};
   final Map<String, bool> values;
 
+  /// A Keychain that can't be read (as opposed to one with nothing in it).
+  bool failReads = false;
+
   @override
-  Future<bool> read(String key) async => values[key] ?? false;
+  Future<bool?> read(String key) async {
+    if (failReads) throw Exception('keychain unavailable');
+    return values[key];
+  }
 
   @override
   Future<void> write(String key, bool value) async => values[key] = value;
@@ -132,10 +143,62 @@ void main() {
       await lock.unlock();
       background(lock, const Duration(minutes: 1));
       // A prompt for re-auth is up while the app flickers to the background.
+      auth.hold = Completer<bool>();
       final pending = lock.requireReauth('Export your notebook');
+      await Future<void>.delayed(Duration.zero);
+      expect(lock.authenticating, isTrue);
       background(lock, kAppLockGracePeriod * 2);
-      await pending;
+      auth.hold!.complete(true);
+      expect(await pending, isTrue);
       expect(lock.status, AppLockStatus.unlocked);
+    });
+  });
+
+  group('unreadable Keychain', () {
+    test('a missing key means off', () async {
+      auth = FakeAuthenticator();
+      store = MemoryStore();
+      final lock = AppLockController(authenticator: auth, store: store);
+      await lock.load();
+      expect(lock.status, AppLockStatus.unlocked);
+      expect(lock.loadFailed, isFalse);
+    });
+
+    test('a read error stays locked, not unlocked', () async {
+      final lock = build();
+      store.failReads = true;
+      await lock.load();
+      expect(lock.status, AppLockStatus.locked);
+      expect(lock.loadFailed, isTrue);
+    });
+
+    test('unlock retries the read first and fails while it still errors',
+        () async {
+      final lock = build();
+      store.failReads = true;
+      await lock.load();
+      expect(await lock.unlock(), isFalse);
+      expect(lock.status, AppLockStatus.locked);
+      expect(auth.reasons, isEmpty);
+    });
+
+    test('once the read works, a lock that is on asks Face ID', () async {
+      final lock = build();
+      store.failReads = true;
+      await lock.load();
+      store.failReads = false;
+      expect(await lock.unlock(), isTrue);
+      expect(lock.loadFailed, isFalse);
+      expect(auth.reasons, ['Unlock your journal']);
+    });
+
+    test('once the read works, a lock that is off just opens', () async {
+      final lock = build(enabled: false);
+      store.failReads = true;
+      await lock.load();
+      store.failReads = false;
+      expect(await lock.unlock(), isTrue);
+      expect(auth.reasons, isEmpty);
     });
   });
 
@@ -198,8 +261,18 @@ void main() {
       expect(await lock.requireReauth('Export your notebook'), isFalse);
     });
 
-    test('passes without asking when the lock is off', () async {
+    test('asks even when the app lock is off', () async {
       final lock = await launched(enabled: false);
+      expect(await lock.requireReauth('Export your notebook'), isTrue);
+      expect(auth.reasons, ['Export your notebook']);
+      auth.passes = false;
+      expect(await lock.requireReauth('Export your notebook'), isFalse);
+    });
+
+    test('passes without asking only when the device has nothing to ask with',
+        () async {
+      final lock = await launched(enabled: false);
+      auth.available = false;
       expect(await lock.requireReauth('Export your notebook'), isTrue);
       expect(auth.reasons, isEmpty);
     });
@@ -216,6 +289,7 @@ void main() {
       final container = ProviderContainer(overrides: [
         lockAuthenticatorProvider.overrideWithValue(auth),
         privacyPreferenceStoreProvider.overrideWithValue(store),
+        lockClockProvider.overrideWithValue(() => clock),
       ]);
       addTearDown(container.dispose);
       await tester.pumpWidget(UncontrolledProviderScope(
@@ -280,6 +354,90 @@ void main() {
       auth.passes = false;
       expect(await requireReauth(context, reason: 'Export'), isFalse);
       expect(auth.reasons, ['Export', 'Export']);
+    });
+
+    testWidgets('content is never visible from leaving until the lock decides',
+        (tester) async {
+      await pump(tester, passes: true);
+      final binding = tester.binding;
+      expect(find.text('journal text'), findsOneWidget);
+
+      Future<void> step(AppLifecycleState state) async {
+        binding.handleAppLifecycleStateChanged(state);
+        await tester.pump();
+      }
+
+      // Leaving: covered from the first event, so the frame iOS keeps is blank.
+      for (final state in [
+        AppLifecycleState.inactive,
+        AppLifecycleState.hidden,
+        AppLifecycleState.paused,
+      ]) {
+        await step(state);
+        expect(find.text('journal text'), findsNothing, reason: '$state');
+      }
+
+      // Back after the grace period: locked, and the content stays hidden.
+      auth.passes = false;
+      clock = clock.add(kAppLockGracePeriod);
+      await step(AppLifecycleState.hidden);
+      await step(AppLifecycleState.inactive);
+      expect(find.text('journal text'), findsNothing);
+      await step(AppLifecycleState.resumed);
+      expect(find.text('journal text'), findsNothing);
+      expect(find.byKey(const Key('lockScreen')), findsOneWidget);
+      await tester.pumpAndSettle();
+      expect(find.text('journal text'), findsNothing);
+
+      // Passing shows it again.
+      auth.passes = true;
+      await tester.tap(find.byKey(const Key('unlockButton')));
+      await tester.pumpAndSettle();
+      expect(find.text('journal text'), findsOneWidget);
+    });
+
+    testWidgets('a quick return lifts the cover with no lock screen',
+        (tester) async {
+      await pump(tester, passes: true);
+      final binding = tester.binding;
+      for (final state in [
+        AppLifecycleState.inactive,
+        AppLifecycleState.hidden,
+        AppLifecycleState.paused,
+      ]) {
+        binding.handleAppLifecycleStateChanged(state);
+        await tester.pump();
+        expect(find.text('journal text'), findsNothing);
+      }
+      clock = clock.add(const Duration(minutes: 1));
+      binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+      binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pump();
+      expect(find.byKey(const Key('lockScreen')), findsNothing);
+      expect(find.text('journal text'), findsOneWidget);
+    });
+
+    testWidgets('a Keychain read error shows the lock screen, not the app',
+        (tester) async {
+      build();
+      store.failReads = true;
+      final container = ProviderContainer(overrides: [
+        lockAuthenticatorProvider.overrideWithValue(auth),
+        privacyPreferenceStoreProvider.overrideWithValue(store),
+      ]);
+      addTearDown(container.dispose);
+      await tester.pumpWidget(UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: LumenTheme.light(),
+          home: const AppLockGate(child: Scaffold(body: Text('journal text'))),
+        ),
+      ));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('lockScreen')), findsOneWidget);
+      expect(find.text('journal text'), findsNothing);
+      expect(find.text("Couldn't check your lock setting."), findsOneWidget);
     });
   });
 }

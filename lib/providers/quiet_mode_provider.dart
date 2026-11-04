@@ -20,7 +20,7 @@ class QuietModeNotifier extends Notifier<bool> {
     ref.onDispose(() => disposed = true);
     ref.read(privacyPreferenceStoreProvider).read(quietModeKey).then((saved) {
       // A switch flipped before the read lands wins.
-      if (!disposed && !_touched) state = saved;
+      if (!disposed && !_touched) state = saved ?? false;
     }, onError: (_) {});
     return false;
   }

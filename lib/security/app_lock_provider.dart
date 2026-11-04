@@ -3,6 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'app_lock.dart';
 
+/// The clock the lock measures time in the background with.
+final lockClockProvider = Provider<DateTime Function()>((ref) => DateTime.now);
+
 final lockAuthenticatorProvider =
     Provider<LockAuthenticator>((ref) => LocalAuthAuthenticator());
 
@@ -14,6 +17,7 @@ final appLockProvider = ChangeNotifierProvider<AppLockController>((ref) {
   final controller = AppLockController(
     authenticator: ref.watch(lockAuthenticatorProvider),
     store: ref.watch(privacyPreferenceStoreProvider),
+    now: ref.watch(lockClockProvider),
   );
   controller.load();
   return controller;
@@ -21,8 +25,9 @@ final appLockProvider = ChangeNotifierProvider<AppLockController>((ref) {
 
 /// Asks for Face ID (or the passcode) again before something sensitive:
 /// export, deleting an account, turning the lock off, and later key
-/// recovery. True when the person passed, or when they have no lock to ask
-/// with (they never opted in). Callers do the sensitive thing only on true.
+/// recovery. Asks whether or not the app lock is on. True when the person
+/// passed, or when the device has no passcode or biometrics to ask with.
+/// Callers do the sensitive thing only on true.
 Future<bool> requireReauth(
   BuildContext context, {
   required String reason,

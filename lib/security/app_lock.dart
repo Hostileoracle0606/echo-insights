@@ -66,7 +66,9 @@ class LocalAuthAuthenticator implements LockAuthenticator {
 /// or preferences the app's sandbox exposes: editing the app's files can't
 /// turn the lock off.
 abstract interface class PrivacyPreferenceStore {
-  Future<bool> read(String key);
+  /// Null when nothing was ever saved under [key]. Throws when the Keychain
+  /// can't be read, which is not the same as "off".
+  Future<bool?> read(String key);
   Future<void> write(String key, bool value);
 }
 
@@ -83,12 +85,9 @@ class KeychainPreferenceStore implements PrivacyPreferenceStore {
   final FlutterSecureStorage _storage;
 
   @override
-  Future<bool> read(String key) async {
-    try {
-      return await _storage.read(key: key) == 'true';
-    } catch (_) {
-      return false;
-    }
+  Future<bool?> read(String key) async {
+    final value = await _storage.read(key: key);
+    return value == null ? null : value == 'true';
   }
 
   @override
@@ -102,7 +101,10 @@ const String quietModeKey = 'privacy.quiet_mode';
 /// The lock state machine.
 ///
 ///   launch: loading → locked (lock on) | unlocked (lock off)
-///   backgrounded under [kAppLockGracePeriod]: stays unlocked
+///   switch unreadable (Keychain error): locked, until a retry reads it
+///   leaving the foreground (inactive, hidden, paused): [shielded], so the
+///     last frame the OS keeps on screen is blank, never journal text
+///   backgrounded under [kAppLockGracePeriod]: shield lifts on return
 ///   backgrounded at or over it: locked when the app returns
 ///   [unlock] passes → unlocked; fails or is cancelled → stays locked
 ///
@@ -127,6 +129,8 @@ class AppLockController extends ChangeNotifier {
   AppLockStatus _status = AppLockStatus.loading;
   bool _enabled = false;
   bool _authenticating = false;
+  bool _loadFailed = false;
+  bool _shielded = false;
   DateTime? _backgroundedAt;
 
   AppLockStatus get status => _status;
@@ -137,20 +141,41 @@ class AppLockController extends ChangeNotifier {
   /// The Face ID sheet is up.
   bool get authenticating => _authenticating;
 
-  /// Reads the saved switch. Call once at launch.
+  /// The saved switch couldn't be read, so the lock can't say it is off. The
+  /// app stays locked; [unlock] tries the read again.
+  bool get loadFailed => _loadFailed;
+
+  /// The app has left (or is leaving) the foreground with the lock on: cover
+  /// the content now so the frame iOS keeps for the switcher and for the
+  /// moment of return is blank.
+  bool get shielded => _shielded;
+
+  /// Reads the saved switch. Call at launch; again to retry after a failure.
+  /// Only a key that was never written means "off".
   Future<void> load() async {
-    _enabled = await _store.read(lockEnabledKey);
-    _status = _enabled ? AppLockStatus.locked : AppLockStatus.unlocked;
+    try {
+      _enabled = await _store.read(lockEnabledKey) ?? false;
+      _loadFailed = false;
+      _status = _enabled ? AppLockStatus.locked : AppLockStatus.unlocked;
+    } catch (_) {
+      _loadFailed = true;
+      _enabled = true;
+      _status = AppLockStatus.locked;
+    }
     notifyListeners();
   }
 
   void lifecycleChanged(AppLifecycleState lifecycle) {
     if (!_enabled || _authenticating) return;
     switch (lifecycle) {
+      case AppLifecycleState.inactive:
+        // Raised before the OS captures anything; covers the switcher too.
+        _setShield(true);
       case AppLifecycleState.paused:
       case AppLifecycleState.hidden:
         // The first of paused/hidden marks when the app left.
         _backgroundedAt ??= _now();
+        _setShield(true);
       case AppLifecycleState.resumed:
         final left = _backgroundedAt;
         _backgroundedAt = null;
@@ -158,12 +183,19 @@ class AppLockController extends ChangeNotifier {
             _status == AppLockStatus.unlocked &&
             _now().difference(left) >= _grace) {
           _status = AppLockStatus.locked;
-          notifyListeners();
         }
-      case AppLifecycleState.inactive:
+        // Decided above, so the content never shows before the lock does.
+        _shielded = false;
+        notifyListeners();
       case AppLifecycleState.detached:
         break;
     }
+  }
+
+  void _setShield(bool on) {
+    if (_shielded == on) return;
+    _shielded = on;
+    notifyListeners();
   }
 
   /// Shows Face ID / passcode to lift the lock screen.
@@ -172,6 +204,11 @@ class AppLockController extends ChangeNotifier {
   }) async {
     if (_status == AppLockStatus.unlocked) return true;
     if (_authenticating) return false;
+    if (_loadFailed) {
+      await load();
+      if (_loadFailed) return false;
+      if (_status == AppLockStatus.unlocked) return true;
+    }
     final passed = await _prove(reason);
     if (passed) {
       _status = AppLockStatus.unlocked;
@@ -207,10 +244,10 @@ class AppLockController extends ChangeNotifier {
   }
 
   /// Asks again before something sensitive (export, deleting, turning the
-  /// lock off). With the lock off the person never opted in to being asked,
-  /// so this passes.
+  /// lock off), whether or not the app lock is on. It passes without asking
+  /// only on a device with no passcode or biometrics to ask with.
   Future<bool> requireReauth(String reason) async {
-    if (!_enabled) return true;
+    if (!await _authenticator.isAvailable()) return true;
     return _prove(reason);
   }
 
