@@ -9,7 +9,7 @@
 -- p_notebook_ids only NARROWS the caller's own notebooks (another user's id in
 -- it matches nothing); the app uses it to fetch a long-time user's journal a
 -- few notebooks at a time, so one response stays small and under the
--- statement timeout. Called with no argument it returns every notebook.
+-- statement timeout; more than 50 ids is refused (22023). Called with no argument it returns every notebook.
 --
 -- Left out on purpose: internal bookkeeping (retrieve_rate_limits,
 -- notebook_commit_requests, conversation_runtime_*, entity_suppressions,
@@ -22,12 +22,17 @@
 create or replace function public.export_my_data(
   p_notebook_ids uuid[] default null
 ) returns jsonb
-language sql
+language plpgsql
 stable
 security definer
 set search_path = public, pg_temp
 as $$
-  select jsonb_build_object(
+begin
+  if cardinality(p_notebook_ids) > 50 then
+    raise exception 'too many notebook ids' using errcode = '22023';
+  end if;
+
+  return (select jsonb_build_object(
     'version', 1,
     'exportedAt', now(),
     'notebooks', coalesce(jsonb_agg(
@@ -97,7 +102,8 @@ as $$
   )
   from public.notebooks nb
   where nb.user_id = auth.uid()
-    and (p_notebook_ids is null or nb.id = any (p_notebook_ids));
+    and (p_notebook_ids is null or nb.id = any (p_notebook_ids)));
+end;
 $$;
 
 revoke all on function public.export_my_data(uuid[]) from public, anon;

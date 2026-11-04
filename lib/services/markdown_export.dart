@@ -612,26 +612,50 @@ Future<Uint8List> _encodeInBackground(MarkdownVault vault) =>
 /// these; tests inject their own so the real share sheet never opens.
 typedef ShareVault = Future<void> Function(MarkdownVault vault, {Rect? origin});
 
-/// Zips [vault] and opens the iOS share sheet on it, then deletes the zip: it
-/// is journal text, and the share sheet has copied what it needed by the time
-/// it closes. [origin] anchors the sheet's popover on iPad.
+/// Zips [vault] and opens the iOS share sheet on it. [origin] anchors the
+/// sheet's popover on iPad.
+///
+/// The zip is not deleted here: the receiving app (AirDrop, Files) may still
+/// be reading the original file after the sheet closes. Stale exports are
+/// swept instead, at the next export and at launch ([sweepStaleExports]).
 Future<void> shareVaultZip(MarkdownVault vault, {Rect? origin}) async {
+  await sweepStaleExports();
   final file =
       await writeVaultZip(vault, vault.zipName ?? vaultZipName(DateTime.now()));
+  await SharePlus.instance.share(
+    ShareParams(
+      files: [XFile(file.path, mimeType: 'application/zip')],
+      sharePositionOrigin: origin,
+    ),
+  );
+}
+
+/// How old a `lumen-*.zip` export must be before it is swept.
+const kExportMaxAge = Duration(hours: 1);
+
+/// Deletes journal exports (`lumen-*.zip`) older than [maxAge] from
+/// [directory] (the temporary directory by default). Younger files, which
+/// include the export being shared, and every other file stay. Best effort:
+/// never throws.
+Future<void> sweepStaleExports({
+  Directory? directory,
+  DateTime? now,
+  Duration maxAge = kExportMaxAge,
+}) async {
   try {
-    await SharePlus.instance.share(
-      ShareParams(
-        files: [XFile(file.path, mimeType: 'application/zip')],
-        sharePositionOrigin: origin,
-      ),
-    );
-  } finally {
-    try {
-      await file.delete();
-    } catch (_) {
-      // Already gone; the system clears the temporary directory anyway.
+    final dir = directory ?? await getTemporaryDirectory();
+    final cutoff = (now ?? DateTime.now()).subtract(maxAge);
+    await for (final entity in dir.list(followLinks: false)) {
+      if (entity is! File) continue;
+      final name = entity.uri.pathSegments.last;
+      if (!name.startsWith('lumen-') || !name.endsWith('.zip')) continue;
+      try {
+        if ((await entity.lastModified()).isBefore(cutoff)) {
+          await entity.delete();
+        }
+      } catch (_) {}
     }
-  }
+  } catch (_) {}
 }
 
 // ─── Whole-journal export (LM-52) ───────────────────────────────────────────

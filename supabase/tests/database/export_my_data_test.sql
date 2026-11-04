@@ -5,7 +5,7 @@
 create extension if not exists pgtap;
 
 begin;
-select plan(23);
+select plan(25);
 
 -- ── fixtures (default role, so RLS doesn't apply while seeding) ────────────
 insert into auth.users (id) values
@@ -125,6 +125,13 @@ select is(
 select is(
   jsonb_array_length(public.export_my_data(array['a1111111-0000-0000-0000-000000000002']::uuid[])->'notebooks'),
   1, 'a notebook-id list narrows the export');
+
+select lives_ok(
+  $$ select public.export_my_data((select array_agg(gen_random_uuid()) from generate_series(1, 50))) $$,
+  '50 notebook ids is allowed');
+select throws_ok(
+  $$ select public.export_my_data((select array_agg(gen_random_uuid()) from generate_series(1, 51))) $$,
+  '22023', null, 'more than 50 notebook ids is refused');
 
 set local request.jwt.claim.sub = '33333333-3333-3333-3333-333333333333';
 select is(public.export_my_data()->'notebooks', '[]'::jsonb,
