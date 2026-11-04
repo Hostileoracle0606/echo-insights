@@ -7,7 +7,7 @@
 create extension if not exists pgtap;
 
 begin;
-select plan(47);
+select plan(54);
 
 insert into auth.users (id) values
   ('11111111-1111-1111-1111-111111111111'),
@@ -208,7 +208,51 @@ select is(
   '{"status":"saved"}'::jsonb, 'brief: one without the name is saved');
 select is((select count(*)::int from public.session_briefs), 1, 'brief: and stored');
 
+-- ── round 2: dates, punctuation inside names, stale cards ──────────────────
+-- C forgets Priya through the RPC (a stale card must still regenerate) and has
+-- three more suppressed names, added the way the RPC would.
+reset role;
+insert into auth.users (id) values ('33333333-3333-3333-3333-333333333333');
+insert into public.notebooks (id, user_id, title, started_at, revision) values
+  ('c3333333-0000-0000-0000-000000000001', '33333333-3333-3333-3333-333333333333', 'C1', now(), 4),
+  ('c3333333-0000-0000-0000-000000000002', '33333333-3333-3333-3333-333333333333', 'C2', now(), 1);
+insert into public.entities (id, user_id, notebook_id, name, type, mentions, first_seen, last_seen) values
+  ('priya', '33333333-3333-3333-3333-333333333333', 'c3333333-0000-0000-0000-000000000001', 'Priya', 'person', 1, now(), now());
+insert into public.session_cards (notebook_id, user_id, conversation_mode, source_revision, card) values
+  ('c3333333-0000-0000-0000-000000000001', '33333333-3333-3333-3333-333333333333', 'just_talk', 2,
+   '{"title":"Old","summary":"About Priya.","notes":[],"remember":[],"sourceRevision":2}');
+insert into public.entity_suppressions (user_id, entity_hash)
+  select '33333333-3333-3333-3333-333333333333', public._suppression_hash('33333333-3333-3333-3333-333333333333', x)
+  from unnest(array['o-brien', 'st-john', 'maya-chen']) x;
+
+set local role authenticated;
+set local request.jwt.claim.sub = '33333333-3333-3333-3333-333333333333';
+select public.forget_entity('priya') as c_forget \gset
+select is((select source_revision from public.session_cards where notebook_id = 'c3333333-0000-0000-0000-000000000001'),
+  2::bigint, 'forget: a card that was already stale keeps its revision, so it regenerates');
+select is((select card->>'summary' from public.session_cards where notebook_id = 'c3333333-0000-0000-0000-000000000001'),
+  'About someone.', 'forget: and it is still redacted');
+
+select public.save_session_card(
+  'c3333333-0000-0000-0000-000000000002'::uuid, 1::bigint,
+  '{"version":1,"notebookId":"c3333333-0000-0000-0000-000000000002","conversationMode":"just_talk","sourceRevision":1,
+    "title":"T","summary":"S","weekOf":"2026-11-04","remember":[],
+    "notes":["2026-11-04 dinner with Priya","O''Brien called","Met St. John today","Maya, Chen left"]}'::jsonb,
+  'T', 'S', false) as c_save \gset
+select is((select card->'notes'->>0 from public.session_cards where notebook_id = 'c3333333-0000-0000-0000-000000000002'),
+  '2026-11-04 dinner with someone', 'a date-prefixed note naming the person is redacted');
+select is((select card->'notes'->>1 from public.session_cards where notebook_id = 'c3333333-0000-0000-0000-000000000002'),
+  'someone called', 'O''Brien is matched');
+select is((select card->'notes'->>2 from public.session_cards where notebook_id = 'c3333333-0000-0000-0000-000000000002'),
+  'Met someone today', 'St. John is matched');
+select is((select card->'notes'->>3 from public.session_cards where notebook_id = 'c3333333-0000-0000-0000-000000000002'),
+  'Maya, Chen left', 'a comma between two words does not form a name');
+select is((select card->>'weekOf' from public.session_cards where notebook_id = 'c3333333-0000-0000-0000-000000000002'),
+  '2026-11-04', 'a pure date is left alone');
+reset role;
+
 -- ── B is untouched, and cannot see A's suppressions ────────────────────────
+set local role authenticated;
 set local request.jwt.claim.sub = '22222222-2222-2222-2222-222222222222';
 select is(
   (select array[(select count(*) from public.entities where id = 'priya'),

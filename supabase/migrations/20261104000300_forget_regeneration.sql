@@ -68,18 +68,20 @@ begin
   while v_i <= v_n loop
     v_hit := false;
     if v_word[v_i] then
-      -- Longest run first: up to three words joined by spaces or hyphens.
+      -- Longest run first: up to three words joined by spaces, hyphens,
+      -- apostrophes or periods (O'Brien, St. John); a comma, newline or
+      -- other sentence punctuation ends a name.
       for v_len in reverse 3..1 loop
         v_k := v_i + 2 * (v_len - 1);
         continue when v_k > v_n;
         if v_len = 1 then
           v_slug := public._slugify(v_toks[v_i]);
         else
-          continue when not v_word[v_k] or v_toks[v_i + 1] !~ '^[ \t-]+$';
+          continue when not v_word[v_k] or v_toks[v_i + 1] !~ '^[ \t''’.-]+$';
           if v_len = 2 then
             v_slug := public._slugify(v_toks[v_i] || ' ' || v_toks[v_k]);
           else
-            continue when not v_word[v_i + 2] or v_toks[v_i + 3] !~ '^[ \t-]+$';
+            continue when not v_word[v_i + 2] or v_toks[v_i + 3] !~ '^[ \t''’.-]+$';
             v_slug := public._slugify(v_toks[v_i] || ' ' || v_toks[v_i + 2] || ' ' || v_toks[v_k]);
           end if;
         end if;
@@ -134,7 +136,7 @@ begin
   case jsonb_typeof(p_json)
     when 'string' then
       if (p_json #>> '{}') ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
-         or (p_json #>> '{}') ~ '^\d{4}-\d{2}-\d{2}' then
+         or (p_json #>> '{}') ~ '^\d{4}-\d{2}-\d{2}([T ][0-9:.+Z-]*)?$' then
         return p_json;
       end if;
       return to_jsonb(public.redact_forgotten(p_uid, p_json #>> '{}'));
@@ -427,11 +429,16 @@ begin
   -- Cards are redacted, not regenerated.
   -- The redacted card is marked as current for the notebook's new revision
   -- (forgetting bumped it), so it is not regenerated just for being stale.
+  -- Only a card that was current before the bump is advanced; a genuinely
+  -- stale one still regenerates.
   update public.session_cards c
-    set card = jsonb_set(
-          public._jsonb_redact(c.card, v_pat, p_entity_id, 'someone'),
-          '{sourceRevision}', to_jsonb(nb.revision)),
-        source_revision = nb.revision,
+    set card = case when c.source_revision = nb.revision - 1
+                    then jsonb_set(
+                           public._jsonb_redact(c.card, v_pat, p_entity_id, 'someone'),
+                           '{sourceRevision}', to_jsonb(nb.revision))
+                    else public._jsonb_redact(c.card, v_pat, p_entity_id, 'someone') end,
+        source_revision = case when c.source_revision = nb.revision - 1
+                               then nb.revision else c.source_revision end,
         updated_at = now()
     from public.notebooks nb
     where nb.id = c.notebook_id and c.user_id = v_uid
