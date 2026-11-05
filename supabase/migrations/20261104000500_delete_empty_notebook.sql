@@ -6,6 +6,9 @@
 -- can never delete a notebook with earlier sessions. Anything else (content,
 -- another user's notebook, a missing id) changes nothing and returns
 -- {"deleted": false}.
+--
+-- Every table with a foreign key to notebooks is checked here (the pgTAP test
+-- reads the catalog and fails when a new one appears without being added).
 
 create or replace function public.delete_empty_notebook(p_notebook_id uuid)
 returns jsonb
@@ -39,6 +42,7 @@ begin
      or exists (select 1 from public.asked_questions where notebook_id = p_notebook_id)
      or exists (select 1 from public.entity_embeddings where notebook_id = p_notebook_id)
      or exists (select 1 from public.notebook_commit_requests where notebook_id = p_notebook_id)
+     or exists (select 1 from public.conversation_runtime_sessions where notebook_id = p_notebook_id)
      or exists (select 1 from public.session_cards where notebook_id = p_notebook_id)
      or exists (select 1 from public.session_briefs where source_notebook_id = p_notebook_id)
   then
