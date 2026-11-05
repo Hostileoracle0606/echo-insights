@@ -201,13 +201,18 @@ class _NoNotebookInserts implements SupabaseService {
 class _EndingNotebooks implements SupabaseService {
   final ended = <String>[];
   final deleted = <String>[];
+  Object? deleteFails;
 
   @override
   Future<void> endNotebook(String notebookId) async => ended.add(notebookId);
 
   @override
-  Future<void> deleteNotebook(String notebookId) async =>
-      deleted.add(notebookId);
+  Future<bool> deleteEmptyNotebook(String notebookId) async {
+    deleted.add(notebookId);
+    final failure = deleteFails;
+    if (failure != null) throw failure;
+    return true;
+  }
 
   @override
   dynamic noSuchMethod(Invocation invocation) =>
@@ -453,6 +458,7 @@ void main() {
 
     expect(left.succeeded, isTrue);
     expect(left.nothingSaved, isTrue);
+    // The one accepted write at leave (R12): a single delete RPC, nothing else.
     expect(notebooks.deleted, [_notebookId], reason: 'the empty row goes');
     expect(notebooks.ended, isEmpty);
     _expectNoWrites(h);
@@ -670,5 +676,74 @@ void main() {
     expect(h.briefs.played, [brief.createdAt]);
     await h.journal.leaveNotebook();
     expect(h.briefs.requested, isEmpty, reason: 'no new brief is written');
+  });
+
+  test('a turn begun on the record but finalized after the switch is not saved',
+      () async {
+    h = _Harness(
+      state: JournalState.empty().copyWith(entries: [_entry('Earlier.')]),
+      supabase: _EndingNotebooks(),
+    );
+    await h.journal.enterNotebook(_notebookId);
+    await h.startLive();
+
+    // The user is mid-sentence on the record...
+    h.socket.serverSends({
+      'serverContent': {
+        'inputTranscription': {'text': 'I was saying'},
+      },
+    });
+    await _settle();
+    // ...the switch goes on, then the sentence finalizes.
+    h.journal.setOffTheRecord(true);
+    h.socket
+      ..serverSends({
+        'serverContent': {
+          'inputTranscription': {
+            'text': 'I was saying something private.',
+            'finished': true,
+          },
+        },
+      })
+      ..serverSends({
+        'serverContent': {'turnComplete': true},
+      });
+    await _settle();
+
+    expect(h.commits.commits, 0);
+    expect(h.extractor.texts, isEmpty);
+    expect(h.transcripts.saved, isEmpty);
+    expect(h.journal_.writes, 0);
+    expect(
+      [for (final row in h.journal.transcriptRows) row.turn.text],
+      contains(contains('something private.')),
+    );
+  });
+
+  test('a failed delete does not stop leaving', () async {
+    final notebooks = _EndingNotebooks()..deleteFails = StateError('offline');
+    h = _Harness(supabase: notebooks);
+    await openFreshOffTheRecord(h);
+
+    final left = await h.journal.leaveNotebook();
+
+    expect(left.succeeded, isTrue);
+    expect(left.nothingSaved, isTrue);
+    expect(notebooks.deleted, [_notebookId]);
+  });
+
+  test('turning it off while not live does not restart card drafting',
+      () async {
+    h = _Harness(
+      state: JournalState.empty().copyWith(entries: [_entry('Earlier.')]),
+      supabase: _EndingNotebooks(),
+    );
+    await h.journal.enterNotebook(_notebookId);
+    h.journal.setOffTheRecord(true);
+    h.journal.setOffTheRecord(false);
+    await h.startLive();
+    expect(h.journal.sendTypedTurn('Saved.'), isTrue);
+    await _waitForCommits(h, 1);
+    expect(h.cards.drafted, [_notebookId], reason: 'drafting works once live');
   });
 }

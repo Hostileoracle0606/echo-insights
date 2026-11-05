@@ -261,11 +261,12 @@ class _JournalScreenState extends ConsumerState<JournalScreen>
 
   void _toggleOffTheRecord(bool on) {
     unawaited(HapticFeedback.selectionClick());
+    // Read before the switch moves, so the note describes what was saved.
+    final earlierSaved = ref.read(hasSavedTurnsProvider);
     ref.read(journalProvider.notifier).setOffTheRecord(!on);
     final note = on
         ? onTheRecordNote
-        : 'Off the record. '
-            '${offTheRecordNote(earlierSaved: ref.read(hasSavedTurnsProvider))}';
+        : 'Off the record. ${offTheRecordNote(earlierSaved: earlierSaved)}';
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(content: Text(note)));

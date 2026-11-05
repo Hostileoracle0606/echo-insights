@@ -349,7 +349,7 @@ class JournalNotifier extends Notifier<JournalState> {
     if (value) {
       _wentOffRecord = true;
       if (notebookId != null) ref.read(cardDrafterProvider).stop(notebookId);
-    } else if (notebookId != null && _status != SessionStatus.ending) {
+    } else if (notebookId != null && _status == SessionStatus.live) {
       ref.read(cardDrafterProvider).start(notebookId);
     }
     _notifyUi();
@@ -2197,11 +2197,13 @@ class JournalNotifier extends Notifier<JournalState> {
       }
       if (offRecordOnly()) {
         // Nothing of this visit is kept: no end mark, no card, no brief. A
-        // notebook that held nothing before is removed; one with earlier
-        // sessions is left exactly as it was.
+        // notebook that looks empty is offered to the server, which alone
+        // decides (this check can be wrong if history failed to load).
         if (!hasSavedTurns) {
           try {
-            await ref.read(supabaseServiceProvider).deleteNotebook(notebookId);
+            await ref
+                .read(supabaseServiceProvider)
+                .deleteEmptyNotebook(notebookId);
           } catch (error) {
             // An empty "Untitled" row is the worst case; leaving still works.
             vlog('session', 'empty notebook not removed: ${error.runtimeType}');
