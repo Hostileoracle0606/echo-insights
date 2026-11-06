@@ -214,8 +214,9 @@ class JournalNotifier extends Notifier<JournalState> {
   // adds them back. The server keeps only keyed hashes of its suppressions
   // (LM-49) and drops them on commit, so it sends no list.
   final Set<String> _suppressed = {};
-  // Ids removed or forgotten since launch, kept across snapshot reloads.
-  final Set<String> _forgottenThisRun = {};
+  // Ids removed or forgotten since launch, or dropped by the server on a
+  // commit, kept across snapshot reloads. Cleared on sign-out.
+  Set<String> get _forgottenThisRun => ref.read(forgottenThisRunProvider);
   final Map<String, _PendingRemoval> _pendingRemovals = {};
   BackgroundFlush? _backgroundFlush;
   Set<String> get suppressedEntityIds => Set.unmodifiable(_suppressed);
@@ -364,10 +365,39 @@ class JournalNotifier extends Notifier<JournalState> {
     if (value) {
       _wentOffRecord = true;
       if (notebookId != null) ref.read(cardDrafterProvider).stop(notebookId);
-    } else if (notebookId != null && _status == SessionStatus.live) {
-      ref.read(cardDrafterProvider).start(notebookId);
+    } else {
+      if (notebookId != null && _status == SessionStatus.live) {
+        ref.read(cardDrafterProvider).start(notebookId);
+      }
+      final session = _session;
+      if (session != null &&
+          (_status == SessionStatus.live || _status == SessionStatus.paused)) {
+        // Gemini still holds what was said. Until it doesn't, a reply could
+        // repeat it, and a reply would be saved.
+        _turnMachine.holdAssistantOffRecord = true;
+        unawaited(_reopenWithSavedContext(session));
+      }
     }
     _notifyUi();
+  }
+
+  /// Replaces the connection with a new conversation on Gemini's side,
+  /// seeded only from what is saved, then lets Lumen's turns be saved again.
+  /// If it can't reconnect the session errors, and they stay unsaved.
+  Future<void> _reopenWithSavedContext(_PreparedLive session) async {
+    if (_reconnecting) {
+      _reopenAfterReconnect = true;
+      return;
+    }
+    session.live
+      ..dropResumption()
+      ..holdInput();
+    await _reconnect(
+      session,
+      'back on the record',
+      whilePaused: true,
+      fresh: true,
+    );
   }
 
   void toggleMute() {
@@ -817,6 +847,13 @@ class JournalNotifier extends Notifier<JournalState> {
 
     if (outcome is commit_service.CommitCommitted) {
       _revision = outcome.revision;
+      // The server dropped these: the device stops showing them, and a
+      // relaunch (which has no list of them) can't add them back for long.
+      for (final id in outcome.suppressedIds) {
+        _suppressed.add(id);
+        _forgottenThisRun.add(id);
+        state = withoutEntity(state, id);
+      }
       // The conversation moved on: keep a draft of its card current, so
       // leaving can show it at once.
       if (!offTheRecord) {
@@ -985,6 +1022,9 @@ class JournalNotifier extends Notifier<JournalState> {
     _forgottenThisRun.add(entityId);
     _suppressed.add(entityId);
     state = withoutEntity(state, entityId);
+    // The server may have deleted the brief; the copy held here must not be
+    // spoken at the next opening.
+    await ref.read(openingPrepProvider).reloadOrDropBrief();
     await _reloadSnapshot();
   }
 
@@ -1184,7 +1224,7 @@ class JournalNotifier extends Notifier<JournalState> {
     String notebookId, {
     bool autoStart = false,
     bool offTheRecord = false,
-    bool openQuietly = false,
+    Future<bool> Function()? beforeOpening,
   }) {
     final intent = ++_lifecycleIntent;
     if (_activeNotebookId != notebookId) {
@@ -1229,10 +1269,18 @@ class JournalNotifier extends Notifier<JournalState> {
       // Chosen before starting (LM-50): applied before any session can.
       if (offTheRecord) setOffTheRecord(true);
 
-      // A new notebook opens with Lumen (greeting and all); one with an
-      // earlier conversation opens quietly on its graph and transcript, and so
-      // does any notebook when [openQuietly] asks (the user declined to start).
-      if ((opening || autoStart) && !_continuesConversation && !openQuietly) {
+      // A new notebook opens with Lumen (greeting and all), unless
+      // [beforeOpening] says no; one with an earlier conversation opens
+      // quietly on its graph and transcript.
+      if ((opening || autoStart) && !_continuesConversation) {
+        if (beforeOpening != null && !await beforeOpening()) {
+          return const NotebookTransitionResult.success();
+        }
+        if (intent != _lifecycleIntent) {
+          return const NotebookTransitionResult.failure(
+            'Notebook transition was superseded by a newer request.',
+          );
+        }
         return _openWithLumenUnlocked();
       }
       return const NotebookTransitionResult.success();
@@ -1469,6 +1517,9 @@ class JournalNotifier extends Notifier<JournalState> {
   /// The session the user is in (null while idle or connecting).
   _PreparedLive? _session;
 
+  /// Back on the record while another reconnect was running: go again.
+  bool _reopenAfterReconnect = false;
+
   // Typed turns waiting for the connection to come back, in the order sent.
   final List<String> _typedTurnsAwaitingConnection = [];
 
@@ -1518,6 +1569,8 @@ class JournalNotifier extends Notifier<JournalState> {
       );
     }
     _setStatus(SessionStatus.connecting);
+    // A new session holds nothing off the record.
+    _turnMachine.holdAssistantOffRecord = false;
     // A notebook with earlier conversation continues it: no greeting, the
     // earlier turns go to Gemini as context, and the user has the floor
     // from the tap. A new notebook opens with Lumen's greeting.
@@ -1773,6 +1826,7 @@ class JournalNotifier extends Notifier<JournalState> {
     _PreparedLive session,
     String reason, {
     bool whilePaused = false,
+    bool fresh = false,
   }) async {
     bool isCurrent() => _isCurrentLiveSession(session.binding, session.live) &&
         identical(_session, session);
@@ -1784,7 +1838,7 @@ class JournalNotifier extends Notifier<JournalState> {
       await live.close();
       return;
     }
-    if (live.resumptionHandle == null) {
+    if (live.resumptionHandle == null && !fresh) {
       debugPrint('[journal] Gemini Live error without a resumption handle: '
           '$reason');
       _setStatus(SessionStatus.error);
@@ -1819,6 +1873,28 @@ class JournalNotifier extends Notifier<JournalState> {
           await live.whenSetupComplete.timeout(const Duration(seconds: 8));
           _connectionLapsed = false;
           vlog('session', 'reconnected (attempt ${attempt + 1})');
+          if (fresh) {
+            // Saved turns only: the off-record ones are not in this list.
+            final continuing = _continuesConversation;
+            live
+              ..sendHistory(
+                continuing
+                    ? resumeContext(
+                        conversation: _earlierConversation,
+                        entries: state.entries,
+                      )
+                    : const [],
+                note: continuing ? resumeNote : null,
+                context: openingContext(
+                  openingLine: null,
+                  brief: null,
+                  briefAlreadyRaised: true,
+                  graphSummary: _buildGraphSummary(),
+                ),
+              )
+              ..releaseInput();
+            _turnMachine.holdAssistantOffRecord = false;
+          }
           // A cut-off reply's turn ended with the old connection.
           _droppingCutOffReply = false;
           for (final typed in _typedTurnsAwaitingConnection) {
@@ -1837,6 +1913,10 @@ class JournalNotifier extends Notifier<JournalState> {
     } finally {
       _reconnecting = false;
       _notifyUi();
+      if (_reopenAfterReconnect) {
+        _reopenAfterReconnect = false;
+        unawaited(_reopenWithSavedContext(session));
+      }
     }
   }
 
@@ -2275,6 +2355,8 @@ class JournalNotifier extends Notifier<JournalState> {
     _restoredNotebookId = null;
     _turnMachine.clearOffRecord();
     _turnMachine.offTheRecord = false;
+    _turnMachine.holdAssistantOffRecord = false;
+    _reopenAfterReconnect = false;
     _wentOffRecord = false;
     _savedAtOpen = {};
     _history.clear();
@@ -2403,6 +2485,10 @@ final liveClientFactoryProvider = Provider<
 
 /// One chat-pane row: a conversation turn, and whether it is still unfinished.
 typedef TranscriptRow = ({ConversationTurn turn, bool pending});
+
+/// See [JournalNotifier._forgottenThisRun]. One account's, so sign-out clears
+/// it; it lives outside the notifier so that needs no journal.
+final forgottenThisRunProvider = Provider<Set<String>>((ref) => <String>{});
 
 final turnJournalServiceProvider = Provider<TurnJournalService>((ref) {
   return TurnJournalService();

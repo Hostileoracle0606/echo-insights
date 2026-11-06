@@ -1,12 +1,26 @@
 import 'dart:typed_data';
 
 import 'package:flutter/widgets.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lumen/audio/audio_output.dart';
 import 'package:lumen/audio/pcm_player.dart';
+import 'package:lumen/models/session_brief.dart';
+import 'package:lumen/providers/journal_provider.dart';
+import 'package:lumen/providers/opening_prep_provider.dart';
 import 'package:lumen/providers/voice_services_provider.dart';
 import 'package:lumen/services/live_credentials.dart';
 import 'package:lumen/services/notebook_runtime_service.dart';
+import 'package:lumen/services/session_brief_service.dart';
+
+class _NoBriefs implements SessionBriefService {
+  @override
+  Future<SessionOpeningState> load() async =>
+      const SessionOpeningState(returning: false, brief: null);
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
 
 class _Backend implements PcmAudioBackend {
   @override
@@ -95,6 +109,17 @@ void main() {
     await pumpEventQueue();
 
     expect(resumes, 1);
+  });
+
+  test("sign-out clears the account's forgotten ids", () {
+    final container = ProviderContainer(overrides: [
+      openingPrepProvider.overrideWithValue(OpeningPrep(_NoBriefs())),
+    ]);
+    addTearDown(container.dispose);
+    container.read(forgottenThisRunProvider).add('maya-chen');
+
+    container.read(signedOutCleanupProvider)();
+    expect(container.read(forgottenThisRunProvider), isEmpty);
   });
 
   test('sign-out calls onSignedOut', () async {

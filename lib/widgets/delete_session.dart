@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -31,7 +33,8 @@ Future<void> confirmAndDeleteSession(
       content: const Text(
         'This deletes the conversation, its card, and what Lumen remembered '
         'only from it. Anything your other conversations also mention stays. '
-        "You can't undo this.",
+        'Notes pulled from it can stay in a short-lived cache for about a '
+        "week. You can't undo this.",
       ),
       actions: [
         TextButton(
@@ -74,6 +77,16 @@ Future<void> confirmAndDeleteSession(
   // The screen that asked is unmounted by the navigation, so take what is
   // needed from [ref] first.
   final prep = ref.read(openingPrepProvider);
+  // The crash-recovery copy on this phone. The session is gone either way,
+  // so nothing waits for this.
+  unawaited(
+    ref
+        .read(turnJournalServiceProvider)
+        .forgetNotebook(notebookId)
+        .catchError((Object error) {
+      debugPrint('Clearing the turn journal failed: ${error.runtimeType}');
+    }),
+  );
   ref.read(cardDrafterProvider).stop(notebookId);
   ref.invalidate(notebooksProvider);
   ref.invalidate(journalProvider);

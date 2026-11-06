@@ -540,6 +540,15 @@ class TurnMachine {
   /// checkpoint, extraction or commit. The one gate for LM-50.
   bool offTheRecord = false;
 
+  /// While true, Lumen's turns stay off the record though the user's are
+  /// saved: back on the record, until Gemini has been reconnected without the
+  /// off-record context, a reply could repeat what was said.
+  bool holdAssistantOffRecord = false;
+
+  bool _keptOffRecord(Speaker speaker) =>
+      offTheRecord ||
+      (holdAssistantOffRecord && speaker == Speaker.assistant);
+
   /// In-memory only: prevents starting the same durable step twice.
   String? _inFlight;
 
@@ -575,7 +584,7 @@ class TurnMachine {
         speaker: speaker,
         startedAt: _now(),
         heardChars: speaker == Speaker.assistant ? 0 : null,
-        offTheRecord: offTheRecord,
+        offTheRecord: _keptOffRecord(speaker),
       );
 
   List<TurnEffect> _rejectStale() {
@@ -638,7 +647,7 @@ class TurnMachine {
     }
     if (text.isEmpty) return const [];
 
-    final offRecord = turn.offTheRecord || offTheRecord;
+    final offRecord = turn.offTheRecord || _keptOffRecord(turn.speaker);
     final spoken = ConversationTurn(
       turnId: turn.turnId,
       role: turn.speaker,

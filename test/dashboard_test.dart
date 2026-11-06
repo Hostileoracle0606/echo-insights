@@ -2,6 +2,7 @@
 // their start date, the hero totals sum correctly, and each card shows its
 // title, summary, and meta (with a "live now" badge for an open session).
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,6 +10,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lumen/models/conversation_mode.dart';
 import 'package:lumen/models/notebook.dart';
 import 'package:go_router/go_router.dart';
+import 'package:lumen/providers/journal_provider.dart';
 import 'package:lumen/providers/notebooks_provider.dart';
 import 'package:lumen/providers/opening_prep_provider.dart';
 import 'package:lumen/providers/supabase_provider.dart';
@@ -17,6 +19,7 @@ import 'package:lumen/security/app_lock.dart';
 import 'package:lumen/security/app_lock_provider.dart';
 import 'package:lumen/services/session_deletion_service.dart';
 import 'package:lumen/services/supabase_service.dart';
+import 'package:lumen/services/turn_journal_service.dart';
 import 'package:lumen/theme/lumen_theme.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -270,6 +273,11 @@ void main() {
           openingPrepProvider
               .overrideWithValue(_CountingPrep(() => refreshes++)),
           lockAuthenticatorProvider.overrideWithValue(auth),
+          turnJournalServiceProvider.overrideWithValue(
+            TurnJournalService(
+              directoryProvider: () async => Directory.systemTemp,
+            ),
+          ),
         ],
         child: MaterialApp.router(
           debugShowCheckedModeBanner: false,

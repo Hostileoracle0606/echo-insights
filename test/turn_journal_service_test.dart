@@ -41,6 +41,17 @@ void main() {
     if (await directory.exists()) await directory.delete(recursive: true);
   });
 
+  test('forgetting a notebook leaves nothing of it', () async {
+    await journal.persistTurn(turn());
+    expect(await journal.loadTurns('notebook-1'), hasLength(1));
+
+    await journal.forgetNotebook('notebook-1');
+    expect(await journal.loadTurns('notebook-1'), isEmpty);
+    expect(directory.listSync(recursive: true).whereType<File>(), isEmpty);
+
+    await journal.forgetNotebook('notebook-1'); // nothing to do: no error
+  });
+
   test('warming up finds the journal folder once, for every later read',
       () async {
     var lookups = 0;

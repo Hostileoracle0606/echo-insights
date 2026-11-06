@@ -16,6 +16,7 @@ import 'package:lumen/models/entity.dart';
 import 'package:lumen/models/journal_state.dart';
 import 'package:lumen/models/session_card.dart';
 import 'package:lumen/providers/export_provider.dart';
+import 'package:lumen/providers/journal_provider.dart';
 import 'package:lumen/providers/notebooks_provider.dart';
 import 'package:lumen/providers/opening_prep_provider.dart';
 import 'package:lumen/providers/supabase_provider.dart';
@@ -27,6 +28,7 @@ import 'package:lumen/services/memory_control_service.dart';
 import 'package:lumen/services/notebook_commit_service.dart';
 import 'package:lumen/services/session_card_service.dart';
 import 'package:lumen/services/session_deletion_service.dart';
+import 'package:lumen/services/turn_journal_service.dart';
 import 'package:lumen/theme/lumen_colors.dart';
 import 'package:lumen/theme/lumen_theme.dart';
 import 'package:lumen/widgets/result_card.dart';
@@ -90,6 +92,18 @@ class _FakeMemory implements MemoryControlService {
   Future<int> removeEntity(String entityId) async {
     removed.add(entityId);
     return 1;
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _FakeTurnJournal implements TurnJournalService {
+  final forgotten = <String>[];
+
+  @override
+  Future<void> forgetNotebook(String notebookId) async {
+    forgotten.add(notebookId);
   }
 
   @override
@@ -187,6 +201,7 @@ Future<_Harness> _pump(
   _FakeCommits? commits,
   Future<void> Function(MarkdownVault vault)? share,
   _Auth? auth,
+  _FakeTurnJournal? turnJournal,
 }) async {
   tester.view
     ..physicalSize = const Size(402, 874)
@@ -231,6 +246,8 @@ Future<_Harness> _pump(
         sessionDeletionServiceProvider.overrideWithValue(deletion),
         openingPrepProvider.overrideWithValue(prep),
         lockAuthenticatorProvider.overrideWithValue(auth ?? _Auth()),
+        turnJournalServiceProvider
+            .overrideWithValue(turnJournal ?? _FakeTurnJournal()),
         notebooksProvider.overrideWith((ref) {
           notebookLoads.add(notebookLoads.length);
           return [];
@@ -621,6 +638,8 @@ void main() {
 
       await openDialog(tester);
       expect(find.text('Delete this session?'), findsOneWidget);
+      expect(find.textContaining('short-lived cache for about a week'),
+          findsOneWidget);
 
       await tester.tap(find.text('Cancel'));
       await _frames(tester);
@@ -632,7 +651,8 @@ void main() {
 
     testWidgets('confirming deletes it, refreshes and lands on the dashboard',
         (tester) async {
-      final h = await _pump(tester);
+      final turnJournal = _FakeTurnJournal();
+      final h = await _pump(tester, turnJournal: turnJournal);
       // The dashboard list is read once the router lands there.
       final container = ProviderScope.containerOf(
         tester.element(find.byType(ClosingCardScreen)),
@@ -645,6 +665,7 @@ void main() {
       await _frames(tester);
 
       expect(h.deletion.deleted, [_id]);
+      expect(turnJournal.forgotten, [_id], reason: 'the copy on this phone');
       expect(h.location, '/dashboard');
       expect(find.text('Dashboard ready'), findsOneWidget);
       expect(h.prep.refreshes, 1);

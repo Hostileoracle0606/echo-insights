@@ -149,6 +149,14 @@ class TurnJournalService {
     });
   }
 
+  /// Everything held for [notebookId]: the session was deleted.
+  Future<void> forgetNotebook(String notebookId) {
+    return _serialized(() async {
+      final file = await _journalFile(notebookId);
+      if (await file.exists()) await file.delete();
+    });
+  }
+
   Future<T> _serialized<T>(Future<T> Function() operation) {
     final result = _tail.then((_) => operation());
     _tail = result.then<void>(

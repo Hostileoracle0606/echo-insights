@@ -192,6 +192,9 @@ sealed class CommitOutcome {
           revision: (json['revision'] as num).toInt(),
           entryId: ids['entryId'] as String?,
           followUpId: ids['followUpId'] as String?,
+          suppressedIds: [
+            ...?(json['suppressedIds'] as List?)?.whereType<String>(),
+          ],
         );
       case 'conflict':
         return CommitConflict(
@@ -209,11 +212,15 @@ class CommitCommitted extends CommitOutcome {
   final int revision;
   final String? entryId;
   final String? followUpId;
+
+  /// Ids in this commit the server dropped: removed or forgotten by the user.
+  final List<String> suppressedIds;
   const CommitCommitted({
     required this.requestId,
     required this.revision,
     this.entryId,
     this.followUpId,
+    this.suppressedIds = const [],
   });
 }
 

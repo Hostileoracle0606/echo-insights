@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../logic/retention_offer.dart';
 import '../providers/supabase_provider.dart';
+import '../security/app_lock_provider.dart';
 import '../services/transcript_retention_service.dart';
 import '../theme/lumen_colors.dart';
 import '../theme/lumen_text.dart';
@@ -163,8 +164,48 @@ class _TranscriptRetentionChoicesState
     }
   }
 
+  /// A shorter period deletes what is older at the next sweep, for good. An
+  /// unknown current setting counts as shorter.
+  Future<bool> _shortenAllowed(int days) async {
+    final current = _failed ? 0 : _selected;
+    if (current != null && current != 0 && days >= current) return true;
+    final colors = context.lumenColors;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('Keep transcripts for $days days?'),
+        content: Text(
+          'Transcripts older than $days days are deleted at the next daily '
+          "clean-up. You can't undo this. Cards and what Lumen remembers stay.",
+        ),
+        actions: [
+          TextButton(
+            style: const ButtonStyle(
+              minimumSize: WidgetStatePropertyAll(Size(44, 44)),
+            ),
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              minimumSize: const Size(44, 44),
+              backgroundColor: colors.destructive,
+              foregroundColor: colors.destructiveForeground,
+            ),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Keep for less'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return false;
+    return requireReauth(context, reason: 'Delete older transcripts');
+  }
+
   Future<void> _choose(int? days) async {
     if (_saving || (_loaded && !_failed && days == _selected)) return;
+    if (days != null && !await _shortenAllowed(days)) return;
+    if (!mounted) return;
     setState(() {
       _saving = true;
       _failed = false;

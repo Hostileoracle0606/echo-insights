@@ -140,23 +140,24 @@ class _JournalScreenState extends ConsumerState<JournalScreen>
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted || widget.notebookId != id) return;
       final notifier = ref.read(journalProvider.notifier);
-      // Talk and Type start a conversation, so they get the same first-time
-      // screen as the mic. Closing it opens the notebook without starting.
-      final go = (autoStart || compose) ? await _privacyGate() : true;
-      if (!mounted || widget.notebookId != id) return;
+      // Anything that starts a conversation gets the same first-time screen
+      // as the mic: Lumen opening a new notebook, and Talk and Type. Closing
+      // it opens the notebook without starting. Asked once however it comes.
+      bool? gate;
+      Future<bool> firstTime() async => gate ??= await _privacyGate();
       final result = await notifier.enterNotebook(
         id,
-        autoStart: autoStart && go,
-        // A new notebook opens with Lumen by itself, so closing the screen
-        // has to say so; `autoStart: false` alone would still go live.
-        openQuietly: !go,
+        autoStart: autoStart,
         // Closing cancels the start, not the choice: the session stays off
         // the record if the user then starts it by hand.
         offTheRecord: widget.offTheRecord,
+        beforeOpening: firstTime,
       );
       if (!mounted || widget.notebookId != id) return;
       if (result.succeeded) {
-        if (go && (autoStart || compose)) await _keepGoing(compose: compose);
+        if ((autoStart || compose) && await firstTime() && mounted) {
+          await _keepGoing(compose: compose);
+        }
         return;
       }
       // Lumen failing to join has its own banner with Retry.

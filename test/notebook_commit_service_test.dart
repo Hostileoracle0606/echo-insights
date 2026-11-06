@@ -202,6 +202,18 @@ void main() {
       expect(committed.revision, 3);
       expect(committed.entryId, 'e1');
       expect(committed.followUpId, isNull);
+      expect(committed.suppressedIds, isEmpty);
+    });
+
+    test('parses the ids the server dropped', () {
+      final outcome = CommitOutcome.fromJson({
+        'status': 'committed',
+        'requestId': 'r1',
+        'revision': 3,
+        'ids': {'entryId': 'e1'},
+        'suppressedIds': ['maya-chen'],
+      });
+      expect((outcome as CommitCommitted).suppressedIds, ['maya-chen']);
     });
 
     test('parses conflict', () {

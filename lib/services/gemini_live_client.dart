@@ -196,6 +196,10 @@ class GeminiLiveClient {
     await connect();
   }
 
+  /// The next connection starts a new conversation on Gemini's side instead
+  /// of resuming this one, so what it holds now is gone from it.
+  void dropResumption() => _resumptionHandle = null;
+
   void _sendSetup() {
     final setup = {
       'setup': {

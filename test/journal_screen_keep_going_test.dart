@@ -33,7 +33,7 @@ class _QuietJournal extends JournalNotifier {
     String notebookId, {
     bool autoStart = false,
     bool offTheRecord = false,
-    bool openQuietly = false,
+    Future<bool> Function()? beforeOpening,
   }) async {
     enteredWithAutoStart = autoStart;
     current = afterEntry;

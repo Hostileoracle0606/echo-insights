@@ -1,6 +1,7 @@
 // LM-50, off the record: end to end through the real JournalNotifier and
 // GeminiLiveClient. Only the socket, the microphone, the speaker, the token
 // source and the backends are fakes, and every backend write is counted.
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -10,6 +11,7 @@ import 'package:lumen/audio/audio_output.dart';
 import 'package:lumen/audio/pcm_capture.dart';
 import 'package:lumen/audio/pcm_player.dart';
 import 'package:lumen/logic/turn_state.dart' hide CommitCommitted;
+import 'package:lumen/models/entity.dart';
 import 'package:lumen/models/follow_up.dart';
 import 'package:lumen/models/graph_patch.dart';
 import 'package:lumen/models/journal_entry.dart';
@@ -76,6 +78,7 @@ class _FakeCommits implements NotebookCommitService {
   _FakeCommits(this.state);
   final JournalState state;
   int commits = 0;
+  List<String> suppressedIds = const [];
 
   @override
   Future<NotebookSnapshot?> getNotebookSnapshot(String notebookId) async =>
@@ -93,6 +96,7 @@ class _FakeCommits implements NotebookCommitService {
     return CommitCommitted(
       requestId: requestId,
       revision: expectedRevision + 1,
+      suppressedIds: suppressedIds,
     );
   }
 
@@ -471,6 +475,119 @@ void main() {
     expect(h.journal.offTheRecord, isFalse, reason: 'the next visit is on');
   });
 
+  test('a commit the server thinned drops the person from the device',
+      () async {
+    h = _Harness(
+      state: JournalState.empty().copyWith(
+        entries: [_entry('Earlier.')],
+        entities: {
+          'maya-chen': Entity(
+            id: 'maya-chen',
+            name: 'Maya Chen',
+            type: EntityType.person,
+            description: null,
+            metadata: const {},
+            mentions: 1,
+            firstSeen: DateTime(2026, 10, 20),
+            lastSeen: DateTime(2026, 10, 20),
+          ),
+        },
+      ),
+      supabase: _EndingNotebooks(),
+    );
+    await h.journal.enterNotebook(_notebookId);
+    await h.startLive();
+    h.commits.suppressedIds = const ['maya-chen'];
+
+    expect(h.journal.sendTypedTurn('I saw Maya Chen.'), isTrue);
+    await _waitForCommits(h, 1);
+    await _settle();
+
+    expect(h.container.read(journalProvider).entities, isEmpty);
+    expect(h.journal.suppressedEntityIds, contains('maya-chen'));
+    expect(h.container.read(forgottenThisRunProvider), contains('maya-chen'));
+  });
+
+  group('back on the record', () {
+    Map<String, dynamic> context(FakeLiveSocket socket) =>
+        socket.sent.firstWhere((m) => m.containsKey('client_content'));
+
+    void lumenSays(FakeLiveSocket socket, String text) => socket
+      ..serverSends({
+        'serverContent': {
+          'outputTranscription': {'text': text, 'finished': true},
+        },
+      })
+      ..serverSends({
+        'serverContent': {'turnComplete': true},
+      });
+
+    Future<void> saveThenGoOff() async {
+      h = _Harness(
+        state: JournalState.empty().copyWith(entries: [_entry('Earlier.')]),
+        supabase: _EndingNotebooks(),
+      );
+      await h.journal.enterNotebook(_notebookId);
+      await h.startLive();
+      h.socket.serverSends({
+        'sessionResumptionUpdate': {'resumable': true, 'newHandle': 'old'},
+      });
+      expect(h.journal.sendTypedTurn('Saved words.'), isTrue);
+      await _waitForCommits(h, 1);
+      h.journal.setOffTheRecord(true);
+      userSaysAndLumenReplies(h, 'The secret.', 'About the secret.');
+      await _settle();
+    }
+
+    test('Gemini starts a new conversation from saved turns only', () async {
+      await saveThenGoOff();
+
+      h.journal.setOffTheRecord(false);
+      await h.waitForSocket(2);
+      expect(h.socket.setup['session_resumption'], isEmpty,
+          reason: 'no handle: nothing carried over');
+
+      h.socket.serverSends({'setupComplete': <String, dynamic>{}});
+      await _settle();
+
+      final sent = jsonEncode(context(h.socket));
+      expect(sent, contains('Saved words.'));
+      expect(sent, isNot(contains('secret')));
+    });
+
+    test("Lumen's turns stay unsaved until that is done", () async {
+      await saveThenGoOff();
+      final savedBefore = h.transcripts.saved.length;
+
+      h.journal.setOffTheRecord(false);
+      await h.waitForSocket(2);
+      lumenSays(h.socket, 'Echoing the secret.');
+      await _settle();
+      expect(h.transcripts.saved.length, savedBefore);
+      expect(h.extractor.texts, isNot(contains('Echoing the secret.')));
+
+      h.socket.serverSends({'setupComplete': <String, dynamic>{}});
+      await _settle();
+      lumenSays(h.socket, 'A new reply.');
+      await _settle();
+      expect(h.transcripts.saved.map((t) => t.text), contains('A new reply.'));
+      expect(h.transcripts.saved.map((t) => t.text),
+          isNot(contains('Echoing the secret.')));
+    });
+
+    test('a session not connected has nothing to reopen', () async {
+      h = _Harness(
+        state: JournalState.empty().copyWith(entries: [_entry('Earlier.')]),
+        supabase: _EndingNotebooks(),
+      );
+      await h.journal.enterNotebook(_notebookId);
+      h.journal.setOffTheRecord(true);
+      h.journal.setOffTheRecord(false);
+      await _settle();
+      expect(h.sockets, isEmpty);
+    });
+  });
+
   test('the only caller of redaction is the card pipeline', () {
     // redact_forgotten_text runs inside close-session, so no card call in the
     // tests above means no redaction call. Nothing on the device reaches it.
@@ -490,7 +607,7 @@ void main() {
     final entered = await h.journal.enterNotebook(
       _notebookId,
       offTheRecord: true,
-      openQuietly: true,
+      beforeOpening: () async => false,
     );
     await _settle();
 

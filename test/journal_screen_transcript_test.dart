@@ -43,7 +43,7 @@ class _LifecycleJournal extends JournalNotifier {
     String notebookId, {
     bool autoStart = false,
     bool offTheRecord = false,
-    bool openQuietly = false,
+    Future<bool> Function()? beforeOpening,
   }) async {
     enteredNotebookId = notebookId;
     enteredWithAutoStart = autoStart;

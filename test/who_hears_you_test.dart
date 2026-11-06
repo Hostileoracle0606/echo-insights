@@ -35,20 +35,21 @@ class _Journal extends JournalNotifier {
 }
 
 class _OpeningJournal extends _Journal {
-  final entered =
-      <({bool autoStart, bool offTheRecord, bool openQuietly})>[];
+  final entered = <({bool autoStart, bool offTheRecord, bool opened})>[];
 
   @override
   Future<NotebookTransitionResult> enterNotebook(
     String notebookId, {
     bool autoStart = false,
     bool offTheRecord = false,
-    bool openQuietly = false,
+    Future<bool> Function()? beforeOpening,
   }) async {
+    // As a new notebook: Lumen opens it unless the gate says no.
+    final opened = await beforeOpening!();
     entered.add((
       autoStart: autoStart,
       offTheRecord: offTheRecord,
-      openQuietly: openQuietly,
+      opened: opened,
     ));
     return const NotebookTransitionResult.success();
   }
@@ -317,16 +318,14 @@ void main() {
         (t) async {
       final journal = await pumpOpening(t, () async => false);
       expect(find.byType(WhoHearsYouScreen), findsOneWidget);
-      expect(journal.entered, isEmpty, reason: 'nothing opens behind it');
+      expect(journal.entered, isEmpty, reason: 'Lumen waits for the answer');
 
       await t.tap(find.byKey(const Key('privacyClose')));
       await _frames(t);
-      expect(journal.entered, hasLength(1));
       final entry = journal.entered.single;
-      expect(entry.autoStart, isFalse);
-      expect(entry.openQuietly, isTrue);
+      expect(entry.opened, isFalse);
       expect(entry.offTheRecord, isTrue);
-      expect(journal.starts, 0);
+      expect(journal.starts, 0, reason: 'the gate is not asked twice');
     });
 
     testWidgets('continuing starts it, off the record', (t) async {
@@ -335,14 +334,14 @@ void main() {
       await _frames(t);
       final entry = journal.entered.single;
       expect(entry.autoStart, isTrue);
-      expect(entry.openQuietly, isFalse);
+      expect(entry.opened, isTrue);
       expect(entry.offTheRecord, isTrue);
     });
 
     testWidgets('already seen: no screen, it starts', (t) async {
       final journal = await pumpOpening(t, () async => true);
       expect(find.byType(WhoHearsYouScreen), findsNothing);
-      expect(journal.entered.single.openQuietly, isFalse);
+      expect(journal.entered.single.opened, isTrue);
     });
   });
 
