@@ -268,11 +268,23 @@ export class InfraStack extends cdk.Stack {
       stageName: "$default",
       autoDeploy: true,
       detailedMetricsEnabled: true,
+      // LM-46: the default (unchanged) applies to every route; the
+      // model-backed routes below get their own. API Gateway counts these per route across all
+      // callers, not per user, so they cap total load (and Gemini spend), and
+      // sit well above one user's use (close-session fires about every 20 s).
       throttle: {
         burstLimit: 20,
         rateLimit: 10,
       },
     });
+    const routeThrottle = { ThrottlingBurstLimit: 40, ThrottlingRateLimit: 20 };
+    (stage.node.defaultChild as apigatewayv2.CfnStage).routeSettings = {
+      "POST /v1/live-sessions": routeThrottle,
+      "POST /v1/notebooks/{notebookId}/live-sessions": routeThrottle,
+      "POST /v1/notebooks/{notebookId}/extractions": routeThrottle,
+      "POST /v1/notebooks/{notebookId}/close": routeThrottle,
+      "POST /v1/notebooks/{notebookId}/brief": routeThrottle,
+    };
 
     // Alerts (LM-54). Thresholds are per 5 minutes and sized so one failed
     // request never pages; see docs/security/incident-response.md.

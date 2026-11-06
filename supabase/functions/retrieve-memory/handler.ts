@@ -45,6 +45,11 @@ export const corsHeaders = {
 };
 
 const MAX_BODY_BYTES = 1_000_000;
+// LM-46 request-field caps. Queries are a spoken phrase or two; ids are uuids.
+const MAX_QUERY_CHARS = 2000;
+const MAX_ID_CHARS = 100;
+/** `limit` is not read today; if a client sends one it must be a sane integer. */
+const MAX_LIMIT = 50;
 // Client-sent graph caps (notebook scope only; user scope never reads body.state).
 const MAX_ENTITIES = 2000;
 const MAX_RELATIONS = 4000;
@@ -61,6 +66,32 @@ const json = (status: number, body: unknown) =>
     status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
+
+/**
+ * Field types and sizes of the request body. Never echoes a value back: the
+ * caller gets one generic message whichever field was wrong. `scope` has its
+ * own check below because it predates this one.
+ */
+export function validRequestShape(body: unknown): boolean {
+  if (typeof body !== "object" || body === null || Array.isArray(body)) return false;
+  const b = body as Record<string, unknown>;
+  if (b.query !== undefined && b.query !== null &&
+      (typeof b.query !== "string" || b.query.length > MAX_QUERY_CHARS)) return false;
+  if (b.notebookId !== undefined && b.notebookId !== null &&
+      (typeof b.notebookId !== "string" || b.notebookId.length > MAX_ID_CHARS)) return false;
+  if (b.limit !== undefined &&
+      (typeof b.limit !== "number" || !Number.isInteger(b.limit) || b.limit < 1 || b.limit > MAX_LIMIT)) return false;
+  if (b.state !== undefined && b.state !== null) {
+    if (typeof b.state !== "object" || Array.isArray(b.state)) return false;
+    const s = b.state as Record<string, unknown>;
+    for (const key of ["entities", "relations"]) {
+      const v = s[key];
+      if (v !== undefined && v !== null && (typeof v !== "object" || Array.isArray(v))) return false;
+    }
+    if (s.entries !== undefined && s.entries !== null && !Array.isArray(s.entries)) return false;
+  }
+  return true;
+}
 
 async function queryHash(q: string): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(q));
@@ -153,7 +184,14 @@ export function createHandler(deps: RetrieveMemoryDeps): (req: Request) => Promi
       const { data: { user }, error: userErr } = await supa.auth.getUser();
       if (userErr || !user) return json(401, { error: "invalid session" });
 
-      const body = JSON.parse(raw) as {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        return json(400, { error: "invalid request" });
+      }
+      if (!validRequestShape(parsed)) return json(400, { error: "invalid request" });
+      const body = parsed as {
         query?: string;
         notebookId?: string;
         scope?: unknown;

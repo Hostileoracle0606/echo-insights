@@ -60,6 +60,14 @@ test("exposes authenticated live-session, graph-extraction and close-session rou
       ThrottlingBurstLimit: 20,
       ThrottlingRateLimit: 10,
     },
+    // LM-46: every model-backed route has its own throttle.
+    RouteSettings: {
+      "POST /v1/live-sessions": { ThrottlingBurstLimit: 40, ThrottlingRateLimit: 20 },
+      "POST /v1/notebooks/{notebookId}/live-sessions": { ThrottlingBurstLimit: 40, ThrottlingRateLimit: 20 },
+      "POST /v1/notebooks/{notebookId}/extractions": { ThrottlingBurstLimit: 40, ThrottlingRateLimit: 20 },
+      "POST /v1/notebooks/{notebookId}/close": { ThrottlingBurstLimit: 40, ThrottlingRateLimit: 20 },
+      "POST /v1/notebooks/{notebookId}/brief": { ThrottlingBurstLimit: 40, ThrottlingRateLimit: 20 },
+    },
   });
   template.hasResourceProperties("AWS::IAM::Policy", {
     PolicyDocument: {
