@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import { createCloseSessionHandler } from "../lambda/close-session/core.mjs";
+import { redactTurns } from "../lambda/close-session/redact.mjs";
 import { justTalkPrompt, writeSessionCardFunction } from "../lambda/close-session/prompts.mjs";
 import {
   buildTranscript,
@@ -761,6 +762,13 @@ test("if redaction fails the model is never called", async () => {
   assert.equal(response.statusCode, 503);
   assert.equal(state.providerBodies.length, 0);
   assert.equal(state.saves.length, 0);
+});
+
+test("a control character in a turn cannot break redaction for good", async () => {
+  const turns = [{ text: "a\u0001b" }, { text: "c" }];
+  const db = { rpc: async (_name, { p_text }) => p_text };
+  const redacted = await redactTurns(db, turns);
+  assert.deepEqual(redacted.map((turn) => turn.text), ["ab", "c"]);
 });
 
 test("a redaction answer that does not line up with the turns is refused", async () => {

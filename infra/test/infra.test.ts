@@ -82,6 +82,16 @@ test("exposes authenticated live-session, graph-extraction and close-session rou
   });
 });
 
+test("creates the stage after the routes its throttles name", () => {
+  const template = synthesizeTemplate();
+  const routes = Object.keys(template.findResources("AWS::ApiGatewayV2::Route"));
+  const [stage] = Object.values(template.findResources("AWS::ApiGatewayV2::Stage"));
+
+  expect(routes).toHaveLength(5);
+  expect(Object.keys(stage.Properties.RouteSettings)).toHaveLength(5);
+  expect(stage.DependsOn).toEqual(expect.arrayContaining(routes));
+});
+
 test("retains a server-side extraction retry cache", () => {
   const template = synthesizeTemplate();
 

@@ -218,22 +218,23 @@ export class InfraStack extends cdk.Stack {
       liveSessionBroker,
     );
 
-    api.addRoutes({
+    const routes: apigatewayv2.HttpRoute[] = [];
+    routes.push(...api.addRoutes({
       path: "/v1/notebooks/{notebookId}/live-sessions",
       methods: [apigatewayv2.HttpMethod.POST],
       authorizer,
       integration: liveSessionIntegration,
-    });
+    }));
 
     // User-scoped: lets a signed-in client hold a token before any notebook opens.
-    api.addRoutes({
+    routes.push(...api.addRoutes({
       path: "/v1/live-sessions",
       methods: [apigatewayv2.HttpMethod.POST],
       authorizer,
       integration: liveSessionIntegration,
-    });
+    }));
 
-    api.addRoutes({
+    routes.push(...api.addRoutes({
       path: "/v1/notebooks/{notebookId}/extractions",
       methods: [apigatewayv2.HttpMethod.POST],
       authorizer,
@@ -241,9 +242,9 @@ export class InfraStack extends cdk.Stack {
         "GraphExtractionIntegration",
         graphExtractor,
       ),
-    });
+    }));
 
-    api.addRoutes({
+    routes.push(...api.addRoutes({
       path: "/v1/notebooks/{notebookId}/close",
       methods: [apigatewayv2.HttpMethod.POST],
       authorizer,
@@ -251,9 +252,9 @@ export class InfraStack extends cdk.Stack {
         "SessionCloseIntegration",
         sessionCloser,
       ),
-    });
+    }));
 
-    api.addRoutes({
+    routes.push(...api.addRoutes({
       path: "/v1/notebooks/{notebookId}/brief",
       methods: [apigatewayv2.HttpMethod.POST],
       authorizer,
@@ -261,7 +262,7 @@ export class InfraStack extends cdk.Stack {
         "SessionBriefIntegration",
         sessionBriefWriter,
       ),
-    });
+    }));
 
     const stage = new apigatewayv2.HttpStage(this, "DefaultStage", {
       httpApi: api,
@@ -285,6 +286,9 @@ export class InfraStack extends cdk.Stack {
       "POST /v1/notebooks/{notebookId}/close": routeThrottle,
       "POST /v1/notebooks/{notebookId}/brief": routeThrottle,
     };
+    // routeSettings names routes by key, so on a new stack they must exist
+    // first; otherwise CloudFormation fails with "Unable to find Route by key".
+    stage.node.addDependency(...routes);
 
     // Alerts (LM-54). Thresholds are per 5 minutes and sized so one failed
     // request never pages; see docs/security/incident-response.md.
