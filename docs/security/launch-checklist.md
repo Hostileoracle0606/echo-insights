@@ -12,15 +12,17 @@ Every open user action across Phase 1, in the order to do them. Built from the S
 
 Staging first, then production. Do not use production for testing.
 
-1. **Database migrations, all of them, before the `close-session` Lambda.** In order: `20261104000000_rpc_input_caps.sql` (LM-46), `20261104000100_complete_deletion.sql` (LM-48), `20261104000200_forget_person.sql` and `20261104000300_forget_regeneration.sql` (LM-49), `20261104000350_auto_forget.sql` and `20261104000360_auto_forget_followups.sql` (LM-51), `20261104000400_export_my_data.sql` (LM-52), `20261104000500_delete_empty_notebook.sql` (LM-50), `20261104000600_privacy_screen_seen.sql` (LM-53), and last `20261104000700_reconcile_rpc_caps.sql` (integration).
-   Why `…700` is last: LM-49's `…300` redefines `save_session_card` and `save_session_brief` without LM-46's caps, so applying them in order silently drops the caps until `…700` restores them. `…700` also makes `delete_empty_notebook` keep a notebook auto-forget emptied.
-   **Post-migration check (staging, then production):** an oversized card call to `save_session_card` must be refused, and a card naming a forgotten person must be stored redacted. Do not proceed to the Lambda deploy if either fails.
+1. **Database migrations, all of them, before the `close-session` Lambda.** In order: `20261104000000_rpc_input_caps.sql` (LM-46), `20261104000100_complete_deletion.sql` (LM-48), `20261104000200_forget_person.sql` and `20261104000300_forget_regeneration.sql` (LM-49), `20261104000350_auto_forget.sql` and `20261104000360_auto_forget_followups.sql` (LM-51), `20261104000400_export_my_data.sql` (LM-52), `20261104000500_delete_empty_notebook.sql` (LM-50), `20261104000600_privacy_screen_seen.sql` (LM-53), `20261104000700_reconcile_rpc_caps.sql` (integration), and last `20261104000800_forget_scope.sql` (final review).
+   **Take a backup first.** `…200` rehashes `entity_suppressions` one way: the readable slugs are gone afterwards and nothing can turn the hashes back. After `…800`, every existing row counts as `removed`.
+   Why `…700` follows them: LM-49's `…300` redefines `save_session_card` and `save_session_brief` without LM-46's caps, so applying them in order silently drops the caps until `…700` restores them. `…700` also makes `delete_empty_notebook` keep a notebook auto-forget emptied.
+   **Post-migration check (staging, then production):** an oversized card call to `save_session_card` must be refused, a card naming a forgotten person must be stored redacted, and a card mentioning a merely removed word must be stored unchanged. Do not proceed to the Lambda deploy if either fails.
    Why the migrations come first: the new `close-session` code calls an RPC from `…300`. If the Lambda ships first, every session close returns 503 (it fails closed). The LM-51 migrations `…350` and `…360` ship together with the Lambda.
 2. **Edge functions** (LM-44 and LM-46 changed them), after the migrations: `supabase functions deploy embed-entities`, `retrieve-memory`, `extract-graph` and `speak-agent`, each with `--project-ref bjoevzvsdlhlcjywpyfx` (use the staging ref first when testing). Delete `extract-graph` and `speak-agent` instead if you retire them (section 4).
 3. **`cdk deploy`** (your own deploy, with the Supabase parameters). Add `-c alertEmail=<your address>` so alerts reach you. This creates the log groups (LM-44), the per-route throttles (LM-46), the alerts topic and alarms, and the CloudTrail trail and its bucket (LM-54).
-4. **Confirm the alert email subscription** (click the link AWS sends). Unconfirmed means no alerts.
-5. **Delete the old auto-created `/aws/lambda/*` log groups** for the functions (LM-44), only after the `cdk deploy` step. They never expire and may hold old content.
-6. Ship the iOS build only after steps 1 to 3 are live.
+4. **Deploy the web app**, so `/security` and `/.well-known/security.txt` are live with the same claims as the iOS build. Confirm the host serves the dotfile path. `src/lib/journal-store.ts` also has the new slug rule.
+5. **Confirm the alert email subscription** (click the link AWS sends). Unconfirmed means no alerts.
+6. **Delete the old auto-created `/aws/lambda/*` log groups** for the functions (LM-44), only after the `cdk deploy` step. They never expire and may hold old content.
+7. Ship the iOS build only after steps 1 to 4 are live.
 
 ## 3. Accounts and access (LM-45), do first, any time
 
@@ -52,8 +54,9 @@ Staging first, then production. Do not use production for testing.
 ## 6. On a real device (LM-47, LM-52, LM-50)
 
 - [ ] **Face ID test:** lock on resume with no flash of content, grace period, turning the lock off asks for re-auth, re-auth before export, "Delete this session" and forget a person, local file protection. The simulator cannot prove these.
+- [ ] **On the simulator or a device, signed in:** delete a session (confirm, Face ID, it's gone from the dashboard, a failed Face ID keeps it). Forget a person (preview counts match, Face ID, name gone from cards and from other people's notes, mentioning the same name later doesn't bring them back, and that holds after a relaunch). Also a name with no Latin letters. Shorten retention (confirm, then Face ID).
 - [ ] Export: the real share sheet and AirDrop. The zip may linger in temp up to an hour, so copy must not say "deleted immediately".
-- [ ] Off the record: start and leave a session, check no notebook remains. Killing the app mid-session may leave an empty "Untitled" notebook (known).
+- [ ] Off the record: start and leave a session, check no notebook remains. Go on, say something, come back on, and check Lumen doesn't refer to it; expect a short reconnect. Killing the app mid-session may leave an empty "Untitled" notebook (known).
 
 ## 7. Flags and copy (LM-53)
 
@@ -65,4 +68,4 @@ Staging first, then production. Do not use production for testing.
 
 - Move the edge functions to a custom-named `sb_secret_` key, then disable the legacy keys (LM-45).
 - Retire or document Groq, ElevenLabs, the web `VITE_GEMINI_API_KEY`, and Live session resumption (LM-43).
-- Web `types.ts` not regenerated (LM-51); web vitest not run (LM-53).
+- Web `types.ts` not regenerated (LM-51).
