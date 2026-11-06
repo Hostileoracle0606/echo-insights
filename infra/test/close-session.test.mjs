@@ -392,6 +392,44 @@ test("no user turns means no card and no model call", async () => {
   assert.equal(state.providerBodies.length, 0);
 });
 
+test("a notebook auto-forget has trimmed keeps its card: no model call, no save", async () => {
+  const card = { title: "Full card from the whole conversation" };
+  const { state, handle } = world({
+    state: {
+      notebook: { ...clone(fixture.notebook), revision: fixture.notebook.revision + 3, transcript_forgotten_at: "2026-11-01T03:15:00.000Z" },
+      storedCard: { source_revision: fixture.notebook.revision, card },
+    },
+  });
+  const response = await handle(requestEvent());
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(parse(response), { status: "ready", card });
+  assert.equal(state.providerBodies.length, 0);
+  assert.equal(state.saves.length, 0);
+});
+
+test("a trimmed notebook with no card is nothing to summarize, and never calls the model", async () => {
+  const { state, handle } = world({
+    state: { notebook: { ...clone(fixture.notebook), transcript_forgotten_at: "2026-11-01T03:15:00.000Z" } },
+  });
+  const response = await handle(requestEvent());
+  assert.equal(response.statusCode, 422);
+  assert.equal(parse(response).code, "nothingToSummarize");
+  assert.equal(state.providerBodies.length, 0);
+  assert.equal(state.saves.length, 0);
+});
+
+test("a trimmed notebook's draft request also leaves the card alone", async () => {
+  const card = { title: "Kept" };
+  const { state, handle } = world({
+    state: {
+      notebook: { ...clone(fixture.notebook), transcript_forgotten_at: "2026-11-01T03:15:00.000Z" },
+      storedCard: { source_revision: 1, card },
+    },
+  });
+  assert.deepEqual(parse(await handle(draftEvent())), { status: "ready", card });
+  assert.equal(state.saves.length, 0);
+});
+
 test("a long transcript keeps only its last ~24,000 characters", async () => {
   const turns = Array.from({ length: 60 }, (_, index) => ({
     turn_id: `t${String(index).padStart(2, "0")}`,

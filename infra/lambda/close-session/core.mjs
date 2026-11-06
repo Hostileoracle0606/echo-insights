@@ -320,7 +320,7 @@ export function createCloseSessionHandler({
   // conversation changed while the card was being written.
   async function closeOnce({ db, notebookId, startedAt, metrics, draft }) {
     const notebooks = await db.select("notebooks", {
-      select: "id,revision,conversation_mode",
+      select: "id,revision,conversation_mode,transcript_forgotten_at",
       id: `eq.${notebookId}`,
       limit: "1",
     });
@@ -336,6 +336,15 @@ export function createCloseSessionHandler({
       notebook_id: `eq.${notebookId}`,
       limit: "1",
     });
+    // Auto-forget removed some of this conversation's turns. What is left is a
+    // fragment, so never write a card from it: keep the card Lumen already has.
+    if (notebook.transcript_forgotten_at) {
+      metrics.forgotten = true;
+      if (Array.isArray(stored) && stored.length > 0 && stored[0].card) {
+        return jsonResponse(200, { status: "ready", card: stored[0].card });
+      }
+      throw new Rejection(422, "nothingToSummarize");
+    }
     if (
       Array.isArray(stored) &&
       stored.length > 0 &&

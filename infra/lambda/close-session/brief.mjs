@@ -82,7 +82,7 @@ export function createSessionBriefHandler({
 
   async function write({ db, notebookId, startedAt, metrics }) {
     const notebooks = await db.select("notebooks", {
-      select: "id,revision,conversation_mode,ended_at",
+      select: "id,revision,conversation_mode,ended_at,transcript_forgotten_at",
       id: `eq.${notebookId}`,
       limit: "1",
     });
@@ -91,6 +91,12 @@ export function createSessionBriefHandler({
     metrics.mode = notebook.conversation_mode;
     metrics.revision = Number(notebook.revision);
     if (notebook.conversation_mode !== "just_talk") throw new Rejection(501, "notImplemented");
+    // Auto-forget removed some of this conversation's turns; a brief written
+    // from the rest would be a fragment. Keep the one Lumen already has.
+    if (notebook.transcript_forgotten_at) {
+      metrics.forgotten = true;
+      return "unchanged";
+    }
 
     // One row per user. It is both the "already done" check and the previous
     // brief the model carries forward.

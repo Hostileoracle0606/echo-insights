@@ -12,6 +12,7 @@ import '../../providers/supabase_provider.dart';
 import '../../theme/lumen_colors.dart';
 import '../../theme/lumen_text.dart';
 import '../../widgets/delete_session.dart';
+import '../../widgets/transcript_retention.dart';
 
 // Matches the iPhone's display corner radius so the docked button's curvature
 // echoes the screen's rounded corners. Flutter exposes no API for the real
@@ -75,6 +76,30 @@ class DashboardScreen extends ConsumerWidget {
             // Big hero crowns the top; notebooks scroll below it; New is docked.
             return Column(
               children: [
+                RetentionOffer(
+                  completedSessions:
+                      list.where((nb) => nb.endedAt != null).length,
+                ),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: Padding(
+                    padding: const EdgeInsets.only(right: 10),
+                    child: IconButton(
+                      key: const Key('privacySettingsButton'),
+                      tooltip: 'Transcript privacy',
+                      constraints: const BoxConstraints.tightFor(
+                        width: 44,
+                        height: 44,
+                      ),
+                      icon: Icon(
+                        Icons.lock_outline,
+                        size: 20,
+                        color: colors.mutedForeground,
+                      ),
+                      onPressed: () => showTranscriptRetentionSheet(context),
+                    ),
+                  ),
+                ),
                 _AnimatedHero(
                   greeting: greeting,
                   subtitle: subtitle,

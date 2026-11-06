@@ -180,6 +180,17 @@ test("a stored brief at the notebook's revision returns without a model call", a
   assert.equal(state.saves.length, 0);
 });
 
+test("a notebook auto-forget has trimmed leaves the brief alone: no model call, no save", async () => {
+  const { state, handle } = world({
+    state: { notebook: { ...clone(fixture.notebook), ended_at: endedAt, transcript_forgotten_at: "2026-11-01T03:15:00.000Z" } },
+  });
+  const response = await handle(requestEvent());
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(parse(response), { status: "unchanged" });
+  assert.equal(state.providerCalls.length, 0);
+  assert.equal(state.saves.length, 0);
+});
+
 test("a stored brief at a later revision of this notebook is also unchanged", async () => {
   const { state, handle } = world({
     state: {
