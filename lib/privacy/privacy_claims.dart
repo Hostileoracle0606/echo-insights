@@ -15,11 +15,15 @@ const bool paidTierVerified = false;
 /// has been checked against Supabase's own documentation for this project.
 const bool supabaseEncryptionVerified = false;
 
-/// Controls that live on other branches. Their lines render only when the
-/// feature is in this set; whoever merges a feature adds its id here.
+/// Controls whose lines render only when the feature is in this set. A line
+/// joins it only once the control is in the app.
 enum PrivacyFeature { forgetPerson, offTheRecord, autoForget }
 
-const Set<PrivacyFeature> shipped = <PrivacyFeature>{};
+const Set<PrivacyFeature> shipped = <PrivacyFeature>{
+  PrivacyFeature.forgetPerson,
+  PrivacyFeature.offTheRecord,
+  PrivacyFeature.autoForget,
+};
 
 /// The Google line for the screen and the page.
 String googleClaim({bool verified = paidTierVerified}) => verified
@@ -63,7 +67,7 @@ const supabaseEncryptedClaim =
 const usClaim =
     "Our rule is that we don't read journals, except for a security incident "
     'or a request from you about your own data. Each exception goes in a '
-    'written log. Nothing technically stops us yet.';
+    'written log. Nothing technically stops us.';
 
 const phoneClaim =
     'Anyone who can unlock your phone and open Lumen can read your journal. '
@@ -78,9 +82,16 @@ const exportClaim =
 /// the `shipped` set passed to the screen.
 const Map<PrivacyFeature, String> gatedClaims = {
   PrivacyFeature.forgetPerson:
-      'You can ask Lumen to forget a person, and they leave your journal.',
+      "You can forget a person from their page. They leave your map and the "
+      "questions Lumen would ask, their name is replaced in your cards, and "
+      "mentioning them later doesn't bring them back. Lumen matches by name, "
+      'so a nickname can slip through, and your saved transcripts keep what '
+      'you said.',
   PrivacyFeature.offTheRecord:
-      'Off the record: you can talk without it being kept.',
+      "Off the record: Lumen doesn't save what you say while it is on, and "
+      'writes no card from it. Your voice still goes to Google so Lumen can '
+      'answer.',
   PrivacyFeature.autoForget:
-      'You can have old conversations forgotten automatically.',
+      'You can have old transcripts deleted automatically after 7, 30 or 90 '
+      'days. Cards and what Lumen remembers stay.',
 };

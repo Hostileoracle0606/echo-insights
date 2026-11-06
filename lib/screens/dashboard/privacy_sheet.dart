@@ -6,6 +6,7 @@ import '../../providers/quiet_mode_provider.dart';
 import '../../security/app_lock_provider.dart';
 import '../../theme/lumen_colors.dart';
 import '../../theme/lumen_text.dart';
+import '../../widgets/transcript_retention.dart';
 import '../privacy/who_hears_you_screen.dart';
 
 /// The dashboard's shield button: opens [PrivacySheet].
@@ -23,15 +24,20 @@ class PrivacyButton extends StatelessWidget {
         context: context,
         backgroundColor: colors.paper,
         showDragHandle: true,
+        // Taller than the default half screen once transcripts open.
+        isScrollControlled: true,
+        useSafeArea: true,
         builder: (_) => const PrivacySheet(),
       ),
     );
   }
 }
 
-/// App lock, quiet mode and "Export my journal". Self-contained: it reads
+/// App lock, quiet mode, how long transcripts are kept, and "Export my
+/// journal": every privacy setting, in one place. Self-contained: it reads
 /// and writes only [appLockProvider] and [quietModeProvider], and exports
-/// through [journalExportServiceProvider] and [shareVaultProvider].
+/// through [journalExportServiceProvider] and [shareVaultProvider];
+/// [TranscriptRetentionChoices] handles its own setting.
 class PrivacySheet extends ConsumerStatefulWidget {
   const PrivacySheet({super.key});
 
@@ -114,7 +120,7 @@ class _PrivacySheetState extends ConsumerState<PrivacySheet> {
       color: colors.mutedForeground,
     );
     return SafeArea(
-      child: Padding(
+      child: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -150,6 +156,20 @@ class _PrivacySheetState extends ConsumerState<PrivacySheet> {
               ),
               value: quiet,
               onChanged: (on) => ref.read(quietModeProvider.notifier).set(on),
+            ),
+            ExpansionTile(
+              key: const Key('transcriptRetentionTile'),
+              tilePadding: EdgeInsets.zero,
+              shape: const Border(),
+              collapsedShape: const Border(),
+              iconColor: colors.ink,
+              collapsedIconColor: colors.ink,
+              title: const Text('Keep transcripts for…'),
+              subtitle: Text(
+                'Cards and what Lumen remembers stay.',
+                style: small,
+              ),
+              children: const [TranscriptRetentionChoices()],
             ),
             ListTile(
               key: const Key('exportJournalTile'),

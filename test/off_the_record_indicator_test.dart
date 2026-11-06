@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lumen/models/journal_state.dart';
 import 'package:lumen/providers/journal_provider.dart';
+import 'package:lumen/providers/quiet_mode_provider.dart';
 import 'package:lumen/screens/journal/journal_screen.dart';
 import 'package:lumen/screens/journal/journal_top_bar.dart';
 import 'package:lumen/screens/journal/off_the_record_indicator.dart';
@@ -21,12 +22,19 @@ class _Journal extends JournalNotifier {
   bool get hasSavedTurns => saved;
 }
 
-Future<void> _pumpScreen(WidgetTester tester, {required bool saved}) async {
+Future<void> _pumpScreen(
+  WidgetTester tester, {
+  required bool saved,
+  bool quietSilenced = false,
+}) async {
   await tester.binding.setSurfaceSize(const Size(402, 874));
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(
     ProviderScope(
-      overrides: [journalProvider.overrideWith(() => _Journal(saved: saved))],
+      overrides: [
+        journalProvider.overrideWith(() => _Journal(saved: saved)),
+        quietPlaybackAllowedProvider.overrideWithValue(!quietSilenced),
+      ],
       child: MaterialApp(
         debugShowCheckedModeBanner: false,
         theme: LumenTheme.light(),
@@ -77,6 +85,19 @@ void main() {
     }
     expect(find.byKey(const Key('offTheRecordIndicator')), findsNothing);
     expect(find.text(onTheRecordNote), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('quiet mode\'s note sits clear of the indicator', (tester) async {
+    await _pumpScreen(tester, saved: true, quietSilenced: true);
+    await tester.tap(find.byKey(const Key('offTheRecordToggle')));
+    await tester.pump(const Duration(milliseconds: 16));
+
+    final indicator =
+        tester.getRect(find.byKey(const Key('offTheRecordIndicator')));
+    final note = tester.getRect(find.byKey(const Key('quietModeNote')));
+    expect(note.overlaps(indicator), isFalse);
 
     await tester.pumpWidget(const SizedBox());
   });

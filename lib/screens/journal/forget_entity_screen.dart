@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lumen/providers/journal_provider.dart';
 import 'package:lumen/providers/notebooks_provider.dart';
 import 'package:lumen/providers/supabase_provider.dart';
+import 'package:lumen/security/app_lock_provider.dart';
 import 'package:lumen/services/memory_control_service.dart';
 import 'package:lumen/theme/lumen_colors.dart';
 import 'package:lumen/theme/lumen_text.dart';
@@ -37,6 +38,14 @@ class _ForgetEntityScreenState extends ConsumerState<ForgetEntityScreen> {
       _forgetting = true;
       _failed = false;
     });
+    // The reason stays generic: it reaches the system prompt, so no name.
+    final passed = await requireReauth(context, reason: 'Forget this person');
+    if (!mounted) return;
+    if (!passed) {
+      // A failed or cancelled check forgets nothing.
+      setState(() => _forgetting = false);
+      return;
+    }
     try {
       await ref.read(journalProvider.notifier).forgetEntity(widget.entityId);
       ref.invalidate(notebooksProvider);

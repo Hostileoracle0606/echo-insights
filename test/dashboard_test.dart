@@ -13,6 +13,8 @@ import 'package:lumen/providers/notebooks_provider.dart';
 import 'package:lumen/providers/opening_prep_provider.dart';
 import 'package:lumen/providers/supabase_provider.dart';
 import 'package:lumen/screens/dashboard/dashboard_screen.dart';
+import 'package:lumen/security/app_lock.dart';
+import 'package:lumen/security/app_lock_provider.dart';
 import 'package:lumen/services/session_deletion_service.dart';
 import 'package:lumen/services/supabase_service.dart';
 import 'package:lumen/theme/lumen_theme.dart';
@@ -73,6 +75,18 @@ Notebook _nb(
     createdAt: started,
     updatedAt: started,
   );
+}
+
+class _Auth implements LockAuthenticator {
+  bool passes = true;
+  int prompts = 0;
+  @override
+  Future<bool> isAvailable() async => true;
+  @override
+  Future<bool> authenticate(String reason) async {
+    prompts += 1;
+    return passes;
+  }
 }
 
 void main() {
@@ -227,6 +241,7 @@ void main() {
     ];
     final deleted = <String>[];
     var refreshes = 0;
+    final auth = _Auth();
     final router = GoRouter(
       initialLocation: '/dashboard',
       routes: [
@@ -254,6 +269,7 @@ void main() {
           ),
           openingPrepProvider
               .overrideWithValue(_CountingPrep(() => refreshes++)),
+          lockAuthenticatorProvider.overrideWithValue(auth),
         ],
         child: MaterialApp.router(
           debugShowCheckedModeBanner: false,
@@ -287,7 +303,24 @@ void main() {
     await tester.tap(find.text('Cancel'));
     await tester.pump(const Duration(milliseconds: 300));
     expect(deleted, isEmpty);
+    expect(auth.prompts, 0, reason: 'Cancel asks for nothing');
     expect(find.text('Lisbon trip'), findsOneWidget);
+
+    // A failed Face ID deletes nothing.
+    auth.passes = false;
+    await openMenu();
+    await tester.tap(find.text('Delete this session'));
+    for (var i = 0; i < 30; i++) {
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    await tester.tap(find.text('Delete'));
+    for (var i = 0; i < 30; i++) {
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    expect(auth.prompts, 1);
+    expect(deleted, isEmpty);
+    expect(find.text('Lisbon trip'), findsOneWidget);
+    auth.passes = true;
 
     // Confirm removes it from the dashboard.
     await openMenu();

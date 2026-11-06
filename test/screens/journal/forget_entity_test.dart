@@ -8,8 +8,23 @@ import 'package:lumen/providers/journal_provider.dart';
 import 'package:lumen/providers/supabase_provider.dart';
 import 'package:lumen/screens/journal/entity_note_sheet.dart';
 import 'package:lumen/screens/journal/forget_entity_screen.dart';
+import 'package:lumen/security/app_lock.dart';
+import 'package:lumen/security/app_lock_provider.dart';
 import 'package:lumen/services/memory_control_service.dart';
 import 'package:lumen/theme/lumen_theme.dart';
+
+class _Auth implements LockAuthenticator {
+  _Auth({this.passes = true});
+  bool passes;
+  int prompts = 0;
+  @override
+  Future<bool> isAvailable() async => true;
+  @override
+  Future<bool> authenticate(String reason) async {
+    prompts += 1;
+    return passes;
+  }
+}
 
 class _Journal extends JournalNotifier {
   _Journal(this._seed, {this.fail = false});
@@ -56,6 +71,7 @@ Future<({_Journal journal, List<String> rpcs})> _open(
   Map<String, Object?> preview = _counts,
   bool failForget = false,
   bool failPreview = false,
+  _Auth? auth,
 }) async {
   await tester.binding.setSurfaceSize(const Size(402, 874));
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -64,6 +80,7 @@ Future<({_Journal journal, List<String> rpcs})> _open(
   await tester.pumpWidget(ProviderScope(
     overrides: [
       journalProvider.overrideWith(() => journal),
+      lockAuthenticatorProvider.overrideWithValue(auth ?? _Auth()),
       memoryControlServiceProvider
           .overrideWithValue(MemoryControlService.withRpc((fn, params) async {
         rpcs.add(fn);
@@ -154,6 +171,25 @@ void main() {
     expect(find.byType(ForgetEntityScreen), findsNothing);
     expect(find.byType(EntityNoteSheet), findsNothing);
     expect(find.text('Forgot Priya'), findsOneWidget);
+  });
+
+  testWidgets('a failed re-auth forgets nothing and can be retried',
+      (tester) async {
+    final auth = _Auth(passes: false);
+    final opened = await _open(tester, auth: auth);
+    await _toConfirmation(tester);
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Forget Priya'));
+    await tester.pumpAndSettle();
+
+    expect(auth.prompts, 1);
+    expect(opened.journal.forgotten, isEmpty);
+    expect(find.byType(ForgetEntityScreen), findsOneWidget);
+
+    auth.passes = true;
+    await tester.tap(find.widgetWithText(FilledButton, 'Forget Priya'));
+    await tester.pumpAndSettle();
+    expect(opened.journal.forgotten, ['priya']);
   });
 
   testWidgets('a failed forget stays on the screen and can be retried',

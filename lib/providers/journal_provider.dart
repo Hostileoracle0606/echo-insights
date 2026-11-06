@@ -1184,6 +1184,7 @@ class JournalNotifier extends Notifier<JournalState> {
     String notebookId, {
     bool autoStart = false,
     bool offTheRecord = false,
+    bool openQuietly = false,
   }) {
     final intent = ++_lifecycleIntent;
     if (_activeNotebookId != notebookId) {
@@ -1229,8 +1230,9 @@ class JournalNotifier extends Notifier<JournalState> {
       if (offTheRecord) setOffTheRecord(true);
 
       // A new notebook opens with Lumen (greeting and all); one with an
-      // earlier conversation opens quietly on its graph and transcript.
-      if ((opening || autoStart) && !_continuesConversation) {
+      // earlier conversation opens quietly on its graph and transcript, and so
+      // does any notebook when [openQuietly] asks (the user declined to start).
+      if ((opening || autoStart) && !_continuesConversation && !openQuietly) {
         return _openWithLumenUnlocked();
       }
       return const NotebookTransitionResult.success();

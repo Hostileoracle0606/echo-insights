@@ -14,8 +14,8 @@ export const Route = createFileRoute("/security")({
 });
 
 // These sentences mirror lib/privacy/privacy_claims.dart (the iOS app's
-// "Who hears you" screen); test/privacy_copy_test.dart checks the Google line
-// matches. Only say here what is true today.
+// "Who hears you" screen); test/privacy_copy_test.dart checks they match. Only
+// say here what is true today.
 const PARTIES: { name: string; lines: string[] }[] = [
   {
     name: "Google",
@@ -34,13 +34,13 @@ const PARTIES: { name: string; lines: string[] }[] = [
     name: "Supabase",
     lines: [
       "Supabase stores your journal: your conversations, cards and the map of people and places. It isn't encrypted with a key only you hold, so the people with admin access to the database could technically read it. A written rule limits that access.",
-      "The database keeps each account's rows from other accounts.",
+      "The database is set up so that one account can't see another account's journal.",
     ],
   },
   {
     name: "Us",
     lines: [
-      "Our rule is that we don't read journals, except for a security incident or a request from you about your own data. Each exception goes in a written log. Nothing technically stops us yet.",
+      "Our rule is that we don't read journals, except for a security incident or a request from you about your own data. Each exception goes in a written log. Nothing technically stops us.",
     ],
   },
   {
@@ -65,6 +65,12 @@ const CONTROLS: string[] = [
   'Your journal is yours to take: Privacy has "Export my journal", a zip of your conversations, cards and map as data and as notes.',
   "Export (iPhone) asks for Face ID or your passcode first.",
   "Who hears you (iPhone): the same list as this page, shown on your first conversation and any time under Privacy.",
+];
+
+const IPHONE_CONTROLS: string[] = [
+  "You can forget a person from their page. They leave your map and the questions Lumen would ask, their name is replaced in your cards, and mentioning them later doesn't bring them back. Lumen matches by name, so a nickname can slip through, and your saved transcripts keep what you said.",
+  "Off the record: Lumen doesn't save what you say while it is on, and writes no card from it. Your voice still goes to Google so Lumen can answer.",
+  "You can have old transcripts deleted automatically after 7, 30 or 90 days. Cards and what Lumen remembers stay.",
 ];
 
 function SecurityPage() {
@@ -92,6 +98,12 @@ function SecurityPage() {
       <h2 className="mt-10 text-2xl font-display text-foreground">Controls you have</h2>
       <ul className="mt-4 list-disc space-y-2 pl-6 text-base text-foreground">
         {CONTROLS.map((control) => (
+          <li key={control}>{control}</li>
+        ))}
+      </ul>
+      <h3 className="mt-6 text-lg font-semibold text-foreground">In the iPhone app</h3>
+      <ul className="mt-2 list-disc space-y-2 pl-6 text-base text-foreground">
+        {IPHONE_CONTROLS.map((control) => (
           <li key={control}>{control}</li>
         ))}
       </ul>

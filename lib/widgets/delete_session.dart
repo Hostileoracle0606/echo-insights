@@ -6,13 +6,15 @@ import '../providers/journal_provider.dart';
 import '../providers/notebooks_provider.dart';
 import '../providers/opening_prep_provider.dart';
 import '../providers/supabase_provider.dart';
+import '../security/app_lock_provider.dart';
 import '../theme/lumen_colors.dart';
 
 /// "Delete this session" (LM-48), shared by the closing card and the
 /// dashboard's notebook menu: confirms, deletes through
 /// [SessionDeletionService], drops what the app holds for the notebook and
-/// lands on the dashboard. Nothing the session held is logged. Face ID
-/// comes with LM-47.
+/// lands on the dashboard. Nothing the session held is logged. Face ID or
+/// the passcode comes after the confirmation; a failed or cancelled check
+/// deletes nothing.
 Future<void> confirmAndDeleteSession(
   BuildContext context,
   WidgetRef ref,
@@ -50,6 +52,8 @@ Future<void> confirmAndDeleteSession(
     ),
   );
   if (confirmed != true || !context.mounted) return;
+  if (!await requireReauth(context, reason: 'Delete this session')) return;
+  if (!context.mounted) return;
 
   final messenger = ScaffoldMessenger.of(context);
   final router = GoRouter.of(context);

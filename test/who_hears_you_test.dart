@@ -34,6 +34,26 @@ class _Journal extends JournalNotifier {
   }
 }
 
+class _OpeningJournal extends _Journal {
+  final entered =
+      <({bool autoStart, bool offTheRecord, bool openQuietly})>[];
+
+  @override
+  Future<NotebookTransitionResult> enterNotebook(
+    String notebookId, {
+    bool autoStart = false,
+    bool offTheRecord = false,
+    bool openQuietly = false,
+  }) async {
+    entered.add((
+      autoStart: autoStart,
+      offTheRecord: offTheRecord,
+      openQuietly: openQuietly,
+    ));
+    return const NotebookTransitionResult.success();
+  }
+}
+
 /// [read] decides the profile read; [marked] counts the RPC calls.
 class _Seen extends PrivacyScreenSeen {
   _Seen(this.read);
@@ -150,9 +170,16 @@ void main() {
     });
 
     testWidgets('lines for unshipped controls stay hidden', (t) async {
-      await _pumpScreen(t, const WhoHearsYouScreen());
+      await _pumpScreen(t, const WhoHearsYouScreen(shipped: {}));
       for (final line in gatedClaims.values) {
         expect(find.text(line), findsNothing);
+      }
+    });
+
+    testWidgets('the app shows every shipped control', (t) async {
+      await _pumpScreen(t, const WhoHearsYouScreen());
+      for (final line in gatedClaims.values) {
+        expect(find.text(line), findsOneWidget);
       }
     });
 
@@ -251,6 +278,71 @@ void main() {
       await _frames(t);
       expect(find.byType(WhoHearsYouScreen), findsNothing);
       expect(journal.starts, 1);
+    });
+  });
+
+  // A new notebook opens with Lumen by itself, so these go through the
+  // ?start=true entry, not the mic.
+  group('opening a new notebook', () {
+    Future<_OpeningJournal> pumpOpening(
+      WidgetTester tester,
+      Future<bool> Function() read,
+    ) async {
+      final journal = _OpeningJournal();
+      tester.view
+        ..physicalSize = const Size(402, 874)
+        ..devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            journalProvider.overrideWith(() => journal),
+            privacyScreenSeenProvider.overrideWith(() => _Seen(read)),
+          ],
+          child: MaterialApp(
+            theme: LumenTheme.light(),
+            home: const JournalScreen(
+              notebookId: 'nb-1',
+              autoStart: true,
+              offTheRecord: true,
+            ),
+          ),
+        ),
+      );
+      await _frames(tester);
+      return journal;
+    }
+
+    testWidgets('closing the screen opens it quietly, still off the record',
+        (t) async {
+      final journal = await pumpOpening(t, () async => false);
+      expect(find.byType(WhoHearsYouScreen), findsOneWidget);
+      expect(journal.entered, isEmpty, reason: 'nothing opens behind it');
+
+      await t.tap(find.byKey(const Key('privacyClose')));
+      await _frames(t);
+      expect(journal.entered, hasLength(1));
+      final entry = journal.entered.single;
+      expect(entry.autoStart, isFalse);
+      expect(entry.openQuietly, isTrue);
+      expect(entry.offTheRecord, isTrue);
+      expect(journal.starts, 0);
+    });
+
+    testWidgets('continuing starts it, off the record', (t) async {
+      final journal = await pumpOpening(t, () async => false);
+      await t.tap(find.byKey(const Key('privacyContinue')));
+      await _frames(t);
+      final entry = journal.entered.single;
+      expect(entry.autoStart, isTrue);
+      expect(entry.openQuietly, isFalse);
+      expect(entry.offTheRecord, isTrue);
+    });
+
+    testWidgets('already seen: no screen, it starts', (t) async {
+      final journal = await pumpOpening(t, () async => true);
+      expect(find.byType(WhoHearsYouScreen), findsNothing);
+      expect(journal.entered.single.openQuietly, isFalse);
     });
   });
 

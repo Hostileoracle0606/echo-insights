@@ -1,6 +1,7 @@
 // LM-50, off the record: end to end through the real JournalNotifier and
 // GeminiLiveClient. Only the socket, the microphone, the speaker, the token
 // source and the backends are fakes, and every backend write is counted.
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -468,6 +469,41 @@ void main() {
       reason: 'forgotten on leave',
     );
     expect(h.journal.offTheRecord, isFalse, reason: 'the next visit is on');
+  });
+
+  test('the only caller of redaction is the card pipeline', () {
+    // redact_forgotten_text runs inside close-session, so no card call in the
+    // tests above means no redaction call. Nothing on the device reaches it.
+    final callers = Directory('lib')
+        .listSync(recursive: true)
+        .whereType<File>()
+        .where((f) => f.path.endsWith('.dart'))
+        .where((f) => f.readAsStringSync().contains('redact_forgotten'));
+    expect(callers, isEmpty);
+  });
+
+  test('a new notebook can open without Lumen, and stays off the record',
+      () async {
+    final notebooks = _EndingNotebooks();
+    h = _Harness(supabase: notebooks);
+
+    final entered = await h.journal.enterNotebook(
+      _notebookId,
+      offTheRecord: true,
+      openQuietly: true,
+    );
+    await _settle();
+
+    expect(entered.succeeded, isTrue);
+    expect(h.sockets, isEmpty, reason: 'no session started');
+    expect(h.mic.starts, 0);
+    expect(h.journal.offTheRecord, isTrue);
+
+    final left = await h.journal.leaveNotebook();
+    await _settle();
+    expect(left.nothingSaved, isTrue);
+    expect(notebooks.deleted, [_notebookId]);
+    _expectNoWrites(h);
   });
 
   test('an old notebook visited off the record is left as it was', () async {

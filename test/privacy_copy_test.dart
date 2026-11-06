@@ -54,6 +54,23 @@ void main() {
     expect(page, contains(exportClaim));
     expect(page, contains(supabaseClaim));
     expect(page, contains(usClaim));
+    for (final line in gatedClaims.values) {
+      expect(page, contains(line));
+    }
+  });
+
+  // What the controls really do: transcripts keep the name, off the record
+  // still reaches Google, and auto-forget leaves cards and memory.
+  test('the shipped controls claim only what they do', () {
+    final forget = gatedClaims[PrivacyFeature.forgetPerson]!;
+    expect(forget, contains('transcripts keep what you said'));
+    expect(forget, contains('nickname'));
+    expect(forget, isNot(contains('leave your journal')));
+    expect(gatedClaims[PrivacyFeature.offTheRecord]!, contains('Google'));
+    expect(
+      gatedClaims[PrivacyFeature.autoForget]!,
+      contains('Cards and what Lumen remembers stay.'),
+    );
   });
 
   // LM-45: dashboard SQL is not reliably logged, so the control is a written
@@ -64,7 +81,7 @@ void main() {
     }
     expect(usClaim, contains('written log'));
     expect(usClaim, contains('security incident'));
-    expect(usClaim, contains('Nothing technically stops us'));
+    expect(usClaim, contains('Nothing technically stops us.'));
   });
 
   test('the export claim does not say everything', () {
@@ -74,9 +91,15 @@ void main() {
     expect(page, contains(exportClaim));
   });
 
-  test('flags ship off', () {
+  test('unverified claims stay off; the three controls are shipped', () {
     expect(paidTierVerified, isFalse);
     expect(supabaseEncryptionVerified, isFalse);
-    expect(shipped, isEmpty);
+    expect(shipped, PrivacyFeature.values.toSet());
+  });
+
+  test('the page has no wording the security review ruled out', () {
+    final page = File('src/routes/security.tsx').readAsStringSync();
+    expect(page, isNot(contains('rows from other accounts')));
+    expect(page, isNot(contains('stops us yet')));
   });
 }

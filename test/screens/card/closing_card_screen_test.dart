@@ -20,6 +20,8 @@ import 'package:lumen/providers/notebooks_provider.dart';
 import 'package:lumen/providers/opening_prep_provider.dart';
 import 'package:lumen/providers/supabase_provider.dart';
 import 'package:lumen/screens/card/closing_card_screen.dart';
+import 'package:lumen/security/app_lock.dart';
+import 'package:lumen/security/app_lock_provider.dart';
 import 'package:lumen/services/markdown_export.dart';
 import 'package:lumen/services/memory_control_service.dart';
 import 'package:lumen/services/notebook_commit_service.dart';
@@ -166,11 +168,25 @@ class _Harness {
 
 const _id = 'nb-1';
 
+class _Auth implements LockAuthenticator {
+  _Auth({this.passes = true});
+  bool passes;
+  int prompts = 0;
+  @override
+  Future<bool> isAvailable() async => true;
+  @override
+  Future<bool> authenticate(String reason) async {
+    prompts += 1;
+    return passes;
+  }
+}
+
 Future<_Harness> _pump(
   WidgetTester tester, {
   _FakeCards? cards,
   _FakeCommits? commits,
   Future<void> Function(MarkdownVault vault)? share,
+  _Auth? auth,
 }) async {
   tester.view
     ..physicalSize = const Size(402, 874)
@@ -214,6 +230,7 @@ Future<_Harness> _pump(
         memoryControlServiceProvider.overrideWithValue(memory),
         sessionDeletionServiceProvider.overrideWithValue(deletion),
         openingPrepProvider.overrideWithValue(prep),
+        lockAuthenticatorProvider.overrideWithValue(auth ?? _Auth()),
         notebooksProvider.overrideWith((ref) {
           notebookLoads.add(notebookLoads.length);
           return [];
@@ -633,6 +650,21 @@ void main() {
       expect(h.prep.refreshes, 1);
       expect(h.notebookLoads.length, greaterThan(loadsBefore),
           reason: 'the notebook list was invalidated');
+      await _unmount(tester);
+    });
+
+    testWidgets('a failed re-auth deletes nothing and stays on the card',
+        (tester) async {
+      final auth = _Auth(passes: false);
+      final h = await _pump(tester, auth: auth);
+
+      await openDialog(tester);
+      await tester.tap(find.text('Delete'));
+      await _frames(tester);
+
+      expect(auth.prompts, 1);
+      expect(h.deletion.deleted, isEmpty);
+      expect(h.location, '/notebook/$_id/card');
       await _unmount(tester);
     });
 

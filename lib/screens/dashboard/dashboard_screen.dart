@@ -47,7 +47,7 @@ class DashboardScreen extends ConsumerWidget {
     return Stack(
       children: [
         _page(context, ref),
-        // App lock and quiet mode.
+        // The one way into privacy: app lock, quiet mode, transcripts, export.
         const Positioned(
           top: 0,
           right: 8,
@@ -99,26 +99,6 @@ class DashboardScreen extends ConsumerWidget {
                 RetentionOffer(
                   completedSessions:
                       list.where((nb) => nb.endedAt != null).length,
-                ),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: Padding(
-                    padding: const EdgeInsets.only(right: 10),
-                    child: IconButton(
-                      key: const Key('privacySettingsButton'),
-                      tooltip: 'Transcript privacy',
-                      constraints: const BoxConstraints.tightFor(
-                        width: 44,
-                        height: 44,
-                      ),
-                      icon: Icon(
-                        Icons.lock_outline,
-                        size: 20,
-                        color: colors.mutedForeground,
-                      ),
-                      onPressed: () => showTranscriptRetentionSheet(context),
-                    ),
-                  ),
                 ),
                 _AnimatedHero(
                   greeting: greeting,

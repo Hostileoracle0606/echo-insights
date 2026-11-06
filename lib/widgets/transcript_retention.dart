@@ -9,8 +9,8 @@ import '../theme/lumen_text.dart';
 
 String retentionLabel(int? days) => days == null ? 'Forever' : '$days days';
 
-/// "Keep transcripts for…" (LM-51): the choice sheet, used from the
-/// dashboard's settings button and for the one-time offer.
+/// "Keep transcripts for…" (LM-51): the sheet for the one-time offer. The
+/// same choices sit in the privacy sheet ([TranscriptRetentionChoices]).
 Future<void> showTranscriptRetentionSheet(
   BuildContext context, {
   bool markOffered = false,
@@ -62,15 +62,9 @@ class TranscriptRetentionSheet extends ConsumerStatefulWidget {
 
 class _TranscriptRetentionSheetState
     extends ConsumerState<TranscriptRetentionSheet> {
-  bool _loaded = false;
-  bool _saving = false;
-  bool _failed = false;
-  int? _selected;
-
   @override
   void initState() {
     super.initState();
-    _load();
     if (widget.markOffered) {
       // After the sheet has been built and is on screen.
       WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -81,6 +75,75 @@ class _TranscriptRetentionSheetState
         }
       });
     }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.lumenColors;
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(22, 22, 22, 18),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Keep transcripts for…',
+              style: Theme.of(context)
+                  .textTheme
+                  .titleLarge
+                  ?.copyWith(fontSize: 20),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Cards and what Lumen remembers stay.',
+              style: TextStyle(
+                fontFamily: LumenText.sansFontFamily,
+                fontSize: 14,
+                height: 1.45,
+                color: colors.mutedForeground,
+              ),
+            ),
+            const SizedBox(height: 12),
+            const TranscriptRetentionChoices(),
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                style: const ButtonStyle(
+                  minimumSize: WidgetStatePropertyAll(Size(44, 44)),
+                ),
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Done'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Forever / 90 / 30 / 7 days: reads the current setting and saves a choice.
+class TranscriptRetentionChoices extends ConsumerStatefulWidget {
+  const TranscriptRetentionChoices({super.key});
+
+  @override
+  ConsumerState<TranscriptRetentionChoices> createState() =>
+      _TranscriptRetentionChoicesState();
+}
+
+class _TranscriptRetentionChoicesState
+    extends ConsumerState<TranscriptRetentionChoices> {
+  bool _loaded = false;
+  bool _saving = false;
+  bool _failed = false;
+  int? _selected;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
   }
 
   Future<void> _load() async {
@@ -125,64 +188,30 @@ class _TranscriptRetentionSheetState
   @override
   Widget build(BuildContext context) {
     final colors = context.lumenColors;
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(22, 22, 22, 18),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Keep transcripts for…',
-              style: Theme.of(context)
-                  .textTheme
-                  .titleLarge
-                  ?.copyWith(fontSize: 20),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (final days in transcriptRetentionChoices)
+          _Option(
+            days: days,
+            selected: _loaded && !_failed && days == _selected,
+            enabled: _loaded && !_saving,
+            onTap: () => _choose(days),
+            colors: colors,
+          ),
+        if (_failed) ...[
+          const SizedBox(height: 8),
+          Text(
+            "Couldn't save that. Try again.",
+            style: TextStyle(
+              fontFamily: LumenText.sansFontFamily,
+              fontSize: 13,
+              color: colors.destructive,
             ),
-            const SizedBox(height: 8),
-            Text(
-              'Cards and what Lumen remembers stay.',
-              style: TextStyle(
-                fontFamily: LumenText.sansFontFamily,
-                fontSize: 14,
-                height: 1.45,
-                color: colors.mutedForeground,
-              ),
-            ),
-            const SizedBox(height: 12),
-            for (final days in transcriptRetentionChoices)
-              _Option(
-                days: days,
-                selected: _loaded && !_failed && days == _selected,
-                enabled: _loaded && !_saving,
-                onTap: () => _choose(days),
-                colors: colors,
-              ),
-            if (_failed) ...[
-              const SizedBox(height: 8),
-              Text(
-                "Couldn't save that. Try again.",
-                style: TextStyle(
-                  fontFamily: LumenText.sansFontFamily,
-                  fontSize: 13,
-                  color: colors.destructive,
-                ),
-              ),
-            ],
-            const SizedBox(height: 8),
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton(
-                style: const ButtonStyle(
-                  minimumSize: WidgetStatePropertyAll(Size(44, 44)),
-                ),
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('Done'),
-              ),
-            ),
-          ],
-        ),
-      ),
+          ),
+        ],
+      ],
     );
   }
 }

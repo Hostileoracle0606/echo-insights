@@ -83,6 +83,16 @@ Future<void> _pumpDashboard(
   }
 }
 
+/// The one way in: the privacy button, then the transcripts row.
+Future<void> _openRetention(WidgetTester tester) async {
+  await tester.tap(find.byKey(const Key('privacyButton')));
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 400));
+  await tester.tap(find.byKey(const Key('transcriptRetentionTile')));
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 400));
+}
+
 void main() {
   test('offer is due from the third finished session, once', () {
     expect(shouldOfferRetention(completedSessions: 2, alreadyOffered: false),
@@ -149,14 +159,36 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
+  testWidgets('privacy has one way in, and its sheet holds every setting',
+      (tester) async {
+    await _pumpDashboard(tester, _Fake(null, offered: true), [
+      _nb(0, done: true),
+    ]);
+    expect(find.byKey(const Key('privacyButton')), findsOneWidget);
+    expect(find.byTooltip('Privacy'), findsOneWidget);
+    expect(find.byTooltip('Transcript privacy'), findsNothing);
+    expect(find.byIcon(Icons.lock_outline), findsNothing);
+
+    await tester.tap(find.byKey(const Key('privacyButton')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    for (final key in [
+      'appLockSwitch',
+      'quietModeSwitch',
+      'transcriptRetentionTile',
+      'exportJournalTile',
+    ]) {
+      expect(find.byKey(Key(key)), findsOneWidget, reason: key);
+    }
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('a choice goes through the setter; the current one is marked',
       (tester) async {
     final fake = _Fake(90, offered: true);
     await _pumpDashboard(tester, fake, [_nb(0, done: true)]);
 
-    await tester.tap(find.byKey(const Key('privacySettingsButton')));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 400));
+    await _openRetention(tester);
     expect(find.text('Keep transcripts for…'), findsOneWidget);
     expect(find.byIcon(Icons.check), findsOneWidget);
 
@@ -178,9 +210,7 @@ void main() {
     final fake = _Fake(30, offered: true)..failSet = true;
     await _pumpDashboard(tester, fake, [_nb(0, done: true)]);
 
-    await tester.tap(find.byKey(const Key('privacySettingsButton')));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 400));
+    await _openRetention(tester);
     await tester.tap(find.byKey(const Key('retention-7')));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));

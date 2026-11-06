@@ -147,8 +147,11 @@ class _JournalScreenState extends ConsumerState<JournalScreen>
       final result = await notifier.enterNotebook(
         id,
         autoStart: autoStart && go,
-        // Closing the screen cancels the start, not the choice: the session
-        // stays off the record if the user then starts it by hand.
+        // A new notebook opens with Lumen by itself, so closing the screen
+        // has to say so; `autoStart: false` alone would still go live.
+        openQuietly: !go,
+        // Closing cancels the start, not the choice: the session stays off
+        // the record if the user then starts it by hand.
         offTheRecord: widget.offTheRecord,
       );
       if (!mounted || widget.notebookId != id) return;
@@ -517,25 +520,10 @@ class _JournalScreenState extends ConsumerState<JournalScreen>
                 ),
               ),
             ),
-            if (quietSilenced)
-              Positioned(
-                // Below the off-the-record indicator when both show.
-                top: insets.top + 64 + (offTheRecord ? 64 : 0),
-                left: 16,
-                right: 16,
-                child: Text(
-                  'Quiet mode: connect headphones to hear Lumen',
-                  key: const Key('quietModeNote'),
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontFamily: LumenText.sansFontFamily,
-                    fontSize: 12,
-                    color: context.lumenColors.mutedForeground,
-                  ),
-                ),
-              ),
-            // Over both views: the user always knows nothing is being kept.
-            if (offTheRecord)
+            // Stacked, so the two can't overlap at any text size. The
+            // indicator is over both views: the user always knows nothing is
+            // being kept.
+            if (offTheRecord || quietSilenced)
               Positioned(
                 top: 0,
                 left: 0,
@@ -543,9 +531,29 @@ class _JournalScreenState extends ConsumerState<JournalScreen>
                 child: SafeArea(
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(16, 64, 16, 0),
-                    child: Align(
-                      alignment: Alignment.topLeft,
-                      child: OffTheRecordIndicator(earlierSaved: earlierSaved),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (offTheRecord)
+                          OffTheRecordIndicator(earlierSaved: earlierSaved),
+                        if (offTheRecord && quietSilenced)
+                          const SizedBox(height: 8),
+                        if (quietSilenced)
+                          SizedBox(
+                            width: double.infinity,
+                            child: Text(
+                              'Quiet mode: connect headphones to hear Lumen',
+                              key: const Key('quietModeNote'),
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontFamily: LumenText.sansFontFamily,
+                                fontSize: 12,
+                                color: context.lumenColors.mutedForeground,
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
                   ),
                 ),
