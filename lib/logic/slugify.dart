@@ -1,7 +1,12 @@
 // Letters and digits of other scripts stay, so प्रिया, Иван and 李雷 get a stable
 // id. Latin letters outside a-z, and combining marks, are separators as they
-// always were: ids of existing Latin names don't change. Same rule as
-// slugify() in src/lib/journal-store.ts and _slugify in the database.
+// always were: ids of existing Latin names don't change.
+//
+// Close to slugify() in src/lib/journal-store.ts and _slugify in the database,
+// but not the same: those decompose first, which Dart can't. So й, Greek
+// accents, Hangul, voiced kana and ễ give different ids here, and the web
+// differs from the database on voiced kana. Two clients can give one person
+// two ids; forget_entity and the commit also compare the name's database slug.
 final _slugSeparators = RegExp(
   r'(?:(?![a-z0-9])(?:[^\p{L}\p{M}\p{N}]|\p{Script=Latin}|\p{Script=Inherited}))+',
   unicode: true,

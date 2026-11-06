@@ -141,6 +141,17 @@ void main() {
     expect(opened.journal.forgotten, isEmpty);
   });
 
+  testWidgets('it says what stays, and that Lumen can still read it',
+      (tester) async {
+    await _open(tester);
+    await _toConfirmation(tester);
+    expect(find.textContaining('Priya on your map'), findsOneWidget);
+    expect(find.textContaining("Lumen's memory of"), findsNothing);
+    expect(find.textContaining('a first name alone can slip through'),
+        findsOneWidget);
+    expect(find.textContaining('Lumen can still read those'), findsOneWidget);
+  });
+
   testWidgets('the brief line is left out when nothing will be deleted',
       (tester) async {
     await _open(tester, preview: {..._counts, 'briefDeleted': false});

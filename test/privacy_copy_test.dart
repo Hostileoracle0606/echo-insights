@@ -69,6 +69,8 @@ void main() {
   test('the shipped controls claim only what they do', () {
     final forget = gatedClaims[PrivacyFeature.forgetPerson]!;
     expect(forget, contains('transcripts keep what you said'));
+    expect(forget, contains('Lumen can still read your past conversations'));
+    expect(forget, contains('it may bring the name up'));
     expect(forget, contains('a nickname or a first name alone'));
     expect(forget, isNot(contains('leave your journal')));
     expect(gatedClaims[PrivacyFeature.offTheRecord]!, contains('Google'));

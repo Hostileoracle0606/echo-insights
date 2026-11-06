@@ -111,7 +111,7 @@ class _ForgetEntityScreenState extends ConsumerState<ForgetEntityScreen> {
     String n(int count, String one, String many) =>
         '$count ${count == 1 ? one : many}';
     return [
-      'Lumen\'s memory of $name, in ${n(p.notebooks, 'conversation', 'conversations')}',
+      '$name on your map, in ${n(p.notebooks, 'conversation', 'conversations')}',
       if (p.relations > 0)
         n(p.relations, 'connection to something else',
             'connections to other things'),
@@ -150,7 +150,8 @@ class _ForgetEntityScreenState extends ConsumerState<ForgetEntityScreen> {
         Text(
           "Lumen won't add $name back if you use that name later. A nickname "
           'or a first name alone can slip through. '
-          'What you said stays in your past conversations.',
+          'What you said stays in your past conversations. Lumen can still '
+          'read those, so it may bring the name up.',
           style: TextStyle(fontSize: 13, height: 1.4, color: colors.mutedForeground),
         ),
         if (_failed) ...[
