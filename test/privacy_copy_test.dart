@@ -59,12 +59,17 @@ void main() {
     }
   });
 
+  test('the cache line does not promise an exact expiry', () {
+    expect(awsClaim, contains('about a week'));
+    expect(awsClaim, isNot(contains('7 days')));
+  });
+
   // What the controls really do: transcripts keep the name, off the record
   // still reaches Google, and auto-forget leaves cards and memory.
   test('the shipped controls claim only what they do', () {
     final forget = gatedClaims[PrivacyFeature.forgetPerson]!;
     expect(forget, contains('transcripts keep what you said'));
-    expect(forget, contains('nickname'));
+    expect(forget, contains('a nickname or a first name alone'));
     expect(forget, isNot(contains('leave your journal')));
     expect(gatedClaims[PrivacyFeature.offTheRecord]!, contains('Google'));
     expect(

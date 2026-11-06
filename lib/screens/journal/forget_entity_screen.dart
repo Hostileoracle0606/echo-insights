@@ -148,7 +148,8 @@ class _ForgetEntityScreenState extends ConsumerState<ForgetEntityScreen> {
           ),
         const SizedBox(height: 16),
         Text(
-          "Lumen won't add $name back in later conversations. "
+          "Lumen won't add $name back if you use that name later. A nickname "
+          'or a first name alone can slip through. '
           'What you said stays in your past conversations.',
           style: TextStyle(fontSize: 13, height: 1.4, color: colors.mutedForeground),
         ),

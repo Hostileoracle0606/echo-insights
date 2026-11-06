@@ -46,7 +46,7 @@ const awsClaim =
     'Amazon Web Services runs the processing behind Lumen. It handles the '
     'text of your conversations while that work happens, and keeps the '
     'people, places and notes it pulls out of each turn in a cache for '
-    '7 days.';
+    'about a week.';
 
 const reachClaim =
     'The companies running these services can in principle reach data on '
@@ -82,11 +82,12 @@ const exportClaim =
 /// the `shipped` set passed to the screen.
 const Map<PrivacyFeature, String> gatedClaims = {
   PrivacyFeature.forgetPerson:
-      "You can forget a person from their page. They leave your map and the "
-      "questions Lumen would ask, their name is replaced in your cards, and "
-      "mentioning them later doesn't bring them back. Lumen matches by name, "
-      'so a nickname can slip through, and your saved transcripts keep what '
-      'you said.',
+      'You can forget a person from their page. They leave your map and the '
+      'questions Lumen would ask, and their name is replaced in your cards '
+      "and in what Lumen remembers about others. Mentioning that name later "
+      "doesn't bring them back. Lumen matches the name they were saved under, "
+      'so a nickname or a first name alone can slip through, and your saved '
+      'transcripts keep what you said.',
   PrivacyFeature.offTheRecord:
       "Off the record: Lumen doesn't save what you say while it is on, and "
       'writes no card from it. Your voice still goes to Google so Lumen can '
