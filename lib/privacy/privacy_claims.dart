@@ -31,17 +31,29 @@ String googleClaim({bool verified = paidTierVerified}) => verified
         'with you.';
 
 const googleDetail =
-    'Your voice goes live while you talk. Afterwards the text of what was '
-    'said goes too, to pick out people and places, to write your cards and '
-    'briefs, and to speak the line Lumen opens with.';
+    'While you talk, your voice goes to Google live. What Lumen tells Google '
+    'can also carry things you said in earlier conversations and your '
+    'opening brief, so earlier journal content goes to Google during a '
+    'conversation. The text of each turn is sent as you go, to pick out '
+    'people and places. When a conversation ends, its text goes again to '
+    'write your cards and briefs and to speak the line Lumen opens with.';
 
 const awsClaim =
     'Amazon Web Services runs the processing behind Lumen. It handles the '
-    'text of your conversations briefly while that work happens.';
+    'text of your conversations while that work happens, and keeps the '
+    'people, places and notes it pulls out of each turn in a cache for '
+    '7 days.';
+
+const reachClaim =
+    'The companies running these services can in principle reach data on '
+    'their own systems, and backups can outlive a delete for a limited '
+    'time.';
 
 const supabaseClaim =
     'Supabase stores your journal: your conversations, cards and the map of '
-YY
+    "people and places. It isn't encrypted with a key only you hold, so the "
+    'people with admin access to the database could technically read it. A '
+    'written rule limits that access.';
 
 const supabaseEncryptedClaim =
     "Your journal is encrypted on Supabase's servers.";

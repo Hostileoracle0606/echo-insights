@@ -67,6 +67,9 @@ class _JournalScreenState extends ConsumerState<JournalScreen>
   );
   bool _leaving = false;
 
+  // True while "Who hears you" is being decided or shown (see _privacyGate).
+  bool _gating = false;
+
   // The composer fills the pill while the user types; the mic stays paused
   // until its own mic button switches back to voice.
   bool _composing = false;
@@ -176,11 +179,19 @@ class _JournalScreenState extends ConsumerState<JournalScreen>
   /// to go on. Nothing is shown (and nothing waits) once it has been seen, or
   /// when the profile read failed: privacy copy never blocks the mic.
   Future<bool> _privacyGate() async {
-    if (!await shouldShowPrivacyScreen(ref)) return true;
-    if (!mounted) return false;
-    // Recorded as soon as it is shown, so closing it still counts as seen.
-    unawaited(ref.read(privacyScreenSeenProvider.notifier).markSeen());
-    return showWhoHearsYou(context, firstTime: true);
+    // A second tap while the first is still waiting on the read or showing
+    // the screen must not stack another one; it does nothing.
+    if (_gating) return false;
+    _gating = true;
+    try {
+      if (!await shouldShowPrivacyScreen(ref)) return true;
+      if (!mounted) return false;
+      // Recorded as soon as it is shown, so closing it still counts as seen.
+      unawaited(ref.read(privacyScreenSeenProvider.notifier).markSeen());
+      return await showWhoHearsYou(context, firstTime: true);
+    } finally {
+      _gating = false;
+    }
   }
 
   Future<void> _toggleMic(SessionStatus status) async {

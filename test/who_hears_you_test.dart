@@ -118,6 +118,8 @@ void main() {
       expect(find.text(usClaim), findsOneWidget);
       expect(find.text(phoneClaim), findsOneWidget);
       expect(find.text(exportClaim), findsOneWidget);
+      expect(find.text(reachClaim), findsOneWidget);
+      expect(find.textContaining('everyone'), findsNothing);
       // Not the first time: no start button.
       expect(find.byKey(const Key('privacyContinue')), findsNothing);
     });
@@ -210,6 +212,25 @@ void main() {
       expect(find.byType(WhoHearsYouScreen), findsNothing);
       expect(journal.starts, 1);
       expect(seen.marked, 0);
+    });
+
+    testWidgets('a second tap during the read stacks no second screen',
+        (t) async {
+      final read = Completer<bool>();
+      final (journal, seen) = await _pumpJournal(t, () => read.future);
+      await t.tap(find.bySemanticsLabel('Microphone'));
+      await t.pump();
+      await t.tap(find.bySemanticsLabel('Microphone'));
+      await t.pump();
+      read.complete(false);
+      await _frames(t);
+      expect(find.byType(WhoHearsYouScreen), findsOneWidget);
+      expect(seen.marked, 1);
+
+      await t.tap(find.byKey(const Key('privacyContinue')));
+      await _frames(t);
+      expect(find.byType(WhoHearsYouScreen), findsNothing);
+      expect(journal.starts, 1);
     });
 
     testWidgets('a failed profile read does not block the mic', (t) async {

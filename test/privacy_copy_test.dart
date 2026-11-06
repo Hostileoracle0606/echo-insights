@@ -47,7 +47,11 @@ void main() {
   test('the web page repeats the iOS Google line word for word', () {
     final page = File('src/routes/security.tsx').readAsStringSync();
     expect(page, contains(googleClaim(verified: false)));
+    expect(page, contains(googleDetail));
     expect(page, contains(awsClaim));
+    expect(page, contains(reachClaim));
+    expect(page, contains(phoneClaim));
+    expect(page, contains(exportClaim));
     expect(page, contains(supabaseClaim));
     expect(page, contains(usClaim));
   });

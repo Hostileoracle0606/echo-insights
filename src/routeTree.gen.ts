@@ -82,7 +82,13 @@ export interface FileRouteTypes {
     | '/auth/login'
     | '/auth/signup'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/dock-preview' | '/security' | '/auth/callback' | '/auth/login' | '/auth/signup'
+  to:
+    | '/'
+    | '/dock-preview'
+    | '/security'
+    | '/auth/callback'
+    | '/auth/login'
+    | '/auth/signup'
   id:
     | '__root__'
     | '/'

@@ -21,13 +21,13 @@ const PARTIES: { name: string; lines: string[] }[] = [
     name: "Google",
     lines: [
       "Lumen sends your voice and text to Google's Gemini service to talk with you.",
-      "Your voice goes live while you talk. Afterwards the text of what was said goes too, to pick out people and places, to write your cards and briefs, and to speak the line Lumen opens with.",
+      "While you talk, your voice goes to Google live. What Lumen tells Google can also carry things you said in earlier conversations and your opening brief, so earlier journal content goes to Google during a conversation. The text of each turn is sent as you go, to pick out people and places. When a conversation ends, its text goes again to write your cards and briefs and to speak the line Lumen opens with.",
     ],
   },
   {
     name: "Amazon Web Services",
     lines: [
-      "Amazon Web Services runs the processing behind Lumen. It handles the text of your conversations briefly while that work happens.",
+      "Amazon Web Services runs the processing behind Lumen. It handles the text of your conversations while that work happens, and keeps the people, places and notes it pulls out of each turn in a cache for 7 days.",
     ],
   },
   {
@@ -52,10 +52,13 @@ const PARTIES: { name: string; lines: string[] }[] = [
   {
     name: "Anyone holding your phone",
     lines: [
-      "Anyone who can unlock your phone and open Lumen can read your journal. In the iPhone app, App lock asks for Face ID or your passcode first. You can turn it on under Privacy.",
+      "Anyone who can unlock your phone and open Lumen can read your journal. App lock asks for Face ID or your passcode first. You can turn it on under Privacy.",
     ],
   },
 ];
+
+const REACH =
+  "The companies running these services can in principle reach data on their own systems, and backups can outlive a delete for a limited time.";
 
 const CONTROLS: string[] = [
   "App lock (iPhone): Face ID or your passcode when Lumen opens and after it has been in the background for 5 minutes.",
@@ -69,9 +72,10 @@ function SecurityPage() {
     <main className="mx-auto max-w-2xl px-4 py-12">
       <h1 className="text-4xl font-display text-foreground">Security and privacy</h1>
       <p className="mt-4 text-base text-muted-foreground">
-        Your journal is yours. Here is everyone who sees any of it, what they see, and the controls
-        you have. This page says only what is true today.
+        Your journal is yours. Here are the services that handle it, what each one sees, and the
+        controls you have. This page says only what is true today.
       </p>
+      <p className="mt-4 text-base text-foreground">{REACH}</p>
 
       <h2 className="mt-10 text-2xl font-display text-foreground">Who hears you</h2>
       {PARTIES.map((party) => (

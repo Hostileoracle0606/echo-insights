@@ -77,10 +77,12 @@ class WhoHearsYouScreen extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
           children: [
             Text(
-              'Your journal is yours. Here is everyone who sees any of it, '
-              'and what they see.',
+              'Your journal is yours. Here are the services that handle it, '
+              'and what each one sees.',
               style: body,
             ),
+            const SizedBox(height: 8),
+            Text(claims.reachClaim, style: body),
             const SizedBox(height: 20),
             _Party(
               keyName: 'google',
