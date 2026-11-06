@@ -18,10 +18,11 @@
 -- names, descriptions, metadata, questions and relation metadata are redacted.
 -- forget_entity does the same to the user's existing rows.
 --
--- I3. Names with no Latin letters. _slugify keeps other scripts (same rule as
--- slugify() in lib/logic/slugify.dart and src/lib/journal-store.ts, whose ids
--- for Latin names do not change), and forget_entity hashes each name's slug as
--- well as the id, so an older random `e-<millis>` id still redacts. Words are
+-- I3. Names with no Latin letters. _slugify keeps other scripts, as slugify()
+-- does in lib/logic/slugify.dart and src/lib/journal-store.ts (ids for Latin
+-- names do not change). The three are not identical; 20261104000900 covers the
+-- differences. forget_entity hashes each name's slug as well as the id, so an
+-- older random `e-<millis>` id still redacts. Words are
 -- split on an explicit list of gaps because [[:alnum:]] breaks Devanagari at
 -- its combining marks. Scripts written without spaces (Chinese, Japanese,
 -- Thai) and Korean, which attaches particles, are also searched inside each

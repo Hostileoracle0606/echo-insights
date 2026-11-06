@@ -196,7 +196,7 @@ select throws_ok($$ select public.redact_forgotten_text(repeat('a', 2097153)) $$
   '22023', null, 'one byte over is refused');
 
 -- ── private ────────────────────────────────────────────────────────────────
-select throws_ok($$ select public._redact_text('x', '\x00'::bytea, '{}', false) $$,
+select throws_ok($$ select public._redact_text('x', '\x00'::bytea, '{}', false, 1) $$,
   '42501', null, 'the matcher is not callable by users');
 select throws_ok($$ select public._forgotten_ids('11111111-1111-1111-1111-111111111111', '{x}') $$,
   '42501', null, 'nor the forgotten-id check');
