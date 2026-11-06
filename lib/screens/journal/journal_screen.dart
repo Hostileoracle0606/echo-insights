@@ -22,6 +22,7 @@ import 'graph_canvas.dart';
 import 'graph_drawer.dart';
 import 'journal_top_bar.dart';
 import 'lumen_joining.dart';
+import 'off_the_record_indicator.dart';
 import 'transcript_page.dart';
 import 'voice_dock.dart';
 
@@ -31,6 +32,9 @@ class JournalScreen extends ConsumerStatefulWidget {
   // created via the dashboard's "New notebook" button) has finished loading.
   final bool autoStart;
 
+  /// Opened off the record (chosen before starting, LM-50).
+  final bool offTheRecord;
+
   // When true (`?compose=true`, Type on the closing card), opens the
   // composer once the notebook has loaded.
   final bool compose;
@@ -39,6 +43,7 @@ class JournalScreen extends ConsumerStatefulWidget {
     super.key,
     this.notebookId,
     this.autoStart = false,
+    this.offTheRecord = false,
     this.compose = false,
   });
 
@@ -139,8 +144,13 @@ class _JournalScreenState extends ConsumerState<JournalScreen>
       // screen as the mic. Closing it opens the notebook without starting.
       final go = (autoStart || compose) ? await _privacyGate() : true;
       if (!mounted || widget.notebookId != id) return;
-      final result =
-          await notifier.enterNotebook(id, autoStart: autoStart && go);
+      final result = await notifier.enterNotebook(
+        id,
+        autoStart: autoStart && go,
+        // Closing the screen cancels the start, not the choice: the session
+        // stays off the record if the user then starts it by hand.
+        offTheRecord: widget.offTheRecord,
+      );
       if (!mounted || widget.notebookId != id) return;
       if (result.succeeded) {
         if (go && (autoStart || compose)) await _keepGoing(compose: compose);
@@ -269,12 +279,33 @@ class _JournalScreenState extends ConsumerState<JournalScreen>
     final result = await ref.read(journalProvider.notifier).leaveNotebook();
     if (!mounted) return;
     if (result.succeeded) {
+      if (result.nothingSaved) {
+        // Off the record and nothing kept: no closing card to show.
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Nothing saved')),
+        );
+        context.go('/dashboard');
+        return;
+      }
       final id = widget.notebookId;
       context.go(id == null ? '/dashboard' : '/notebook/$id/card');
       return;
     }
     setState(() => _leaving = false);
     _showTransitionError(result);
+  }
+
+  void _toggleOffTheRecord(bool on) {
+    unawaited(HapticFeedback.selectionClick());
+    // Read before the switch moves, so the note describes what was saved.
+    final earlierSaved = ref.read(hasSavedTurnsProvider);
+    ref.read(journalProvider.notifier).setOffTheRecord(!on);
+    final note = on
+        ? onTheRecordNote
+        : 'Off the record. ${offTheRecordNote(earlierSaved: earlierSaved)}';
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(note)));
   }
 
   void _showTransitionError(NotebookTransitionResult result) {
@@ -411,6 +442,8 @@ class _JournalScreenState extends ConsumerState<JournalScreen>
     final reconnecting = ref.watch(reconnectingProvider);
     final awaitingReply = ref.watch(awaitingReplyProvider);
     final joining = ref.watch(joiningPhaseProvider);
+    final offTheRecord = ref.watch(offTheRecordProvider);
+    final earlierSaved = ref.watch(hasSavedTurnsProvider);
     final turns =
         ref.watch(transcriptRowsProvider).map(_toTurn).toList(growable: false);
     final terms = _termsFor(state.entities);
@@ -458,7 +491,7 @@ class _JournalScreenState extends ConsumerState<JournalScreen>
                 entrance: _page,
                 liveSpeaker: liveSpeaker,
                 lumenMulling: awaitingReply,
-                topInset: insets.top + 68,
+                topInset: insets.top + 68 + (offTheRecord ? 64 : 0),
                 // Dock (~108) + its lift + a breath.
                 bottomInset: dockBottom + 108 + 8,
               ),
@@ -478,13 +511,16 @@ class _JournalScreenState extends ConsumerState<JournalScreen>
                     muted: muted,
                     onMuteTap: () =>
                         ref.read(journalProvider.notifier).toggleMute(),
+                    offTheRecord: offTheRecord,
+                    onOffTheRecordTap: () => _toggleOffTheRecord(offTheRecord),
                   ),
                 ),
               ),
             ),
             if (quietSilenced)
               Positioned(
-                top: insets.top + 64,
+                // Below the off-the-record indicator when both show.
+                top: insets.top + 64 + (offTheRecord ? 64 : 0),
                 left: 16,
                 right: 16,
                 child: Text(
@@ -495,6 +531,22 @@ class _JournalScreenState extends ConsumerState<JournalScreen>
                     fontFamily: LumenText.sansFontFamily,
                     fontSize: 12,
                     color: context.lumenColors.mutedForeground,
+                  ),
+                ),
+              ),
+            // Over both views: the user always knows nothing is being kept.
+            if (offTheRecord)
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: SafeArea(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 64, 16, 0),
+                    child: Align(
+                      alignment: Alignment.topLeft,
+                      child: OffTheRecordIndicator(earlierSaved: earlierSaved),
+                    ),
                   ),
                 ),
               ),
@@ -549,7 +601,12 @@ class _JournalScreenState extends ConsumerState<JournalScreen>
                 right: 0,
                 child: SafeArea(
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 68, 16, 0),
+                    padding: EdgeInsets.fromLTRB(
+                      16,
+                      68 + (offTheRecord ? 64 : 0),
+                      16,
+                      0,
+                    ),
                     child: LumenJoinFailedBanner(
                       onRetry: _retryJoining,
                       onOpenWithoutVoice: () => unawaited(

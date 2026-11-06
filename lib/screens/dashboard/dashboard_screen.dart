@@ -352,7 +352,7 @@ class _NewNotebookButton extends ConsumerStatefulWidget {
 class _NewNotebookButtonState extends ConsumerState<_NewNotebookButton> {
   bool _creating = false;
 
-  Future<void> _createAndOpen() async {
+  Future<void> _createAndOpen({bool offTheRecord = false}) async {
     if (_creating) return;
     setState(() => _creating = true);
 
@@ -375,12 +375,36 @@ class _NewNotebookButtonState extends ConsumerState<_NewNotebookButton> {
     }
 
     // Fresh notebook: hand off straight into a live recording session.
-    context.go('/notebook/${notebook.id}?start=true');
+    context.go('/notebook/${notebook.id}?start=true'
+        '${offTheRecord ? '&offrecord=true' : ''}');
   }
 
   @override
   Widget build(BuildContext context) {
     final colors = widget.colors;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _primary(colors),
+        // Chosen before starting (LM-50): nothing in it is saved.
+        TextButton(
+          key: const Key('newOffTheRecordButton'),
+          onPressed:
+              _creating ? null : () => _createAndOpen(offTheRecord: true),
+          child: Text(
+            'Start off the record',
+            style: TextStyle(
+              fontFamily: LumenText.sansFontFamily,
+              fontSize: 13,
+              color: colors.mutedForeground,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _primary(LumenColors colors) {
     return Material(
       color: colors.ink,
       borderRadius: BorderRadius.circular(_displayCornerRadius),

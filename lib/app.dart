@@ -32,6 +32,7 @@ final List<RouteBase> appRoutes = [
       notebookId: state.pathParameters['id'],
       autoStart: state.uri.queryParameters['start'] == 'true',
       compose: state.uri.queryParameters['compose'] == 'true',
+      offTheRecord: state.uri.queryParameters['offrecord'] == 'true',
     ),
   ),
   // A sibling, not a child of /notebook/:id: as a child the JournalScreen

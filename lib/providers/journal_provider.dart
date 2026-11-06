@@ -51,15 +51,21 @@ enum SessionStatus { idle, connecting, live, paused, ending, error }
 enum JoiningPhase { none, joining, failed }
 
 class NotebookTransitionResult {
-  const NotebookTransitionResult._(this.succeeded, [this.message]);
+  const NotebookTransitionResult._(this.succeeded,
+      [this.message, this.nothingSaved = false]);
 
-  const NotebookTransitionResult.success() : this._(true);
+  const NotebookTransitionResult.success({bool nothingSaved = false})
+      : this._(true, null, nothingSaved);
 
   const NotebookTransitionResult.failure(String message)
       : this._(false, message);
 
   final bool succeeded;
   final String? message;
+
+  /// Leaving an off-the-record session that saved nothing (LM-50): there is
+  /// no closing card to show.
+  final bool nothingSaved;
 }
 
 /// Milliseconds to wait for an authoritative transcript after turn completion.
@@ -146,6 +152,12 @@ class JournalNotifier extends Notifier<JournalState> {
   final Set<String> _savedTurnIds = {};
   DateTime? _saveRetryAfter;
 
+  // LM-50: the switch went on at some point since this notebook was opened,
+  // and which turns were already saved when it opened (a notebook's earlier
+  // turns stay in the machine when it is re-entered).
+  bool _wentOffRecord = false;
+  Set<String> _savedAtOpen = {};
+
   JoiningPhase _joining = JoiningPhase.none;
   Timer? _joiningTimer;
   JoiningPhase get joining => _joining;
@@ -223,6 +235,9 @@ class JournalNotifier extends Notifier<JournalState> {
         if (!current.contains(turn.turnId)) (turn: turn, pending: false),
       for (final turn in _greetingRows) (turn: turn, pending: false),
       for (final turn in conversation) (turn: turn, pending: false),
+      // Off the record: on screen for this session only.
+      for (final turn in _turnMachine.state.offRecord)
+        (turn: turn, pending: false),
       for (final turn in inProgress) (turn: turn, pending: true),
     ];
     // List.sort is not guaranteed stable; break ties by original position.
@@ -237,6 +252,15 @@ class JournalNotifier extends Notifier<JournalState> {
   UpsertActivity? get activity => _activity;
   RecallActivity? get recall => _recall;
   List<ConversationTurn> get conversation => List.unmodifiable(_conversation);
+
+  /// LM-50: nothing said from here on is saved, extracted or drafted.
+  bool get offTheRecord => _turnMachine.offTheRecord;
+
+  /// Something from before the off-the-record switch is saved, and stays.
+  bool get hasSavedTurns =>
+      _history.isNotEmpty ||
+      _conversation.isNotEmpty ||
+      state.entries.isNotEmpty;
   List<ConversationTurn> get inProgress => List.unmodifiable(_inProgress);
   bool get muted => _muted;
 
@@ -326,6 +350,23 @@ class JournalNotifier extends Notifier<JournalState> {
   void _setStatus(SessionStatus status) {
     vlog('session', 'status → ${status.name}');
     _status = status;
+    _notifyUi();
+  }
+
+  /// Off the record (LM-50). On: turns that finalize from now on are kept on
+  /// screen only, and card drafting stops. What was saved before stays. Off
+  /// again: saving resumes for later turns; what was said while on stays
+  /// unsaved. May be set before a session starts.
+  void setOffTheRecord(bool value) {
+    if (_turnMachine.offTheRecord == value) return;
+    _turnMachine.offTheRecord = value;
+    final notebookId = _activeNotebookId;
+    if (value) {
+      _wentOffRecord = true;
+      if (notebookId != null) ref.read(cardDrafterProvider).stop(notebookId);
+    } else if (notebookId != null && _status == SessionStatus.live) {
+      ref.read(cardDrafterProvider).start(notebookId);
+    }
     _notifyUi();
   }
 
@@ -778,7 +819,9 @@ class JournalNotifier extends Notifier<JournalState> {
       _revision = outcome.revision;
       // The conversation moved on: keep a draft of its card current, so
       // leaving can show it at once.
-      ref.read(cardDrafterProvider).turnSaved(turn.notebookId);
+      if (!offTheRecord) {
+        ref.read(cardDrafterProvider).turnSaved(turn.notebookId);
+      }
       if (_restoredPreparedCommitIds.remove(turn.turnId)) {
         // A restored envelope has no corresponding optimistic state in this
         // process. Reload the committed server snapshot instead of attempting
@@ -1110,6 +1153,8 @@ class JournalNotifier extends Notifier<JournalState> {
     _revision = snapshot?.revision ?? 0;
     state = snapshot == null ? JournalState.empty() : _adoptSnapshot(snapshot);
     await _restoreTurnsForNotebook(notebookId);
+    _savedAtOpen = {for (final turn in _conversation) turn.turnId};
+    _wentOffRecord = offTheRecord;
     vlog('timing', 'open: turn journal +${clock.elapsedMilliseconds}ms');
   }
 
@@ -1138,6 +1183,7 @@ class JournalNotifier extends Notifier<JournalState> {
   Future<NotebookTransitionResult> enterNotebook(
     String notebookId, {
     bool autoStart = false,
+    bool offTheRecord = false,
   }) {
     final intent = ++_lifecycleIntent;
     if (_activeNotebookId != notebookId) {
@@ -1178,6 +1224,9 @@ class JournalNotifier extends Notifier<JournalState> {
           );
         }
       }
+
+      // Chosen before starting (LM-50): applied before any session can.
+      if (offTheRecord) setOffTheRecord(true);
 
       // A new notebook opens with Lumen (greeting and all); one with an
       // earlier conversation opens quietly on its graph and transcript.
@@ -1679,7 +1728,9 @@ class JournalNotifier extends Notifier<JournalState> {
       revision: _revision,
     ));
     // A notebook continued after leaving drafts its card again.
-    ref.read(cardDrafterProvider).start(prepared.notebookId);
+    if (!offTheRecord) {
+      ref.read(cardDrafterProvider).start(prepared.notebookId);
+    }
     _setStatus(SessionStatus.live);
     if (!continuing) _startGreeting();
     prepared.gate.activate((signal) {
@@ -2145,6 +2196,11 @@ class JournalNotifier extends Notifier<JournalState> {
     if (notebookId == null && _status == SessionStatus.idle) {
       return const NotebookTransitionResult.success();
     }
+    // LM-50: the switch was on and no turn of this visit was saved. Judged
+    // after the drain below, which settles turns finalized before the switch.
+    bool offRecordOnly() =>
+        _wentOffRecord &&
+        _conversation.every((turn) => _savedAtOpen.contains(turn.turnId));
 
     _setStatus(SessionStatus.ending);
     // The final card is written after the drain; no draft may race it.
@@ -2154,6 +2210,7 @@ class JournalNotifier extends Notifier<JournalState> {
 
     // Set only once the notebook is really over (ended_at saved).
     String? closedNotebookId;
+    var nothingSaved = false;
     if (notebookId != null) {
       final outcome = await drain();
       if (!outcome.isCompleted) {
@@ -2171,7 +2228,22 @@ class JournalNotifier extends Notifier<JournalState> {
           'Your latest journal changes are still saving. Try leaving again.',
         );
       }
-      if (shouldEndNotebook) {
+      if (offRecordOnly()) {
+        // Nothing of this visit is kept: no end mark, no card, no brief. A
+        // notebook that looks empty is offered to the server, which alone
+        // decides (this check can be wrong if history failed to load).
+        if (!hasSavedTurns) {
+          try {
+            await ref
+                .read(supabaseServiceProvider)
+                .deleteEmptyNotebook(notebookId);
+          } catch (error) {
+            // An empty "Untitled" row is the worst case; leaving still works.
+            vlog('session', 'empty notebook not removed: ${error.runtimeType}');
+          }
+        }
+        nothingSaved = true;
+      } else if (shouldEndNotebook) {
         try {
           final service = ref.read(supabaseServiceProvider);
           await service.endNotebook(notebookId);
@@ -2199,6 +2271,10 @@ class JournalNotifier extends Notifier<JournalState> {
     _sessionStartedAt = null;
     _activeNotebookId = null;
     _restoredNotebookId = null;
+    _turnMachine.clearOffRecord();
+    _turnMachine.offTheRecord = false;
+    _wentOffRecord = false;
+    _savedAtOpen = {};
     _history.clear();
     _savedTurnIds.clear();
     _joiningTimer?.cancel();
@@ -2210,7 +2286,7 @@ class JournalNotifier extends Notifier<JournalState> {
     _setStatus(SessionStatus.idle);
     if (userSpoke) ref.read(openingPrepProvider).markReturning();
     if (closedNotebookId != null) _writeSessionCard(closedNotebookId);
-    return const NotebookTransitionResult.success();
+    return NotebookTransitionResult.success(nothingSaved: nothingSaved);
   }
 
   /// Asks the runtime for the notebook's closing card (LM-15) without
