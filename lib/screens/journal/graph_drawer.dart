@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/entity.dart';
 import '../../models/journal_state.dart';
 import '../../providers/export_provider.dart';
+import '../../security/app_lock_provider.dart';
 import '../../providers/journal_provider.dart';
 import '../../services/markdown_export.dart';
 import '../../theme/lumen_colors.dart';
@@ -190,6 +191,9 @@ class _ExportFooterState extends ConsumerState<_ExportFooter> {
   bool _failed = false;
 
   Future<void> _export() async {
+    // Anyone holding an unlocked phone could otherwise copy the whole vault.
+    if (!await requireReauth(context, reason: 'Export your notebook')) return;
+    if (!mounted) return;
     setState(() {
       _busy = true;
       _failed = false;

@@ -13,6 +13,7 @@ import '../models/journal_entry.dart';
 import '../models/journal_state.dart';
 import '../models/notebook.dart';
 import '../models/relation.dart';
+import '../security/file_protection.dart';
 
 /// Obsidian-vault Markdown export, ported one for one from the web exporter
 /// (src/lib/obsidian-export.ts) so a vault can mix files from both:
@@ -593,7 +594,11 @@ Future<File> writeVaultZip(
 }) async {
   final dir = directory ?? await getTemporaryDirectory();
   final bytes = await _encodeInBackground(vault);
-  return File('${dir.path}/$name').writeAsBytes(bytes, flush: true);
+  final file =
+      await File('${dir.path}/$name').writeAsBytes(bytes, flush: true);
+  // Journal text: unreadable while the phone is locked.
+  await protectFile(file.path);
+  return file;
 }
 
 Future<Uint8List> _encodeInBackground(MarkdownVault vault) =>
