@@ -10,6 +10,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../models/entity.dart';
 import '../models/journal_entry.dart';
+import '../models/journal_export.dart';
 import '../models/journal_state.dart';
 import '../models/notebook.dart';
 import '../models/relation.dart';
@@ -32,7 +33,10 @@ import '../security/file_protection.dart';
 /// An exported vault: zip path → file contents, in zip order.
 class MarkdownVault {
   final Map<String, String> files;
-  const MarkdownVault(this.files);
+
+  /// The zip's file name when it isn't the vault's own dated one.
+  final String? zipName;
+  const MarkdownVault(this.files, {this.zipName});
 }
 
 const _root = 'Lumen Vault';
@@ -610,12 +614,189 @@ typedef ShareVault = Future<void> Function(MarkdownVault vault, {Rect? origin});
 
 /// Zips [vault] and opens the iOS share sheet on it. [origin] anchors the
 /// sheet's popover on iPad.
+///
+/// The zip is not deleted here: the receiving app (AirDrop, Files) may still
+/// be reading the original file after the sheet closes. Stale exports are
+/// swept instead, at the next export and at launch ([sweepStaleExports]).
 Future<void> shareVaultZip(MarkdownVault vault, {Rect? origin}) async {
-  final file = await writeVaultZip(vault, vaultZipName(DateTime.now()));
+  await sweepStaleExports();
+  final file =
+      await writeVaultZip(vault, vault.zipName ?? vaultZipName(DateTime.now()));
   await SharePlus.instance.share(
     ShareParams(
       files: [XFile(file.path, mimeType: 'application/zip')],
       sharePositionOrigin: origin,
     ),
+  );
+}
+
+/// How old a `lumen-*.zip` export must be before it is swept.
+const kExportMaxAge = Duration(hours: 1);
+
+/// Deletes journal exports (`lumen-*.zip`, and the per-notebook
+/// `Lumen Vault-*.zip`) older than [maxAge] from
+/// [directory] (the temporary directory by default). Younger files, which
+/// include the export being shared, and every other file stay. Best effort:
+/// never throws.
+Future<void> sweepStaleExports({
+  Directory? directory,
+  DateTime? now,
+  Duration maxAge = kExportMaxAge,
+}) async {
+  try {
+    final dir = directory ?? await getTemporaryDirectory();
+    final cutoff = (now ?? DateTime.now()).subtract(maxAge);
+    await for (final entity in dir.list(followLinks: false)) {
+      if (entity is! File) continue;
+      final name = entity.uri.pathSegments.last;
+      final isExport =
+          (name.startsWith('lumen-') || name.startsWith('Lumen Vault-')) &&
+              name.endsWith('.zip');
+      if (!isExport) continue;
+      try {
+        if ((await entity.lastModified()).isBefore(cutoff)) {
+          await entity.delete();
+        }
+      } catch (_) {}
+    }
+  } catch (_) {}
+}
+
+// ─── Whole-journal export (LM-52) ───────────────────────────────────────────
+
+/// One notebook as a single readable Markdown file: the conversation, the
+/// entries by day, the closing card, what was remembered and the follow-ups.
+/// Pure: no I/O. Day and time headings are cut in [toLocal]'s zone, as in the
+/// vault.
+String notebookMarkdown(
+  ExportedNotebook notebook, {
+  DateTime Function(DateTime)? toLocal,
+}) {
+  final local = toLocal ?? (DateTime d) => d.toLocal();
+  final state = notebook.state;
+  final started = local(notebook.startedAt);
+  final lines = <String>['# ${notebook.title}', ''];
+  lines.add('Started ${_longDate(_dayKey(started))}, ${_timeAnchor(started)}');
+  lines.add('');
+  final summary = notebook.summary;
+  if (summary != null && summary.isNotEmpty) lines.addAll([summary, '']);
+
+  final card = notebook.card;
+  if (card != null) {
+    lines.addAll(['## Closing card', '']);
+    if (card['title'] case final String t when t.isNotEmpty) {
+      lines.addAll(['**$t**', '']);
+    }
+    if (card['summary'] case final String s when s.isNotEmpty) {
+      lines.addAll([s, '']);
+    }
+    for (final (key, heading) in const [
+      ('remember', 'Remember'),
+      ('notes', 'Notes'),
+    ]) {
+      final items = [
+        for (final item in (card[key] as List<dynamic>? ?? const []))
+          if (item is String && item.isNotEmpty) item,
+      ];
+      if (items.isEmpty) continue;
+      lines.addAll(['### $heading', '', ...items.map((i) => '- $i'), '']);
+    }
+  }
+
+  if (notebook.turns.isNotEmpty) {
+    lines.addAll(['## Conversation', '']);
+    for (final turn in notebook.turns) {
+      final who = turn['speaker'] == 'user' ? 'You' : 'Lumen';
+      final at = DateTime.tryParse(turn['spokenAt'] as String? ?? '');
+      final time = at == null ? '' : ' · ${_timeAnchor(local(at))}';
+      lines.addAll(['**$who**$time', '', '${turn['text']}', '']);
+    }
+  }
+
+  if (state.entries.isNotEmpty) {
+    lines.addAll(['## Entries', '']);
+    final oldestFirst = _stableSorted(
+      state.entries,
+      (a, b) => a.createdAt.compareTo(b.createdAt),
+    );
+    String? day;
+    for (final entry in oldestFirst) {
+      final at = local(entry.createdAt);
+      if (_dayKey(at) != day) {
+        day = _dayKey(at);
+        lines.addAll(['### ${_longDate(day)}', '']);
+      }
+      lines.addAll(['**${_timeAnchor(at)}**', '', entry.text, '']);
+    }
+  }
+
+  if (state.entities.isNotEmpty) {
+    lines.addAll(['## What Lumen remembered', '']);
+    for (final e in state.entities.values) {
+      final description = e.description;
+      final tail = description == null || description.isEmpty
+          ? ''
+          : ' — ${description.replaceAll(RegExp(r'\s+'), ' ')}';
+      lines.add('- **${e.name}** (${e.type.name})$tail');
+    }
+    lines.add('');
+  }
+
+  final active = state.relations.values.where((r) => r.supersededAt == null);
+  final connections = [
+    for (final r in active)
+      if (state.entities[r.source] case final from?)
+        if (state.entities[r.target] case final to?)
+          '- ${from.name} — ${_label(r)} → ${to.name}',
+  ];
+  if (connections.isNotEmpty) {
+    lines.addAll(['## Connections', '', ...connections, '']);
+  }
+
+  if (state.followUps.isNotEmpty) {
+    lines.addAll(['## Follow-ups', '']);
+    for (final f in state.followUps) {
+      lines.add('- [${f.answered ? 'x' : ' '}] ${f.question}');
+    }
+    lines.add('');
+  }
+
+  return lines.join('\n');
+}
+
+/// `lumen-journal-2026-11-04.zip`, dated in local time.
+String journalExportZipName(DateTime now) =>
+    'lumen-journal-${_dayKey(now)}.zip';
+
+/// The export as a zip's contents: `lumen-journal.json` (everything, for
+/// moving it elsewhere) and `Notebooks/<date> <title>.md` (to read). Pure.
+MarkdownVault buildJournalExportBundle(
+  JournalExport export, {
+  DateTime? now,
+  DateTime Function(DateTime)? toLocal,
+}) {
+  final local = toLocal ?? (DateTime d) => d.toLocal();
+  final files = <String, String>{
+    'lumen-journal.json': const JsonEncoder.withIndent(
+      '  ',
+    ).convert(export.toJson()),
+  };
+  // Lower-cased for the same reason as the vault's note names.
+  final taken = <String>{};
+  for (final notebook in export.notebooks) {
+    final title = _safeFilename(notebook.title);
+    final base =
+        '${_dayKey(local(notebook.startedAt))} '
+        '${title.isEmpty ? 'Untitled' : title}';
+    var stem = base;
+    for (var n = 2; taken.contains(stem.toLowerCase()); n++) {
+      stem = '$base ($n)';
+    }
+    taken.add(stem.toLowerCase());
+    files['Notebooks/$stem.md'] = notebookMarkdown(notebook, toLocal: local);
+  }
+  return MarkdownVault(
+    files,
+    zipName: journalExportZipName(local(now ?? DateTime.now())),
   );
 }
