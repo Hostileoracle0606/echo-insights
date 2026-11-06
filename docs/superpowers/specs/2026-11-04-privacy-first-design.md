@@ -30,7 +30,7 @@ People tell Lumen things they wouldn't write down anywhere else, out loud, every
 
 | Option | Protects against | Cost | Verdict |
 |---|---|---|---|
-| **A. Hygiene:** paid or zero-retention AI, collect and keep less, MFA, least access, honest policy | Training on entries; casual access | Days | **Do now.** Required before any claim is honest. |
+| **A. Hygiene:** paid AI (no training, retention documented), collect and keep less, MFA, least access, honest policy | Training on entries; casual access | Days | **Do now.** Required before any claim is honest. |
 | **B. Server-side encryption with AWS KMS** | Supabase staff; leaked dumps and backups | 1–2 weeks | Skip. "Supabase can't read it" means little to users, and C replaces it. |
 | **C. Zero-access storage:** keys held on the device; the database stores ciphertext; AI processing only sees plain text briefly | Supabase, us, database leaks | 1–2 months | **Do.** The strongest claim users understand, for the effort. |
 | **D. Confidential inference:** self-hosted Gemma on confidential-computing GPUs, with attestation checked by the app | Us and the cloud host seeing text while it's processed | A quarter or more | Later, for text calls. |
@@ -107,10 +107,12 @@ The gap we can fill is honest, checkable claims. Few competitors have them.
 
 | # | Feature | Who it keeps out | What the user sees | Tickets |
 |---|---|---|---|---|
-| 1 | **Zero-retention AI processing** | Google training on or keeping entries | "Never used to train AI; our AI providers keep nothing." | LM-43, LM-44 |
+| 1 | **Paid AI processing, with retention stated honestly** | Google training on entries | Before billing: "Lumen sends your voice and text to Google's Gemini service to talk with you." After billing: the paid-tier line in `docs/security/ai-processing.md` section 6, which says Google may keep them for a limited period. Never "keeps nothing" (see the note below). | LM-43, LM-44 |
 | 2 | **Pseudonymized AI calls** | Google and our servers learning who entries are about | "The AI sees 'Person A', never your sister's name." | LM-55 to LM-57 |
 | 3 | **Zero-access encrypted journal** | Supabase, us, database leaks | "Locked with a key only your devices hold." | LM-59 to LM-62 |
 | 4 | **Off the record, auto-forget and forget a person** | Storing what never needed storing | Toggles on the session, in settings and on entity pages | LM-49 to LM-51 |
+
+**Note on feature 1 (ruling R13, `docs/security/ai-processing.md`):** zero retention is not achievable on the paid Gemini API. It has no documented zero-retention mode, and Google logs prompts and responses for a limited, unpublished period for abuse detection and legal reasons. "Keeps nothing" stays out of all copy unless Lumen moves to Vertex with zero data retention and a written abuse-monitoring exemption, or Google confirms in writing that the paid Gemini API retains nothing. Vertex is not a drop-in change; it is its own project.
 
 **Order:** 1 → 4 → 2 → 3. Each step makes the next one smaller. For example, feature 2's name map becomes the device-held key material in feature 3.
 
@@ -125,7 +127,7 @@ Trust usually breaks on keys, access and logs rather than on the encryption meth
 | **Encryption** | TLS and ephemeral tokens (exist); keys on the device (Secure Enclave and Keychain, per-notebook keys, iCloud Keychain sync, recovery phrase); encrypted embeddings and name map; `NSFileProtectionComplete` for local files; key rotation | LM-47, LM-59 to LM-62 |
 | **Identity and access** | Face ID or passcode app lock; re-authentication for sensitive actions; Sign in with Apple and passkeys; device list with remote sign-out | LM-47, LM-58 |
 | **Server hardening** | RLS and owner-checked RPCs (exist); service key only in Secrets Manager; least-privilege IAM; RPC size caps; rate limits; **no standing admin access** (break-glass only, with MFA, time limits and a log) | LM-45, LM-46 |
-| **AI pipeline** | Zero retention; **no content in logs** (a CI test fails if marker text appears); 14-day log retention; pseudonymization; journal text kept separate from instructions in prompts | LM-43, LM-44, LM-56 |
+| **AI pipeline** | Paid tier with no training, and retention stated as it is (not zero; see section 5); **no content in logs** (a CI test fails if marker text appears); 14-day log retention; pseudonymization; journal text kept separate from instructions in prompts | LM-43, LM-44, LM-56 |
 | **Data lifecycle** | Complete account and session deletion, with a test that fails when a new table holding user data isn't covered; forget a person; auto-forget; export; a stated window for backups | LM-48 to LM-52 |
 | **Detection and response** | Audit logs and alerts on unusual access; incident plan with 72-hour user notification; key rotation | LM-45, LM-54 |
 | **Proof** | Penetration test; `security.txt` and a disclosure page; public security page; open-source encryption code on the device | LM-53, LM-54 |
@@ -134,7 +136,7 @@ Trust usually breaks on keys, access and logs rather than on the encryption meth
 
 ## 7. Plan
 
-- **Phase 1, launch blockers (LM-43 to LM-54):** zero-retention AI, logs without content, admin lockdown, RPC caps, app lock, complete deletion, forget a person, off the record, auto-forget, export, the "Who hears you" screen, and a penetration test.
+- **Phase 1, launch blockers (LM-43 to LM-54):** paid AI with retention documented, logs without content, admin lockdown, RPC caps, app lock, complete deletion, forget a person, off the record, auto-forget, export, the "Who hears you" screen, and a penetration test.
 - **Phase 2, pseudonymization (LM-55 to LM-58):** gated on the spike's go/no-go.
 - **Phase 3, keys on the device (LM-59 to LM-62):** needs its own design spec first.
 - **Later:** confidential inference for text calls (option D), and on-device or open streaming voice (see the research notes on Gemma voice pipelines) to take Gemini Live out of the path.

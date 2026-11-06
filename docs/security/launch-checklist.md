@@ -5,16 +5,15 @@ Every open user action across Phase 1, in the order to do them. Built from the S
 ## 1. Before anything ships
 
 - [ ] Read the first CI run of `.github/workflows/privacy-tests.yml` (LM-44: it has not run on GitHub yet).
-- [ ] Merge in stack order (branches sit on each other, so PRs show the lower commits until they merge): 44, 46, 48, then 49 and 51 (both on 48), 47, then 52 (on 47), then 53 (on 52), 50, 43, 45, 54 (on 44).
+- [ ] Merge one branch: `chore/phase1-integration`. It holds all twelve tickets, the reconciliation migration and the cross-ticket wiring, tested together. Do not merge the ticket branches one by one: `feat/lm-49-forget-person` on its own drops LM-46's RPC caps, and only this branch carries `…700`.
 - [ ] Never commit `pubspec.lock`, `ios/Podfile.lock` or `docs/assets`.
-- [ ] LM-48 follow-up: the delete-session path should call the re-auth helper (LM-47) once both are merged.
 
 ## 2. Deploy order
 
 Staging first, then production. Do not use production for testing.
 
-1. **Database migrations, all of them, before the `close-session` Lambda.** In order: `20261104000000` (LM-46 RPC caps), `20261104000100` (LM-48), `20261104000200` (LM-49), `20261104000300` (LM-49 forget_regeneration), `20261104000350` and its companion `20261104000360` (LM-51 auto-forget), `20261104000400` (LM-52 export), `20261104000500` (LM-50 `delete_empty_notebook`), `20261104000600_privacy_screen_seen.sql` (LM-53), and last `20261104000700_reconcile_rpc_caps.sql` (on branch `chore/phase1-integration`, not yet merged).
-   Why `…700` is last: LM-49's `…300` redefines `save_session_card` and `save_session_brief` without LM-46's caps, so applying them in order silently drops the caps until `…700` restores them.
+1. **Database migrations, all of them, before the `close-session` Lambda.** In order: `20261104000000_rpc_input_caps.sql` (LM-46), `20261104000100_complete_deletion.sql` (LM-48), `20261104000200_forget_person.sql` and `20261104000300_forget_regeneration.sql` (LM-49), `20261104000350_auto_forget.sql` and `20261104000360_auto_forget_followups.sql` (LM-51), `20261104000400_export_my_data.sql` (LM-52), `20261104000500_delete_empty_notebook.sql` (LM-50), `20261104000600_privacy_screen_seen.sql` (LM-53), and last `20261104000700_reconcile_rpc_caps.sql` (integration).
+   Why `…700` is last: LM-49's `…300` redefines `save_session_card` and `save_session_brief` without LM-46's caps, so applying them in order silently drops the caps until `…700` restores them. `…700` also makes `delete_empty_notebook` keep a notebook auto-forget emptied.
    **Post-migration check (staging, then production):** an oversized card call to `save_session_card` must be refused, and a card naming a forgotten person must be stored redacted. Do not proceed to the Lambda deploy if either fails.
    Why the migrations come first: the new `close-session` code calls an RPC from `…300`. If the Lambda ships first, every session close returns 503 (it fails closed). The LM-51 migrations `…350` and `…360` ship together with the Lambda.
 2. **Edge functions** (LM-44 and LM-46 changed them), after the migrations: `supabase functions deploy embed-entities`, `retrieve-memory`, `extract-graph` and `speak-agent`, each with `--project-ref bjoevzvsdlhlcjywpyfx` (use the staging ref first when testing). Delete `extract-graph` and `speak-agent` instead if you retire them (section 4).
@@ -39,7 +38,7 @@ Staging first, then production. Do not use production for testing.
 - [ ] Run a 10-call burst against the billed key and confirm no 429s (no key on the command line).
 - [ ] Check and remove the Groq (`extract-graph`) and ElevenLabs (`speak-agent`) edge functions and secrets if unused.
 - [ ] Ask Google Cloud support in writing the four questions in `ai-processing.md` section 4.
-- [ ] Then flip `paidTierVerified` to `true` in `lib/privacy/privacy_claims.dart` (on the LM-53 branch). Do not claim "keeps nothing": the paid Gemini API has no documented zero-retention mode.
+- [ ] Then flip `paidTierVerified` to `true` in `lib/privacy/privacy_claims.dart`. Do not claim "keeps nothing": the paid Gemini API has no documented zero-retention mode.
 
 ## 5. Alerts and security readiness (LM-54)
 
@@ -48,18 +47,17 @@ Staging first, then production. Do not use production for testing.
 - [ ] Check whether the Supabase plan offers audit logs, statement logging or log drains (unverified); record the answer in `incident-response.md`.
 - [ ] If the AWS account already has a CloudTrail trail, remove one before deploying (a second copy of management events is charged).
 - [ ] Enable GitHub private vulnerability reporting (repository Settings, Code security) so `vulnerability-disclosure.md` works; consider a short `SECURITY.md` pointing to it.
-- [ ] After LM-53 merges, link the disclosure policy from `src/routes/security.tsx`.
 - [ ] **Penetration test:** book a firm, give them `pentest-scope.md`, a staging project and synthetic accounts. Fix or accept each finding in its table. Done only with no open Critical or High.
 
 ## 6. On a real device (LM-47, LM-52, LM-50)
 
-- [ ] **Face ID test:** lock on resume with no flash of content, grace period, turning the lock off asks for re-auth, re-auth before export and delete, local file protection. The simulator cannot prove these.
+- [ ] **Face ID test:** lock on resume with no flash of content, grace period, turning the lock off asks for re-auth, re-auth before export, "Delete this session" and forget a person, local file protection. The simulator cannot prove these.
 - [ ] Export: the real share sheet and AirDrop. The zip may linger in temp up to an hour, so copy must not say "deleted immediately".
 - [ ] Off the record: start and leave a session, check no notebook remains. Killing the app mid-session may leave an empty "Untitled" notebook (known).
 
 ## 7. Flags and copy (LM-53)
 
-- [ ] Set `shipped` (the set of privacy features that are live, in `lib/privacy/privacy_claims.dart`) to list each control that is actually live, after sections 2 and 6.
+- [ ] `shipped` in `lib/privacy/privacy_claims.dart` already lists forget a person, off the record and auto-forget, so those lines appear in the first build from this branch. Ship that build only after sections 2 and 6, or take a control out of the set first.
 - [ ] Flip `paidTierVerified` only after section 4.
 - [ ] Do not claim "we can't read it" (Phase 3) or "keeps nothing".
 
