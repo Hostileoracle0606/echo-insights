@@ -68,7 +68,7 @@ For every incident: (1) open the timeline note with the time you learned of it, 
 2. Rotate per `admin-access.md` section B (rotation order). Gemini key: create new, set in Secrets Manager, delete the old key. Supabase legacy keys: rotating is an outage, read that section first.
 3. Revoke a leaked personal access token in the Supabase account settings immediately.
 4. If it was in git history: rotating is the fix; rewriting history is not.
-5. Check use of the old key: Google console usage; Supabase API/function logs; CloudTrail `GetSecretValue` by principals other than the five Lambda roles.
+5. Check use of the old key: Google console usage; Supabase API/function logs; CloudTrail `GetSecretValue` by principals other than the four Lambda execution roles that read the secret.
 6. If the service-role key or DB password may have been used: go to incident B.
 
 ### B. Suspected data access (an account, an admin session, or a key used by someone else)
