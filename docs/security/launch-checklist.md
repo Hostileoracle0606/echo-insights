@@ -13,12 +13,15 @@ Every open user action across Phase 1, in the order to do them. Built from the S
 
 Staging first, then production. Do not use production for testing.
 
-1. **Database migrations, all of them, before the `close-session` Lambda.** In order: `20261104000000` (LM-46 RPC caps), `20261104000100` (LM-48), `20261104000200` (LM-49), `20261104000300` (LM-49 forget_regeneration), `20261104000350` and its companion `20261104000360` (LM-51 auto-forget), `20261104000400` (LM-52 export), `20261104000500` (LM-50 `delete_empty_notebook`).
-   Why: the new `close-session` code calls an RPC from `…300`. If the Lambda ships first, every session close returns 503 (it fails closed). The LM-51 migrations `…350` and `…360` ship together with the Lambda.
-2. **`cdk deploy`** (your own deploy, with the Supabase parameters). Add `-c alertEmail=<your address>` so alerts reach you. This creates the log groups (LM-44), the per-route throttles (LM-46), the alerts topic and alarms, and the CloudTrail trail and its bucket (LM-54).
-3. **Confirm the alert email subscription** (click the link AWS sends). Unconfirmed means no alerts.
-4. **Delete the old auto-created `/aws/lambda/*` log groups** for the functions (LM-44), only after step 2. They never expire and may hold old content.
-5. Ship the iOS build only after steps 1 and 2 are live.
+1. **Database migrations, all of them, before the `close-session` Lambda.** In order: `20261104000000` (LM-46 RPC caps), `20261104000100` (LM-48), `20261104000200` (LM-49), `20261104000300` (LM-49 forget_regeneration), `20261104000350` and its companion `20261104000360` (LM-51 auto-forget), `20261104000400` (LM-52 export), `20261104000500` (LM-50 `delete_empty_notebook`), `20261104000600_privacy_screen_seen.sql` (LM-53), and last `20261104000700_reconcile_rpc_caps.sql` (on branch `chore/phase1-integration`, not yet merged).
+   Why `…700` is last: LM-49's `…300` redefines `save_session_card` and `save_session_brief` without LM-46's caps, so applying them in order silently drops the caps until `…700` restores them.
+   **Post-migration check (staging, then production):** an oversized card call to `save_session_card` must be refused, and a card naming a forgotten person must be stored redacted. Do not proceed to the Lambda deploy if either fails.
+   Why the migrations come first: the new `close-session` code calls an RPC from `…300`. If the Lambda ships first, every session close returns 503 (it fails closed). The LM-51 migrations `…350` and `…360` ship together with the Lambda.
+2. **Edge functions** (LM-44 and LM-46 changed them), after the migrations: `supabase functions deploy embed-entities`, `retrieve-memory`, `extract-graph` and `speak-agent`, each with `--project-ref bjoevzvsdlhlcjywpyfx` (use the staging ref first when testing). Delete `extract-graph` and `speak-agent` instead if you retire them (section 4).
+3. **`cdk deploy`** (your own deploy, with the Supabase parameters). Add `-c alertEmail=<your address>` so alerts reach you. This creates the log groups (LM-44), the per-route throttles (LM-46), the alerts topic and alarms, and the CloudTrail trail and its bucket (LM-54).
+4. **Confirm the alert email subscription** (click the link AWS sends). Unconfirmed means no alerts.
+5. **Delete the old auto-created `/aws/lambda/*` log groups** for the functions (LM-44), only after the `cdk deploy` step. They never expire and may hold old content.
+6. Ship the iOS build only after steps 1 to 3 are live.
 
 ## 3. Accounts and access (LM-45), do first, any time
 
@@ -56,7 +59,7 @@ Staging first, then production. Do not use production for testing.
 
 ## 7. Flags and copy (LM-53)
 
-- [ ] Set `shipped` (the set of privacy features that are live, in `lib/privacy/privacy_claims.dart`) to list each control that is actually live, after steps in sections 2 and 6.
+- [ ] Set `shipped` (the set of privacy features that are live, in `lib/privacy/privacy_claims.dart`) to list each control that is actually live, after sections 2 and 6.
 - [ ] Flip `paidTierVerified` only after section 4.
 - [ ] Do not claim "we can't read it" (Phase 3) or "keeps nothing".
 

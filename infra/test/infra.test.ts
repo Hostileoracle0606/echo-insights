@@ -238,10 +238,12 @@ test("alarms on each function's errors, API 4xx and API 5xx, all to the alerts t
   const alarms = Object.values(template.findResources("AWS::CloudWatch::Alarm")) as Array<{
     Properties: Record<string, any>;
   }>;
+  const topicId = Object.keys(template.findResources("AWS::SNS::Topic"))[0];
   // five functions + 4xx + 5xx
   expect(alarms).toHaveLength(7);
   for (const alarm of alarms) {
     expect(alarm.Properties.AlarmActions).toHaveLength(1);
+    expect(alarm.Properties.AlarmActions[0]).toEqual({ Ref: topicId });
     expect(alarm.Properties.Period).toBe(300);
     expect(alarm.Properties.EvaluationPeriods).toBe(1);
     expect(alarm.Properties.TreatMissingData).toBe("notBreaching");

@@ -284,6 +284,10 @@ export class InfraStack extends cdk.Stack {
     const alertEmail = this.node.tryGetContext("alertEmail");
     if (typeof alertEmail === "string" && alertEmail.trim() !== "") {
       alerts.addSubscription(new subscriptions.EmailSubscription(alertEmail.trim()));
+    } else {
+      cdk.Annotations.of(this).addWarning(
+        "No alertEmail context value: the alerts topic has no subscriber. Deploy with -c alertEmail=<address>.",
+      );
     }
     const alertAction = new cloudwatchActions.SnsAction(alerts);
     const addAlarm = (
