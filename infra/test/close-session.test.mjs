@@ -26,7 +26,11 @@ const clock = Date.parse("2026-10-23T21:05:00.000Z");
 
 const clone = (value) => structuredClone(value);
 const ok = (body) => ({ ok: true, status: 200, json: async () => clone(body) });
-const status = (code, body = {}) => ({ ok: code >= 200 && code < 300, status: code, json: async () => body });
+const status = (code, body = {}) => ({
+  ok: code >= 200 && code < 300,
+  status: code,
+  json: async () => body,
+});
 
 function requestEvent(overrides = {}) {
   return {
@@ -66,7 +70,11 @@ function world(overrides = {}) {
       if (overrides.provider) return overrides.provider(call, state);
       return ok({
         candidates: [
-          { content: { parts: [{ functionCall: { name: "write_session_card", args: state.modelArgs } }] } },
+          {
+            content: {
+              parts: [{ functionCall: { name: "write_session_card", args: state.modelArgs } }],
+            },
+          },
         ],
       });
     }
@@ -112,7 +120,6 @@ function world(overrides = {}) {
   });
   return { state, handle };
 }
-
 
 /** Stand-in for redact_forgotten_text: replaces each forgotten name. */
 function redactWith(forgotten, text) {
@@ -234,7 +241,9 @@ test("the model is asked once, with the function forced and no randomness", asyn
   const { state, handle } = world();
   await handle(requestEvent());
   const [body] = state.providerBodies;
-  const geminiCall = state.calls.find((call) => call.url.hostname === "generativelanguage.googleapis.com");
+  const geminiCall = state.calls.find(
+    (call) => call.url.hostname === "generativelanguage.googleapis.com",
+  );
   assert.match(geminiCall.url.pathname, /gemini-2\.5-flash:generateContent$/);
   assert.equal(geminiCall.init.headers["x-goog-api-key"], "permanent-test-key");
   assert.equal(body.system_instruction.parts[0].text, justTalkPrompt);
@@ -242,7 +251,10 @@ test("the model is asked once, with the function forced and no randomness", asyn
     mode: "ANY",
     allowed_function_names: ["write_session_card"],
   });
-  assert.deepEqual(body.generationConfig, { temperature: 0, thinkingConfig: { thinkingBudget: 0 } });
+  assert.deepEqual(body.generationConfig, {
+    temperature: 0,
+    thinkingConfig: { thinkingBudget: 0 },
+  });
   const message = body.contents[0].parts[0].text;
   assert.match(message, /^You: Honestly it's been a lot\./m);
   assert.match(message, /^Lumen: That's a big move\./m);
@@ -286,10 +298,16 @@ test("the remember list: by mentions, at most 8, isNew from notebook_count", asy
   );
   assert.ok(card.remember.every((item) => item.note === null));
   const declaration = state.providerBodies[0].tools[0].function_declarations[0];
-  assert.deepEqual(
-    declaration.parameters.properties.entityNotes.items.properties.entityId.enum,
-    ["e11", "e10", "e9", "e8", "e7", "e6", "e5", "e4"],
-  );
+  assert.deepEqual(declaration.parameters.properties.entityNotes.items.properties.entityId.enum, [
+    "e11",
+    "e10",
+    "e9",
+    "e8",
+    "e7",
+    "e6",
+    "e5",
+    "e4",
+  ]);
   const lookup = state.calls.find((call) => call.url.pathname === "/rest/v1/user_entities");
   assert.equal(lookup.url.searchParams.get("select"), "id,notebook_count");
   assert.match(lookup.url.searchParams.get("id"), /^in\.\("e11","e10",/);
@@ -397,7 +415,11 @@ test("a notebook auto-forget has trimmed keeps its card: no model call, no save"
   const card = { title: "Full card from the whole conversation" };
   const { state, handle } = world({
     state: {
-      notebook: { ...clone(fixture.notebook), revision: fixture.notebook.revision + 3, transcript_forgotten_at: "2026-11-01T03:15:00.000Z" },
+      notebook: {
+        ...clone(fixture.notebook),
+        revision: fixture.notebook.revision + 3,
+        transcript_forgotten_at: "2026-11-01T03:15:00.000Z",
+      },
       storedCard: { source_revision: fixture.notebook.revision, card },
     },
   });
@@ -410,7 +432,9 @@ test("a notebook auto-forget has trimmed keeps its card: no model call, no save"
 
 test("a trimmed notebook with no card is nothing to summarize, and never calls the model", async () => {
   const { state, handle } = world({
-    state: { notebook: { ...clone(fixture.notebook), transcript_forgotten_at: "2026-11-01T03:15:00.000Z" } },
+    state: {
+      notebook: { ...clone(fixture.notebook), transcript_forgotten_at: "2026-11-01T03:15:00.000Z" },
+    },
   });
   const response = await handle(requestEvent());
   assert.equal(response.statusCode, 422);
@@ -473,7 +497,11 @@ test("a 429 followed by success still produces the card", async () => {
       if (attempts === 1) return status(429);
       return ok({
         candidates: [
-          { content: { parts: [{ functionCall: { name: "write_session_card", args: current.modelArgs } }] } },
+          {
+            content: {
+              parts: [{ functionCall: { name: "write_session_card", args: current.modelArgs } }],
+            },
+          },
         ],
       });
     },
@@ -622,13 +650,24 @@ test("validateQuotes keeps verbatim user substrings and drops everything else", 
     ],
   };
   const checked = validateQuotes(card, userTurns);
-  assert.deepEqual(checked.quotes.map((quote) => quote.entryId), ["a"]);
-  assert.deepEqual(checked.topics[0].quotes, [{ entryId: "c", day: "2026-10-21", text: "It stung." }]);
-  assert.deepEqual(checked.topics[1].quotes.map((quote) => quote.entryId), ["g"]);
+  assert.deepEqual(
+    checked.quotes.map((quote) => quote.entryId),
+    ["a"],
+  );
+  assert.deepEqual(checked.topics[0].quotes, [
+    { entryId: "c", day: "2026-10-21", text: "It stung." },
+  ]);
+  assert.deepEqual(
+    checked.topics[1].quotes.map((quote) => quote.entryId),
+    ["g"],
+  );
   assert.deepEqual(checked.topics[2], { rank: 3, title: "Lead role" });
   assert.equal(card.quotes.length, 2, "the input card is not changed");
 
-  assert.deepEqual(validateQuotes({ topics: [{ quotes: [{ text: "x" }] }] }, []).topics[0].quotes, []);
+  assert.deepEqual(
+    validateQuotes({ topics: [{ quotes: [{ text: "x" }] }] }, []).topics[0].quotes,
+    [],
+  );
   const justTalk = { notes: ["a"] };
   assert.deepEqual(validateQuotes(justTalk, userTurns), justTalk);
 });
@@ -725,7 +764,10 @@ test("a body that isn't a draft request is a final close", async () => {
 test("a base64-encoded draft body is read", async () => {
   const { state, handle } = world();
   await handle(
-    requestEvent({ body: Buffer.from(JSON.stringify({ draft: true })).toString("base64"), isBase64Encoded: true }),
+    requestEvent({
+      body: Buffer.from(JSON.stringify({ draft: true })).toString("base64"),
+      isBase64Encoded: true,
+    }),
   );
   assert.equal(state.saves[0].p_draft, true);
 });
@@ -768,7 +810,10 @@ test("a control character in a turn cannot break redaction for good", async () =
   const turns = [{ text: "a\u0001b" }, { text: "c" }];
   const db = { rpc: async (_name, { p_text }) => p_text };
   const redacted = await redactTurns(db, turns);
-  assert.deepEqual(redacted.map((turn) => turn.text), ["ab", "c"]);
+  assert.deepEqual(
+    redacted.map((turn) => turn.text),
+    ["ab", "c"],
+  );
 });
 
 test("a redaction answer that does not line up with the turns is refused", async () => {

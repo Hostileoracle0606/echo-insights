@@ -19,7 +19,11 @@ async function capture(fn: () => Promise<Response>) {
   const original = { ...console };
   for (const level of ["log", "info", "warn", "error", "debug"] as const) {
     console[level] = (...args: unknown[]) => {
-      lines.push(args.map((a) => (a instanceof Error ? `${a.name}: ${a.message}\n${a.stack}` : String(a))).join(" "));
+      lines.push(
+        args
+          .map((a) => (a instanceof Error ? `${a.name}: ${a.message}\n${a.stack}` : String(a)))
+          .join(" "),
+      );
     };
   }
   let response: Response | undefined;
@@ -89,14 +93,21 @@ Deno.test("extract-graph logs no content when Groq answers with an error body", 
   }
 });
 
-Deno.test("extract-graph logs no content when the model returns unparseable arguments", async () => {
-  const handle = extractHandler(() =>
-    Promise.resolve(Response.json({
-      choices: [{ message: { tool_calls: [{ function: { arguments: `{"entities": ${MARKER}` } }] } }],
-    }))
-  );
-  assertClean(await capture(() => handle(post("http://x/", extractBody))));
-});
+Deno.test(
+  "extract-graph logs no content when the model returns unparseable arguments",
+  async () => {
+    const handle = extractHandler(() =>
+      Promise.resolve(
+        Response.json({
+          choices: [
+            { message: { tool_calls: [{ function: { arguments: `{"entities": ${MARKER}` } }] } },
+          ],
+        }),
+      ),
+    );
+    assertClean(await capture(() => handle(post("http://x/", extractBody))));
+  },
+);
 
 Deno.test("extract-graph logs no content when the network throws", async () => {
   const handle = extractHandler(() => Promise.reject(new TypeError(`fetch failed for ${MARKER}`)));
@@ -127,12 +138,17 @@ Deno.test("speak-agent logs no content when ElevenLabs answers with an error bod
   assertEquals(run.response?.status, 422);
 });
 
-Deno.test("speak-agent logs no content when the network throws or the body is malformed", async () => {
-  const throwing = speakHandler(() => Promise.reject(new TypeError(`fetch failed for ${MARKER}`)));
-  assertClean(await capture(() => throwing(post("http://x/", { text: MARKER }))));
-  const malformed = speakHandler(() => Promise.reject(new Error("unused")));
-  assertClean(await capture(() => malformed(post("http://x/", `{"text": "${MARKER}`))));
-});
+Deno.test(
+  "speak-agent logs no content when the network throws or the body is malformed",
+  async () => {
+    const throwing = speakHandler(() =>
+      Promise.reject(new TypeError(`fetch failed for ${MARKER}`)),
+    );
+    assertClean(await capture(() => throwing(post("http://x/", { text: MARKER }))));
+    const malformed = speakHandler(() => Promise.reject(new Error("unused")));
+    assertClean(await capture(() => malformed(post("http://x/", `{"text": "${MARKER}`))));
+  },
+);
 
 Deno.test("speak-agent logs no content on success", async () => {
   const handle = speakHandler(() => Promise.resolve(new Response(new Uint8Array([1, 2, 3]))));
@@ -167,45 +183,56 @@ function embedHandler(admin: unknown, embedder = new StubEmbedder()) {
     fetch: () => Promise.resolve(new Response("ok")),
   });
 }
-const embedReq = (body: unknown) =>
-  post("http://x/", body, { "x-internal-secret": "s3cret" });
+const embedReq = (body: unknown) => post("http://x/", body, { "x-internal-secret": "s3cret" });
 
-Deno.test("embed-entities logs no content when a table read fails or returns entity text", async () => {
-  const entityRows = [{ id: "e1", name: `${MARKER} Maya`, description: `${MARKER} her friend` }];
-  const ok = embedHandler(embedAdmin({
-    notebooks: { data: { user_id: "u1" } },
-    entities: { data: entityRows },
-    entity_embeddings: { data: [] },
-  }));
-  assertClean(await capture(() => ok(embedReq({ notebookId: NB }))));
+Deno.test(
+  "embed-entities logs no content when a table read fails or returns entity text",
+  async () => {
+    const entityRows = [{ id: "e1", name: `${MARKER} Maya`, description: `${MARKER} her friend` }];
+    const ok = embedHandler(
+      embedAdmin({
+        notebooks: { data: { user_id: "u1" } },
+        entities: { data: entityRows },
+        entity_embeddings: { data: [] },
+      }),
+    );
+    assertClean(await capture(() => ok(embedReq({ notebookId: NB }))));
 
-  const failed = embedHandler(embedAdmin({
-    notebooks: { data: { user_id: "u1" } },
-    entities: { error: { code: "42501", message: `permission denied for ${MARKER}`, details: MARKER } },
-  }));
-  const run = await capture(() => failed(embedReq({ notebookId: NB })));
-  assertClean(run);
-  assertEquals(run.response?.status, 500);
-});
+    const failed = embedHandler(
+      embedAdmin({
+        notebooks: { data: { user_id: "u1" } },
+        entities: {
+          error: { code: "42501", message: `permission denied for ${MARKER}`, details: MARKER },
+        },
+      }),
+    );
+    const run = await capture(() => failed(embedReq({ notebookId: NB })));
+    assertClean(run);
+    assertEquals(run.response?.status, 500);
+  },
+);
 
-Deno.test("embed-entities logs no content when the embedder throws or the body is malformed", async () => {
-  const boom = new StubEmbedder();
-  boom.embed = () => Promise.reject(new Error(`embed failed for ${MARKER}`));
-  const throwing = embedHandler(
-    embedAdmin({
-      notebooks: { data: { user_id: "u1" } },
-      entities: { data: [{ id: "e1", name: `${MARKER} Maya`, description: null }] },
-      entity_embeddings: { data: [] },
-    }),
-    boom,
-  );
-  const run = await capture(() => throwing(embedReq({ notebookId: NB })));
-  assertClean(run);
-  assertEquals(run.response?.status, 500);
+Deno.test(
+  "embed-entities logs no content when the embedder throws or the body is malformed",
+  async () => {
+    const boom = new StubEmbedder();
+    boom.embed = () => Promise.reject(new Error(`embed failed for ${MARKER}`));
+    const throwing = embedHandler(
+      embedAdmin({
+        notebooks: { data: { user_id: "u1" } },
+        entities: { data: [{ id: "e1", name: `${MARKER} Maya`, description: null }] },
+        entity_embeddings: { data: [] },
+      }),
+      boom,
+    );
+    const run = await capture(() => throwing(embedReq({ notebookId: NB })));
+    assertClean(run);
+    assertEquals(run.response?.status, 500);
 
-  const malformed = embedHandler(embedAdmin({}));
-  assertClean(await capture(() => malformed(embedReq(`{"notebookId": "${MARKER}`))));
-});
+    const malformed = embedHandler(embedAdmin({}));
+    assertClean(await capture(() => malformed(embedReq(`{"notebookId": "${MARKER}`))));
+  },
+);
 
 // ── retrieve-memory ──────────────────────────────────────────
 
@@ -223,7 +250,15 @@ const retrieveBody = {
   notebookId: NB,
   state: {
     entities: {
-      m: { id: "m", name: `${MARKER} Maya`, type: "person", metadata: {}, mentions: 3, firstSeen: "t", lastSeen: "t" },
+      m: {
+        id: "m",
+        name: `${MARKER} Maya`,
+        type: "person",
+        metadata: {},
+        mentions: 3,
+        firstSeen: "t",
+        lastSeen: "t",
+      },
     },
     relations: {},
     entries: [{ id: "en1", text: `${MARKER} entry`, createdAt: "t" }],
@@ -235,14 +270,18 @@ Deno.test("retrieve-memory logs no content on success", async () => {
 });
 
 Deno.test("retrieve-memory logs no content when a dependency throws or rate-limits", async () => {
-  const throwing = retrieveHandler(userClient({
-    rpc: () => Promise.reject(new Error(`rpc failed on ${MARKER}`)),
-  }));
+  const throwing = retrieveHandler(
+    userClient({
+      rpc: () => Promise.reject(new Error(`rpc failed on ${MARKER}`)),
+    }),
+  );
   assertClean(await capture(() => throwing(post("http://x/", retrieveBody))));
 
-  const limited = retrieveHandler(userClient({
-    rpc: () => Promise.resolve({ data: false, error: null }),
-  }));
+  const limited = retrieveHandler(
+    userClient({
+      rpc: () => Promise.resolve({ data: false, error: null }),
+    }),
+  );
   assertClean(await capture(() => limited(post("http://x/", retrieveBody))));
 });
 
@@ -254,12 +293,19 @@ Deno.test("retrieve-memory logs no content when the body is malformed", async ()
 
 Deno.test("function sources print only through safeLog", async () => {
   const offenders: string[] = [];
-  for (const dir of ["embed-entities", "extract-graph", "speak-agent", "retrieve-memory", "_shared"]) {
+  for (const dir of [
+    "embed-entities",
+    "extract-graph",
+    "speak-agent",
+    "retrieve-memory",
+    "_shared",
+  ]) {
     for await (const entry of Deno.readDir(new URL(`./${dir}/`, import.meta.url))) {
       if (!entry.name.endsWith(".ts") || entry.name.endsWith(".test.ts")) continue;
       if (entry.name === "eval.ts" || entry.name === "safe-log.ts") continue; // eval.ts is a local dev script
       const source = await Deno.readTextFile(new URL(`./${dir}/${entry.name}`, import.meta.url));
-      if (/console\.(log|info|warn|error|debug)/.test(source)) offenders.push(`${dir}/${entry.name}`);
+      if (/console\.(log|info|warn|error|debug)/.test(source))
+        offenders.push(`${dir}/${entry.name}`);
     }
   }
   assertEquals(offenders, []);

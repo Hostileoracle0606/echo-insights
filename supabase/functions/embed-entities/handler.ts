@@ -46,7 +46,11 @@ export function createHandler(deps: EmbedEntitiesDeps): (req: Request) => Promis
     };
 
     // Authoritative owner from notebooks (NOT from entity rows).
-    const { data: nb, error: nbErr } = await admin.from("notebooks").select("user_id").eq("id", notebookId).single();
+    const { data: nb, error: nbErr } = await admin
+      .from("notebooks")
+      .select("user_id")
+      .eq("id", notebookId)
+      .single();
     if (nbErr) return fail("notebook", nbErr.code);
     if (!nb) return Response.json({ ok: false, reason: "notebook gone" });
     const owner = nb.user_id as string;
@@ -57,11 +61,16 @@ export function createHandler(deps: EmbedEntitiesDeps): (req: Request) => Promis
     // (Hardening the entities insert/update policy to also check notebook
     // ownership is the deeper pre-existing fix, tracked separately in the spec.)
     const { data: entities, error: entErr } = await admin
-      .from("entities").select("id,name,description").eq("notebook_id", notebookId).eq("user_id", owner);
+      .from("entities")
+      .select("id,name,description")
+      .eq("notebook_id", notebookId)
+      .eq("user_id", owner);
     if (entErr) return fail("entities", entErr.code);
     const rows: EntityRow[] = entities ?? [];
     const { data: existing, error: exErr } = await admin
-      .from("entity_embeddings").select("entity_id,content_hash,embedding_model").eq("notebook_id", notebookId);
+      .from("entity_embeddings")
+      .select("entity_id,content_hash,embedding_model")
+      .eq("notebook_id", notebookId);
     if (exErr) return fail("existing", exErr.code);
     const existingRows: EmbeddingRow[] = existing ?? [];
     const have = new Map(existingRows.map((r) => [r.entity_id, r]));
@@ -70,7 +79,11 @@ export function createHandler(deps: EmbedEntitiesDeps): (req: Request) => Promis
     const currentIds = new Set(rows.map((r) => r.id));
     const orphans = existingRows.map((r) => r.entity_id).filter((id) => !currentIds.has(id));
     if (orphans.length) {
-      const { error: delErr } = await admin.from("entity_embeddings").delete().eq("notebook_id", notebookId).in("entity_id", orphans);
+      const { error: delErr } = await admin
+        .from("entity_embeddings")
+        .delete()
+        .eq("notebook_id", notebookId)
+        .in("entity_id", orphans);
       if (delErr) return fail("prune", delErr.code);
     }
 
@@ -89,12 +102,16 @@ export function createHandler(deps: EmbedEntitiesDeps): (req: Request) => Promis
       const vecs = await embedder.embed(batch.map((s) => `${s.name}\n${s.description ?? ""}`));
       const { error: upErr } = await admin.from("entity_embeddings").upsert(
         batch.map((s, i) => ({
-          notebook_id: notebookId, entity_id: s.id, user_id: owner,
-          embedding: JSON.stringify(vecs[i]), embedding_model: embedder.modelId, content_hash: s.hash,
+          notebook_id: notebookId,
+          entity_id: s.id,
+          user_id: owner,
+          embedding: JSON.stringify(vecs[i]),
+          embedding_model: embedder.modelId,
+          content_hash: s.hash,
           updated_at: new Date().toISOString(),
         })),
       );
-      if (upErr) return fail("upsert", upErr.code);   // a vector-cast/privilege failure is NOT a success
+      if (upErr) return fail("upsert", upErr.code); // a vector-cast/privilege failure is NOT a success
     }
 
     // Continuation: more remain → re-enqueue self via fetch (NOT net.http_post,
@@ -103,25 +120,35 @@ export function createHandler(deps: EmbedEntitiesDeps): (req: Request) => Promis
     // reconcile sweep remains the final backstop if it still drops.
     if (batch.length === CHUNK && stale.length > CHUNK) {
       const url = `${deps.env("SUPABASE_URL")}/functions/v1/embed-entities`;
-      const reenqueue = deps.fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-internal-secret": deps.env("EMBED_INTERNAL_SECRET")! },
-        body: JSON.stringify({ notebookId }),
-      }).catch(() => {});
+      const reenqueue = deps
+        .fetch(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-internal-secret": deps.env("EMBED_INTERNAL_SECRET")!,
+          },
+          body: JSON.stringify({ notebookId }),
+        })
+        .catch(() => {});
       deps.waitUntil?.(reenqueue);
     }
 
-    return Response.json({ ok: true, embedded: batch.length, remaining: Math.max(0, stale.length - batch.length), pruned: orphans.length });
-    };
+    return Response.json({
+      ok: true,
+      embedded: batch.length,
+      remaining: Math.max(0, stale.length - batch.length),
+      pruned: orphans.length,
+    });
+  };
 
-    // Anything that escapes (a malformed body, the embedder) is logged by class
-    // only; the runtime would otherwise log the message and stack.
-    return async (req: Request): Promise<Response> => {
-      try {
-        return await handle(req);
-      } catch (error) {
-        log({ event: "unhandled", errorClass: errorClass(error) });
-        return Response.json({ ok: false, stage: "unhandled" }, { status: 500 });
-      }
+  // Anything that escapes (a malformed body, the embedder) is logged by class
+  // only; the runtime would otherwise log the message and stack.
+  return async (req: Request): Promise<Response> => {
+    try {
+      return await handle(req);
+    } catch (error) {
+      log({ event: "unhandled", errorClass: errorClass(error) });
+      return Response.json({ ok: false, stage: "unhandled" }, { status: 500 });
+    }
   };
 }

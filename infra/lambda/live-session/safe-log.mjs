@@ -51,7 +51,12 @@ export function safeLog(source, fields, sink = console.log) {
  * class only (the Lambda runtime would otherwise log the message and stack)
  * and answered with `fallback()`.
  */
-export function guardHandler(source, handle, fallback, report = (fields) => safeLog(source, fields)) {
+export function guardHandler(
+  source,
+  handle,
+  fallback,
+  report = (fields) => safeLog(source, fields),
+) {
   return async (event) => {
     try {
       return await handle(event);

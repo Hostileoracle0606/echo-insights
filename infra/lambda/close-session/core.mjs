@@ -25,7 +25,8 @@ export function jsonResponse(statusCode, body) {
   };
 }
 
-export const rejected = (statusCode, code) => jsonResponse(statusCode, { status: "rejected", code });
+export const rejected = (statusCode, code) =>
+  jsonResponse(statusCode, { status: "rejected", code });
 
 export class Rejection extends Error {
   constructor(statusCode, code) {

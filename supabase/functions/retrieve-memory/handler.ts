@@ -75,18 +75,33 @@ const json = (status: number, body: unknown) =>
 export function validRequestShape(body: unknown): boolean {
   if (typeof body !== "object" || body === null || Array.isArray(body)) return false;
   const b = body as Record<string, unknown>;
-  if (b.query !== undefined && b.query !== null &&
-      (typeof b.query !== "string" || b.query.length > MAX_QUERY_CHARS)) return false;
-  if (b.notebookId !== undefined && b.notebookId !== null &&
-      (typeof b.notebookId !== "string" || b.notebookId.length > MAX_ID_CHARS)) return false;
-  if (b.limit !== undefined &&
-      (typeof b.limit !== "number" || !Number.isInteger(b.limit) || b.limit < 1 || b.limit > MAX_LIMIT)) return false;
+  if (
+    b.query !== undefined &&
+    b.query !== null &&
+    (typeof b.query !== "string" || b.query.length > MAX_QUERY_CHARS)
+  )
+    return false;
+  if (
+    b.notebookId !== undefined &&
+    b.notebookId !== null &&
+    (typeof b.notebookId !== "string" || b.notebookId.length > MAX_ID_CHARS)
+  )
+    return false;
+  if (
+    b.limit !== undefined &&
+    (typeof b.limit !== "number" ||
+      !Number.isInteger(b.limit) ||
+      b.limit < 1 ||
+      b.limit > MAX_LIMIT)
+  )
+    return false;
   if (b.state !== undefined && b.state !== null) {
     if (typeof b.state !== "object" || Array.isArray(b.state)) return false;
     const s = b.state as Record<string, unknown>;
     for (const key of ["entities", "relations"]) {
       const v = s[key];
-      if (v !== undefined && v !== null && (typeof v !== "object" || Array.isArray(v))) return false;
+      if (v !== undefined && v !== null && (typeof v !== "object" || Array.isArray(v)))
+        return false;
     }
     if (s.entries !== undefined && s.entries !== null && !Array.isArray(s.entries)) return false;
   }
@@ -95,7 +110,10 @@ export function validRequestShape(body: unknown): boolean {
 
 async function queryHash(q: string): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(q));
-  return [...new Uint8Array(digest)].slice(0, 4).map((b) => b.toString(16).padStart(2, "0")).join("");
+  return [...new Uint8Array(digest)]
+    .slice(0, 4)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
 }
 
 /**
@@ -143,7 +161,12 @@ export function userGraphToState(data: unknown): GraphState {
   }
   const relations: Record<string, Relation> = {};
   for (const r of Array.isArray(raw.relations) ? raw.relations : []) {
-    if (!r || typeof r.id !== "string" || typeof r.source !== "string" || typeof r.target !== "string") {
+    if (
+      !r ||
+      typeof r.id !== "string" ||
+      typeof r.source !== "string" ||
+      typeof r.target !== "string"
+    ) {
       continue;
     }
     // get_user_graph returns active relations only and no timestamps;
@@ -181,7 +204,10 @@ export function createHandler(deps: RetrieveMemoryDeps): (req: Request) => Promi
       const authHeader = req.headers.get("Authorization");
       if (!authHeader) return json(401, { error: "missing authorization" });
       const supa = deps.userClient(authHeader);
-      const { data: { user }, error: userErr } = await supa.auth.getUser();
+      const {
+        data: { user },
+        error: userErr,
+      } = await supa.auth.getUser();
       if (userErr || !user) return json(401, { error: "invalid session" });
 
       let parsed: unknown;
@@ -195,7 +221,11 @@ export function createHandler(deps: RetrieveMemoryDeps): (req: Request) => Promi
         query?: string;
         notebookId?: string;
         scope?: unknown;
-        state?: { entities?: Record<string, unknown>; relations?: Record<string, unknown>; entries?: unknown[] };
+        state?: {
+          entities?: Record<string, unknown>;
+          relations?: Record<string, unknown>;
+          entries?: unknown[];
+        };
       };
 
       // Absent scope = the original notebook-scope v1 contract (old clients).
@@ -209,7 +239,10 @@ export function createHandler(deps: RetrieveMemoryDeps): (req: Request) => Promi
       const notebookId = body.notebookId;
       if (!notebookId) return json(400, { error: "notebookId required" });
       const { data: nb, error: nbErr } = await supa
-        .from("notebooks").select("id").eq("id", notebookId).single();
+        .from("notebooks")
+        .select("id")
+        .eq("id", notebookId)
+        .single();
       if (nbErr || !nb) return json(404, { error: "notebook not found" });
 
       // Durable, per-user AND per-notebook rate limit, enforced server-side so a
@@ -220,11 +253,21 @@ export function createHandler(deps: RetrieveMemoryDeps): (req: Request) => Promi
         p_notebook_id: notebookId,
       });
       if (rateErr) {
-        logTelemetry({ ok: false, scope, error: "rate_check_failed", latencyMs: Date.now() - startedAt });
+        logTelemetry({
+          ok: false,
+          scope,
+          error: "rate_check_failed",
+          latencyMs: Date.now() - startedAt,
+        });
         return json(500, { error: "rate check failed" });
       }
       if (allowed === false) {
-        logTelemetry({ ok: false, scope, error: "rate_limited", latencyMs: Date.now() - startedAt });
+        logTelemetry({
+          ok: false,
+          scope,
+          error: "rate_limited",
+          latencyMs: Date.now() - startedAt,
+        });
         return json(429, { error: "rate limit exceeded" });
       }
 
@@ -243,7 +286,12 @@ export function createHandler(deps: RetrieveMemoryDeps): (req: Request) => Promi
           })),
         ]);
         if (graph.error) {
-          logTelemetry({ ok: false, scope, error: "user_graph_failed", latencyMs: Date.now() - startedAt });
+          logTelemetry({
+            ok: false,
+            scope,
+            error: "user_graph_failed",
+            latencyMs: Date.now() - startedAt,
+          });
           return json(500, { error: "retrieve failed" });
         }
         const g = userGraphToState(graph.data);
@@ -300,10 +348,13 @@ export function createHandler(deps: RetrieveMemoryDeps): (req: Request) => Promi
         latencyMs: Date.now() - startedAt,
         qHash: await queryHash(query),
       });
-      return json(200, retrieveMemoryResponseV1(
-        context,
-        result.entities.map((entity) => entity.id),
-      ));
+      return json(
+        200,
+        retrieveMemoryResponseV1(
+          context,
+          result.entities.map((entity) => entity.id),
+        ),
+      );
     } catch (e) {
       // Never log the request body, query, context or quotes. Counts / error name only.
       logTelemetry({

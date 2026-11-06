@@ -14,18 +14,18 @@ function logTelemetry(fields: Record<string, unknown>): void {
   safeLog("retrieve-memory", fields);
 }
 
-serve(createHandler({
-  userClient: (authHeader) =>
-    createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!,
-      { global: { headers: { Authorization: authHeader } } },
-    ) as unknown as DbClient,
-  adminClient: () =>
-    createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-    ) as unknown as DbClient,
-  embedder: () => new GteSmallEmbedder(),
-  log: logTelemetry,
-}));
+serve(
+  createHandler({
+    userClient: (authHeader) =>
+      createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!, {
+        global: { headers: { Authorization: authHeader } },
+      }) as unknown as DbClient,
+    adminClient: () =>
+      createClient(
+        Deno.env.get("SUPABASE_URL")!,
+        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+      ) as unknown as DbClient,
+    embedder: () => new GteSmallEmbedder(),
+    log: logTelemetry,
+  }),
+);

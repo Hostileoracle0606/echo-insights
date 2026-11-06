@@ -165,7 +165,8 @@ export class InfraStack extends cdk.Stack {
     const sessionBriefWriter = new lambda.Function(this, "SessionBriefFunction", {
       ...commonFunctionProperties,
       logGroup: logGroupFor("SessionBriefFunction"),
-      description: "Writes the next session's opening brief and audio without exposing Gemini credentials",
+      description:
+        "Writes the next session's opening brief and audio without exposing Gemini credentials",
       handler: "brief-index.handler",
       code: lambda.Code.fromAsset(path.join(lambdaDirectory, "close-session")),
       timeout: cdk.Duration.seconds(30),
@@ -219,50 +220,60 @@ export class InfraStack extends cdk.Stack {
     );
 
     const routes: apigatewayv2.HttpRoute[] = [];
-    routes.push(...api.addRoutes({
-      path: "/v1/notebooks/{notebookId}/live-sessions",
-      methods: [apigatewayv2.HttpMethod.POST],
-      authorizer,
-      integration: liveSessionIntegration,
-    }));
+    routes.push(
+      ...api.addRoutes({
+        path: "/v1/notebooks/{notebookId}/live-sessions",
+        methods: [apigatewayv2.HttpMethod.POST],
+        authorizer,
+        integration: liveSessionIntegration,
+      }),
+    );
 
     // User-scoped: lets a signed-in client hold a token before any notebook opens.
-    routes.push(...api.addRoutes({
-      path: "/v1/live-sessions",
-      methods: [apigatewayv2.HttpMethod.POST],
-      authorizer,
-      integration: liveSessionIntegration,
-    }));
+    routes.push(
+      ...api.addRoutes({
+        path: "/v1/live-sessions",
+        methods: [apigatewayv2.HttpMethod.POST],
+        authorizer,
+        integration: liveSessionIntegration,
+      }),
+    );
 
-    routes.push(...api.addRoutes({
-      path: "/v1/notebooks/{notebookId}/extractions",
-      methods: [apigatewayv2.HttpMethod.POST],
-      authorizer,
-      integration: new integrations.HttpLambdaIntegration(
-        "GraphExtractionIntegration",
-        graphExtractor,
-      ),
-    }));
+    routes.push(
+      ...api.addRoutes({
+        path: "/v1/notebooks/{notebookId}/extractions",
+        methods: [apigatewayv2.HttpMethod.POST],
+        authorizer,
+        integration: new integrations.HttpLambdaIntegration(
+          "GraphExtractionIntegration",
+          graphExtractor,
+        ),
+      }),
+    );
 
-    routes.push(...api.addRoutes({
-      path: "/v1/notebooks/{notebookId}/close",
-      methods: [apigatewayv2.HttpMethod.POST],
-      authorizer,
-      integration: new integrations.HttpLambdaIntegration(
-        "SessionCloseIntegration",
-        sessionCloser,
-      ),
-    }));
+    routes.push(
+      ...api.addRoutes({
+        path: "/v1/notebooks/{notebookId}/close",
+        methods: [apigatewayv2.HttpMethod.POST],
+        authorizer,
+        integration: new integrations.HttpLambdaIntegration(
+          "SessionCloseIntegration",
+          sessionCloser,
+        ),
+      }),
+    );
 
-    routes.push(...api.addRoutes({
-      path: "/v1/notebooks/{notebookId}/brief",
-      methods: [apigatewayv2.HttpMethod.POST],
-      authorizer,
-      integration: new integrations.HttpLambdaIntegration(
-        "SessionBriefIntegration",
-        sessionBriefWriter,
-      ),
-    }));
+    routes.push(
+      ...api.addRoutes({
+        path: "/v1/notebooks/{notebookId}/brief",
+        methods: [apigatewayv2.HttpMethod.POST],
+        authorizer,
+        integration: new integrations.HttpLambdaIntegration(
+          "SessionBriefIntegration",
+          sessionBriefWriter,
+        ),
+      }),
+    );
 
     const stage = new apigatewayv2.HttpStage(this, "DefaultStage", {
       httpApi: api,

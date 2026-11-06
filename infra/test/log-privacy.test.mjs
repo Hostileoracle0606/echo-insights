@@ -77,7 +77,20 @@ const withMarker = (value) => {
   if (typeof value === "string") return `${value} ${MARKER}`;
   if (Array.isArray(value)) return value.map(withMarker);
   if (value && typeof value === "object") {
-    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, k.endsWith("id") || k.endsWith("Id") || k.endsWith("_at") || k === "type" || k === "speaker" || k === "input" || k === "conversation_mode" ? v : withMarker(v)]));
+    return Object.fromEntries(
+      Object.entries(value).map(([k, v]) => [
+        k,
+        k.endsWith("id") ||
+        k.endsWith("Id") ||
+        k.endsWith("_at") ||
+        k === "type" ||
+        k === "speaker" ||
+        k === "input" ||
+        k === "conversation_mode"
+          ? v
+          : withMarker(v),
+      ]),
+    );
   }
   return value;
 };
@@ -195,7 +208,11 @@ for (const [name, { make, event }] of Object.entries(handlers)) {
       const run = await captureOutput(() => handle(event()));
       assert.equal(run.error, undefined, "handler must answer, not throw");
       assert.equal(run.lines.join("\n").includes(MARKER), false, run.lines.join("\n"));
-      assert.equal(JSON.stringify(run.value).includes(MARKER), false, "response must not echo content");
+      assert.equal(
+        JSON.stringify(run.value).includes(MARKER),
+        false,
+        "response must not echo content",
+      );
     });
   }
 
@@ -251,7 +268,10 @@ test("every Lambda directory carries an identical safe-log.mjs", async () => {
   const dirs = (await readdir(new URL("../lambda/", import.meta.url), { withFileTypes: true }))
     .filter((entry) => entry.isDirectory())
     .map((entry) => entry.name);
-  const reference = await readFile(new URL("../lambda/close-session/safe-log.mjs", import.meta.url), "utf8");
+  const reference = await readFile(
+    new URL("../lambda/close-session/safe-log.mjs", import.meta.url),
+    "utf8",
+  );
   for (const dir of dirs) {
     const copy = await readFile(new URL(`../lambda/${dir}/safe-log.mjs`, import.meta.url), "utf8");
     assert.equal(copy, reference, `${dir}/safe-log.mjs drifted`);
@@ -264,7 +284,11 @@ test("no Lambda source prints directly; everything goes through safeLog", async 
     for (const file of await readdir(new URL(`../lambda/${dir}/`, import.meta.url))) {
       if (!file.endsWith(".mjs") || file === "safe-log.mjs") continue;
       const source = await readFile(new URL(`../lambda/${dir}/${file}`, import.meta.url), "utf8");
-      assert.equal(/console\.|process\.std(out|err)/.test(source), false, `${dir}/${file} prints directly`);
+      assert.equal(
+        /console\.|process\.std(out|err)/.test(source),
+        false,
+        `${dir}/${file} prints directly`,
+      );
     }
   }
 });

@@ -122,9 +122,7 @@ export function createLiveSessionHandler({
 
     const issuedAt = now();
     const startWindowSeconds = userScoped ? userStartWindow : NOTEBOOK_START_WINDOW_SECONDS;
-    const expireTime = new Date(
-      issuedAt.getTime() + TOKEN_LIFETIME_SECONDS * 1000,
-    ).toISOString();
+    const expireTime = new Date(issuedAt.getTime() + TOKEN_LIFETIME_SECONDS * 1000).toISOString();
     const newSessionExpireTime = new Date(
       issuedAt.getTime() + startWindowSeconds * 1000,
     ).toISOString();

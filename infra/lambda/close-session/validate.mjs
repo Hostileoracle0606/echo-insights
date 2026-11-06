@@ -39,7 +39,10 @@ export function cleanText(value, maxLength) {
   const text = value.replace(/\s+/g, " ").trim().replace(wrappingQuotes, "").trim();
   const characters = [...text];
   if (characters.length <= maxLength) return text;
-  return `${characters.slice(0, maxLength - 1).join("").trimEnd()}…`;
+  return `${characters
+    .slice(0, maxLength - 1)
+    .join("")
+    .trimEnd()}…`;
 }
 
 /**
@@ -82,7 +85,9 @@ export function rememberCandidates(snapshot, notebookCounts = new Map(), max = l
  */
 export function justTalkFromModel(args, candidates) {
   if (!args || typeof args !== "object" || Array.isArray(args)) return null;
-  const title = cleanText(args.title, limits.title).replace(/[.。]+$/, "").trim();
+  const title = cleanText(args.title, limits.title)
+    .replace(/[.。]+$/, "")
+    .trim();
   const summary = cleanText(args.summary, limits.summary);
   const notes = (Array.isArray(args.notes) ? args.notes : [])
     .map((note) => cleanText(note, limits.noteText))
@@ -127,9 +132,7 @@ export function validateQuotes(card, userTurns) {
     return text.length > 0 && texts.some((turn) => turn.includes(text));
   };
   const keep = (quotes) =>
-    quotes
-      .filter(verbatim)
-      .map((quote) => ({ ...quote, text: quote.text.trim() }));
+    quotes.filter(verbatim).map((quote) => ({ ...quote, text: quote.text.trim() }));
 
   const next = { ...card };
   if (Array.isArray(card?.quotes)) next.quotes = keep(card.quotes);

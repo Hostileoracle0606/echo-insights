@@ -48,7 +48,8 @@ async function rateLimitTagged(metrics, label, call) {
     throw error;
   }
 }
-const strings = (value) => (Array.isArray(value) ? value.filter((item) => typeof item === "string") : []);
+const strings = (value) =>
+  Array.isArray(value) ? value.filter((item) => typeof item === "string") : [];
 
 /**
  * POST /v1/notebooks/{id}/brief: writes the opening for the user's next
@@ -157,7 +158,9 @@ export function createSessionBriefHandler({
     // Nothing the user said means nothing to open with that wouldn't be invented.
     if (userTurns.length === 0) throw new Rejection(422, "nothingToSummarize");
 
-    const followUpQuestions = followUps.map((row) => row?.question).filter((q) => typeof q === "string" && q.trim());
+    const followUpQuestions = followUps
+      .map((row) => row?.question)
+      .filter((q) => typeof q === "string" && q.trim());
     const questions = questionEntities
       .map((row) => ({ name: row?.name, questions: strings(row?.questions) }))
       .filter((row) => typeof row.name === "string" && row.questions.length > 0);
@@ -184,58 +187,69 @@ export function createSessionBriefHandler({
       retryDelaysMs: briefRetryDelaysMs,
     };
 
-    const payload = await rateLimitTagged(metrics, "text", () => callGemini({
-      ...gemini,
-      model,
-      body: {
-        system_instruction: { parts: [{ text: briefPrompt }] },
-        contents: [
-          {
-            role: "user",
-            parts: [
-              {
-                text: buildBriefMessage({
-                  conversationDate: conversationDate(Number.isNaN(lastSpoken) ? now() : lastSpoken),
-                  transcript: transcript.text,
-                  trimmed: transcript.trimmed,
-                  previous: stored?.brief && typeof stored.brief === "object" ? stored.brief : null,
-                  followUps: followUpQuestions,
-                  questions,
-                  topEntities: entities,
-                }),
-              },
-            ],
+    const payload = await rateLimitTagged(metrics, "text", () =>
+      callGemini({
+        ...gemini,
+        model,
+        body: {
+          system_instruction: { parts: [{ text: briefPrompt }] },
+          contents: [
+            {
+              role: "user",
+              parts: [
+                {
+                  text: buildBriefMessage({
+                    conversationDate: conversationDate(
+                      Number.isNaN(lastSpoken) ? now() : lastSpoken,
+                    ),
+                    transcript: transcript.text,
+                    trimmed: transcript.trimmed,
+                    previous:
+                      stored?.brief && typeof stored.brief === "object" ? stored.brief : null,
+                    followUps: followUpQuestions,
+                    questions,
+                    topEntities: entities,
+                  }),
+                },
+              ],
+            },
+          ],
+          tools: [{ function_declarations: [writeSessionBriefFunction()] }],
+          tool_config: {
+            function_calling_config: {
+              mode: "ANY",
+              allowed_function_names: ["write_session_brief"],
+            },
           },
-        ],
-        tools: [{ function_declarations: [writeSessionBriefFunction()] }],
-        tool_config: {
-          function_calling_config: { mode: "ANY", allowed_function_names: ["write_session_brief"] },
+          generationConfig: { temperature: 0, thinkingConfig: { thinkingBudget: 0 } },
         },
-        generationConfig: { temperature: 0, thinkingConfig: { thinkingBudget: 0 } },
-      },
-    }));
+      }),
+    );
     const brief = briefFromModel(functionArgs(payload, "write_session_brief"));
     if (!brief) throw new Rejection(502, "invalidProviderResponse");
 
     const callsBeforeSpeech = metrics.modelCalls;
     let speech;
     try {
-      speech = await rateLimitTagged(metrics, "tts", () => callGemini({
-        ...gemini,
-        model: ttsModel,
-        body: {
-          contents: [{ parts: [{ text: `${speakPrefix}${brief.openingLine}` }] }],
-          generationConfig: {
-            responseModalities: ["AUDIO"],
-            speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } },
+      speech = await rateLimitTagged(metrics, "tts", () =>
+        callGemini({
+          ...gemini,
+          model: ttsModel,
+          body: {
+            contents: [{ parts: [{ text: `${speakPrefix}${brief.openingLine}` }] }],
+            generationConfig: {
+              responseModalities: ["AUDIO"],
+              speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } },
+            },
           },
-        },
-      }));
+        }),
+      );
     } finally {
       metrics.ttsCalls = metrics.modelCalls - callsBeforeSpeech;
     }
-    const inline = speech?.candidates?.[0]?.content?.parts?.find((part) => part?.inlineData?.data)
-      ?.inlineData;
+    const inline = speech?.candidates?.[0]?.content?.parts?.find(
+      (part) => part?.inlineData?.data,
+    )?.inlineData;
     if (typeof inline?.data !== "string" || inline.data.length === 0) {
       throw new Rejection(502, "invalidProviderResponse");
     }

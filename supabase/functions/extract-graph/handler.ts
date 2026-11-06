@@ -348,206 +348,206 @@ export interface ExtractGraphDeps {
 export function createHandler(deps: ExtractGraphDeps): (req: Request) => Promise<Response> {
   const log = deps.log ?? ((fields) => safeLog("extract-graph", fields));
   return async (req: Request): Promise<Response> => {
-  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+    if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
-  try {
-    const body = (await req.json()) as Body;
-    const { text } = body;
+    try {
+      const body = (await req.json()) as Body;
+      const { text } = body;
 
-    // ── Auth preamble (verify_jwt = true ensures a valid JWT) ──────
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader) {
-      return new Response(JSON.stringify({ error: "missing authorization" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-    const supabaseUserClient = deps.userClient(authHeader);
-    const {
-      data: { user },
-      error: userError,
-    } = await supabaseUserClient.auth.getUser();
-    if (userError || !user) {
-      return new Response(JSON.stringify({ error: "invalid session" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    // Optional notebook_id ownership check — if provided, verify the
-    // user owns it. The client will pass this once Task 10 lands.
-    const notebookId: string | undefined =
-      ((body as unknown as Record<string, unknown>).notebook_id as string | undefined) ??
-      ((body as unknown as Record<string, unknown>).notebookId as string | undefined);
-    if (notebookId) {
-      const { data: notebook, error: nbErr } = await supabaseUserClient
-        .from("notebooks")
-        .select("id")
-        .eq("id", notebookId)
-        .single();
-      if (nbErr || !notebook) {
-        return new Response(JSON.stringify({ error: "notebook not found" }), {
-          status: 404,
+      // ── Auth preamble (verify_jwt = true ensures a valid JWT) ──────
+      const authHeader = req.headers.get("Authorization");
+      if (!authHeader) {
+        return new Response(JSON.stringify({ error: "missing authorization" }), {
+          status: 401,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-    }
-    // ── End auth preamble ──────────────────────────────────────────
+      const supabaseUserClient = deps.userClient(authHeader);
+      const {
+        data: { user },
+        error: userError,
+      } = await supabaseUserClient.auth.getUser();
+      if (userError || !user) {
+        return new Response(JSON.stringify({ error: "invalid session" }), {
+          status: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
 
-    if (!text || text.trim().length < 2) {
-      return new Response(JSON.stringify(emptyResult()), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+      // Optional notebook_id ownership check — if provided, verify the
+      // user owns it. The client will pass this once Task 10 lands.
+      const notebookId: string | undefined =
+        ((body as unknown as Record<string, unknown>).notebook_id as string | undefined) ??
+        ((body as unknown as Record<string, unknown>).notebookId as string | undefined);
+      if (notebookId) {
+        const { data: notebook, error: nbErr } = await supabaseUserClient
+          .from("notebooks")
+          .select("id")
+          .eq("id", notebookId)
+          .single();
+        if (nbErr || !notebook) {
+          return new Response(JSON.stringify({ error: "notebook not found" }), {
+            status: 404,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+      }
+      // ── End auth preamble ──────────────────────────────────────────
 
-    const GROQ_API_KEY = deps.env("GROQ_API_KEY");
-    if (!GROQ_API_KEY) throw new Error("GROQ_API_KEY not configured");
+      if (!text || text.trim().length < 2) {
+        return new Response(JSON.stringify(emptyResult()), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
 
-    const tools = [
-      {
-        type: "function",
-        function: {
-          name: "update_graph",
-          description: "Return entities, relations, and a follow-up object.",
-          parameters: {
-            type: "object",
-            properties: {
-              entities: {
-                type: "array",
-                items: {
-                  type: "object",
-                  properties: {
-                    name: { type: "string" },
-                    type: {
-                      type: "string",
-                      enum: [
-                        "person",
-                        "place",
-                        "organization",
-                        "project",
-                        "event",
-                        "object",
-                        "other",
-                      ],
+      const GROQ_API_KEY = deps.env("GROQ_API_KEY");
+      if (!GROQ_API_KEY) throw new Error("GROQ_API_KEY not configured");
+
+      const tools = [
+        {
+          type: "function",
+          function: {
+            name: "update_graph",
+            description: "Return entities, relations, and a follow-up object.",
+            parameters: {
+              type: "object",
+              properties: {
+                entities: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      name: { type: "string" },
+                      type: {
+                        type: "string",
+                        enum: [
+                          "person",
+                          "place",
+                          "organization",
+                          "project",
+                          "event",
+                          "object",
+                          "other",
+                        ],
+                      },
+                      description: { type: "string" },
+                      metadata: { type: "object", additionalProperties: { type: "string" } },
                     },
-                    description: { type: "string" },
-                    metadata: { type: "object", additionalProperties: { type: "string" } },
+                    required: ["name", "type"],
+                    additionalProperties: false,
                   },
-                  required: ["name", "type"],
-                  additionalProperties: false,
                 },
-              },
-              relations: {
-                type: "array",
-                items: {
+                relations: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      source: { type: "string" },
+                      target: { type: "string" },
+                      label: { type: "string" },
+                      metadata: { type: "object", additionalProperties: { type: "string" } },
+                    },
+                    required: ["source", "target", "label"],
+                    additionalProperties: false,
+                  },
+                },
+                followUp: {
                   type: "object",
                   properties: {
-                    source: { type: "string" },
-                    target: { type: "string" },
-                    label: { type: "string" },
-                    metadata: { type: "object", additionalProperties: { type: "string" } },
+                    question: {
+                      type: "string",
+                      description:
+                        "A warm, specific follow-up question, or an empty string when no useful question exists.",
+                    },
+                    reason: {
+                      type: "string",
+                      description:
+                        "The missing graph fact this would fill, or why no question is needed.",
+                    },
+                    targetEntityNames: { type: "array", items: { type: "string" } },
                   },
-                  required: ["source", "target", "label"],
+                  required: ["question", "reason", "targetEntityNames"],
                   additionalProperties: false,
                 },
               },
-              followUp: {
-                type: "object",
-                properties: {
-                  question: {
-                    type: "string",
-                    description:
-                      "A warm, specific follow-up question, or an empty string when no useful question exists.",
-                  },
-                  reason: {
-                    type: "string",
-                    description:
-                      "The missing graph fact this would fill, or why no question is needed.",
-                  },
-                  targetEntityNames: { type: "array", items: { type: "string" } },
-                },
-                required: ["question", "reason", "targetEntityNames"],
-                additionalProperties: false,
-              },
+              required: ["entities", "relations", "followUp"],
+              additionalProperties: false,
             },
-            required: ["entities", "relations", "followUp"],
-            additionalProperties: false,
           },
         },
-      },
-    ];
+      ];
 
-    const userMsg = buildUserMessage(body);
+      const userMsg = buildUserMessage(body);
 
-    const resp = await deps.fetch("https://api.groq.com/openai/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${GROQ_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "llama-3.3-70b-versatile",
-        messages: [
-          { role: "system", content: SYSTEM },
-          { role: "user", content: userMsg },
-        ],
-        tools,
-        tool_choice: { type: "function", function: { name: "update_graph" } },
-        temperature: 0.4,
-      }),
-    });
+      const resp = await deps.fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${GROQ_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "llama-3.3-70b-versatile",
+          messages: [
+            { role: "system", content: SYSTEM },
+            { role: "user", content: userMsg },
+          ],
+          tools,
+          tool_choice: { type: "function", function: { name: "update_graph" } },
+          temperature: 0.4,
+        }),
+      });
 
-    if (!resp.ok) {
-      // The body can echo the prompt, which holds the transcript: status only.
-      log({ event: "groqError", statusCode: resp.status });
-      await resp.body?.cancel();
-      if (resp.status === 429) {
-        return new Response(
-          JSON.stringify({ error: "Rate limit exceeded. Please wait a moment." }),
-          {
-            status: 429,
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
-          },
-        );
+      if (!resp.ok) {
+        // The body can echo the prompt, which holds the transcript: status only.
+        log({ event: "groqError", statusCode: resp.status });
+        await resp.body?.cancel();
+        if (resp.status === 429) {
+          return new Response(
+            JSON.stringify({ error: "Rate limit exceeded. Please wait a moment." }),
+            {
+              status: 429,
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+            },
+          );
+        }
+        if (resp.status === 402) {
+          return new Response(
+            JSON.stringify({
+              error: "AI credits exhausted. Add credits in Settings > Workspace > Usage.",
+            }),
+            {
+              status: 402,
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+            },
+          );
+        }
+        return new Response(JSON.stringify({ error: "AI request failed" }), {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
       }
-      if (resp.status === 402) {
-        return new Response(
-          JSON.stringify({
-            error: "AI credits exhausted. Add credits in Settings > Workspace > Usage.",
-          }),
-          {
-            status: 402,
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
-          },
-        );
+
+      const data = await resp.json();
+      const call = data.choices?.[0]?.message?.tool_calls?.[0];
+      let parsed: ExtractGraphResult = emptyResult();
+      if (call?.function?.arguments) {
+        try {
+          parsed = normalizeResult(JSON.parse(call.function.arguments));
+        } catch (e) {
+          log({ event: "parseFail", errorClass: errorClass(e) });
+        }
       }
-      return new Response(JSON.stringify({ error: "AI request failed" }), {
+
+      return new Response(JSON.stringify(parsed), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    } catch (e) {
+      // The message can quote the request (a JSON parse error does): class only.
+      log({ event: "unhandled", errorClass: errorClass(e) });
+      return new Response(JSON.stringify({ error: "extract failed" }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-
-    const data = await resp.json();
-    const call = data.choices?.[0]?.message?.tool_calls?.[0];
-    let parsed: ExtractGraphResult = emptyResult();
-    if (call?.function?.arguments) {
-      try {
-        parsed = normalizeResult(JSON.parse(call.function.arguments));
-      } catch (e) {
-        log({ event: "parseFail", errorClass: errorClass(e) });
-      }
-    }
-
-    return new Response(JSON.stringify(parsed), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  } catch (e) {
-    // The message can quote the request (a JSON parse error does): class only.
-    log({ event: "unhandled", errorClass: errorClass(e) });
-    return new Response(JSON.stringify({ error: "extract failed" }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  }
   };
 }

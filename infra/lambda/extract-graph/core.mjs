@@ -82,9 +82,11 @@ function extractionInputHash(body) {
 }
 
 function boundedString(value, maxLength, { allowEmpty = false } = {}) {
-  return typeof value === "string" &&
+  return (
+    typeof value === "string" &&
     value.length <= maxLength &&
-    (allowEmpty || value.trim().length > 0);
+    (allowEmpty || value.trim().length > 0)
+  );
 }
 
 function truncateString(value, maxLength) {
@@ -236,12 +238,16 @@ function validPatch(value) {
     ) {
       return false;
     }
-    if (entity.metadata != null && (typeof entity.metadata !== "object" || Array.isArray(entity.metadata))) {
+    if (
+      entity.metadata != null &&
+      (typeof entity.metadata !== "object" || Array.isArray(entity.metadata))
+    ) {
       return false;
     }
     if (
       entity.questions != null &&
-      (!Array.isArray(entity.questions) || entity.questions.some((question) => typeof question !== "string"))
+      (!Array.isArray(entity.questions) ||
+        entity.questions.some((question) => typeof question !== "string"))
     ) {
       return false;
     }

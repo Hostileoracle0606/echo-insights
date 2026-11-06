@@ -63,10 +63,22 @@ test("exposes authenticated live-session, graph-extraction and close-session rou
     // LM-46: every model-backed route has its own throttle.
     RouteSettings: {
       "POST /v1/live-sessions": { ThrottlingBurstLimit: 40, ThrottlingRateLimit: 20 },
-      "POST /v1/notebooks/{notebookId}/live-sessions": { ThrottlingBurstLimit: 40, ThrottlingRateLimit: 20 },
-      "POST /v1/notebooks/{notebookId}/extractions": { ThrottlingBurstLimit: 40, ThrottlingRateLimit: 20 },
-      "POST /v1/notebooks/{notebookId}/close": { ThrottlingBurstLimit: 40, ThrottlingRateLimit: 20 },
-      "POST /v1/notebooks/{notebookId}/brief": { ThrottlingBurstLimit: 40, ThrottlingRateLimit: 20 },
+      "POST /v1/notebooks/{notebookId}/live-sessions": {
+        ThrottlingBurstLimit: 40,
+        ThrottlingRateLimit: 20,
+      },
+      "POST /v1/notebooks/{notebookId}/extractions": {
+        ThrottlingBurstLimit: 40,
+        ThrottlingRateLimit: 20,
+      },
+      "POST /v1/notebooks/{notebookId}/close": {
+        ThrottlingBurstLimit: 40,
+        ThrottlingRateLimit: 20,
+      },
+      "POST /v1/notebooks/{notebookId}/brief": {
+        ThrottlingBurstLimit: 40,
+        ThrottlingRateLimit: 20,
+      },
     },
   });
   template.hasResourceProperties("AWS::IAM::Policy", {
@@ -115,9 +127,7 @@ test("exposes a user-scoped live-session route on the same broker and authorizer
   const routes = Object.values(template.findResources("AWS::ApiGatewayV2::Route")) as Array<{
     Properties: Record<string, unknown>;
   }>;
-  const userRoute = routes.find(
-    (route) => route.Properties.RouteKey === "POST /v1/live-sessions",
-  );
+  const userRoute = routes.find((route) => route.Properties.RouteKey === "POST /v1/live-sessions");
   const notebookRoute = routes.find(
     (route) => route.Properties.RouteKey === "POST /v1/notebooks/{notebookId}/live-sessions",
   );
@@ -148,7 +158,11 @@ test("keeps the web origin and worker reservations optional", () => {
     CorsConfiguration: { "Fn::If": ["HasWebOrigin", Match.anyValue(), { Ref: "AWS::NoValue" }] },
   });
   const reservation = {
-    "Fn::If": ["HasWorkerReservation", { Ref: "WorkerReservedConcurrency" }, { Ref: "AWS::NoValue" }],
+    "Fn::If": [
+      "HasWorkerReservation",
+      { Ref: "WorkerReservedConcurrency" },
+      { Ref: "AWS::NoValue" },
+    ],
   };
   template.hasResourceProperties("AWS::Lambda::Function", {
     Description: "Issues short-lived, constrained Gemini Live credentials",
@@ -214,7 +228,9 @@ test("runs the session brief writer with its brief and TTS models and a 30 s tim
     Properties: Record<string, unknown>;
   }>;
   const find = (suffix: string) =>
-    routes.find((route) => route.Properties.RouteKey === `POST /v1/notebooks/{notebookId}/${suffix}`);
+    routes.find(
+      (route) => route.Properties.RouteKey === `POST /v1/notebooks/{notebookId}/${suffix}`,
+    );
   expect(find("brief")!.Properties.AuthorizerId).toEqual(find("close")!.Properties.AuthorizerId);
   expect(find("brief")!.Properties.Target).not.toEqual(find("close")!.Properties.Target);
 });
@@ -229,7 +245,9 @@ test("keeps every log group for 14 days and points each function at its own", ()
   expect(functions).toHaveLength(5);
   expect(groups).toHaveLength(functions.length);
   for (const [, group] of groups) {
-    expect((group as { Properties: { RetentionInDays: number } }).Properties.RetentionInDays).toBe(14);
+    expect((group as { Properties: { RetentionInDays: number } }).Properties.RetentionInDays).toBe(
+      14,
+    );
   }
   const used = functions.map((fn) => JSON.stringify(fn.Properties.LoggingConfig?.LogGroup));
   expect(new Set(used).size).toBe(functions.length);
@@ -297,14 +315,22 @@ test("keeps management events for a year in a private, TLS-only, retained bucket
   template.hasResource("AWS::S3::Bucket", {
     DeletionPolicy: "Retain",
     Properties: {
-      PublicAccessBlockConfiguration: Match.objectLike({ BlockPublicAcls: true, RestrictPublicBuckets: true }),
-      LifecycleConfiguration: { Rules: [Match.objectLike({ ExpirationInDays: 365, Status: "Enabled" })] },
+      PublicAccessBlockConfiguration: Match.objectLike({
+        BlockPublicAcls: true,
+        RestrictPublicBuckets: true,
+      }),
+      LifecycleConfiguration: {
+        Rules: [Match.objectLike({ ExpirationInDays: 365, Status: "Enabled" })],
+      },
     },
   });
   template.hasResourceProperties("AWS::S3::BucketPolicy", {
     PolicyDocument: {
       Statement: Match.arrayWith([
-        Match.objectLike({ Effect: "Deny", Condition: { Bool: { "aws:SecureTransport": "false" } } }),
+        Match.objectLike({
+          Effect: "Deny",
+          Condition: { Bool: { "aws:SecureTransport": "false" } },
+        }),
       ]),
     },
   });
