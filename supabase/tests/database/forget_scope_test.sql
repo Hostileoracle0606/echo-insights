@@ -3,7 +3,7 @@
 create extension if not exists pgtap;
 
 begin;
-select plan(44);
+select plan(48);
 
 insert into auth.users (id) values
   ('11111111-1111-1111-1111-111111111111'),
@@ -181,6 +181,14 @@ select is(public.commit_notebook(
     jsonb_build_object('kind', 'applyTurn', 'entry', jsonb_build_object('text', 'x'),
       'entities', jsonb_build_array(jsonb_build_object('id', 'иван', 'name', 'Иван', 'type', 'person', 'mentions', 1))))->'suppressedIds',
   '["иван"]'::jsonb, 'a re-mention does not recreate them');
+
+reset role;
+select is(public._slugify('Иван Петров'), 'иван-петров', 'slug: same rule as the clients, Cyrillic');
+select is(public._slugify('प्रिया'), 'प्रिया', 'slug: Devanagari keeps its marks');
+select is(public._slugify('李雷'), '李雷', 'slug: Chinese');
+select is(public._slugify('O''Brien, Héros'), 'o-brien-heros', 'slug: Latin as it always was');
+set local role authenticated;
+set local request.jwt.claim.sub = '33333333-3333-3333-3333-333333333333';
 
 -- ── M2 ─────────────────────────────────────────────────────────────────────
 select lives_ok($$ select public.redact_forgotten_text(repeat('a', 2097152)) $$, '2 MiB is accepted');
