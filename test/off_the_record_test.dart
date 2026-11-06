@@ -20,6 +20,7 @@ import 'package:lumen/models/session_brief.dart';
 import 'package:lumen/models/session_card.dart';
 import 'package:lumen/providers/journal_provider.dart';
 import 'package:lumen/providers/opening_prep_provider.dart';
+import 'package:lumen/providers/session_provider.dart';
 import 'package:lumen/providers/supabase_provider.dart';
 import 'package:lumen/providers/voice_services_provider.dart';
 import 'package:lumen/services/extract_graph_service.dart';
@@ -575,6 +576,15 @@ void main() {
           isNot(contains('Echoing the secret.')));
     });
 
+    test('the new conversation gets a new token', () async {
+      await saveThenGoOff();
+      final oldToken = h.socket.uri.queryParameters['access_token'];
+
+      h.journal.setOffTheRecord(false);
+      await h.waitForSocket(2);
+      expect(h.socket.uri.queryParameters['access_token'], isNot(oldToken));
+    });
+
     test('a session not connected has nothing to reopen', () async {
       h = _Harness(
         state: JournalState.empty().copyWith(entries: [_entry('Earlier.')]),
@@ -586,6 +596,27 @@ void main() {
       await _settle();
       expect(h.sockets, isEmpty);
     });
+  });
+
+  test('starting again after an error releases the old mic and socket',
+      () async {
+    h = _Harness(
+      state: JournalState.empty().copyWith(entries: [_entry('Earlier.')]),
+      supabase: _EndingNotebooks(),
+    );
+    await h.journal.enterNotebook(_notebookId);
+    await h.startLive();
+    final old = h.socket;
+
+    old.serverCloses(); // no resumption handle: the session errors
+    await _settle();
+    expect(h.container.read(sessionStatusProvider), SessionStatus.error);
+    expect(h.mic.stops, 0, reason: 'nothing has stopped it yet');
+
+    final starting = h.startLive();
+    await starting;
+    expect(h.mic.stops, 1, reason: 'the old capture is stopped, not orphaned');
+    expect(h.mic.starts, 2);
   });
 
   test('the only caller of redaction is the card pipeline', () {

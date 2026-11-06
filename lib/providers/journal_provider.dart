@@ -1571,6 +1571,11 @@ class JournalNotifier extends Notifier<JournalState> {
     _setStatus(SessionStatus.connecting);
     // A new session holds nothing off the record.
     _turnMachine.holdAssistantOffRecord = false;
+    // A reconnect that gave up left the error status with the mic and socket
+    // still in place; replacing them below would orphan them.
+    if (_capture != null || _live != null || _session != null) {
+      await _closeLiveTransportUnlocked();
+    }
     // A notebook with earlier conversation continues it: no greeting, the
     // earlier turns go to Gemini as context, and the user has the floor
     // from the tap. A new notebook opens with Lumen's greeting.
@@ -1859,7 +1864,8 @@ class JournalNotifier extends Notifier<JournalState> {
           final tokenUsable = DateTime.now()
               .add(const Duration(minutes: 1))
               .isBefore(session.tokenExpiresAt);
-          if (attempt > 0 || !tokenUsable) {
+          // A new conversation gets a new token, not the one the old used.
+          if (fresh || attempt > 0 || !tokenUsable) {
             final outcome =
                 await _takeCredential(session.notebookId, (stage) {});
             if (outcome is! LiveSessionReady) {
