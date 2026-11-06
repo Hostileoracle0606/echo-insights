@@ -1,3 +1,4 @@
+import type { DbClient } from "../_shared/db-client.ts";
 import { errorClass, safeLog } from "../_shared/safe-log.ts";
 
 export const corsHeaders = {
@@ -338,8 +339,7 @@ const normalizeResult = (value: Partial<ExtractGraphResult>): ExtractGraphResult
 
 export interface ExtractGraphDeps {
   /** Anon-key client carrying the caller's JWT, so every read is RLS-scoped. */
-  // deno-lint-ignore no-explicit-any
-  userClient(authHeader: string): any;
+  userClient(authHeader: string): DbClient;
   env(name: string): string | undefined;
   fetch: typeof fetch;
   log?: (fields: Record<string, unknown>) => void;

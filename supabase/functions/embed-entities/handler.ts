@@ -1,3 +1,4 @@
+import type { TableClient } from "../_shared/db-client.ts";
 import type { Embedder } from "../_shared/embedder.ts";
 import { errorClass, safeLog } from "../_shared/safe-log.ts";
 
@@ -16,8 +17,7 @@ type EmbeddingRow = { entity_id: string; content_hash: string; embedding_model: 
 
 export interface EmbedEntitiesDeps {
   /** Service-role client: this function is internal-only, gated by a shared secret. */
-  // deno-lint-ignore no-explicit-any
-  adminClient(): any;
+  adminClient(): TableClient;
   embedder(): Embedder;
   env(name: string): string | undefined;
   fetch: typeof fetch;
@@ -53,7 +53,7 @@ export function createHandler(deps: EmbedEntitiesDeps): (req: Request) => Promis
       .single();
     if (nbErr) return fail("notebook", nbErr.code);
     if (!nb) return Response.json({ ok: false, reason: "notebook gone" });
-    const owner = nb.user_id as string;
+    const owner = (nb as { user_id: string }).user_id;
 
     // Filter by user_id = owner: entity insert RLS only checks auth.uid() = user_id,
     // NOT notebook ownership, so a foreign user could inject rows into this
@@ -66,13 +66,13 @@ export function createHandler(deps: EmbedEntitiesDeps): (req: Request) => Promis
       .eq("notebook_id", notebookId)
       .eq("user_id", owner);
     if (entErr) return fail("entities", entErr.code);
-    const rows: EntityRow[] = entities ?? [];
+    const rows = (entities ?? []) as EntityRow[];
     const { data: existing, error: exErr } = await admin
       .from("entity_embeddings")
       .select("entity_id,content_hash,embedding_model")
       .eq("notebook_id", notebookId);
     if (exErr) return fail("existing", exErr.code);
-    const existingRows: EmbeddingRow[] = existing ?? [];
+    const existingRows = (existing ?? []) as EmbeddingRow[];
     const have = new Map(existingRows.map((r) => [r.entity_id, r]));
 
     // Prune orphans for this notebook.

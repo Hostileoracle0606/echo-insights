@@ -1,3 +1,4 @@
+import type { DbClient } from "../_shared/db-client.ts";
 import { retrieve } from "../_shared/graphloop/retrieve.ts";
 import { SearchIndex } from "../_shared/graphloop/search-index.ts";
 import { buildCommunities } from "../_shared/graphloop/communities.ts";
@@ -13,20 +14,7 @@ import { loadQuotes } from "./quotes.ts";
 // The handler takes its clients, embedder and logger as dependencies so it
 // can be tested without a Supabase stack; index.ts wires the real ones.
 
-type RpcResult = { data: unknown; error: unknown };
-
-/** The slice of supabase-js the handler uses. */
-export interface DbClient {
-  auth: {
-    getUser(): PromiseLike<{ data: { user: { id: string } | null }; error: unknown }>;
-  };
-  from(table: string): {
-    select(columns: string): {
-      eq(column: string, value: string): { single(): PromiseLike<RpcResult> };
-    };
-  };
-  rpc(fn: string, args: Record<string, unknown>): PromiseLike<RpcResult>;
-}
+export type { DbClient };
 
 export interface RetrieveMemoryDeps {
   /** Anon-key client carrying the caller's JWT: every read through it is RLS-scoped. */

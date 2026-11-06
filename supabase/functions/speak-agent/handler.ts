@@ -1,3 +1,4 @@
+import type { DbClient } from "../_shared/db-client.ts";
 import { errorClass, safeLog } from "../_shared/safe-log.ts";
 
 export const corsHeaders = {
@@ -85,8 +86,7 @@ function arrayBufferToBase64(buffer: ArrayBuffer) {
 
 export interface SpeakAgentDeps {
   /** Anon-key client carrying the caller's JWT. */
-  // deno-lint-ignore no-explicit-any
-  userClient(authHeader: string): any;
+  userClient(authHeader: string): DbClient;
   env(name: string): string | undefined;
   fetch: typeof fetch;
   log?: (fields: Record<string, unknown>) => void;

@@ -2,6 +2,7 @@
 // on any failure. Every content field below carries MARKER; the test captures
 // everything the handler prints and fails if MARKER appears.
 // Run with the rest of the suite (see docs/guide/testing.md).
+import type { DbClient, TableClient } from "./_shared/db-client.ts";
 import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { StubEmbedder } from "./_shared/embedder.ts";
 import { createHandler as embedEntities } from "./embed-entities/handler.ts";
@@ -52,8 +53,7 @@ const post = (url: string, body: unknown, headers: Record<string, string> = {}) 
     body: typeof body === "string" ? body : JSON.stringify(body),
   });
 
-// deno-lint-ignore no-explicit-any
-function userClient(overrides: Record<string, any> = {}): any {
+function userClient(overrides: Record<string, unknown> = {}): DbClient {
   return {
     auth: { getUser: () => Promise.resolve({ data: { user: { id: "user-1" } }, error: null }) },
     from: () => ({
@@ -63,7 +63,7 @@ function userClient(overrides: Record<string, any> = {}): any {
     }),
     rpc: () => Promise.resolve({ data: true, error: null }),
     ...overrides,
-  };
+  } as unknown as DbClient;
 }
 
 const failingResponse = (status: number) =>
@@ -157,13 +157,11 @@ Deno.test("speak-agent logs no content on success", async () => {
 
 // ── embed-entities ───────────────────────────────────────────
 
-// deno-lint-ignore no-explicit-any
-function embedAdmin(tables: Record<string, { data?: any; error?: any }>): any {
+function embedAdmin(tables: Record<string, { data?: unknown; error?: unknown }>): TableClient {
   return {
     from: (table: string) => {
       const result = Promise.resolve({ data: null, error: null, ...tables[table] });
-      // deno-lint-ignore no-explicit-any
-      const chain: any = new Proxy(() => {}, {
+      const chain: unknown = new Proxy(() => {}, {
         get: (_t, prop) => {
           if (prop === "then") return result.then.bind(result);
           if (prop === "single") return () => result;
@@ -172,10 +170,10 @@ function embedAdmin(tables: Record<string, { data?: any; error?: any }>): any {
       });
       return chain;
     },
-  };
+  } as unknown as TableClient;
 }
 
-function embedHandler(admin: unknown, embedder = new StubEmbedder()) {
+function embedHandler(admin: TableClient, embedder = new StubEmbedder()) {
   return embedEntities({
     adminClient: () => admin,
     embedder: () => embedder,

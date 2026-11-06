@@ -272,7 +272,7 @@ test("alarms on each function's errors, API 4xx and API 5xx, all to the alerts t
   const template = synthesizeTemplate();
 
   const alarms = Object.values(template.findResources("AWS::CloudWatch::Alarm")) as Array<{
-    Properties: Record<string, any>;
+    Properties: { AlarmActions: unknown[] } & Record<string, unknown>;
   }>;
   const topicId = Object.keys(template.findResources("AWS::SNS::Topic"))[0];
   // five functions + 4xx + 5xx
