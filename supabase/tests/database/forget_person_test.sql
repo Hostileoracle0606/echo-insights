@@ -195,7 +195,7 @@ select is(
   '{"status":"unchanged"}'::jsonb, 'brief: a name in openingThread is not saved');
 select is(
   public.save_session_brief('a1111111-0000-0000-0000-000000000002'::uuid, 7::bigint,
-    '{"focus":["rent",{"who":"Priya"}],"openingThread":"","openingLine":"Hi there"}'::jsonb, 'AAAA', 24000),
+    '{"focus":["rent","how Priya is doing"],"openingThread":"","openingLine":"Hi there"}'::jsonb, 'AAAA', 24000),
   '{"status":"unchanged"}'::jsonb, 'brief: a name in focus is not saved');
 select is(
   public.save_session_brief('a1111111-0000-0000-0000-000000000002'::uuid, 7::bigint,

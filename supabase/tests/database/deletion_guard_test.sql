@@ -77,8 +77,15 @@ insert into who values
   ('V', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'b1b1b1b1-b1b1-b1b1-b1b1-b1b1b1b1b1b1', 'b2b2b2b2-b2b2-b2b2-b2b2-b2b2b2b2b2b2');
 
 insert into auth.users (id) select uid from who;   -- the profiles trigger adds profiles
-insert into public.notebooks (id, user_id, title, started_at)
-  select nid, uid, 'nb ' || name, now() from who;
+-- Columns added after the table: they go with their row, and are set here so
+-- a row carrying them is what gets deleted.
+update public.profiles p
+   set transcript_retention_days = 30,
+       transcript_retention_offered_at = now(),
+       privacy_screen_seen_at = now()
+  from who where p.user_id = who.uid;
+insert into public.notebooks (id, user_id, title, started_at, transcript_forgotten_at)
+  select nid, uid, 'nb ' || name, now(), now() from who;
 insert into public.journal_entries (user_id, notebook_id, text, created_at)
   select uid, nid, 'entry', now() from who;
 insert into public.entities (id, user_id, notebook_id, name, type, first_seen, last_seen)

@@ -5,7 +5,7 @@
 create extension if not exists pgtap;
 
 begin;
-select plan(22);
+select plan(25);
 
 insert into auth.users (id) values
   ('11111111-1111-1111-1111-111111111111'),
@@ -25,6 +25,9 @@ insert into public.notebooks (id, user_id, title, title_source, started_at, revi
   ('b2222222-0000-0000-0000-000000000007', '22222222-2222-2222-2222-222222222222', 'Untitled', 'auto', now(), 0),
   ('a1111111-0000-0000-0000-000000000009', '11111111-1111-1111-1111-111111111111', 'Untitled', 'auto', now(), 0),
   ('a1111111-0000-0000-0000-000000000010', '11111111-1111-1111-1111-111111111111', 'Untitled', 'auto', now(), 0);
+-- N11 had a conversation auto-forget swept away (LM-51): no rows, revision 0.
+insert into public.notebooks (id, user_id, title, title_source, started_at, revision, transcript_forgotten_at) values
+  ('a1111111-0000-0000-0000-000000000011', '11111111-1111-1111-1111-111111111111', 'Untitled', 'auto', now(), 0, now());
 
 insert into public.conversation_turns (notebook_id, turn_id, user_id, speaker, text, spoken_at) values
   ('a1111111-0000-0000-0000-000000000002', 't1', '11111111-1111-1111-1111-111111111111', 'user', 'hello', now());
@@ -102,6 +105,15 @@ select is(public.delete_empty_notebook('a1111111-0000-0000-0000-000000000006'),
   '{"deleted": false}'::jsonb, 'without a user nothing is deleted');
 reset role;
 
+-- A notebook auto-forget emptied held a real conversation.
+set local role authenticated;
+set local request.jwt.claim.sub = '11111111-1111-1111-1111-111111111111';
+select is(public.delete_empty_notebook('a1111111-0000-0000-0000-000000000011'),
+  '{"deleted": false}'::jsonb, 'a notebook emptied by auto-forget is kept');
+reset role;
+select is((select count(*) from public.notebooks where id = 'a1111111-0000-0000-0000-000000000011'),
+  1::bigint, 'and it is still there');
+
 select ok(not has_function_privilege('anon', 'public.delete_empty_notebook(uuid)', 'execute'),
   'anon has no execute grant');
 select ok(has_function_privilege('authenticated', 'public.delete_empty_notebook(uuid)', 'execute'),
@@ -120,6 +132,18 @@ select is(
     'notebook_commit_requests', 'relations', 'session_briefs', 'session_cards'
   ],
   'every table with a foreign key to notebooks is checked by delete_empty_notebook');
+
+-- A new notebooks column can be a trace of earlier content too (as
+-- transcript_forgotten_at was). Decide, in the function, and list it here.
+select is(
+  (select array_agg(a.attname::text order by a.attname::text) from pg_attribute a
+    where a.attrelid = 'public.notebooks'::regclass and a.attnum > 0 and not a.attisdropped),
+  array[
+    'archived_at', 'conversation_mode', 'created_at', 'duration_seconds', 'ended_at',
+    'entity_count', 'id', 'mode_context', 'revision', 'started_at', 'summary', 'title',
+    'title_source', 'transcript_forgotten_at', 'updated_at', 'user_id'
+  ],
+  'every notebooks column has been considered by delete_empty_notebook');
 
 select * from finish();
 rollback;
