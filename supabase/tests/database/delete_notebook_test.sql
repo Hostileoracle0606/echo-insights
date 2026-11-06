@@ -3,7 +3,7 @@
 create extension if not exists pgtap;
 
 begin;
-select plan(22);
+select plan(24);
 
 -- A has two sessions (N1 is deleted, N2 stays); B is another user.
 -- "maya" is in both of A's sessions, "tokyo" only in N1.
@@ -96,6 +96,7 @@ select is((select count(*) from public.session_briefs where user_id = 'aaaaaaaa-
 select is((select count(*) from public.session_briefs where user_id = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'),
   1::bigint, 'another user''s brief stays');
 
+
 -- the graph: tokyo only N1 backed, so it (and its embedding) goes; maya is
 -- still backed by N2, so she stays
 select is((select count(*) from public.entities where id = 'tokyo' and user_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'),
@@ -117,6 +118,21 @@ select is((select count(*) from public.retrieve_rate_limits where scope like 'no
 
 -- everything of N2 and B1 is untouched
 select is((select count(*) from public.conversation_turns), 2::bigint, 'other sessions'' turns stay');
+
+-- A brief written from another notebook can carry this one's content through
+-- `previous`, so the current brief goes on every delete.
+reset role;
+insert into public.notebooks (id, user_id, title, started_at) values
+  ('a3a3a3a3-a3a3-a3a3-a3a3-a3a3a3a3a3a3', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'N3', now());
+insert into public.session_briefs (user_id, source_notebook_id, source_revision, brief, audio, sample_rate) values
+  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'a2a2a2a2-a2a2-a2a2-a2a2-a2a2a2a2a2a2', 1, '{"openingLine":"Hi"}', '\x00', 24000);
+set local role authenticated;
+set local request.jwt.claim.sub = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+select is(public.delete_notebook('a3a3a3a3-a3a3-a3a3-a3a3-a3a3a3a3a3a3'), '{"deleted": true}'::jsonb,
+  'a notebook the brief did not come from deletes');
+reset role;
+select is((select count(*) from public.session_briefs where user_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'),
+  0::bigint, 'and the current brief goes with it');
 
 select * from finish();
 rollback;

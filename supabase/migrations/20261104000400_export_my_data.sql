@@ -13,7 +13,8 @@
 --
 -- Left out on purpose: internal bookkeeping (retrieve_rate_limits,
 -- notebook_commit_requests, conversation_runtime_*, entity_suppressions,
--- session_card_drafts), embeddings, and session_briefs (its audio is bytea).
+-- suppression_keys), embeddings, and session_briefs (its audio is bytea).
+-- session_cards holds a draft as well as the final card, whichever is newest.
 -- user_id and revision are not exported either: the first is the caller's own
 -- id, the second is an internal concurrency counter.
 --

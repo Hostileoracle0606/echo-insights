@@ -5,7 +5,7 @@
 create extension if not exists pgtap;
 
 begin;
-select plan(25);
+select plan(26);
 
 insert into auth.users (id) values
   ('11111111-1111-1111-1111-111111111111'),
@@ -42,6 +42,9 @@ insert into public.entities (id, user_id, notebook_id, name, type, first_seen, l
 insert into public.conversation_runtime_sessions (id, notebook_id, user_id, device_id, mode) values
   ('c0000000-0000-0000-0000-000000000010', 'a1111111-0000-0000-0000-000000000010',
    '11111111-1111-1111-1111-111111111111', 'd0000000-0000-0000-0000-000000000001', 'granular');
+
+insert into public.retrieve_rate_limits (scope, window_start, count) values
+  ('notebook:a1111111-0000-0000-0000-000000000001', now(), 1);
 
 -- anon is refused
 set local role anon;
@@ -104,6 +107,10 @@ set local request.jwt.claim.sub = '';
 select is(public.delete_empty_notebook('a1111111-0000-0000-0000-000000000006'),
   '{"deleted": false}'::jsonb, 'without a user nothing is deleted');
 reset role;
+
+select is((select count(*) from public.retrieve_rate_limits
+            where scope = 'notebook:a1111111-0000-0000-0000-000000000001'),
+  0::bigint, 'the deleted notebook''s retrieval counter goes too');
 
 -- A notebook auto-forget emptied held a real conversation.
 set local role authenticated;

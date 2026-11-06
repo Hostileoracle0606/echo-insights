@@ -8,9 +8,8 @@
 --
 -- Reopening a notebook whose turns have expired works: the app already opens
 -- with an empty history when no turns come back, and the graph and card load
--- from their own tables. A later save of that notebook (a revision-checked
--- full-state commit) rewrites its journal_entries from the client's state, so
--- an expired entry does not come back.
+-- from their own tables. Commits only add entries, so an expired entry does
+-- not come back; clearing a notebook deletes what is left.
 --
 -- The setting lives on profiles (one row per user, owner RLS, cascade from
 -- auth.users), so the deletion guard already covers it. Writes go only

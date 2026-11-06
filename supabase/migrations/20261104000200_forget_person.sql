@@ -9,7 +9,7 @@
 --   _commit_apply_turn        — compares hashes; otherwise 20261028000000's body
 --    (replaced)
 --   get_notebook_snapshot     — no longer lists suppressed ids (a device cannot
---    (replaced)                 hash them); the field stays, empty
+--    (replaced)                 hash them); 20261104000300 removes the field
 --   forget_entity_preview(id) — what "Forget" would remove, as counts
 --   forget_entity(id)         — the entity in every notebook of the caller's,
 --                               the follow-ups and asked questions about it,
@@ -17,11 +17,12 @@
 --                               from cards and notebook titles/summaries
 --
 -- Not touched on purpose: the words the user spoke (conversation_turns,
--- journal_entries) and other entities' descriptions; as with remove_entity,
--- only the memory forgets. Cards are redacted, never regenerated (no model
--- call in the database).
+-- journal_entries); as with remove_entity, only the memory forgets. Cards are
+-- redacted, never regenerated (no model call in the database).
+-- 20261104000800 replaces the matching here and adds other entities' text.
 --
--- Any later replacement of _commit_apply_turn must start from THIS body.
+-- 20261104000800 renames this _commit_apply_turn to _commit_apply_turn_core.
+-- Any later replacement must start from THIS body.
 
 create extension if not exists pgcrypto with schema extensions;
 

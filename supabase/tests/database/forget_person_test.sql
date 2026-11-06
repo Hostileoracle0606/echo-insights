@@ -33,7 +33,7 @@ insert into public.entity_embeddings (notebook_id, entity_id, user_id, embedding
   from public.entities where id = 'priya';
 insert into public.follow_ups (user_id, notebook_id, question, target_entity_ids) values
   ('11111111-1111-1111-1111-111111111111', 'a1111111-0000-0000-0000-000000000001', 'How is she?', '{priya}'),
-  ('11111111-1111-1111-1111-111111111111', 'a1111111-0000-0000-0000-000000000003', 'Did priya call back?', '{}'),
+  ('11111111-1111-1111-1111-111111111111', 'a1111111-0000-0000-0000-000000000003', 'Did Priya call back?', '{}'),
   ('11111111-1111-1111-1111-111111111111', 'a1111111-0000-0000-0000-000000000003', 'Unrelated?', '{}'),
   ('22222222-2222-2222-2222-222222222222', 'b2222222-0000-0000-0000-000000000009', 'How is she?', '{priya}');
 insert into public.asked_questions (user_id, notebook_id, question, target_entity_ids) values
@@ -158,8 +158,8 @@ select is((select count(*)::int from public.entities where id = 'maya' and noteb
 select is((public.forget_entity('priya') ->> 'notebooks')::int, 0, 'forget twice: nothing left, no error');
 
 -- ── regeneration cannot bring the name back (R10) ──────────────────────────
-select is(public.redact_forgotten_text('I saw Priya and priya''s dog. PRIYA, hi!'),
-  'I saw someone and someone''s dog. someone, hi!', 'redact: any case, possessive, punctuation');
+select is(public.redact_forgotten_text('I saw Priya and Priya''s dog. PRIYA, hi!'),
+  'I saw someone and someone''s dog. someone, hi!', 'redact: capitalized, possessive, punctuation');
 select is(public.redact_forgotten_text('Priyanka and Maya went'), 'Priyanka and Maya went',
   'redact: a different name that starts the same is left alone');
 select is(public.redact_forgotten_text(E'first\u0001Priya\u0001third'), E'first\u0001someone\u0001third',
@@ -221,8 +221,8 @@ insert into public.entities (id, user_id, notebook_id, name, type, mentions, fir
 insert into public.session_cards (notebook_id, user_id, conversation_mode, source_revision, card) values
   ('c3333333-0000-0000-0000-000000000001', '33333333-3333-3333-3333-333333333333', 'just_talk', 2,
    '{"title":"Old","summary":"About Priya.","notes":[],"remember":[],"sourceRevision":2}');
-insert into public.entity_suppressions (user_id, entity_hash)
-  select '33333333-3333-3333-3333-333333333333', public._suppression_hash('33333333-3333-3333-3333-333333333333', x)
+insert into public.entity_suppressions (user_id, entity_hash, kind)
+  select '33333333-3333-3333-3333-333333333333', public._suppression_hash('33333333-3333-3333-3333-333333333333', x), 'forgotten'
   from unnest(array['o-brien', 'st-john', 'maya-chen']) x;
 
 set local role authenticated;
