@@ -6,6 +6,7 @@ import '../../providers/quiet_mode_provider.dart';
 import '../../security/app_lock_provider.dart';
 import '../../theme/lumen_colors.dart';
 import '../../theme/lumen_text.dart';
+import '../privacy/who_hears_you_screen.dart';
 
 /// The dashboard's shield button: opens [PrivacySheet].
 class PrivacyButton extends StatelessWidget {
@@ -173,6 +174,17 @@ class _PrivacySheetState extends ConsumerState<PrivacySheet> {
                     )
                   : Icon(Icons.ios_share, color: colors.ink),
               onTap: _exporting ? null : _export,
+            ),
+            ListTile(
+              key: const Key('whoHearsYouTile'),
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Who hears you'),
+              subtitle: Text(
+                'Who sees what of your journal, in plain words.',
+                style: small,
+              ),
+              trailing: Icon(Icons.chevron_right, color: colors.ink),
+              onTap: () => showWhoHearsYou(context),
             ),
           ],
         ),
