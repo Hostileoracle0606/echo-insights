@@ -60,10 +60,9 @@ class _FakeCards implements SessionCardService {
 }
 
 class _FakeCommits implements NotebookCommitService {
-  _FakeCommits({this.revision = 7, this.suppressed = const {}});
+  _FakeCommits({this.revision = 7});
 
   int revision;
-  Set<String> suppressed;
   Object? failWith;
   int snapshots = 0;
 
@@ -74,7 +73,6 @@ class _FakeCommits implements NotebookCommitService {
     return NotebookSnapshot(
       notebookId: notebookId,
       revision: revision,
-      suppressedEntityIds: suppressed,
       state: _exportState(),
     );
   }
@@ -449,14 +447,6 @@ void main() {
         LumenColors.entityColors[EntityType.activity],
         LumenColors.entityColors[EntityType.place],
       ]);
-      await _unmount(tester);
-    });
-
-    testWidgets('items already removed from memory are hidden on load',
-        (tester) async {
-      await _pump(tester, commits: _FakeCommits(suppressed: {'maya'}));
-      expect(find.bySemanticsLabel('Remove Maya'), findsNothing);
-      expect(find.bySemanticsLabel('Remove Project Atlas'), findsOneWidget);
       await _unmount(tester);
     });
 

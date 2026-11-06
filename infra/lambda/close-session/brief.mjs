@@ -16,6 +16,7 @@ import {
   buildBriefMessage,
   writeSessionBriefFunction,
 } from "./brief-prompts.mjs";
+import { redactTurns } from "./redact.mjs";
 import { buildTranscript } from "./validate.mjs";
 
 const defaultDeadlineMs = 27_000;
@@ -141,7 +142,7 @@ export function createSessionBriefHandler({
       throw new Rejection(503, "providerUnavailable");
     }
 
-    const turns = [...newestTurns].reverse();
+    const turns = await redactTurns(db, [...newestTurns].reverse());
     const userTurns = turns.filter(
       (turn) => turn?.speaker === "user" && typeof turn.text === "string" && turn.text.trim(),
     );

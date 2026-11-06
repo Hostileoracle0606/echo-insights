@@ -44,14 +44,11 @@ export function cleanText(value, maxLength) {
 
 /**
  * The "Lumen will remember" candidates, decided in code: this notebook's
- * entities, most mentioned first, never a suppressed id, at most
+ * entities, most mentioned first, at most
  * [limits.remember]. [notebookCounts] maps an entity id to
  * user_entities.notebook_count; 1 means only this conversation mentions it.
  */
 export function rememberCandidates(snapshot, notebookCounts = new Map(), max = limits.remember) {
-  const suppressed = new Set(
-    Array.isArray(snapshot?.suppressedEntityIds) ? snapshot.suppressedEntityIds : [],
-  );
   const entities = snapshot?.state?.entities;
   const values = entities && typeof entities === "object" ? Object.values(entities) : [];
   return values
@@ -61,8 +58,7 @@ export function rememberCandidates(snapshot, notebookCounts = new Map(), max = l
         typeof entity.id === "string" &&
         entity.id.length > 0 &&
         typeof entity.name === "string" &&
-        entity.name.trim().length > 0 &&
-        !suppressed.has(entity.id),
+        entity.name.trim().length > 0,
     )
     .sort(
       (a, b) =>

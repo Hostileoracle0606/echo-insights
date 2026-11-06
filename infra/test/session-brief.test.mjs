@@ -21,6 +21,12 @@ const clone = (value) => structuredClone(value);
 const ok = (body) => ({ ok: true, status: 200, json: async () => clone(body) });
 const status = (code, body = {}) => ({ ok: code >= 200 && code < 300, status: code, json: async () => body });
 
+
+/** Stand-in for redact_forgotten_text: replaces each forgotten name. */
+function redactWith(forgotten, text) {
+  return forgotten.reduce((out, name) => out.replaceAll(name, "someone"), text);
+}
+
 const goodArgs = {
   focus: ["The Atlas demo on Thursday", "Getting Sunday runs back"],
   openingThread: "They said the Atlas demo is on Thursday and wanted to tell how it went.",
@@ -82,6 +88,11 @@ function world(overrides = {}) {
     if (path === "/rest/v1/session_briefs") return ok(state.storedBrief ? [state.storedBrief] : []);
     if (path === "/rest/v1/conversation_turns") {
       return ok([...state.turns].sort((a, b) => b.spoken_at.localeCompare(a.spoken_at)));
+    }
+    if (path === "/rest/v1/rpc/redact_forgotten_text") {
+      state.redactions ??= [];
+      state.redactions.push(call);
+      return ok(redactWith(state.forgotten ?? [], call.body.p_text));
     }
     if (path === "/rest/v1/follow_ups") return ok(state.followUps);
     if (path === "/rest/v1/entities") return ok(state.questionEntities);
@@ -489,4 +500,26 @@ test("log lines carry ids and counts, never text", async () => {
   ]) {
     assert.ok(!line.includes(secret), `log leaked "${secret}"`);
   }
+});
+
+// ── LM-49: a forgotten name never reaches the model ──────────────────────
+
+test("the transcript is redacted by one user-token call before the model sees it", async () => {
+  const { state, handle } = world({ state: { forgotten: ["Atlas"] } });
+  await handle(requestEvent());
+  assert.equal(state.redactions.length, 1);
+  assert.equal(state.redactions[0].init.headers.authorization, "Bearer signed-user-token");
+  const text = JSON.stringify(state.providerCalls.find((call) => !call.url.pathname.includes("tts")).body);
+  assert.ok(text.includes("someone"));
+  assert.ok(!text.includes("Atlas demo is"));
+});
+
+test("if redaction fails the model is never called", async () => {
+  const { state, handle } = world({
+    "/rest/v1/rpc/redact_forgotten_text": () => status(500),
+  });
+  const response = await handle(requestEvent());
+  assert.equal(response.statusCode, 503);
+  assert.equal(state.providerCalls.length, 0);
+  assert.equal(state.saves.length, 0);
 });

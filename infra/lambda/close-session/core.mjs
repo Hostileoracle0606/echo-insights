@@ -1,4 +1,5 @@
 import { guardHandler, safeLog } from "./safe-log.mjs";
+import { redactTurns } from "./redact.mjs";
 import { buildJustTalkMessage, justTalkPrompt, writeSessionCardFunction } from "./prompts.mjs";
 import {
   buildTranscript,
@@ -237,7 +238,7 @@ export function createCloseSessionHandler({
     if (!snapshot || typeof snapshot !== "object") throw new Rejection(404, "notFound");
     if (!Array.isArray(newestTurns)) throw new Rejection(503, "providerUnavailable");
 
-    const turns = [...newestTurns].reverse();
+    const turns = await redactTurns(db, [...newestTurns].reverse());
     const userTurns = turns.filter(
       (turn) => turn?.speaker === "user" && typeof turn.text === "string" && turn.text.trim(),
     );

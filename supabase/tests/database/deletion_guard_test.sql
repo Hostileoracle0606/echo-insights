@@ -20,7 +20,7 @@
 create extension if not exists pgtap;
 
 begin;
-select plan(2 + 3 * 16);
+select plan(2 + 3 * 17);
 
 -- ── inventory: table → predicate selecting one user's rows ─────────────────
 -- Placeholders: %U% user id, %N% that user's notebook id, %S% runtime session id.
@@ -36,6 +36,7 @@ insert into inventory values
   ('asked_questions',              'user_id = ''%U%'''),
   ('entity_embeddings',            'user_id = ''%U%'''),
   ('entity_suppressions',          'user_id = ''%U%'''),
+  ('suppression_keys',             'user_id = ''%U%'''),
   ('conversation_turns',           'user_id = ''%U%'''),
   ('conversation_runtime_sessions','user_id = ''%U%'''),
   ('session_cards',                'user_id = ''%U%'''),
@@ -90,8 +91,10 @@ insert into public.asked_questions (user_id, notebook_id, question)
   select uid, nid, 'q?' from who;
 insert into public.entity_embeddings (notebook_id, entity_id, user_id, embedding, embedding_model, content_hash)
   select nid, 'maya', uid, array_fill(0.0::real, array[384])::vector, 'm', 'h' from who;
-insert into public.entity_suppressions (user_id, entity_id)
-  select uid, 'maya' from who;
+insert into public.entity_suppressions (user_id, entity_hash)
+  select uid, 'hash' from who;
+insert into public.suppression_keys (user_id, key)
+  select uid, '\x00'::bytea from who;
 insert into public.conversation_turns (notebook_id, turn_id, user_id, speaker, text, spoken_at)
   select nid, 't1', uid, 'user', 'hello', now() from who;
 insert into public.conversation_runtime_sessions (id, notebook_id, user_id, device_id, mode)
