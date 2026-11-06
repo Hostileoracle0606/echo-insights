@@ -217,3 +217,77 @@ test("keeps every log group for 14 days and points each function at its own", ()
   expect(new Set(used).size).toBe(functions.length);
   for (const [id] of groups) expect(used.join()).toContain(id);
 });
+
+test("sends alarms to one topic and subscribes only when an alert email is given", () => {
+  const without = synthesizeTemplate();
+  without.resourceCountIs("AWS::SNS::Topic", 1);
+  without.resourceCountIs("AWS::SNS::Subscription", 0);
+
+  const app = new cdk.App({ context: { alertEmail: "ops@example.invalid" } });
+  const withEmail = Template.fromStack(new InfraStack(app, "EmailStack"));
+  withEmail.resourceCountIs("AWS::SNS::Subscription", 1);
+  withEmail.hasResourceProperties("AWS::SNS::Subscription", {
+    Protocol: "email",
+    Endpoint: "ops@example.invalid",
+  });
+});
+
+test("alarms on each function's errors, API 4xx and API 5xx, all to the alerts topic", () => {
+  const template = synthesizeTemplate();
+
+  const alarms = Object.values(template.findResources("AWS::CloudWatch::Alarm")) as Array<{
+    Properties: Record<string, any>;
+  }>;
+  const topicId = Object.keys(template.findResources("AWS::SNS::Topic"))[0];
+  // five functions + 4xx + 5xx
+  expect(alarms).toHaveLength(7);
+  for (const alarm of alarms) {
+    expect(alarm.Properties.AlarmActions).toHaveLength(1);
+    expect(alarm.Properties.AlarmActions[0]).toEqual({ Ref: topicId });
+    expect(alarm.Properties.Period).toBe(300);
+    expect(alarm.Properties.EvaluationPeriods).toBe(1);
+    expect(alarm.Properties.TreatMissingData).toBe("notBreaching");
+    // never fires on a single failed request
+    expect(alarm.Properties.Threshold).toBeGreaterThan(1);
+  }
+  const lambdaAlarms = alarms.filter((a) => a.Properties.Namespace === "AWS/Lambda");
+  expect(lambdaAlarms).toHaveLength(5);
+  for (const a of lambdaAlarms) {
+    expect(a.Properties.MetricName).toBe("Errors");
+    expect(a.Properties.Threshold).toBe(3);
+  }
+  template.hasResourceProperties("AWS::CloudWatch::Alarm", {
+    Namespace: "AWS/ApiGateway",
+    MetricName: "4xx",
+    Threshold: 30,
+  });
+  template.hasResourceProperties("AWS::CloudWatch::Alarm", {
+    Namespace: "AWS/ApiGateway",
+    MetricName: "5xx",
+    Threshold: 3,
+  });
+});
+
+test("keeps management events for a year in a private, TLS-only, retained bucket", () => {
+  const template = synthesizeTemplate();
+
+  template.hasResourceProperties("AWS::CloudTrail::Trail", {
+    IsLogging: true,
+    IsMultiRegionTrail: true,
+    EnableLogFileValidation: true,
+  });
+  template.hasResource("AWS::S3::Bucket", {
+    DeletionPolicy: "Retain",
+    Properties: {
+      PublicAccessBlockConfiguration: Match.objectLike({ BlockPublicAcls: true, RestrictPublicBuckets: true }),
+      LifecycleConfiguration: { Rules: [Match.objectLike({ ExpirationInDays: 365, Status: "Enabled" })] },
+    },
+  });
+  template.hasResourceProperties("AWS::S3::BucketPolicy", {
+    PolicyDocument: {
+      Statement: Match.arrayWith([
+        Match.objectLike({ Effect: "Deny", Condition: { Bool: { "aws:SecureTransport": "false" } } }),
+      ]),
+    },
+  });
+});
