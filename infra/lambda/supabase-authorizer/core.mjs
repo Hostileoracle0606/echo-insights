@@ -1,3 +1,5 @@
+import { guardHandler } from "./safe-log.mjs";
+
 function bearerToken(headers = {}) {
   const authorization = headers.authorization ?? headers.Authorization;
   if (typeof authorization !== "string") return null;
@@ -6,7 +8,7 @@ function bearerToken(headers = {}) {
 }
 
 export function createSupabaseAuthorizer({ supabaseUrl, publishableKey, fetchImpl }) {
-  return async function authorize(event) {
+  async function authorize(event) {
     const token = bearerToken(event?.headers);
     if (!token) return { isAuthorized: false };
 
@@ -33,5 +35,7 @@ export function createSupabaseAuthorizer({ supabaseUrl, publishableKey, fetchImp
     } catch {
       return { isAuthorized: false };
     }
-  };
+  }
+
+  return guardHandler("supabase-authorizer", authorize, () => ({ isAuthorized: false }));
 }

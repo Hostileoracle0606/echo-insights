@@ -1,3 +1,4 @@
+import { guardHandler, safeLog } from "./safe-log.mjs";
 import { buildJustTalkMessage, justTalkPrompt, writeSessionCardFunction } from "./prompts.mjs";
 import {
   buildTranscript,
@@ -199,7 +200,7 @@ export function createCloseSessionHandler({
   now = () => Date.now(),
   sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
   // Ids, counts and latency only: never transcript, title, summary or notes.
-  log = (fields) => console.log(JSON.stringify({ source: "close-session", ...fields })),
+  log = (fields) => safeLog("close-session", fields),
   deadlineMs = defaultDeadlineMs,
 }) {
   async function callModel({ startedAt, providerBody, metrics }) {
@@ -366,7 +367,7 @@ export function createCloseSessionHandler({
     throw new Rejection(503, "providerUnavailable");
   }
 
-  return async function handle(event) {
+  async function handle(event) {
     const startedAt = now();
     const userId = authorizedUserId(event);
     if (!userId) return rejected(401, "unauthorized");
@@ -402,5 +403,7 @@ export function createCloseSessionHandler({
       ...metrics,
     });
     return response;
-  };
+  }
+
+  return guardHandler("close-session", handle, () => rejected(503, "providerUnavailable"), log);
 }

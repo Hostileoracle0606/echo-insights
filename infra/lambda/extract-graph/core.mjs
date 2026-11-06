@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 
+import { guardHandler } from "./safe-log.mjs";
 import { extractGraphFunction, granularPrompt, wikiPrompt } from "./prompts.mjs";
 
 // Model output targets 800 characters (see prompts.mjs). The additional 200
@@ -296,7 +297,7 @@ export function createExtractGraphHandler({
   newOwnerToken = () => randomUUID(),
   sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
 }) {
-  return async function handle(event) {
+  async function handle(event) {
     const userId = authorizedUserId(event);
     if (!userId) return jsonResponse(401, { error: "unauthorized" });
 
@@ -460,5 +461,9 @@ export function createExtractGraphHandler({
     }
 
     return jsonResponse(503, { status: "rejected", code: "providerUnavailable" });
-  };
+  }
+
+  return guardHandler("extract-graph", handle, () =>
+    jsonResponse(503, { status: "rejected", code: "providerUnavailable" }),
+  );
 }

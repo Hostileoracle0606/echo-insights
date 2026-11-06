@@ -200,3 +200,20 @@ test("runs the session brief writer with its brief and TTS models and a 30 s tim
   expect(find("brief")!.Properties.AuthorizerId).toEqual(find("close")!.Properties.AuthorizerId);
   expect(find("brief")!.Properties.Target).not.toEqual(find("close")!.Properties.Target);
 });
+
+test("keeps every log group for 14 days and points each function at its own", () => {
+  const template = synthesizeTemplate();
+
+  const groups = Object.entries(template.findResources("AWS::Logs::LogGroup"));
+  const functions = Object.values(template.findResources("AWS::Lambda::Function")) as Array<{
+    Properties: { LoggingConfig?: { LogGroup?: unknown } };
+  }>;
+  expect(functions).toHaveLength(5);
+  expect(groups).toHaveLength(functions.length);
+  for (const [, group] of groups) {
+    expect((group as { Properties: { RetentionInDays: number } }).Properties.RetentionInDays).toBe(14);
+  }
+  const used = functions.map((fn) => JSON.stringify(fn.Properties.LoggingConfig?.LogGroup));
+  expect(new Set(used).size).toBe(functions.length);
+  for (const [id] of groups) expect(used.join()).toContain(id);
+});

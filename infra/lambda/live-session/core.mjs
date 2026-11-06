@@ -1,3 +1,5 @@
+import { guardHandler } from "./safe-log.mjs";
+
 function jsonResponse(statusCode, body) {
   return {
     statusCode,
@@ -98,7 +100,7 @@ export function createLiveSessionHandler({
     return null;
   }
 
-  return async function handle(event) {
+  async function handle(event) {
     if (!authorizedUserId(event)) {
       return jsonResponse(401, { error: "unauthorized" });
     }
@@ -175,5 +177,9 @@ export function createLiveSessionHandler({
         code: "providerUnavailable",
       });
     }
-  };
+  }
+
+  return guardHandler("live-session", handle, () =>
+    jsonResponse(503, { status: "rejected", code: "providerUnavailable" }),
+  );
 }
