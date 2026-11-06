@@ -10,10 +10,12 @@ import '../../logic/entity_highlighter.dart';
 import '../../logic/turn_state.dart' show Speaker, TurnInput;
 import '../../models/entity.dart';
 import '../../providers/journal_provider.dart';
+import '../../providers/privacy_screen_provider.dart';
 import '../../providers/quiet_mode_provider.dart';
 import '../../providers/session_provider.dart';
 import '../../theme/lumen_colors.dart';
 import '../../theme/lumen_text.dart';
+import '../privacy/who_hears_you_screen.dart';
 import 'composer.dart';
 import 'entity_note_sheet.dart';
 import 'graph_canvas.dart';
@@ -80,6 +82,9 @@ class _JournalScreenState extends ConsumerState<JournalScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    // Start the "have they seen Who hears you" read now, so the first mic tap
+    // finds the answer ready instead of waiting on the network.
+    ref.read(privacyScreenSeenProvider);
     _scheduleNotebookEntry();
   }
 
@@ -127,10 +132,15 @@ class _JournalScreenState extends ConsumerState<JournalScreen>
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted || widget.notebookId != id) return;
       final notifier = ref.read(journalProvider.notifier);
-      final result = await notifier.enterNotebook(id, autoStart: autoStart);
+      // Talk and Type start a conversation, so they get the same first-time
+      // screen as the mic. Closing it opens the notebook without starting.
+      final go = (autoStart || compose) ? await _privacyGate() : true;
+      if (!mounted || widget.notebookId != id) return;
+      final result =
+          await notifier.enterNotebook(id, autoStart: autoStart && go);
       if (!mounted || widget.notebookId != id) return;
       if (result.succeeded) {
-        if (autoStart || compose) await _keepGoing(compose: compose);
+        if (go && (autoStart || compose)) await _keepGoing(compose: compose);
         return;
       }
       // Lumen failing to join has its own banner with Retry.
@@ -162,6 +172,17 @@ class _JournalScreenState extends ConsumerState<JournalScreen>
     showEntityNoteSheet(context, entityId);
   }
 
+  /// "Who hears you", once per account, before a conversation starts. True
+  /// to go on. Nothing is shown (and nothing waits) once it has been seen, or
+  /// when the profile read failed: privacy copy never blocks the mic.
+  Future<bool> _privacyGate() async {
+    if (!await shouldShowPrivacyScreen(ref)) return true;
+    if (!mounted) return false;
+    // Recorded as soon as it is shown, so closing it still counts as seen.
+    unawaited(ref.read(privacyScreenSeenProvider.notifier).markSeen());
+    return showWhoHearsYou(context, firstTime: true);
+  }
+
   Future<void> _toggleMic(SessionStatus status) async {
     // The tap registers before any network work: a light tick now, and the
     // dock morphs to "Lumen · Connecting" in the same frame.
@@ -172,6 +193,7 @@ class _JournalScreenState extends ConsumerState<JournalScreen>
     switch (status) {
       case SessionStatus.idle:
       case SessionStatus.error:
+        if (!await _privacyGate()) return;
         result = await notifier.startSession();
       case SessionStatus.live:
         await notifier.pauseMic();
