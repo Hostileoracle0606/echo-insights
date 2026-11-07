@@ -387,8 +387,12 @@ void main() {
       expect(d.mapChanged, isTrue);
       expect(d.text, isNot(contains(fake)));
       expect(d.restore(), 'My neighbour $fake waved.');
-      // And the real Priya still maps to her own fake, not the neighbour's.
-      expect(fakeFor(map, 'Priya'), fake);
+      // The real Priya was holding that stand-in: she gets a new one, and
+      // the neighbour never maps back to her.
+      final priya = fakeFor(map, 'Priya');
+      expect(priya, isNot(fake));
+      expect(map.rehydrateModelOutput(fakeFor(map, fake)), fake);
+      expect(map.rehydrateModelOutput(priya), 'Priya');
     });
   });
 
@@ -406,36 +410,36 @@ void main() {
     });
 
     test('restores names in model output', () {
-      expect(map.rehydrate('$priya and $sam met.'), 'Priya and Samantha met.');
+      expect(map.rehydrateModelOutput('$priya and $sam met.'), 'Priya and Samantha met.');
     });
 
     test('handles possessives', () {
-      expect(map.rehydrate("$priya's plan, $sam’s plan"), "Priya's plan, Samantha’s plan");
+      expect(map.rehydrateModelOutput("$priya's plan, $sam’s plan"), "Priya's plan, Samantha’s plan");
     });
 
     test('does not depend on the model keeping the casing', () {
-      expect(map.rehydrate(priya.toLowerCase()), 'Priya');
-      expect(map.rehydrate(priya.toUpperCase()), 'PRIYA');
-      expect(map.rehydrate('${priya.toUpperCase()}\'S'), 'PRIYA\'S');
+      expect(map.rehydrateModelOutput(priya.toLowerCase()), 'Priya');
+      expect(map.rehydrateModelOutput(priya.toUpperCase()), 'PRIYA');
+      expect(map.rehydrateModelOutput('${priya.toUpperCase()}\'S'), 'PRIYA\'S');
     });
 
     test('whole words only', () {
-      expect(map.rehydrate('${priya}s and x$priya'), '${priya}s and x$priya');
+      expect(map.rehydrateModelOutput('${priya}s and x$priya'), '${priya}s and x$priya');
     });
 
     test('a name the model invented stays as it is', () {
-      expect(map.rehydrate('Then Bartholomew arrived with $priya.'),
+      expect(map.rehydrateModelOutput('Then Bartholomew arrived with $priya.'),
           'Then Bartholomew arrived with Priya.');
     });
 
     test('longer stand-ins win over shorter ones', () {
       final full = fakeFor(map, 'Priya Raman');
-      expect(map.rehydrate('$full wrote'), 'Priya Raman wrote');
+      expect(map.rehydrateModelOutput('$full wrote'), 'Priya Raman wrote');
     });
 
     test('an org alias restores to the org name', () {
       final short = fakeFor(map, 'Halvorsen');
-      expect(map.rehydrate('at $short'), 'at Halvorsen');
+      expect(map.rehydrateModelOutput('at $short'), 'at Halvorsen');
     });
 
     test('structural rehydrate walks maps and lists and leaves keys alone', () {
@@ -512,7 +516,7 @@ void main() {
         expect(d.text, startsWith('Yesterday '));
         expect(d.restore(), text, reason: real);
         final fake = fakeFor(map, real);
-        expect(map.rehydrate('Then $fake left.'), 'Then $real left.', reason: real);
+        expect(map.rehydrateModelOutput('Then $fake left.'), 'Then $real left.', reason: real);
       }
     });
 
@@ -627,7 +631,7 @@ void main() {
       // The real name is no longer swapped (the server forgot it too) and
       // the old stand-in no longer maps back to it.
       expect(map.dehydrate('Samantha called').text, 'Samantha called');
-      expect(map.rehydrate('$fake called'), '$fake called');
+      expect(map.rehydrateModelOutput('$fake called'), '$fake called');
       expect(map.forget('samantha'), isFalse);
     });
 
@@ -657,7 +661,7 @@ void main() {
       final fake = fakeFor(map, 'Samantha');
       map.forget('samantha');
       // Not in the map any more: left alone, not turned back into Samantha.
-      expect(map.rehydrate('$fake waved'), '$fake waved');
+      expect(map.rehydrateModelOutput('$fake waved'), '$fake waved');
     });
   });
 
@@ -673,7 +677,7 @@ void main() {
       for (final s in ['Priya', 'Priya Raman', 'Gardiner', '美咲', 'Misaki', 'Teodor']) {
         expect(fakeFor(copy, s), fakeFor(map, s), reason: s);
       }
-      expect(copy.rehydrate(fakeFor(map, 'Gardiner')), 'Gardiner');
+      expect(copy.rehydrateModelOutput(fakeFor(map, 'Gardiner')), 'Gardiner');
     });
 
     test('an unknown version is rejected', () {

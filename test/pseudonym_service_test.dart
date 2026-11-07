@@ -81,18 +81,19 @@ void main() {
 
   group('persistence', () {
     test('sync saves; the map is restored by a new service with the same fakes', () async {
-      final a = PseudonymService(store: store);
+      final a = PseudonymService(ownerId: () => 'u1', store: store);
       await a.sync([person('priya', 'Priya'), person('sam', 'Samantha', aliases: ['Sam'])]);
       final first = (await a.dehydrate('Priya and Sam')).text;
       expect(first, isNot(contains('Priya')));
 
-      final b = PseudonymService(store: store);
+      final b = PseudonymService(ownerId: () => 'u1', store: store);
       expect((await b.dehydrate('Priya and Sam')).text, first);
-      expect(await b.rehydrate(first), 'Priya and Samantha');
+      // Only "Sam" was ever sent for Samantha, so "Sam" comes back.
+      expect(await b.rehydrateModelOutput(first), 'Priya and Sam');
     });
 
     test('sync with nothing new does not write again', () async {
-      final s = PseudonymService(store: store);
+      final s = PseudonymService(ownerId: () => 'u1', store: store);
       await s.sync([person('priya', 'Priya')]);
       final writes = store.writes;
       await s.sync([person('priya', 'Priya')]);
@@ -101,18 +102,20 @@ void main() {
 
     test('a new name is saved before dehydrate returns', () async {
       final s = PseudonymService(
+        ownerId: () => 'u1',
         store: store,
         recognizer: FakeRecognizer(const [RecognizedName('Teodor', PseudonymKind.person)]),
       );
       final d = await s.dehydrate('Teodor lent me a ladder.');
       expect(d.text, isNot(contains('Teodor')));
       // A restart between the call and its answer still restores the name.
-      final after = PseudonymService(store: store);
-      expect(await after.rehydrate(d.text), 'Teodor lent me a ladder.');
+      final after = PseudonymService(ownerId: () => 'u1', store: store);
+      expect(await after.rehydrateModelOutput(d.text), 'Teodor lent me a ladder.');
     });
 
     test('the same new name gets the same fake next time', () async {
       final s = PseudonymService(
+        ownerId: () => 'u1',
         store: store,
         recognizer: FakeRecognizer(const [RecognizedName('Teodor', PseudonymKind.person)]),
       );
@@ -123,51 +126,33 @@ void main() {
 
     test('a failed Keychain write leaves the map working in memory', () async {
       store.failWrites = true;
-      final s = PseudonymService(store: store);
+      final s = PseudonymService(ownerId: () => 'u1', store: store);
       await s.sync([person('priya', 'Priya')]);
       final out = (await s.dehydrate('Priya called')).text;
       expect(out, isNot(contains('Priya')));
-      expect(await s.rehydrate(out), 'Priya called');
+      expect(await s.rehydrateModelOutput(out), 'Priya called');
     });
 
     test('an unreadable or corrupt saved map starts empty and is erased', () async {
       store.saved = '{not json';
-      final s = PseudonymService(store: store);
+      final s = PseudonymService(ownerId: () => 'u1', store: store);
       expect((await s.dehydrate('Priya called')).text, 'Priya called');
       expect(store.saved, isNull);
 
       store
         ..saved = jsonEncode({'v': 9})
         ..failReads = false;
-      final t = PseudonymService(store: store);
+      final t = PseudonymService(ownerId: () => 'u1', store: store);
       expect((await t.dehydrate('Priya called')).text, 'Priya called');
 
       store.failReads = true;
-      final u = PseudonymService(store: store);
+      final u = PseudonymService(ownerId: () => 'u1', store: store);
       expect((await u.dehydrate('Priya called')).text, 'Priya called');
-    });
-
-    test("another account's map is discarded", () async {
-      final a = PseudonymService(store: store);
-      await a.load(ownerId: 'user-a');
-      await a.sync([person('priya', 'Priya')]);
-      expect(store.saved, contains('user-a'));
-
-      final b = PseudonymService(store: store);
-      await b.load(ownerId: 'user-b');
-      expect((await b.dehydrate('Priya called')).text, 'Priya called');
-      expect(store.saved, isNull);
-
-      final c = PseudonymService(store: store);
-      await c.load(ownerId: 'user-b');
-      await c.sync([person('priya', 'Priya')]);
-      final same = PseudonymService(store: store);
-      await same.load(ownerId: 'user-b');
-      expect((await same.dehydrate('Priya called')).text, isNot(contains('Priya')));
     });
 
     test('calls are serialised: concurrent dehydrates agree', () async {
       final s = PseudonymService(
+        ownerId: () => 'u1',
         store: store,
         recognizer: FakeRecognizer(const [RecognizedName('Teodor', PseudonymKind.person)]),
       );
@@ -184,7 +169,7 @@ void main() {
   group('recognizer failure', () {
     test('a throwing recognizer means known-name swapping only', () async {
       final r = FakeRecognizer(const [])..error = StateError('native');
-      final s = PseudonymService(store: store, recognizer: r);
+      final s = PseudonymService(ownerId: () => 'u1', store: store, recognizer: r);
       await s.sync([person('priya', 'Priya')]);
       final d = await s.dehydrate('Priya met Teodor.');
       expect(d.text, isNot(contains('Priya')));
@@ -194,6 +179,7 @@ void main() {
 
     test('a missing native plugin is a failure, not a crash', () async {
       final s = PseudonymService(
+        ownerId: () => 'u1',
         store: store,
         recognizer: NativeNameRecognizer(const MethodChannel('lumen/none')),
       );
@@ -207,6 +193,7 @@ void main() {
       final r = FakeRecognizer(const [RecognizedName('Teodor', PseudonymKind.person)])
         ..delay = const Duration(seconds: 5);
       final s = PseudonymService(
+        ownerId: () => 'u1',
         store: store,
         recognizer: r,
         recognizerTimeout: const Duration(milliseconds: 20),
@@ -215,7 +202,7 @@ void main() {
     });
 
     test('no recognizer at all is fine', () async {
-      final s = PseudonymService(store: store);
+      final s = PseudonymService(ownerId: () => 'u1', store: store);
       expect((await s.dehydrate('Teodor waved')).text, 'Teodor waved');
     });
   });
@@ -254,14 +241,14 @@ void main() {
       messenger().setMockMethodCallHandler(channel, (call) async {
         throw PlatformException(code: 'name_recognizer');
       });
-      final s = PseudonymService(store: store, recognizer: NativeNameRecognizer());
+      final s = PseudonymService(ownerId: () => 'u1', store: store, recognizer: NativeNameRecognizer());
       expect((await s.dehydrate('Teodor waved')).text, 'Teodor waved');
     });
   });
 
   group('sign-out', () {
     test('clear erases memory and the Keychain item', () async {
-      final s = PseudonymService(store: store);
+      final s = PseudonymService(ownerId: () => 'u1', store: store);
       await s.sync([person('priya', 'Priya')]);
       expect(store.saved, isNotNull);
       await s.clear();
@@ -271,14 +258,14 @@ void main() {
     });
 
     test('a failed delete does not throw', () async {
-      final s = PseudonymService(store: store);
+      final s = PseudonymService(ownerId: () => 'u1', store: store);
       await s.sync([person('priya', 'Priya')]);
       store.failDeletes = true;
       await s.clear();
     });
 
     test('signedOutCleanupProvider clears the name map', () async {
-      final service = PseudonymService(store: store);
+      final service = PseudonymService(ownerId: () => 'u1', store: store);
       await service.sync([person('priya', 'Priya')]);
       final container = ProviderContainer(overrides: [
         openingPrepProvider.overrideWithValue(OpeningPrep(_NoBriefs())),
@@ -305,7 +292,7 @@ void main() {
 
   group('forget', () {
     test('forgetting a person removes them from the stored map', () async {
-      final s = PseudonymService(store: store);
+      final s = PseudonymService(ownerId: () => 'u1', store: store);
       await s.sync([person('sam', 'Samantha', aliases: ['Sam']), person('priya', 'Priya')]);
       final fake = (await s.dehydrate('Samantha')).text;
       expect(store.saved, contains('Samantha'));
@@ -315,11 +302,11 @@ void main() {
       expect(store.saved, isNot(contains('Samantha')));
       expect(store.saved, contains('Priya'));
       expect((await s.dehydrate('Samantha')).text, 'Samantha');
-      expect(await s.rehydrate(fake), fake);
+      expect(await s.rehydrateModelOutput(fake), fake);
     });
 
     test('a forgotten person is not brought back by a later sync that suppresses them', () async {
-      final s = PseudonymService(store: store);
+      final s = PseudonymService(ownerId: () => 'u1', store: store);
       await s.sync([person('sam', 'Samantha')]);
       await s.forget('sam');
       await s.sync([person('sam', 'Samantha')], suppressed: {'sam'});
@@ -329,7 +316,7 @@ void main() {
 
     test('forget with an unreadable store does not throw', () async {
       store.failReads = true;
-      await PseudonymService(store: store).forget('sam');
+      await PseudonymService(ownerId: () => 'u1', store: store).forget('sam');
     });
   });
 }

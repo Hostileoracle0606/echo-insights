@@ -17,6 +17,7 @@ import 'common_words.dart';
 import 'fake_names.dart';
 import 'fuzzy.dart';
 import 'gender_hints.dart';
+import 'latin_decompositions.dart';
 import 'name_recognizer.dart';
 import 'public_entities.dart';
 import 'word_context.dart';
@@ -85,8 +86,9 @@ class PseudonymEntry {
   final List<String> aliases;
   final Gender? gender;
 
-  /// The stand-in for [name].
-  final String fake;
+  /// The stand-in for [name]. Replaced only when a real name in the graph
+  /// turns out to equal it.
+  String fake;
 
   /// A second name for the stand-in, used when an alias adds one to [name].
   String? surname;
@@ -170,26 +172,25 @@ class Dehydrated {
   /// stand-in), so it should be saved before the text is sent.
   final bool mapChanged;
 
-  /// Puts back exactly what [dehydrate] replaced, in [swapped] (defaults to
-  /// [text]). Unlike [PseudonymMap.rehydrate], which maps a stand-in to the
-  /// entity's canonical name, this restores the very spelling the user used
-  /// ("Pria", "Sammy"). Null if [swapped] no longer holds the replacements.
+  /// Puts back exactly what [dehydrate] replaced. Valid only for [text]
+  /// itself, byte for byte: any other string (shifted, edited, extended)
+  /// returns null, because the replacements are located by offset and a
+  /// search would put an original in the wrong place. To turn a model's
+  /// output back into names, use [PseudonymMap.rehydrateModelOutput].
   String? restore([String? swapped]) {
-    final s = swapped ?? text;
+    if (swapped != null && swapped != text) return null;
     final out = StringBuffer();
     var cursor = 0;
     for (final r in replacements) {
-      var at = r.outStart;
-      if (at < cursor || !s.startsWith(r.replacement, at)) {
-        at = s.indexOf(r.replacement, cursor);
-        if (at < 0) return null;
+      if (r.outStart < cursor || !text.startsWith(r.replacement, r.outStart)) {
+        return null;
       }
       out
-        ..write(s.substring(cursor, at))
+        ..write(text.substring(cursor, r.outStart))
         ..write(r.original);
-      cursor = at + r.replacement.length;
+      cursor = r.outStart + r.replacement.length;
     }
-    out.write(s.substring(cursor));
+    out.write(text.substring(cursor));
     return out.toString();
   }
 
@@ -218,16 +219,36 @@ class _Match {
   final bool fuzzy;
 }
 
-const _latinOnly = r'[\p{Script=Latin}\s\u0027\u2019.\-]+';
+const _latinOnly = r'[\p{Script=Latin}\p{M}\s\u0027\u2019.\-]+';
 final _latinRe = RegExp('^$_latinOnly\$', unicode: true);
 bool _isLatin(String s) => _latinRe.hasMatch(s);
 
-String _esc(String s) => RegExp.escape(s).replaceAll(RegExp(r'\\? '), r'\s+');
+/// A regex for [form] that treats spaces and hyphens inside it as
+/// interchangeable ("Jean-Luc" matches "Jean Luc") and accepts an accented
+/// letter either precomposed or as letter + combining mark.
+String _pattern(String form) {
+  final parts = form.trim().split(RegExp(r'[\s-]+'));
+  return parts.map((part) {
+    final b = StringBuffer();
+    for (final ch in part.runes.map(String.fromCharCode)) {
+      final d = latinDecompositions[ch];
+      b.write(d == null
+          ? RegExp.escape(ch)
+          : '(?:${RegExp.escape(ch)}|${RegExp.escape(d)})');
+    }
+    return b.toString();
+  }).join(r'[\s\-]+');
+}
 
-// Around Latin text: no Latin letter, digit or underscore touching it. Other
-// scripts have no spaces to rely on (김민수는, Ивана), so they get none.
-const _before = r'(?<![\p{Script=Latin}\p{N}_])';
-const _after = r'(?![\p{Script=Latin}\p{N}_])';
+// Around Latin text: no Latin letter, digit, underscore or combining mark
+// touching it. Other scripts have no spaces to rely on (김민수는, Ивана), so
+// they get none.
+const _before = r'(?<![\p{Script=Latin}\p{N}_\p{M}])';
+const _after = r'(?![\p{Script=Latin}\p{N}_\p{M}])';
+// A stand-in glued to another word by a hyphen is not a stand-in
+// ("Giselle-Rose").
+const _backBefore = '$_before(?<!\\p{L}-)';
+const _backAfter = '$_after(?!-\\p{L})';
 
 class PseudonymMap {
   PseudonymMap({
@@ -249,6 +270,7 @@ class PseudonymMap {
       map._entries[entry.id] = entry;
     }
     map._retired.addAll((json['retired'] as List).cast<String>());
+    map._reserved.addAll(((json['reserved'] as List?) ?? const []).cast<String>());
     return map;
   }
 
@@ -265,11 +287,17 @@ class PseudonymMap {
   final Set<String> _retired = {};
 
   /// Lowercase tokens of every name in the user's graph, public ones too, so
-  /// a stand-in can never be a real name there. Rebuilt by [sync].
+  /// a stand-in can never be a real name there. Added to by [sync] and saved
+  /// with the map (these are real names: the map never leaves the device).
   final Set<String> _reserved = {};
 
   List<_Surface>? _surfaceIndex;
   RegExp? _backRegex;
+
+  /// Spellings the user used for each stand-in since the last [sync]
+  /// (stand-in -> spellings), so model output can say "Sam" when only "Sam"
+  /// was ever sent. Memory only.
+  final Map<String, Set<String>> _spellings = {};
   Map<String, ({PseudonymEntry entry, String surface})>? _back;
 
   bool get isEmpty => _entries.isEmpty;
@@ -281,6 +309,7 @@ class PseudonymMap {
         if (ownerId != null) 'owner': ownerId,
         'entries': [for (final e in _entries.values) e.toJson()],
         'retired': _retired.toList()..sort(),
+        'reserved': _reserved.toList()..sort(),
       };
 
   // --- building the map ---------------------------------------------------
@@ -320,7 +349,9 @@ class PseudonymMap {
         changed |= _update(entry, e);
       }
     }
+    _spellings.clear();
     if (changed) _invalidate();
+    changed |= _reissueCollisions();
     return changed;
   }
 
@@ -355,6 +386,7 @@ class PseudonymMap {
       changed = true;
     }
     if (changed) _invalidate();
+    changed |= _reissueCollisions();
     return changed;
   }
 
@@ -418,7 +450,85 @@ class PseudonymMap {
     _entries[id] = entry;
     _noteUsed(entry);
     _addAliases(entry, aliases);
+    _addAliases(entry, _derivedAliases(entry));
     return entry;
+  }
+
+  /// Words of a full name that stand for it on their own, so a surname or
+  /// the start of a company name does not slip through: the first and last
+  /// word of a person's name, the first word of an organisation's. Ordinary
+  /// words, particles and words that are another entity's name are skipped.
+  List<String> _derivedAliases(PseudonymEntry entry) {
+    final words = _words(entry.name);
+    if (words.length < 2) return const [];
+    final picks = switch (entry.kind) {
+      PseudonymKind.person => [words.first, words.last],
+      PseudonymKind.org => [words.first],
+      PseudonymKind.place => const <String>[],
+    };
+    bool owned(String w) => _entries.values.any((o) =>
+        !identical(o, entry) &&
+        o.surfaces.any((s) => s.toLowerCase() == w.toLowerCase()));
+    return [
+      for (final w in picks)
+        if (w.length >= 2 &&
+            !commonWords.contains(w.toLowerCase()) &&
+            !_particles.contains(w.toLowerCase()) &&
+            !owned(w))
+          w,
+    ];
+  }
+
+  static const _particles = {
+    'de', 'da', 'di', 'do', 'du', 'del', 'der', 'den', 'van', 'von', 'bin',
+    'ibn', 'al', 'el', 'la', 'le', 'st', 'jr', 'sr', 'ii', 'iii', 'mr', 'mrs',
+    'ms', 'dr',
+  };
+
+  /// A real name in the graph (or the user's text) that equals a stand-in
+  /// already issued would be turned into someone else on the way back. The
+  /// stand-in is reissued and the old one retired for good.
+  bool _reissueCollisions() {
+    final real = <String>{
+      ..._reserved,
+      for (final e in _entries.values)
+        for (final s in e.surfaces) ..._tokens(s),
+    };
+    var changed = false;
+    for (final e in _entries.values.toList()) {
+      final clash = [e.fake, ...e.fakes.values]
+          .expand((f) => _checkedTokens(e.kind, f))
+          .any(real.contains);
+      if (!clash) continue;
+      for (final f in [e.fake, ...e.fakes.values]) {
+        _retired.addAll(_tokens(f));
+      }
+      _used = null;
+      final fresh = _strategy.next(
+        kind: e.kind,
+        seed: _seed(e.id),
+        gender: e.gender,
+        isTaken: (c) => _isTaken(c, e.kind),
+      );
+      e.fake = fresh;
+      e.surname = null;
+      e.fakes
+        ..clear()
+        ..[e.name] = fresh;
+      for (final a in e.aliases) {
+        e.fakes[a] = _aliasFake(e, a);
+      }
+      changed = true;
+    }
+    if (changed) _invalidate();
+    return changed;
+  }
+
+  /// The words of a stand-in that must not be a real name: all of a
+  /// person's, the first of a place's or company's ("Labs" is shared).
+  static Iterable<String> _checkedTokens(PseudonymKind kind, String fake) {
+    final t = _tokens(fake);
+    return kind == PseudonymKind.person ? t : t.take(1);
   }
 
   bool _update(PseudonymEntry entry, PseudonymEntity e) {
@@ -430,6 +540,7 @@ class PseudonymMap {
     }
     entry.learned = false;
     changed |= _addAliases(entry, e.aliases);
+    changed |= _addAliases(entry, _derivedAliases(entry));
     return changed;
   }
 
@@ -486,11 +597,9 @@ class PseudonymMap {
 
   bool _isTaken(String candidate, PseudonymKind kind) {
     if (!isPlausibleFake(candidate, kind)) return true;
-    final tokens = _tokens(candidate);
     // A person's stand-in is checked word by word; a town's or company's by
     // its first word ("Labs", "Group" are shared by many).
-    final checked = kind == PseudonymKind.person ? tokens : tokens.take(1);
-    return checked.any(_isTakenToken);
+    return _checkedTokens(kind, candidate).any(_isTakenToken);
   }
 
   bool _isTakenToken(String token) =>
@@ -533,6 +642,28 @@ class PseudonymMap {
   /// words (Will, June, Rose) are replaced only where the use looks like a
   /// name. Names the map does not know stay; see PseudonymService for those.
   Dehydrated dehydrate(String text) {
+    // 0. A stand-in that is already in the user's own words would be turned
+    // into someone else on the way back: that word is a real name, so it
+    // becomes an entity of its own and the old holder of the stand-in gets a
+    // new one. Done before matching so the text is swapped with the final map.
+    var mapChanged = false;
+    _buildBack();
+    if (_backRegex != null) {
+      final seen = <String>{};
+      for (final m in _backRegex!.allMatches(text).toList()) {
+        final key = _norm(m[0]!);
+        final back = _back![key];
+        if (back == null || !seen.add(key)) continue;
+        _create(slugify(m[0]!), m[0]!, back.entry.kind, const [], null,
+            learned: true);
+        mapChanged = true;
+      }
+      if (mapChanged) {
+        _invalidate();
+        _reissueCollisions();
+      }
+    }
+
     final found = <_Match>[];
     final rejected = <(int, int)>[];
     bool overlaps(int s, int e) => found.any((f) => s < f.end && e > f.start);
@@ -542,10 +673,15 @@ class PseudonymMap {
     for (final s in _surfaces()) {
       for (final m in s.regex.allMatches(text)) {
         if (overlaps(m.start, m.end)) continue;
-        if (s.word &&
-            !wordNameLooksLikeName(s.form, text, m.start, m.end)) {
-          rejected.add((m.start, m.end));
-          continue;
+        if (s.word) {
+          // Name-words: the name's own capitalisation or ALL CAPS, never
+          // lowercase, and only where the use looks like a name.
+          final t = m[0]!;
+          if (t != s.form && t != s.form.toUpperCase()) continue;
+          if (!wordNameLooksLikeName(s.form, text, m.start, m.end)) {
+            rejected.add((m.start, m.end));
+            continue;
+          }
         }
         found.add(_Match(m.start, m.end, s.entry, s.form, m[0]!));
       }
@@ -588,8 +724,11 @@ class PseudonymMap {
       // sentence. A name that merely starts a sentence is still a name.
       if (tk.word.length < 3 || commonWords.contains(lower)) continue;
       if (standIns.contains(lower)) continue;
+      // The closest known name wins; a tie between two different people
+      // means we cannot tell whose spelling this is, so it is not assigned.
       _Surface? best;
       var bestD = 99;
+      var tie = false;
       for (final s in singles) {
         if (tk.word[0].toLowerCase() != s.form[0].toLowerCase()) continue;
         final d = editDistance(tk.word, s.form);
@@ -599,37 +738,19 @@ class PseudonymMap {
             ? len >= 3 && d == 1
             : len >= 4 &&
                 (d <= 1 || (d <= 2 && len >= 5 && soundex(tk.word) == soundex(s.form)));
-        if (ok && d < bestD) {
+        if (!ok) continue;
+        if (d < bestD) {
           best = s;
           bestD = d;
+          tie = false;
+        } else if (d == bestD && !identical(s.entry, best!.entry)) {
+          tie = true;
         }
       }
-      if (best != null) {
+      if (best != null && !tie) {
         found.add(_Match(tk.start, tk.end, best.entry, best.form, tk.word,
             fuzzy: true));
       }
-    }
-
-    // 3. a stand-in that is already in the user's own words would be turned
-    // into someone else on the way back: treat it as a new name.
-    var mapChanged = false;
-    _buildBack();
-    if (_backRegex != null) {
-      for (final m in _backRegex!.allMatches(text)) {
-        if (overlaps(m.start, m.end)) continue;
-        final back = _back![_norm(m[0]!)]!;
-        final entry = _create(
-          slugify(m[0]!),
-          m[0]!,
-          back.entry.kind,
-          const [],
-          null,
-          learned: true,
-        );
-        found.add(_Match(m.start, m.end, entry, m[0]!, m[0]!));
-        mapChanged = true;
-      }
-      if (mapChanged) _invalidate();
     }
 
     found.sort((a, b) => a.start.compareTo(b.start));
@@ -639,6 +760,9 @@ class PseudonymMap {
     for (final f in found) {
       out.write(text.substring(pos, f.start));
       final rep = f.entry.fakes[f.surface] ?? f.entry.fake;
+      if (!f.fuzzy) {
+        (_spellings[_norm(rep)] ??= {}).add(f.surface);
+      }
       replacements.add(Replacement(
         start: f.start,
         end: f.end,
@@ -662,29 +786,36 @@ class PseudonymMap {
 
   // --- fake -> real ---------------------------------------------------------
 
-  /// Puts real names back into [text] a model produced. Whole words only,
-  /// any casing, possessives included ("Anika's" -> "Priya's"). A name the
-  /// model invented, one that is not a stand-in the map issued, stays as it
-  /// is. Returns the entity's name or alias that the stand-in was issued for.
-  String rehydrate(String text) {
+  /// Puts real names back into text a model produced. This is not the
+  /// inverse of [dehydrate] for a given string (that is [Dehydrated.restore]):
+  /// it maps each stand-in to one name. Whole words only, any casing,
+  /// possessives included ("Anika's" -> "Priya's"; "Anika-Rose" is left
+  /// alone). A name the model invented, one the map did not issue, stays as
+  /// it is. The name returned is the spelling the user sent for that person
+  /// since the last [sync] when they used only one ("Sam" if only "Sam" was
+  /// sent), otherwise the entity's own name.
+  String rehydrateModelOutput(String text) {
     _buildBack();
     final re = _backRegex;
     if (re == null) return text;
     return text.replaceAllMapped(re, (m) {
-      final back = _back![_norm(m[0]!)];
+      final key = _norm(m[0]!);
+      final back = _back![key];
       if (back == null) return m[0]!;
-      return _matchCase(m[0]!, back.surface);
+      final used = _spellings[key];
+      final name = used != null && used.length == 1 ? used.first : back.surface;
+      return _matchCase(m[0]!, name);
     });
   }
 
-  /// [rehydrate] over every string in a decoded JSON value (maps, lists,
+  /// [rehydrateModelOutput] over every string in a decoded JSON value (maps, lists,
   /// strings), for a result that comes back structured. Keys are left alone.
   /// With [slugs], strings that look like an id (lowercase, hyphenated) get
   /// the stand-in's slug replaced by the real one's.
   Object? rehydrateJson(Object? value, {bool slugs = false}) {
     if (value is String) {
       if (slugs && _slugRe.hasMatch(value)) return _rehydrateSlug(value);
-      return rehydrate(value);
+      return rehydrateModelOutput(value);
     }
     if (value is List) return [for (final v in value) rehydrateJson(v, slugs: slugs)];
     if (value is Map) {
@@ -731,11 +862,11 @@ class PseudonymMap {
         if (form.trim().isEmpty) continue;
         final latin = _isLatin(form);
         final word = latin && !form.contains(' ') && isWordName(form);
-        final pattern = latin ? '$_before${_esc(form)}$_after' : _esc(form);
+        final pattern = latin ? '$_before${_pattern(form)}$_after' : _pattern(form);
         out.add(_Surface(
           form,
           e,
-          RegExp(pattern, unicode: true, caseSensitive: word ? true : false),
+          RegExp(pattern, unicode: true, caseSensitive: false),
           word,
         ));
       }
@@ -763,7 +894,7 @@ class PseudonymMap {
     }
     final forms = back.keys.toList()..sort((a, b) => b.length.compareTo(a.length));
     _backRegex = RegExp(
-      '$_before(?:${forms.map(_esc).join('|')})$_after',
+      '$_backBefore(?:${forms.map(_pattern).join('|')})$_backAfter',
       unicode: true,
       caseSensitive: false,
     );
@@ -780,7 +911,7 @@ class PseudonymMap {
       s.toLowerCase().split(RegExp(r'\s+')).where((t) => t.isNotEmpty).toSet();
 
   static List<String> _words(String s) =>
-      s.trim().split(RegExp(r'\s+')).where((t) => t.isNotEmpty).toList();
+      s.trim().split(RegExp(r'[\s-]+')).where((t) => t.isNotEmpty).toList();
 
   static String _norm(String s) => _words(s).join(' ').toLowerCase();
 
@@ -792,7 +923,7 @@ class PseudonymMap {
     return h;
   }
 
-  static final _capRe = RegExp(r"\p{Lu}[\p{L}'’-]*", unicode: true);
+  static final _capRe = RegExp(r"\p{Lu}[\p{L}\p{M}'’-]*", unicode: true);
   static final _possessive = RegExp("['’]s\$");
 
   static List<({int start, int end, String word})> _capitalised(String text) {

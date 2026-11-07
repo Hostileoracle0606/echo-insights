@@ -127,7 +127,7 @@ void main() {
   test('model output comes back with the real names (canonical form)', () {
     final map = freshMap();
     final out = map.dehydrate(transcripts[0]['text'] as String).text;
-    final back = map.rehydrate(out);
+    final back = map.rehydrateModelOutput(out);
     // Aliases come back as the entity's name; nothing else changes.
     expect(back, contains('Samantha, well Samantha'));
     expect(back, contains('Halvorsen Marine Instruments'));
