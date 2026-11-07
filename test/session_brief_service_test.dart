@@ -7,6 +7,8 @@ import 'package:http/testing.dart';
 import 'package:lumen/models/session_brief.dart';
 import 'package:lumen/services/session_brief_service.dart';
 
+import 'support/pseudonyms.dart';
+
 void main() {
   test('fromJson decodes the audio and parses the timestamps', () {
     final bytes = Uint8List.fromList([0, 1, 2, 250, 255]);
@@ -30,22 +32,27 @@ void main() {
     expect(brief.playedAt, isNotNull);
   });
 
-  test('requestBrief POSTs to the brief route with a bearer token', () async {
-    late http.Request seen;
+  test('requestBrief POSTs v2 to the brief route with a bearer token',
+      () async {
+    final seen = <http.Request>[];
     final service = SessionBriefService(
       baseUrl: 'https://runtime.test/',
       accessTokenProvider: () async => 'tok',
       client: MockClient((request) async {
-        seen = request;
-        return http.Response('{"status":"ready"}', 200);
+        seen.add(request);
+        return http.Response('{"status":"unchanged"}', 200);
       }),
       rpc: (_, [__]) async => null,
+      inputs: FixedInputs(),
+      pseudonyms: testPseudonyms(),
     );
     await service.requestBrief('nb-1');
-    expect(seen.method, 'POST');
-    expect(seen.url.toString(), 'https://runtime.test/v1/notebooks/nb-1/brief');
-    expect(seen.headers['authorization'], 'Bearer tok');
-    expect(seen.body, '{}');
+    expect(seen, hasLength(1));
+    expect(seen.single.method, 'POST');
+    expect(seen.single.url.toString(),
+        'https://runtime.test/v1/notebooks/nb-1/brief');
+    expect(seen.single.headers['authorization'], 'Bearer tok');
+    expect((jsonDecode(seen.single.body) as Map)['version'], 2);
   });
 
   test('requestBrief throws on a non-200', () async {
@@ -54,6 +61,8 @@ void main() {
       accessTokenProvider: () async => 'tok',
       client: MockClient((_) async => http.Response('{}', 501)),
       rpc: (_, [__]) async => null,
+      inputs: FixedInputs(),
+      pseudonyms: testPseudonyms(),
     );
     expect(service.requestBrief('nb-1'), throwsA(isA<Exception>()));
   });
@@ -63,6 +72,8 @@ void main() {
     final service = SessionBriefService(
       baseUrl: 'https://runtime.test',
       accessTokenProvider: () async => 'tok',
+      inputs: FixedInputs(),
+      pseudonyms: testPseudonyms(),
       rpc: (fn, [params]) async {
         called = fn;
         return {'returning': true, 'brief': null};
@@ -80,6 +91,8 @@ void main() {
     final service = SessionBriefService(
       baseUrl: 'https://runtime.test',
       accessTokenProvider: () async => 'tok',
+      inputs: FixedInputs(),
+      pseudonyms: testPseudonyms(),
       rpc: (name, [params]) async {
         fn = name;
         sentParams = params;

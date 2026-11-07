@@ -523,6 +523,7 @@ class JournalNotifier extends Notifier<JournalState> {
   }
 
   Future<void> _saveTurn(String notebookId, ConversationTurn turn) async {
+    _warmSwap([turn.text]);
     try {
       await ref.read(transcriptStoreProvider).save(notebookId, turn);
     } catch (error) {
@@ -532,6 +533,24 @@ class JournalNotifier extends Notifier<JournalState> {
         _saveRetryAfter = DateTime.now().add(const Duration(seconds: 30));
       }
     }
+  }
+
+  /// LM-56: swaps the names in each turn once, in the background (the map
+  /// lives in its own isolate), as the turn is saved or loaded. The closing
+  /// card and the brief then join turns already swapped instead of swapping
+  /// the whole transcript when the user leaves. Best-effort: a turn missed
+  /// here is swapped on its own when it is needed.
+  void _warmSwap(Iterable<String> texts) {
+    final list = [
+      for (final text in texts)
+        if (text.trim().isNotEmpty) text,
+    ];
+    if (list.isEmpty) return;
+    unawaited(ref.read(pseudonymServiceProvider).swapTurns(list).then(
+          (_) {},
+          onError: (Object error) =>
+              vlog('session', 'name swap warm-up failed: ${error.runtimeType}'),
+        ));
   }
 
   /// Earlier turns first, then this run's (without the ones already saved).
@@ -1211,6 +1230,7 @@ class JournalNotifier extends Notifier<JournalState> {
           .load(notebookId)
           .timeout(const Duration(seconds: 5));
       vlog('session', 'loaded ${turns.length} saved turns');
+      _warmSwap(turns.map((turn) => turn.text));
       return turns;
     } catch (error) {
       vlog('session', 'saved transcript unavailable: $error');

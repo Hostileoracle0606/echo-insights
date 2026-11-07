@@ -8,7 +8,12 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import { createSessionBriefHandler } from "../lambda/close-session/brief.mjs";
-import { inputLimits, parseBriefRequest, parseCloseRequest } from "../lambda/close-session/client-input.mjs";
+import {
+  entityKey,
+  inputLimits,
+  parseBriefRequest,
+  parseCloseRequest,
+} from "../lambda/close-session/client-input.mjs";
 import { createCloseSessionHandler } from "../lambda/close-session/core.mjs";
 import { createExtractGraphHandler } from "../lambda/extract-graph/core.mjs";
 
@@ -39,10 +44,10 @@ const appTurns = fixture.turns.map((turn) => ({
   spokenAt: turn.spoken_at,
 }));
 const appEntities = [
-  { id: "maya", name: "Anika" },
-  { id: "project_atlas", name: "Project Halden" },
-  { id: "running", name: "running" },
-  { id: "brooklyn", name: "Corvale" },
+  { key: entityKey(notebookId, "maya"), name: "Anika" },
+  { key: entityKey(notebookId, "project_atlas"), name: "Project Halden" },
+  { key: entityKey(notebookId, "running"), name: "running" },
+  { key: entityKey(notebookId, "brooklyn"), name: "Corvale" },
 ];
 
 function event(body, overrides = {}) {
@@ -236,7 +241,13 @@ test("close v2 maps the offered aliases back to the real ids", async () => {
 test("close v2 leaves a candidate the app sent no name for out of the prompt", async () => {
   const { state, close } = world();
   const { card } = parse(
-    await close(event(closeV2({ entities: appEntities.filter((e) => e.id !== "brooklyn") }))),
+    await close(
+      event(
+        closeV2({
+          entities: appEntities.filter((e) => e.key !== entityKey(notebookId, "brooklyn")),
+        }),
+      ),
+    ),
   );
   assertNoRealName(state);
   assert.ok(card.remember.some((item) => item.entityId === "brooklyn" && item.note === null));
@@ -312,9 +323,16 @@ const badCloseBodies = {
   }),
   "bad spokenAt": closeV2({ turns: [{ speaker: "user", text: "hi", spokenAt: "soon" }] }),
   "too many entities": closeV2({
-    entities: Array.from({ length: inputLimits.entities + 1 }, (_, i) => ({ id: `e${i}`, name: "x" })),
+    entities: Array.from({ length: inputLimits.entities + 1 }, () => ({
+      key: entityKey(notebookId, "a"),
+      name: "x",
+    })),
   }),
-  "entity name too long": closeV2({ entities: [{ id: "a", name: "n".repeat(201) }] }),
+  "entity name too long": closeV2({
+    entities: [{ key: entityKey(notebookId, "a"), name: "n".repeat(201) }],
+  }),
+  "entity sent by its id": closeV2({ entities: [{ id: "maya", name: "Anika" }] }),
+  "entity key not a sha-256": closeV2({ entities: [{ key: "maya", name: "Anika" }] }),
   "negative revision": closeV2({ sourceRevision: -1 }),
   "draft not a boolean": closeV2({ draft: "yes" }),
 };
@@ -327,6 +345,13 @@ for (const [name, body] of Object.entries(badCloseBodies)) {
     assert.equal(state.calls.length, 0);
   });
 }
+
+test("entityKey matches the app's (test/pseudonymized_calls_test.dart)", () => {
+  assert.equal(
+    entityKey("nb", "priya"),
+    "9902b537b3bde363cd3c707689214fce6f246daceeae93abf99f68ab086bf511",
+  );
+});
 
 test("parseCloseRequest keeps v1's reading of a body", () => {
   assert.deepEqual(parseCloseRequest({}), { version: 1, draft: false });

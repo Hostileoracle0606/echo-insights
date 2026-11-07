@@ -59,6 +59,18 @@ void main() {
     }
   });
 
+  // LM-56 (R24): names are swapped for the text model only, on the iPhone;
+  // the live voice path and the spoken opening line carry real names.
+  test('the Google detail says where names are swapped and where not', () {
+    expect(googleDetail, contains('In the iPhone app'));
+    expect(googleDetail, contains('made-up names'));
+    expect(googleDetail, contains('your voice goes to Google live'));
+    expect(googleDetail, contains('with names as you said them'));
+    expect(googleDetail, contains("Google's voice with real names"));
+    expect(googleDetail, contains('can still go through'));
+    expect(googleDetail.toLowerCase(), isNot(contains('every name')));
+  });
+
   test('the cache line does not promise an exact expiry', () {
     expect(awsClaim, contains('about a week'));
     expect(awsClaim, isNot(contains('7 days')));

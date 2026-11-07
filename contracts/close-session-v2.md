@@ -31,7 +31,7 @@ LM-55), and the card comes back unsaved.
   "version": 2,
   "draft": false,
   "turns": [{ "speaker": "user", "text": "Anika is moving to Corvale." }],
-  "entities": [{ "id": "priya", "name": "Anika" }],
+  "entities": [{ "key": "3b1f…(64 hex)", "name": "Anika" }],
   "sourceRevision": 7
 }
 ```
@@ -41,8 +41,12 @@ LM-55), and the card comes back unsaved.
   100 000 characters in all. The model reads the last 24 000 characters, as
   in v1. The runtime does not read `conversation_turns`.
 - `entities`: the stand-in name for the notebook's entities the card may
-  remember, by real id; at most 500, `id` at most 160 characters, `name` at
-  most 200. The model is offered each remember candidate as a short alias
+  remember; at most 500, `name` at most 200 characters. An entity is named
+  by `key`, `sha256("<notebookId>:<entityId>")` in lowercase hex, never by
+  its id: an id is the real name's slug. The runtime hashes the notebook's
+  candidate ids the same way to match them (a salted hash of a slug can
+  still be guessed by someone who already suspects the name; it is not a
+  name in the body). The model is offered each remember candidate as a short alias
   (`e1`, `e2`, …) and this name, never the id (an id is the real name's
   slug). A candidate with no entry here is left out of the prompt and is
   remembered without a note.

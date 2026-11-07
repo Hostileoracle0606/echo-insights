@@ -12,6 +12,8 @@
 // sizes are checked before anything else runs; the caps match what the
 // database itself would accept (conversation_turns.text, LM-46's RPC caps).
 
+import { createHash } from "node:crypto";
+
 export const inputLimits = Object.freeze({
   turns: 1000,
   // conversation_turns.text is 1..20000 characters.
@@ -21,7 +23,6 @@ export const inputLimits = Object.freeze({
   totalTurnChars: 100_000,
   spokenAt: 40,
   entities: 500,
-  entityId: 160,
   entityName: 200,
   // The brief's lists, as the v1 path reads them from the database.
   followUps: 10,
@@ -48,6 +49,17 @@ const entityTypes = new Set([
   "emotion",
   "other",
 ]);
+
+/**
+ * How the app names an entity in a v2 body: never by its id, which is the
+ * real name's slug, but by sha256("<notebookId>:<id>") in hex. The runtime
+ * computes the same for the notebook's entities to match them up.
+ */
+export function entityKey(notebookId, entityId) {
+  return createHash("sha256").update(`${notebookId}:${entityId}`).digest("hex");
+}
+
+const entityKeyPattern = /^[0-9a-f]{64}$/;
 
 const isObject = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
 
@@ -105,6 +117,7 @@ function parseStrings(value, maxItems, maxLength) {
 
 /**
  * POST /close, v2: { version: 2, draft?, turns, entities, sourceRevision? }.
+ * `entities` is [{ key, name }]: see [entityKey].
  * Returns { version: 1, draft } for an older app, the parsed v2 request, or
  * null when a v2 body is malformed or too large.
  */
@@ -119,9 +132,9 @@ export function parseCloseRequest(body) {
   const names = new Map();
   for (const entity of entities) {
     if (!isObject(entity)) return null;
-    if (!boundedString(entity.id, inputLimits.entityId)) return null;
+    if (typeof entity.key !== "string" || !entityKeyPattern.test(entity.key)) return null;
     if (!boundedString(entity.name, inputLimits.entityName)) return null;
-    names.set(entity.id, entity.name.trim());
+    names.set(entity.key, entity.name.trim());
   }
   if (body.sourceRevision != null && !revision(body.sourceRevision)) return null;
   return {

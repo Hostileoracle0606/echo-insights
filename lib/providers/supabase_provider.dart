@@ -5,6 +5,7 @@ import '../env.dart';
 import '../services/extract_graph_service.dart';
 import '../services/fresh_access_token.dart';
 import '../services/memory_control_service.dart';
+import '../services/model_inputs.dart';
 import '../services/notebook_commit_service.dart';
 import '../services/notebook_runtime_service.dart';
 import '../services/session_brief_service.dart';
@@ -14,6 +15,7 @@ import '../services/session_deletion_service.dart';
 import '../services/supabase_service.dart';
 import '../services/transcript_retention_service.dart';
 import '../services/transcript_store.dart';
+import 'pseudonym_provider.dart';
 
 final supabaseClientProvider = Provider<SupabaseClient>((ref) {
   return Supabase.instance.client;
@@ -66,7 +68,14 @@ final extractGraphServiceProvider = Provider<ExtractGraphService>((ref) {
   return ExtractGraphService(
     baseUrl: Env.notebookRuntimeUrl,
     accessTokenProvider: () => _accessToken(client),
+    pseudonyms: ref.watch(pseudonymServiceProvider),
   );
+});
+
+/// What the closing card and the brief are written from, read as the user
+/// so the names can be swapped on the device first (LM-56).
+final modelInputSourceProvider = Provider<ModelInputSource>((ref) {
+  return SupabaseModelInputs(ref.watch(supabaseClientProvider));
 });
 
 /// The closing card for a conversation (LM-15): written by the notebook
@@ -76,6 +85,9 @@ final sessionCardServiceProvider = Provider<SessionCardService>((ref) {
   return SessionCardService(
     baseUrl: Env.notebookRuntimeUrl,
     accessTokenProvider: () => _accessToken(client),
+    inputs: ref.watch(modelInputSourceProvider),
+    pseudonyms: ref.watch(pseudonymServiceProvider),
+    rpc: (fn, [params]) => client.rpc(fn, params: params),
     readCard: (notebookId) async {
       final row = await client
           .from('session_cards')
@@ -110,5 +122,7 @@ final sessionBriefServiceProvider = Provider<SessionBriefService>((ref) {
     baseUrl: Env.notebookRuntimeUrl,
     accessTokenProvider: () => _accessToken(client),
     rpc: (fn, [params]) => client.rpc(fn, params: params),
+    inputs: ref.watch(modelInputSourceProvider),
+    pseudonyms: ref.watch(pseudonymServiceProvider),
   );
 });

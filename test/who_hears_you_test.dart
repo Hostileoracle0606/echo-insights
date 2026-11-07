@@ -79,7 +79,7 @@ Future<void> _frames(WidgetTester tester, {int count = 30}) async {
 
 Future<void> _pumpScreen(WidgetTester tester, WhoHearsYouScreen screen) async {
   tester.view
-    ..physicalSize = const Size(402, 2400)
+    ..physicalSize = const Size(402, 3200)
     ..devicePixelRatio = 1;
   addTearDown(tester.view.reset);
   await tester.pumpWidget(

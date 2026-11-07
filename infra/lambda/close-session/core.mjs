@@ -1,6 +1,6 @@
 import { guardHandler, safeLog } from "./safe-log.mjs";
 import { redactTexts, redactTurns } from "./redact.mjs";
-import { effectiveRevision, parseCloseRequest, readBody } from "./client-input.mjs";
+import { effectiveRevision, entityKey, parseCloseRequest, readBody } from "./client-input.mjs";
 import { buildJustTalkMessage, justTalkPrompt, writeSessionCardFunction } from "./prompts.mjs";
 import {
   buildTranscript,
@@ -275,16 +275,18 @@ export function createCloseSessionHandler({
     metrics.transcriptTrimmed = transcript.trimmed;
 
     // What the model is offered. v1: the snapshot's ids and names. v2: a
-    // short alias per candidate and the app's stand-in name, since an id is
-    // the real name's slug; a candidate the app sent no name for is left
-    // out of the prompt (it is still remembered, without a note).
+    // short alias per candidate and the app's stand-in name (matched by
+    // entityKey), since an id is the real name's slug; a candidate the app
+    // sent no name for is left out of the prompt (it is still remembered,
+    // without a note).
+    const appName = (item) => appNames.get(entityKey(notebookId, item.entityId));
     const offered = fromApp
       ? candidates
-          .filter((item) => appNames.get(item.entityId))
+          .filter((item) => appName(item))
           .map((item, index) => ({
             ...item,
             entityId: `e${index + 1}`,
-            name: appNames.get(item.entityId),
+            name: appName(item),
             realId: item.entityId,
           }))
       : candidates;

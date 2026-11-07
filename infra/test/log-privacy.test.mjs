@@ -2,6 +2,7 @@
 // any failure. Every content field below carries MARKER; the test captures
 // everything the handler prints and fails if MARKER appears.
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFile, readdir } from "node:fs/promises";
 import test from "node:test";
 
@@ -206,7 +207,9 @@ const closeV2Event = () =>
     body: JSON.stringify({
       version: 2,
       turns: appTurns,
-      entities: [{ id: "maya", name: `${MARKER} Anika` }],
+      entities: [
+        { key: createHash("sha256").update(`${notebookId}:maya`).digest("hex"), name: `${MARKER} Anika` },
+      ],
     }),
   });
 const draftV2Event = () =>

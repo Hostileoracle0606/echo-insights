@@ -21,6 +21,8 @@ dependencies:
   # Networking
   web_socket_channel: ^3.0.1
   http: ^1.2.2
+  # LM-56: entity ids (slugs of real names) travel only as salted hashes.
+  crypto: ^3.0.6
 
   # Audio
   # 6.x: record 5.1.2's darwin implementation predates iOS 26 — hasPermission

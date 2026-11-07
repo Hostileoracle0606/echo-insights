@@ -21,7 +21,7 @@ const PARTIES: { name: string; lines: string[] }[] = [
     name: "Google",
     lines: [
       "Lumen sends your voice and text to Google's Gemini service to talk with you.",
-      "While you talk, your voice goes to Google live. What Lumen tells Google can also carry things you said in earlier conversations and your opening brief, so earlier journal content goes to Google during a conversation. The text of each turn is sent as you go, to pick out people and places. When a conversation ends, its text goes again to write your cards and briefs and to speak the line Lumen opens with.",
+      "While you talk, your voice goes to Google live. What Lumen tells Google during a conversation can also carry things you said in earlier conversations and your opening brief, with names as you said them. In the iPhone app, Lumen's text model gets made-up names instead: the text of each turn, sent as you go to pick out people and places, and the text sent when a conversation ends to write your cards and brief. Your phone swaps the names of people, private places and organizations it recognizes before sending and swaps them back when the answer returns. A name it doesn't recognize, such as a nickname it hasn't learned, can still go through as you said it. The one line Lumen opens your next conversation with goes to Google's voice with real names, so it is read aloud right.",
     ],
   },
   {

@@ -5,9 +5,11 @@ import '../services/name_recognizer_channel.dart';
 import '../services/pseudonym_service.dart';
 import '../services/pseudonym_store.dart';
 
-/// The user's on-device name map (LM-55). Not used by the model calls until
-/// LM-56 wires it in; cleared on sign-out (signedOutCleanupProvider) and
-/// trimmed when an entity is removed or forgotten.
+/// The user's on-device name map (LM-55). Extraction, the closing card and
+/// the brief swap names through it before anything reaches the text model
+/// (LM-56); the map itself lives in a background isolate. Cleared on
+/// sign-out (signedOutCleanupProvider) and trimmed when an entity is
+/// removed or forgotten.
 final pseudonymServiceProvider = Provider<PseudonymService>((ref) {
   return PseudonymService(
     ownerId: _signedInUserId,

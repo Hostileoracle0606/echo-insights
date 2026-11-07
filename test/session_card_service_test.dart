@@ -8,6 +8,8 @@ import 'package:http/testing.dart';
 import 'package:lumen/models/conversation_mode.dart';
 import 'package:lumen/services/session_card_service.dart';
 
+import 'support/pseudonyms.dart';
+
 void main() {
   const notebookId = '8e03b8f4-4f20-4df3-8398-d854adc32b14';
   final cardJson = jsonDecode(
@@ -30,6 +32,9 @@ void main() {
         accessTokenProvider: () async => 'signed-user-token',
         client: MockClient(handler),
         readCard: readCard,
+        inputs: FixedInputs(),
+        pseudonyms: testPseudonyms(),
+        rpc: (_, [__]) async => fail('no save expected'),
         retryBaseDelay: Duration.zero,
       );
 
@@ -170,6 +175,9 @@ void main() {
       baseUrl: '',
       accessTokenProvider: () async => 'token',
       client: MockClient((_) async => fail('no request expected')),
+      inputs: FixedInputs(),
+      pseudonyms: testPseudonyms(),
+      rpc: (_, [__]) async => fail('no save expected'),
     );
     await expectLater(unconfigured.close(notebookId), throwsStateError);
 
@@ -177,6 +185,9 @@ void main() {
       baseUrl: 'https://runtime.example.com',
       accessTokenProvider: () async => null,
       client: MockClient((_) async => fail('no request expected')),
+      inputs: FixedInputs(),
+      pseudonyms: testPseudonyms(),
+      rpc: (_, [__]) async => fail('no save expected'),
     );
     await expectLater(signedOut.close(notebookId), throwsStateError);
   });
@@ -207,7 +218,7 @@ void main() {
     expect(requested, [notebookId, 'another-notebook']);
   });
 
-  test('draft posts {"draft": true} to the close route, once, as the user',
+  test('draft posts a v2 draft to the close route, once, as the user',
       () async {
     final requests = <http.Request>[];
     final card = await service((request) async {
@@ -217,7 +228,9 @@ void main() {
 
     expect(requests, hasLength(1));
     expect(requests.single.url.path, '/v1/notebooks/$notebookId/close');
-    expect(jsonDecode(requests.single.body), {'draft': true});
+    final body = jsonDecode(requests.single.body) as Map;
+    expect(body['version'], 2);
+    expect(body['draft'], isTrue);
     expect(
         requests.single.headers['authorization'], 'Bearer signed-user-token');
     expect(card!.title, cardJson['title']);
