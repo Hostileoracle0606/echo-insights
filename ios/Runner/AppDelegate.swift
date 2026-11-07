@@ -22,6 +22,9 @@ import UIKit
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "FileProtection") {
       FileProtection.register(messenger: registrar.messenger())
     }
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "NameRecognizer") {
+      NameRecognizer.register(messenger: registrar.messenger())
+    }
   }
 }
 

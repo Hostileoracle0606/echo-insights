@@ -39,6 +39,7 @@ import '../services/retrieve_memory_service.dart';
 import '../services/session_card_service.dart';
 import '../services/turn_journal_service.dart';
 import 'opening_prep_provider.dart';
+import 'pseudonym_provider.dart';
 import 'quiet_mode_provider.dart';
 import 'supabase_provider.dart';
 import 'voice_services_provider.dart';
@@ -1021,6 +1022,8 @@ class JournalNotifier extends Notifier<JournalState> {
     _syncBackgroundFlush();
     _forgottenThisRun.add(entityId);
     _suppressed.add(entityId);
+    // The on-device name map forgets them too (LM-55).
+    unawaited(ref.read(pseudonymServiceProvider).forget(entityId));
     state = withoutEntity(state, entityId);
     // The server may have deleted the brief; the copy held here must not be
     // spoken at the next opening.
@@ -1041,6 +1044,7 @@ class JournalNotifier extends Notifier<JournalState> {
     try {
       await pending.service.removeEntity(entityId);
       _forgottenThisRun.add(entityId);
+      unawaited(ref.read(pseudonymServiceProvider).forget(entityId));
       pending.done.complete(RemovalOutcome.removed);
     } catch (error) {
       // Not removed on the server, so not suppressed there either: show the

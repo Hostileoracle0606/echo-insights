@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -7,6 +9,7 @@ import 'auth_provider.dart';
 import 'journal_provider.dart'
     show forgottenThisRunProvider, turnJournalServiceProvider;
 import 'opening_prep_provider.dart';
+import 'pseudonym_provider.dart';
 import 'supabase_provider.dart';
 
 /// App-level voice services: they live for the signed-in user, not for a
@@ -31,6 +34,8 @@ final signedOutCleanupProvider = Provider<void Function()>((ref) {
   return () {
     ref.read(openingPrepProvider).clear();
     ref.read(forgottenThisRunProvider).clear();
+    // The on-device name map holds real names: erased with the account.
+    unawaited(ref.read(pseudonymServiceProvider).clear());
   };
 });
 
