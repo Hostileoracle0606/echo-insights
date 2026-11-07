@@ -227,7 +227,7 @@ bool _isLatin(String s) => _latinRe.hasMatch(s);
 /// interchangeable ("Jean-Luc" matches "Jean Luc") and accepts an accented
 /// letter either precomposed or as letter + combining mark.
 String _pattern(String form) {
-  final parts = form.trim().split(RegExp(r'[\s-]+'));
+  final parts = composeLatin(form.trim()).split(RegExp(r'[\s-]+'));
   return parts.map((part) {
     final b = StringBuffer();
     for (final ch in part.runes.map(String.fromCharCode)) {
@@ -471,13 +471,22 @@ class PseudonymMap {
         o.surfaces.any((s) => s.toLowerCase() == w.toLowerCase()));
     return [
       for (final w in picks)
+        // An ordinary word that is part of a name (Mark, Rose, Hill) still
+        // stands for it, but through the word-name rules: a capital, and a
+        // use that looks like a name. Function words and particles never do.
         if (w.length >= 2 &&
-            !commonWords.contains(w.toLowerCase()) &&
             !_particles.contains(w.toLowerCase()) &&
+            !_stopWords.contains(w.toLowerCase()) &&
             !owned(w))
           w,
     ];
   }
+
+  static const _stopWords = {
+    'the', 'a', 'an', 'of', 'and', 'for', 'in', 'on', 'at', 'to', 'by', 'with',
+    'my', 'our', 'your', 'his', 'her', 'their', 'this', 'that', 'is', 'it',
+    'inc', 'llc', 'ltd', 'co', 'corp',
+  };
 
   static const _particles = {
     'de', 'da', 'di', 'do', 'du', 'del', 'der', 'den', 'van', 'von', 'bin',
@@ -706,7 +715,7 @@ class PseudonymMap {
         if (overlaps(start, end) || rejectedAt(start, end)) continue;
         final cand = text.substring(start, end);
         if (cand.toLowerCase() == s.form.toLowerCase()) continue;
-        final d = editDistance(cand, s.form);
+        final d = editDistance(composeLatin(cand), composeLatin(s.form));
         if (d >= 1 &&
             d <= (s.form.length * 0.12).ceil() &&
             cand[0].toLowerCase() == s.form[0].toLowerCase()) {
@@ -731,7 +740,7 @@ class PseudonymMap {
       var tie = false;
       for (final s in singles) {
         if (tk.word[0].toLowerCase() != s.form[0].toLowerCase()) continue;
-        final d = editDistance(tk.word, s.form);
+        final d = editDistance(composeLatin(tk.word), composeLatin(s.form));
         if (d == 0) continue;
         final len = tk.word.length < s.form.length ? tk.word.length : s.form.length;
         final ok = s.word

@@ -379,3 +379,29 @@ const Map<String, String> latinDecompositions = {
   'Ỹ': '\u0059\u0303',
   'ỹ': '\u0079\u0303',
 };
+
+final Map<String, String> _compositions = {
+  for (final e in latinDecompositions.entries) e.value: e.key,
+};
+
+/// [s] with each letter + combining mark pair in the table above replaced by
+/// the precomposed letter (a small NFC for Latin names). Anything else,
+/// including marks the table does not know, is left as it is.
+String composeLatin(String s) {
+  if (!s.runes.any((r) => r >= 0x300 && r <= 0x36F)) return s;
+  final runes = s.runes.toList();
+  final out = StringBuffer();
+  for (var i = 0; i < runes.length; i++) {
+    if (i + 1 < runes.length && runes[i + 1] >= 0x300 && runes[i + 1] <= 0x36F) {
+      final pair = String.fromCharCodes([runes[i], runes[i + 1]]);
+      final composed = _compositions[pair];
+      if (composed != null) {
+        out.write(composed);
+        i++;
+        continue;
+      }
+    }
+    out.writeCharCode(runes[i]);
+  }
+  return out.toString();
+}
