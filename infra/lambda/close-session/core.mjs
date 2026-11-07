@@ -1,5 +1,6 @@
 import { guardHandler, safeLog } from "./safe-log.mjs";
-import { redactTurns } from "./redact.mjs";
+import { redactTexts, redactTurns } from "./redact.mjs";
+import { effectiveRevision, parseCloseRequest, readBody } from "./client-input.mjs";
 import { buildJustTalkMessage, justTalkPrompt, writeSessionCardFunction } from "./prompts.mjs";
 import {
   buildTranscript,
@@ -101,22 +102,6 @@ export function supabaseClient({ supabaseUrl, publishableKey, authorization, fet
       });
     },
   };
-}
-
-/**
- * A draft request ({"draft": true}) comes in the background while the
- * conversation goes on; anything else is the final close.
- */
-function isDraftRequest(event) {
-  let body = event?.body;
-  if (typeof body !== "string" || body.length === 0) return false;
-  try {
-    if (event.isBase64Encoded) body = Buffer.from(body, "base64").toString("utf8");
-    const parsed = JSON.parse(body);
-    return parsed !== null && typeof parsed === "object" && parsed.draft === true;
-  } catch {
-    return false;
-  }
 }
 
 export function functionArgs(payload, name) {
@@ -226,20 +211,44 @@ export function createCloseSessionHandler({
     });
   }
 
-  async function generateJustTalk({ db, notebookId, startedAt, metrics }) {
+  // v1 reads the transcript from conversation_turns. v2 (LM-56) uses the
+  // transcript the app sent, its names already swapped for stand-ins, and
+  // the stand-in names the app sent for the notebook's entities.
+  async function generateJustTalk({ db, notebookId, startedAt, metrics, request }) {
+    const fromApp = request.version === 2;
     const [snapshot, newestTurns] = await Promise.all([
       db.rpc("get_notebook_snapshot", { p_notebook_id: notebookId }),
-      db.select("conversation_turns", {
-        select: "turn_id,speaker,text,spoken_at,input",
-        notebook_id: `eq.${notebookId}`,
-        order: "spoken_at.desc,turn_id.desc",
-        limit: "1000",
-      }),
+      fromApp
+        ? null
+        : db.select("conversation_turns", {
+            select: "turn_id,speaker,text,spoken_at,input",
+            notebook_id: `eq.${notebookId}`,
+            order: "spoken_at.desc,turn_id.desc",
+            limit: "1000",
+          }),
     ]);
     if (!snapshot || typeof snapshot !== "object") throw new Rejection(404, "notFound");
-    if (!Array.isArray(newestTurns)) throw new Rejection(503, "providerUnavailable");
+    if (!fromApp && !Array.isArray(newestTurns)) throw new Rejection(503, "providerUnavailable");
 
-    const turns = await redactTurns(db, [...newestTurns].reverse());
+    // The app's text is redacted like the database's: a forgotten name has
+    // left the app's map, so it would arrive as it was said. Turns and the
+    // entity names go in one call.
+    let turns;
+    let appNames = new Map();
+    if (fromApp) {
+      const names = [...request.names.entries()];
+      const redacted = await redactTexts(db, [
+        ...request.turns.map((turn) => turn.text),
+        ...names.map(([, name]) => name),
+      ]);
+      turns = request.turns.map((turn, index) => ({ ...turn, text: redacted[index] }));
+      appNames = new Map(
+        names.map(([id], index) => [id, redacted[request.turns.length + index].trim()]),
+      );
+      metrics.appTurns = request.turns.length;
+    } else {
+      turns = await redactTurns(db, [...newestTurns].reverse());
+    }
     const userTurns = turns.filter(
       (turn) => turn?.speaker === "user" && typeof turn.text === "string" && turn.text.trim(),
     );
@@ -265,7 +274,21 @@ export function createCloseSessionHandler({
     metrics.transcriptChars = transcript.text.length;
     metrics.transcriptTrimmed = transcript.trimmed;
 
-    const candidateIds = candidates.map((item) => item.entityId);
+    // What the model is offered. v1: the snapshot's ids and names. v2: a
+    // short alias per candidate and the app's stand-in name, since an id is
+    // the real name's slug; a candidate the app sent no name for is left
+    // out of the prompt (it is still remembered, without a note).
+    const offered = fromApp
+      ? candidates
+          .filter((item) => appNames.get(item.entityId))
+          .map((item, index) => ({
+            ...item,
+            entityId: `e${index + 1}`,
+            name: appNames.get(item.entityId),
+            realId: item.entityId,
+          }))
+      : candidates;
+    const candidateIds = offered.map((item) => item.entityId);
     const payload = await callModel({
       startedAt,
       metrics,
@@ -279,7 +302,7 @@ export function createCloseSessionHandler({
                 text: buildJustTalkMessage({
                   transcript: transcript.text,
                   trimmed: transcript.trimmed,
-                  candidates,
+                  candidates: offered,
                 }),
               },
             ],
@@ -292,8 +315,14 @@ export function createCloseSessionHandler({
         generationConfig: { temperature: 0, thinkingConfig: { thinkingBudget: 0 } },
       },
     });
-    const fields = justTalkFromModel(functionArgs(payload, "write_session_card"), candidates);
+    const fields = justTalkFromModel(functionArgs(payload, "write_session_card"), offered);
     if (!fields) throw new Rejection(502, "invalidProviderResponse");
+    if (fromApp) {
+      const realIds = new Map(offered.map((item) => [item.entityId, item.realId]));
+      fields.entityNotes = new Map(
+        [...fields.entityNotes].map(([alias, note]) => [realIds.get(alias), note]),
+      );
+    }
     metrics.notes = fields.notes.length;
     metrics.entityNotes = fields.entityNotes.size;
 
@@ -302,7 +331,9 @@ export function createCloseSessionHandler({
         version: 1,
         notebookId,
         conversationMode: "just_talk",
-        sourceRevision: Number(snapshot.revision),
+        sourceRevision: fromApp
+          ? effectiveRevision(snapshot.revision, request.sourceRevision)
+          : Number(snapshot.revision),
         generatedAt: new Date(now()).toISOString(),
         title: fields.title,
         summary: fields.summary,
@@ -318,8 +349,18 @@ export function createCloseSessionHandler({
   const generators = { just_talk: generateJustTalk };
 
   // One pass of steps 1–7. Returns a response, or "stale" when the
-  // conversation changed while the card was being written.
-  async function closeOnce({ db, notebookId, startedAt, metrics, draft }) {
+  // conversation changed while the card was being written. A v2 request
+  // gets the card back unsaved ("saved": false): the app swaps the names
+  // back and saves it through save_session_card itself, where every check
+  // (revision, draft, caps, forgotten names) runs as it does here.
+  async function closeOnce({ db, notebookId, startedAt, metrics, request }) {
+    const draft = request.draft;
+    const ready = (card, saved) =>
+      jsonResponse(200, {
+        status: "ready",
+        card,
+        ...(request.version === 2 ? { saved } : {}),
+      });
     const notebooks = await db.select("notebooks", {
       select: "id,revision,conversation_mode,transcript_forgotten_at",
       id: `eq.${notebookId}`,
@@ -342,7 +383,7 @@ export function createCloseSessionHandler({
     if (notebook.transcript_forgotten_at) {
       metrics.forgotten = true;
       if (Array.isArray(stored) && stored.length > 0 && stored[0].card) {
-        return jsonResponse(200, { status: "ready", card: stored[0].card });
+        return ready(stored[0].card, true);
       }
       throw new Rejection(422, "nothingToSummarize");
     }
@@ -353,13 +394,14 @@ export function createCloseSessionHandler({
       stored[0].card
     ) {
       metrics.cached = true;
-      return jsonResponse(200, { status: "ready", card: stored[0].card });
+      return ready(stored[0].card, true);
     }
 
     const generate = generators[notebook.conversation_mode];
     if (!generate) throw new Rejection(501, "notImplemented");
 
-    const card = await generate({ db, notebookId, startedAt, metrics });
+    const card = await generate({ db, notebookId, startedAt, metrics, request });
+    if (request.version === 2) return ready(card, false);
     const saved = await db.rpc("save_session_card", {
       p_notebook_id: notebookId,
       p_source_revision: card.sourceRevision,
@@ -370,9 +412,7 @@ export function createCloseSessionHandler({
       // the database keeps it unless a newer card is already stored.
       ...(draft ? { p_draft: true } : {}),
     });
-    if (saved?.status === "saved" && saved.card) {
-      return jsonResponse(200, { status: "ready", card: saved.card });
-    }
+    if (saved?.status === "saved" && saved.card) return ready(saved.card, true);
     if (saved?.status === "stale") return "stale";
     if (saved?.code === "notFound") throw new Rejection(404, "notFound");
     throw new Rejection(503, "providerUnavailable");
@@ -387,16 +427,26 @@ export function createCloseSessionHandler({
     const notebookId = notebookIdFrom(event);
     if (!notebookId) return rejected(400, "invalidRequest");
 
+    const request = parseCloseRequest(readBody(event));
+    if (!request) return rejected(400, "invalidRequest");
+    const { draft } = request;
+
     const db = supabaseClient({ supabaseUrl, publishableKey, authorization, fetchImpl });
-    const draft = isDraftRequest(event);
-    const metrics = { modelCalls: 0, passes: 0, ...(draft ? { draft: true } : {}) };
+    const metrics = {
+      modelCalls: 0,
+      passes: 0,
+      version: request.version,
+      ...(draft ? { draft: true } : {}),
+    };
     let response;
     try {
       // A final close retries once if the conversation moved on mid-write;
-      // a draft never needs to (it saves from the revision it read).
-      for (let pass = 0; pass < (draft ? 1 : 2) && !response; pass += 1) {
+      // a draft never needs to (it saves from the revision it read). v2 saves
+      // nothing here, so it is never stale here: the app retries instead.
+      const passes = draft || request.version === 2 ? 1 : 2;
+      for (let pass = 0; pass < passes && !response; pass += 1) {
         metrics.passes = pass + 1;
-        const outcome = await closeOnce({ db, notebookId, startedAt, metrics, draft });
+        const outcome = await closeOnce({ db, notebookId, startedAt, metrics, request });
         if (outcome !== "stale") response = outcome;
       }
       response ??= rejected(409, "stale");

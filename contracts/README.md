@@ -40,3 +40,9 @@ or renaming one needs v2. The fixtures are
 `session-card-v1.{just_talk,weekly_debrief,session_prep,first_session,what_landed}.json`,
 checked by `infra/test/session-card-contract.test.mjs` and
 `test/session_card_test.dart`.
+
+`close-session-v2.md` describes the two request shapes `POST
+/v1/notebooks/{notebookId}/close` accepts: v1 (no body or no `version`, the
+runtime reads the transcript and saves) and v2 (LM-56: the app sends the
+transcript with names swapped on the device and saves the card itself).
+`session-brief-v1.md` has the same split for `/brief`.

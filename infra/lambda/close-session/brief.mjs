@@ -16,7 +16,8 @@ import {
   buildBriefMessage,
   writeSessionBriefFunction,
 } from "./brief-prompts.mjs";
-import { redactTurns } from "./redact.mjs";
+import { redactTexts, redactTurns } from "./redact.mjs";
+import { effectiveRevision, parseBriefRequest, readBody } from "./client-input.mjs";
 import { buildTranscript } from "./validate.mjs";
 
 const defaultDeadlineMs = 27_000;
@@ -52,10 +53,50 @@ const strings = (value) =>
   Array.isArray(value) ? value.filter((item) => typeof item === "string") : [];
 
 /**
+ * The app's lists with every forgotten name redacted, in one call with the
+ * transcript (see redactTexts). Same shapes back.
+ */
+async function redactAppInput(db, request) {
+  const texts = [];
+  const take = (text) => {
+    texts.push(text);
+    return texts.length - 1;
+  };
+  const turnAt = request.turns.map((turn) => take(turn.text));
+  const followUpAt = request.followUps.map(take);
+  const questionAt = request.questions.map((item) => ({
+    name: take(item.name),
+    questions: item.questions.map(take),
+  }));
+  const topAt = request.topEntities.map((item) => take(item.name));
+  const previousAt = request.previous && {
+    focus: request.previous.focus.map(take),
+    openingThread: take(request.previous.openingThread),
+  };
+  const out = await redactTexts(db, texts);
+  return {
+    turns: request.turns.map((turn, index) => ({ ...turn, text: out[turnAt[index]] })),
+    followUps: followUpAt.map((at) => out[at]),
+    questions: questionAt.map((at) => ({ name: out[at.name], questions: at.questions.map((q) => out[q]) })),
+    topEntities: request.topEntities.map((item, index) => ({ ...item, name: out[topAt[index]] })),
+    previous: previousAt && {
+      focus: previousAt.focus.map((at) => out[at]),
+      openingThread: out[previousAt.openingThread],
+    },
+  };
+}
+
+/**
  * POST /v1/notebooks/{id}/brief: writes the opening for the user's next
  * conversation (a brief, plus the opening line spoken by Gemini TTS) into
  * session_briefs. Independent of the closing card: it has its own function,
  * and if anything fails here the previous brief simply stays.
+ *
+ * v2 (LM-56) splits it in two so no real name reaches the text model: a
+ * write request carries the app's text with names swapped and gets the
+ * brief back unsaved; the app swaps the names back and sends a speak request
+ * with the real opening line, gets the audio, and saves both through
+ * save_session_brief. See contracts/session-brief-v1.md.
  */
 export function createSessionBriefHandler({
   supabaseUrl,
@@ -81,7 +122,163 @@ export function createSessionBriefHandler({
     }
   }
 
-  async function write({ db, notebookId, startedAt, metrics }) {
+  // One credential read per request, however many calls it makes (keyed by
+  // the request's metrics object).
+  const credentials = new WeakMap();
+  const gemini = async ({ metrics, startedAt }) => {
+    if (!credentials.has(metrics)) credentials.set(metrics, await credential());
+    return geminiCall({ metrics, startedAt, credential: credentials.get(metrics) });
+  };
+  const geminiCall = ({ metrics, startedAt, credential: apiKey }) => ({
+    fetchImpl,
+    credential: apiKey,
+    startedAt,
+    deadlineMs,
+    now,
+    sleep,
+    metrics,
+    retryDelaysMs: briefRetryDelaysMs,
+  });
+
+  const lastSpokenOr = (userTurns) => {
+    const lastSpoken = timeOf(userTurns.at(-1)?.spoken_at);
+    return Number.isNaN(lastSpoken) ? now() : lastSpoken;
+  };
+
+  // The text model: one forced write_session_brief call. Everything it reads
+  // is passed in; on the v2 path all of it came from the app, names swapped.
+  async function writeBrief({ metrics, startedAt, ...message }) {
+    const call = await gemini({ metrics, startedAt });
+    const payload = await rateLimitTagged(metrics, "text", () =>
+      callGemini({
+        ...call,
+        model,
+        body: {
+          system_instruction: { parts: [{ text: briefPrompt }] },
+          contents: [
+            {
+              role: "user",
+              parts: [
+                {
+                  text: buildBriefMessage({
+                    conversationDate: message.conversationDate,
+                    transcript: message.transcript.text,
+                    trimmed: message.transcript.trimmed,
+                    previous: message.previous,
+                    followUps: message.followUps,
+                    questions: message.questions,
+                    topEntities: message.topEntities,
+                  }),
+                },
+              ],
+            },
+          ],
+          tools: [{ function_declarations: [writeSessionBriefFunction()] }],
+          tool_config: {
+            function_calling_config: {
+              mode: "ANY",
+              allowed_function_names: ["write_session_brief"],
+            },
+          },
+          generationConfig: { temperature: 0, thinkingConfig: { thinkingBudget: 0 } },
+        },
+      }),
+    );
+    const brief = briefFromModel(functionArgs(payload, "write_session_brief"));
+    if (!brief) throw new Rejection(502, "invalidProviderResponse");
+    return brief;
+  }
+
+  // TTS: the opening line, and only that line, in Lumen's voice.
+  async function speak({ metrics, startedAt, openingLine }) {
+    const call = await gemini({ metrics, startedAt });
+    const callsBeforeSpeech = metrics.modelCalls;
+    let speech;
+    try {
+      speech = await rateLimitTagged(metrics, "tts", () =>
+        callGemini({
+          ...call,
+          model: ttsModel,
+          body: {
+            contents: [{ parts: [{ text: `${speakPrefix}${openingLine}` }] }],
+            generationConfig: {
+              responseModalities: ["AUDIO"],
+              speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } },
+            },
+          },
+        }),
+      );
+    } finally {
+      metrics.ttsCalls = metrics.modelCalls - callsBeforeSpeech;
+    }
+    const inline = speech?.candidates?.[0]?.content?.parts?.find(
+      (part) => part?.inlineData?.data,
+    )?.inlineData;
+    if (typeof inline?.data !== "string" || inline.data.length === 0) {
+      throw new Rejection(502, "invalidProviderResponse");
+    }
+    const sampleRate = Number(/rate=(\d+)/.exec(inline.mimeType ?? "")?.[1] ?? defaultSampleRate);
+    metrics.audioBase64Chars = inline.data.length;
+    return { audioBase64: inline.data, sampleRate };
+  }
+
+  // v2 write: the app's text, redacted for forgotten names; the brief comes
+  // back unsaved for the app to swap the names back into.
+  async function writeFromApp({ db, notebook, startedAt, metrics, request }) {
+    const input = await redactAppInput(db, request);
+    const userTurns = input.turns.filter(
+      (turn) => turn.speaker === "user" && turn.text.trim(),
+    );
+    metrics.appTurns = input.turns.length;
+    metrics.userTurns = userTurns.length;
+    if (userTurns.length === 0) throw new Rejection(422, "nothingToSummarize");
+    metrics.hasPrevious = Boolean(input.previous);
+    metrics.followUps = input.followUps.length;
+    metrics.entityQuestions = input.questions.length;
+    metrics.topEntities = input.topEntities.length;
+
+    const transcript = buildTranscript(input.turns);
+    metrics.transcriptChars = transcript.text.length;
+    metrics.transcriptTrimmed = transcript.trimmed;
+
+    const brief = await writeBrief({
+      metrics,
+      startedAt,
+      conversationDate: conversationDate(lastSpokenOr(userTurns)),
+      transcript,
+      previous: input.previous,
+      followUps: input.followUps,
+      questions: input.questions,
+      topEntities: input.topEntities,
+    });
+    return {
+      status: "ready",
+      brief,
+      sourceRevision: effectiveRevision(notebook.revision, request.sourceRevision),
+    };
+  }
+
+  // v2 speak: the real opening line the app swapped back. The same
+  // "unchanged" checks run again first, so a newer brief saved meanwhile is
+  // not overwritten by this one.
+  async function speakForApp({ db, notebookId, startedAt, metrics, request }) {
+    const checked = await check({ db, notebookId, metrics, revision: request.sourceRevision });
+    if (checked === "unchanged") return { status: "unchanged" };
+    if (request.sourceRevision > Number(checked.notebook.revision)) {
+      throw new Rejection(400, "invalidRequest");
+    }
+    const { audioBase64, sampleRate } = await speak({
+      metrics,
+      startedAt,
+      openingLine: request.openingLine,
+    });
+    return { status: "ready", audioBase64, sampleRate };
+  }
+
+  // Reads the notebook and decides whether a brief at [revision] (the
+  // notebook's own when null) would be news: "unchanged" when the stored one
+  // already covers it or a newer session's brief must not be replaced.
+  async function check({ db, notebookId, metrics, revision = null }) {
     const notebooks = await db.select("notebooks", {
       select: "id,revision,conversation_mode,ended_at,transcript_forgotten_at",
       id: `eq.${notebookId}`,
@@ -109,7 +306,10 @@ export function createSessionBriefHandler({
     if (stored) {
       const sameNotebook = stored.source_notebook_id === notebookId;
       // A repeated close: this revision (or a later one) is already written.
-      if (sameNotebook && Number(stored.source_revision) >= Number(notebook.revision)) {
+      if (
+        sameNotebook &&
+        Number(stored.source_revision) >= effectiveRevision(notebook.revision, revision)
+      ) {
         metrics.cached = true;
         return "unchanged";
       }
@@ -118,6 +318,21 @@ export function createSessionBriefHandler({
         metrics.superseded = true;
         return "unchanged";
       }
+    }
+    return { notebook, stored };
+  }
+
+  async function write({ db, notebookId, startedAt, metrics, request }) {
+    const checked = await check({
+      db,
+      notebookId,
+      metrics,
+      revision: request.version === 2 ? request.sourceRevision : null,
+    });
+    if (checked === "unchanged") return checked;
+    const { notebook, stored } = checked;
+    if (request.version === 2) {
+      return writeFromApp({ db, notebook, startedAt, metrics, request });
     }
 
     const [newestTurns, followUps, questionEntities, topEntities] = await Promise.all([
@@ -174,93 +389,27 @@ export function createSessionBriefHandler({
     metrics.transcriptChars = transcript.text.length;
     metrics.transcriptTrimmed = transcript.trimmed;
 
-    const lastSpoken = timeOf(userTurns.at(-1)?.spoken_at);
-    const apiKey = await credential();
-    const gemini = {
-      fetchImpl,
-      credential: apiKey,
-      startedAt,
-      deadlineMs,
-      now,
-      sleep,
+    const brief = await writeBrief({
       metrics,
-      retryDelaysMs: briefRetryDelaysMs,
-    };
-
-    const payload = await rateLimitTagged(metrics, "text", () =>
-      callGemini({
-        ...gemini,
-        model,
-        body: {
-          system_instruction: { parts: [{ text: briefPrompt }] },
-          contents: [
-            {
-              role: "user",
-              parts: [
-                {
-                  text: buildBriefMessage({
-                    conversationDate: conversationDate(
-                      Number.isNaN(lastSpoken) ? now() : lastSpoken,
-                    ),
-                    transcript: transcript.text,
-                    trimmed: transcript.trimmed,
-                    previous:
-                      stored?.brief && typeof stored.brief === "object" ? stored.brief : null,
-                    followUps: followUpQuestions,
-                    questions,
-                    topEntities: entities,
-                  }),
-                },
-              ],
-            },
-          ],
-          tools: [{ function_declarations: [writeSessionBriefFunction()] }],
-          tool_config: {
-            function_calling_config: {
-              mode: "ANY",
-              allowed_function_names: ["write_session_brief"],
-            },
-          },
-          generationConfig: { temperature: 0, thinkingConfig: { thinkingBudget: 0 } },
-        },
-      }),
-    );
-    const brief = briefFromModel(functionArgs(payload, "write_session_brief"));
-    if (!brief) throw new Rejection(502, "invalidProviderResponse");
-
-    const callsBeforeSpeech = metrics.modelCalls;
-    let speech;
-    try {
-      speech = await rateLimitTagged(metrics, "tts", () =>
-        callGemini({
-          ...gemini,
-          model: ttsModel,
-          body: {
-            contents: [{ parts: [{ text: `${speakPrefix}${brief.openingLine}` }] }],
-            generationConfig: {
-              responseModalities: ["AUDIO"],
-              speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } },
-            },
-          },
-        }),
-      );
-    } finally {
-      metrics.ttsCalls = metrics.modelCalls - callsBeforeSpeech;
-    }
-    const inline = speech?.candidates?.[0]?.content?.parts?.find(
-      (part) => part?.inlineData?.data,
-    )?.inlineData;
-    if (typeof inline?.data !== "string" || inline.data.length === 0) {
-      throw new Rejection(502, "invalidProviderResponse");
-    }
-    const sampleRate = Number(/rate=(\d+)/.exec(inline.mimeType ?? "")?.[1] ?? defaultSampleRate);
-    metrics.audioBase64Chars = inline.data.length;
+      startedAt,
+      conversationDate: conversationDate(lastSpokenOr(userTurns)),
+      transcript,
+      previous: stored?.brief && typeof stored.brief === "object" ? stored.brief : null,
+      followUps: followUpQuestions,
+      questions,
+      topEntities: entities,
+    });
+    const { audioBase64, sampleRate } = await speak({
+      metrics,
+      startedAt,
+      openingLine: brief.openingLine,
+    });
 
     const saved = await db.rpc("save_session_brief", {
       p_notebook_id: notebookId,
       p_source_revision: Number(notebook.revision),
       p_brief: brief,
-      p_audio_base64: inline.data,
+      p_audio_base64: audioBase64,
       p_sample_rate: sampleRate,
     });
     if (saved?.status === "saved") return "ready";
@@ -278,11 +427,28 @@ export function createSessionBriefHandler({
     const notebookId = notebookIdFrom(event);
     if (!notebookId) return rejected(400, "invalidRequest");
 
+    const request = parseBriefRequest(readBody(event));
+    if (!request) return rejected(400, "invalidRequest");
+
     const db = supabaseClient({ supabaseUrl, publishableKey, authorization, fetchImpl });
-    const metrics = { modelCalls: 0 };
+    const metrics = { modelCalls: 0, version: request.version };
     let response;
     try {
-      response = jsonResponse(200, { status: await write({ db, notebookId, startedAt, metrics }) });
+      if (request.version === 1) {
+        response = jsonResponse(200, {
+          status: await write({ db, notebookId, startedAt, metrics, request }),
+        });
+      } else if (request.kind === "speak") {
+        metrics.stage = "speak";
+        response = jsonResponse(
+          200,
+          await speakForApp({ db, notebookId, startedAt, metrics, request }),
+        );
+      } else {
+        metrics.stage = "write";
+        const result = await write({ db, notebookId, startedAt, metrics, request });
+        response = jsonResponse(200, result === "unchanged" ? { status: result } : result);
+      }
     } catch (error) {
       response = error instanceof Rejection ? error.response : rejected(503, "providerUnavailable");
     }
