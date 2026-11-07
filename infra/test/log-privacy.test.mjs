@@ -229,7 +229,10 @@ const briefWriteEvent = () =>
   });
 const briefSpeakEvent = () =>
   userEvent({
-    body: JSON.stringify({ version: 2, speak: { openingLine: `Hey ${MARKER}`, sourceRevision: 1 } }),
+    body: JSON.stringify({
+      version: 2,
+      speak: { openingLine: `Hey ${MARKER}`, speakToken: `${MARKER}.${MARKER}` },
+    }),
   });
 // A malformed v2 body: the rejection must not echo it either.
 const badV2Event = () =>

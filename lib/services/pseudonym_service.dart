@@ -10,6 +10,38 @@ import '../models/entity.dart';
 import 'pseudonym_store.dart';
 import 'pseudonym_worker.dart';
 
+/// What a piece of text that can't be swapped safely is sent as (LM-56).
+const omittedText = '[omitted]';
+
+/// The result of [PseudonymService.swapTurns].
+class SwappedTurns {
+  const SwappedTurns({
+    required this.turns,
+    required this.extras,
+    required this.omitted,
+    required this.snapshot,
+  });
+
+  final List<String> turns;
+  final List<String> extras;
+
+  /// How many pieces were sent as [omittedText].
+  final int omitted;
+
+  /// What the stand-ins in [turns] and [extras] stood for at swap time.
+  final StandInSnapshot snapshot;
+}
+
+/// The model's answer uses a stand-in that no longer stands for the same
+/// person (retired, moved, or forgotten since the request was swapped). The
+/// answer is dropped; the caller asks once more. Carries no text.
+class PseudonymResultStale implements Exception {
+  const PseudonymResultStale();
+
+  @override
+  String toString() => 'PseudonymResultStale';
+}
+
 /// Thrown instead of sending text whose swap could not be verified (a
 /// round trip that didn't restore the original). Carries no text.
 class PseudonymSwapFailed implements Exception {
@@ -84,6 +116,10 @@ class PseudonymService {
 
   final _pieces = <String, _Piece>{};
   Timer? _refreshTimer;
+
+  /// Where the map's jobs run (for tests: the app's is an isolate).
+  @visibleForTesting
+  PseudonymHost get host => _host;
 
   /// Pieces of text the map swapped (counts only, for tests): the leave
   /// path must find every turn already swapped.
@@ -167,7 +203,7 @@ class PseudonymService {
         continue;
       }
       if (_mentions(piece.original, tokens) ||
-          _mentions(piece.swapped, tokens)) {
+          _mentions(piece.swapped.text, tokens)) {
         stale = true;
       } else {
         piece.version = _version;
@@ -267,7 +303,9 @@ class PseudonymService {
             mapChanged: false,
           );
         }
-        return (await _swap([text])).single;
+        final d = (await _swap([text])).single;
+        if (!d.roundTripOk) throw const PseudonymSwapFailed();
+        return d;
       });
 
   /// Swaps each of [texts] with the same map, or returns null when nobody
@@ -275,7 +313,9 @@ class PseudonymService {
   /// [PseudonymSwapFailed] rather than return a text that didn't round-trip.
   Future<List<String>?> dehydrateAll(List<String> texts) => _serial(() async {
         if (await _ensureLoaded() == null) return null;
-        return [for (final d in await _swap(texts)) d.text];
+        final out = await _swap(texts);
+        if (out.any((d) => !d.roundTripOk)) throw const PseudonymSwapFailed();
+        return [for (final d in out) d.text];
       });
 
   /// Swaps conversation turns, each once: a turn already swapped under the
@@ -283,7 +323,15 @@ class PseudonymService {
   /// changed under) are swapped, one by one, never the whole transcript.
   /// [extras] (short context: entity names, questions) are swapped fresh
   /// with the same map. Null when nobody is signed in.
-  Future<({List<String> turns, List<String> extras})?> swapTurns(
+  ///
+  /// The result's [StandInSnapshot] holds what every stand-in in it stood
+  /// for at this moment: turn the answer back with [restore], not with the
+  /// live map, which may have moved on by then.
+  ///
+  /// A piece that can't be swapped safely (its round trip fails, or the map
+  /// would not settle) is never sent as it is: it becomes [omittedText] and
+  /// is counted in `omitted`, so one bad turn can't block the rest.
+  Future<SwappedTurns?> swapTurns(
     List<String> turns, {
     List<String> extras = const [],
   }) =>
@@ -295,14 +343,67 @@ class PseudonymService {
         for (var pass = 0;; pass++) {
           final version = _version;
           final out = await _swapCached(turns);
-          final swappedExtras = extras.isEmpty
-              ? <String>[]
-              : [for (final d in await _swap(extras)) d.text];
-          if (version == _version || pass == 2) {
-            if (version != _version) throw const PseudonymSwapFailed();
-            return (turns: out, extras: swappedExtras);
+          final swappedExtras = await _swapPieces(extras);
+          if (version != _version && pass < 2) continue;
+          // Still moving after three passes: anything not swapped under the
+          // final map is left out rather than sent with an older one.
+          final settled = version == _version;
+          final turnTexts = [
+            for (var i = 0; i < turns.length; i++)
+              settled || _pieces[turns[i]]?.version == _version
+                  ? out[i]
+                  : _omitted,
+          ];
+          final extraTexts =
+              settled ? swappedExtras : [for (final _ in extras) _omitted];
+          final ids = <String>{
+            for (final t in turnTexts)
+              if (!t.omitted) ...t.ids,
+            for (final e in extraTexts)
+              if (!e.omitted) ...e.ids,
+          };
+          final snapshot = ids.isEmpty
+              ? const StandInSnapshot.empty()
+              : await _host.run(_SnapshotJob(ids));
+          final all = [...turnTexts, ...extraTexts];
+          return SwappedTurns(
+            turns: [for (final t in turnTexts) t.text],
+            extras: [for (final e in extraTexts) e.text],
+            omitted: all.where((p) => p.omitted).length,
+            snapshot: snapshot,
+          );
+        }
+      });
+
+  /// Turns a model's answer back into real names with [snapshot], the
+  /// stand-ins as they were when the request was swapped. Fails closed with
+  /// [PseudonymResultStale] if the answer uses a stand-in that no longer
+  /// stands for the same person: one retired or moved since (the map met a
+  /// real name equal to it), or one whose person has been forgotten. A
+  /// forgotten person is never turned back; the caller drops the answer and
+  /// asks once more.
+  Future<Object?> restore(StandInSnapshot snapshot, Object? answer) =>
+      _serial(() async {
+        if (snapshot.isEmpty) return answer;
+        final invalid = await _ensureLoaded() == null
+            ? null
+            : await _host.run(_InvalidJob(snapshot));
+        // Signed out meanwhile: nothing can be checked, so nothing is used.
+        if (invalid == null) throw const PseudonymResultStale();
+        if (invalid.isNotEmpty) {
+          final strings = <String>[];
+          void collect(Object? v) {
+            if (v is String) strings.add(v);
+            if (v is List) v.forEach(collect);
+            if (v is Map) v.values.forEach(collect);
+          }
+
+          collect(answer);
+          if (strings.any((t) => StandInSnapshot.mentions(invalid, t))) {
+            throw const PseudonymResultStale();
           }
         }
+        return snapshot.rehydrateJson(answer);
       });
 
   /// Swaps the cached turns the map has changed under again, in the
@@ -316,10 +417,12 @@ class PseudonymService {
         if (stale.isNotEmpty) await _swapCached(stale);
       });
 
+  static const _omitted = _Swapped(omittedText, {}, omitted: true);
+
   // Cached by the turn's own text: the same words always swap the same way
   // under one version of the map, whoever asks (extraction, card, brief).
-  Future<List<String>> _swapCached(List<String> texts) async {
-    final out = List<String?>.filled(texts.length, null);
+  Future<List<_Swapped>> _swapCached(List<String> texts) async {
+    final out = List<_Swapped?>.filled(texts.length, null);
     final missing = <String>{};
     for (var i = 0; i < texts.length; i++) {
       final cached = _pieces[texts[i]];
@@ -331,10 +434,10 @@ class PseudonymService {
     }
     if (missing.isNotEmpty) {
       final list = missing.toList(growable: false);
-      final swapped = await _swap(list);
+      final swapped = await _swapPieces(list);
       for (var j = 0; j < list.length; j++) {
         _pieces.remove(list[j]);
-        _pieces[list[j]] = _Piece(list[j], swapped[j].text, _version);
+        _pieces[list[j]] = _Piece(list[j], swapped[j], _version);
       }
       for (var i = 0; i < texts.length; i++) {
         out[i] ??= _pieces[texts[i]]!.swapped;
@@ -343,7 +446,19 @@ class PseudonymService {
         _pieces.remove(_pieces.keys.first);
       }
     }
-    return out.cast<String>();
+    return out.cast<_Swapped>();
+  }
+
+  /// [_swap], with a piece that fails its round trip replaced by
+  /// [omittedText] instead of failing the whole call.
+  Future<List<_Swapped>> _swapPieces(List<String> texts) async {
+    if (texts.isEmpty) return const [];
+    return [
+      for (final d in await _swap(texts))
+        d.roundTripOk
+            ? _Swapped(d.text, {for (final r in d.replacements) r.entityId})
+            : _omitted,
+    ];
   }
 
   /// Recognizes new names in [texts] (here: a platform channel), then swaps
@@ -373,7 +488,6 @@ class PseudonymService {
       _changed(tokens);
       await _save(saved);
     }
-    if (results.any((d) => !d.roundTripOk)) throw const PseudonymSwapFailed();
     return results;
   }
 
@@ -434,8 +548,16 @@ class PseudonymService {
 class _Piece {
   _Piece(this.original, this.swapped, this.version);
   final String original;
-  final String swapped;
+  final _Swapped swapped;
   int version;
+}
+
+/// One swapped piece and the entities whose stand-ins it holds.
+class _Swapped {
+  const _Swapped(this.text, this.ids, {this.omitted = false});
+  final String text;
+  final Set<String> ids;
+  final bool omitted;
 }
 
 // --- jobs (run in the host) ----------------------------------------------
@@ -569,6 +691,20 @@ class _SwapJob extends PseudonymJob<(List<Dehydrated>, String?, Set<String>)> {
     if (!changed) return (results, null, const <String>{});
     return (results, _json(map), _touched(before, _entries(map)));
   }
+}
+
+class _SnapshotJob extends PseudonymJob<StandInSnapshot> {
+  const _SnapshotJob(this.entityIds);
+  final Set<String> entityIds;
+  @override
+  StandInSnapshot run(PseudonymCell cell) => cell.map!.snapshot(entityIds);
+}
+
+class _InvalidJob extends PseudonymJob<Set<String>> {
+  const _InvalidJob(this.snapshot);
+  final StandInSnapshot snapshot;
+  @override
+  Set<String> run(PseudonymCell cell) => cell.map!.invalidIn(snapshot);
 }
 
 class _RehydrateJob extends PseudonymJob<String> {

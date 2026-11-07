@@ -60,6 +60,17 @@ class SessionBriefService {
   /// Errors are thrown; the caller logs them. A runtime rejection carries
   /// its status code, so the caller can tell one worth retrying.
   Future<void> requestBrief(String notebookId) async {
+    // A brief whose text uses a stand-in that no longer stands for the same
+    // person (retired, or forgotten meanwhile) is dropped unsaved and asked
+    // for once more.
+    try {
+      await _requestOnce(notebookId);
+    } on PseudonymResultStale {
+      await _requestOnce(notebookId);
+    }
+  }
+
+  Future<void> _requestOnce(String notebookId) async {
     if (_baseUrl.isEmpty) {
       throw StateError('The secure notebook runtime is not configured');
     }
@@ -115,71 +126,98 @@ class SessionBriefService {
     // Nobody signed in: the map can't swap, so nothing is sent.
     if (swapped == null) throw StateError('A signed-in session is required');
     final out = swapped.extras;
+    // A piece that couldn't be swapped safely is left out of a list (a turn
+    // goes as "[omitted]"); everything is clamped to the runtime's limits.
+    bool usable(int at) => out[at] != omittedText;
+    String text(int at, int max) => clampText(out[at], max);
 
     final written = await _post(url, accessToken, {
       'version': 2,
-      'turns': [
-        for (var i = 0; i < input.turns.length; i++)
-          {
-            'speaker': input.turns[i].speaker,
-            'text': swapped.turns[i],
-            if (input.turns[i].spokenAt != null)
-              'spokenAt': input.turns[i].spokenAt,
-          },
-      ],
+      'turns': clampTurns(
+        [
+          for (var i = 0; i < input.turns.length; i++)
+            (speaker: input.turns[i].speaker, text: swapped.turns[i]),
+        ],
+        spokenAt: [for (final t in input.turns) t.spokenAt],
+      ),
       'previous': previousAt == null
           ? null
           : {
-              'focus': [for (final at in previousAt.focus) out[at]],
-              'openingThread': out[previousAt.thread],
+              'focus': [
+                for (final at in previousAt.focus)
+                  if (usable(at)) text(at, appInputLimits.focusText),
+              ],
+              'openingThread': usable(previousAt.thread)
+                  ? text(previousAt.thread, appInputLimits.openingThread)
+                  : '',
             },
-      'followUps': [for (final at in followUpAt) out[at]],
+      'followUps': [
+        for (final at in followUpAt)
+          if (usable(at)) text(at, appInputLimits.followUpText),
+      ],
       'questions': [
         for (final at in questionAt)
-          {
-            'name': out[at.name],
-            'questions': [for (final q in at.questions) out[q]],
-          },
+          if (usable(at.name) && at.questions.any(usable))
+            {
+              'name': text(at.name, appInputLimits.entityName),
+              'questions': [
+                for (final q in at.questions)
+                  if (usable(q)) text(q, appInputLimits.questionText),
+              ],
+            },
       ],
       'topEntities': [
         for (var i = 0; i < input.topEntities.length; i++)
-          {'name': out[topAt[i]], 'type': input.topEntities[i].type},
+          if (usable(topAt[i]))
+            {
+              'name': text(topAt[i], appInputLimits.entityName),
+              'type': input.topEntities[i].type,
+            },
       ],
       'sourceRevision': input.revision,
     });
     if (written['status'] == 'unchanged') return;
+    // A runtime from before v2 ignores the version: it wrote, spoke and saved
+    // the brief itself and answers {"status": "ready"} with no brief.
+    if (written['status'] == 'ready' && !written.containsKey('brief')) return;
     final brief = written['brief'];
-    final revision = written['sourceRevision'];
-    if (written['status'] != 'ready' || brief is! Map || revision is! int) {
+    final token = written['speakToken'];
+    if (written['status'] != 'ready' || brief is! Map || token is! String) {
       throw const FormatException('Invalid session-brief response');
     }
 
-    final real = <String, dynamic>{
+    // The stand-ins as they were when this request was swapped; throws
+    // PseudonymResultStale if one no longer stands for the same person.
+    final real = (await _pseudonyms.restore(swapped.snapshot, {
       'focus': [
         for (final item in (brief['focus'] as List? ?? const []))
-          if (item is String) await _pseudonyms.rehydrateModelOutput(item),
+          if (item is String) item,
       ],
-      'openingThread': await _pseudonyms
-          .rehydrateModelOutput((brief['openingThread'] as String?) ?? ''),
-      'openingLine': await _pseudonyms
-          .rehydrateModelOutput((brief['openingLine'] as String?) ?? ''),
-    };
-    final line = (real['openingLine'] as String).trim();
-    // A name swapped back can make a full line longer than speech and the
-    // save accept: end it the way the runtime clamps a long line.
-    real['openingLine'] =
-        line.length <= 160 ? line : '${line.substring(0, 159).trimRight()}…';
+      'openingThread': (brief['openingThread'] as String?) ?? '',
+      'openingLine': ((brief['openingLine'] as String?) ?? '').trim(),
+    }) as Map)
+        .cast<String, dynamic>();
 
+    // The runtime speaks only the line it wrote, names changed, with the
+    // token from the write; it hands back the line it spoke (clamped to what
+    // the save accepts), and that is the line saved.
     final spoken = await _post(url, accessToken, {
       'version': 2,
-      'speak': {'openingLine': real['openingLine'], 'sourceRevision': revision},
+      'speak': {'openingLine': real['openingLine'], 'speakToken': token},
     });
     if (spoken['status'] == 'unchanged') return;
     final audio = spoken['audioBase64'];
     final sampleRate = spoken['sampleRate'];
-    if (spoken['status'] != 'ready' || audio is! String || sampleRate is! int) {
+    final line = spoken['openingLine'];
+    final revision = spoken['sourceRevision'];
+    if (spoken['status'] != 'ready' ||
+        audio is! String ||
+        sampleRate is! int ||
+        line is! String ||
+        revision is! int) {
       throw const FormatException('Invalid session-brief response');
     }
+    real['openingLine'] = line;
 
     // save_session_brief keeps every rule the runtime's save had: caps, a
     // revision that isn't newer is not saved, and a brief naming a forgotten

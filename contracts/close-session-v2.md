@@ -37,16 +37,17 @@ LM-55), and the card comes back unsaved.
 ```
 
 - `turns`: the conversation, oldest first. 1 to 1000; `speaker` `user` or
-  `assistant`; `text` 1 to 20 000 characters (the `conversation_turns` limit);
-  100 000 characters in all. The model reads the last 24 000 characters, as
+  `assistant`; `text` 1 to 25 000 characters; 125 000 characters in all.
+  The v2 caps are about 1.25 times the database's (`conversation_turns` is
+  20 000): a stand-in can be longer than the name it replaced, so the app's
+  text may grow a little, and the app clamps to these numbers. The model reads the last 24 000 characters, as
   in v1. The runtime does not read `conversation_turns`.
 - `entities`: the stand-in name for the notebook's entities the card may
-  remember; at most 500, `name` at most 200 characters. An entity is named
+  remember; at most 500, `name` at most 250 characters. An entity is named
   by `key`, `sha256("<notebookId>:<entityId>")` in lowercase hex, never by
   its id: an id is the real name's slug. The runtime hashes the notebook's
-  candidate ids the same way to match them (a salted hash of a slug can
-  still be guessed by someone who already suspects the name; it is not a
-  name in the body). The model is offered each remember candidate as a short alias
+  candidate ids the same way to match them. It is a namespaced hash, not a
+  secret: someone who already suspects a name can hash a guess to confirm it. The model is offered each remember candidate as a short alias
   (`e1`, `e2`, …) and this name, never the id (an id is the real name's
   slug). A candidate with no entry here is left out of the prompt and is
   remembered without a note.
@@ -56,7 +57,10 @@ LM-55), and the card comes back unsaved.
   counted as covered.
 - `draft`: as v1.
 
-A body outside these limits, or a `version` other than 2, is a 400
+A turn the app could not swap safely (its round trip failed, or the name map
+would not settle) is sent as `[omitted]`, and a candidate whose name could not
+be swapped is left out. A body outside these limits, or a `version` other
+than 2, is a 400
 `invalidRequest` before any other call.
 
 The runtime still checks the caller's token and reads, as that user:
@@ -74,7 +78,11 @@ Other statuses as v1, except that v2 is never `stale`: nothing is saved here.
 
 ### Saving (the app)
 
-The app puts the real names back into the model's text and saves with
+The app puts the real names back into the model's text, using the stand-ins
+as they were when it swapped the request, not the name map as it is when
+the answer arrives. If the answer uses a stand-in that has since been
+retired, moved to someone else or whose person was forgotten, the card is
+dropped unsaved and asked for once more. Otherwise the app saves with
 `save_session_card(p_notebook_id, p_source_revision, p_card, p_title,
 p_summary, p_draft)` using the user's token, as the runtime does on v1. Every
 rule stays in that function: a final card must match the notebook's revision

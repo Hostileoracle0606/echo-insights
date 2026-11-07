@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../logic/noise_filter.dart';
+import '../logic/pseudonym/pseudonym_map.dart' show StandInSnapshot;
 import '../logic/slugify.dart';
 import '../logic/turn_state.dart' show Speaker;
 import '../models/follow_up.dart';
@@ -64,6 +65,43 @@ class ExtractGraphService {
     int tokenBudget = defaultExtractionTokenBudget,
     int maxRetries = 2,
   }) async {
+    // The answer can come back after the map moved on (a stand-in retired,
+    // a person forgotten): it is dropped and the turn asked for once more,
+    // swapped with the map as it is now.
+    for (var attempt = 0;; attempt++) {
+      try {
+        return await _extractOnce(
+          notebookId: notebookId,
+          turnId: turnId,
+          extractorVersion: extractorVersion,
+          text: text,
+          state: state,
+          mode: mode,
+          recentConversation: recentConversation,
+          retrievedEntityIds: retrievedEntityIds,
+          answeringFollowUp: answeringFollowUp,
+          tokenBudget: tokenBudget,
+          maxRetries: maxRetries,
+        );
+      } on PseudonymResultStale {
+        if (attempt == 1) rethrow;
+      }
+    }
+  }
+
+  Future<GraphPatch> _extractOnce({
+    required String notebookId,
+    required String turnId,
+    required String extractorVersion,
+    required String text,
+    required JournalState state,
+    required String mode,
+    required List<({Speaker role, String text})> recentConversation,
+    required List<String> retrievedEntityIds,
+    required FollowUp? answeringFollowUp,
+    required int tokenBudget,
+    required int maxRetries,
+  }) async {
     final trimmed = text.trim();
     if (trimmed.length < 6) return GraphPatch.empty();
     if (_baseUrl.isEmpty) {
@@ -87,6 +125,9 @@ class ExtractGraphService {
     final swapped = await _swapRequest(trimmed, context);
     // Nobody signed in: the map can't swap, so nothing is sent.
     if (swapped == null) throw StateError('A signed-in session is required');
+    // The turn itself could not be swapped safely: nothing to extract from
+    // that can be sent.
+    if (swapped.text == omittedText) return GraphPatch.empty();
     // The runtime caches a result by turn and extractor version and refuses
     // the same key with different text. The swapped text changes when the
     // map does (a name learned since), so the version carries its hash: a
@@ -162,7 +203,7 @@ class ExtractGraphService {
         }
         final patch = await _swapBack(
           decoded['patch'] as Map<String, dynamic>,
-          swapped.relationIds,
+          swapped,
         );
         return filterNoise(patch, extra: {'lumen'});
       } catch (error) {
@@ -210,6 +251,7 @@ class ExtractGraphService {
     );
     if (result == null) return null;
     final out = result.extras;
+    bool usable(int at) => out[at] != omittedText;
 
     // Ids are slugs of real names: rebuilt from the stand-ins, unique.
     final fakeIds = <String, String>{};
@@ -222,18 +264,22 @@ class ExtractGraphService {
       return id;
     }
 
+    // A piece that couldn't be swapped safely is left out: an entity
+    // without its name, a relation without its label or an end.
     final entities = <Map<String, dynamic>>[];
     for (var i = 0; i < context.entities.length; i++) {
       final e = context.entities[i];
-      final name = out[entityAt[i].name];
+      if (!usable(entityAt[i].name)) continue;
+      final name = _clamp(out[entityAt[i].name], _maxName);
       final id = unique(slugify(name), usedIds);
       fakeIds[e.id] = id;
+      final description = entityAt[i].description;
       entities.add({
         'id': id,
         'name': name,
         'type': e.type.name,
-        if (entityAt[i].description != null)
-          'description': out[entityAt[i].description!],
+        if (description != null && usable(description))
+          'description': _clamp(out[description], _maxDescription),
       });
     }
     final relationIds = <String, String>{};
@@ -241,9 +287,10 @@ class ExtractGraphService {
     final relations = <Map<String, dynamic>>[];
     for (var i = 0; i < context.relations.length; i++) {
       final r = context.relations[i];
-      final source = fakeIds[r.source] ?? 'unknown';
-      final target = fakeIds[r.target] ?? 'unknown';
-      final label = out[labelAt[i]];
+      final source = fakeIds[r.source];
+      final target = fakeIds[r.target];
+      if (source == null || target == null || !usable(labelAt[i])) continue;
+      final label = _clamp(out[labelAt[i]], _maxLabel);
       final id =
           unique('${source}__${slugify(label)}__$target', usedRelationIds);
       relationIds[id] = r.id;
@@ -252,24 +299,28 @@ class ExtractGraphService {
     }
     final recent = [
       for (var i = 0; i < context.recentConversation.length; i++)
-        {
-          'role': context.recentConversation[i].role.name,
-          'text': result.turns[i + 1],
-        },
+        if (result.turns[i + 1] != omittedText)
+          {
+            'role': context.recentConversation[i].role.name,
+            'text': _clamp(result.turns[i + 1], _maxRecentTurn),
+          },
     ];
     final swappedContext = {
       'entities': entities,
       'relations': relations,
       'recentConversation': recent,
-      'answeringFollowUp': followUpAt == null
+      'answeringFollowUp': followUpAt == null ||
+              !usable(followUpAt.question) ||
+              !usable(followUpAt.reason)
           ? null
           : {
-              'question': out[followUpAt.question],
-              'reason': out[followUpAt.reason],
+              'question': _clamp(out[followUpAt.question], _maxFollowUp),
+              'reason': _clamp(out[followUpAt.reason], _maxFollowUp),
             },
     };
     return _SwappedRequest(
-      text: result.turns.first,
+      text: _clamp(result.turns.first, _maxText),
+      snapshot: result.snapshot,
       context: swappedContext,
       contextKey: jsonEncode(swappedContext),
       relationIds: relationIds,
@@ -277,17 +328,21 @@ class ExtractGraphService {
   }
 
   /// The model's patch with the stand-ins swapped back: names, descriptions,
-  /// metadata, questions and labels. `supersedes` holds relation ids the
-  /// request offered; each is mapped back to the real id, and one the
-  /// request never offered is dropped.
+  /// metadata, questions and labels, with the stand-ins as they were when
+  /// the request was swapped ([PseudonymService.restore]; throws
+  /// [PseudonymResultStale] if one no longer stands for the same person).
+  /// `supersedes` holds relation ids the request offered; each is mapped
+  /// back to the real id, and one the request never offered is dropped.
   Future<GraphPatch> _swapBack(
     Map<String, dynamic> patch,
-    Map<String, String> relationIds,
+    _SwappedRequest request,
   ) async {
+    final relationIds = request.relationIds;
     final supersedes = (patch['supersedes'] as List?) ?? const [];
     final rest = Map<String, dynamic>.of(patch)..remove('supersedes');
     // Through JSON once more: the swap returns loosely typed maps.
-    final back = jsonDecode(jsonEncode(await _pseudonyms.rehydrateJson(rest)))
+    final back = jsonDecode(
+            jsonEncode(await _pseudonyms.restore(request.snapshot, rest)))
         as Map<String, dynamic>;
     back['supersedes'] = [
       for (final id in supersedes)
@@ -297,14 +352,29 @@ class ExtractGraphService {
   }
 }
 
+// The runtime's limits (extract-graph core.mjs validContext / validRequest).
+// A stand-in can be longer than the name it replaces: clamped here so a
+// long one can't turn into a permanent 400.
+const _maxText = 50000;
+const _maxName = 200;
+const _maxDescription = 1000;
+const _maxLabel = 160;
+const _maxRecentTurn = 4000;
+const _maxFollowUp = 1000;
+
+String _clamp(String text, int max) =>
+    text.length <= max ? text : text.substring(0, max);
+
 class _SwappedRequest {
   const _SwappedRequest({
     required this.text,
+    required this.snapshot,
     required this.context,
     required this.contextKey,
     required this.relationIds,
   });
   final String text;
+  final StandInSnapshot snapshot;
   final Map<String, dynamic> context;
   final String contextKey;
 

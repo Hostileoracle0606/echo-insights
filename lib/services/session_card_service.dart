@@ -4,6 +4,7 @@ import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
 
 import '../models/session_card.dart';
+import '../logic/pseudonym/pseudonym_map.dart' show StandInSnapshot;
 import 'model_inputs.dart';
 import 'pseudonym_service.dart';
 
@@ -111,9 +112,20 @@ class SessionCardService {
     bool draft = false,
   }) async {
     // A final card that went stale while it was written (a turn landed in
-    // between) is asked for once more, as the runtime did before LM-56.
+    // between) is asked for once more, as the runtime did before LM-56. So
+    // is a card whose text uses a stand-in that no longer stands for the
+    // same person (retired, or forgotten meanwhile): it is dropped unsaved.
+    var staleNames = false;
     for (var pass = 0;; pass++) {
-      final outcome = await _closeOnce(notebookId, maxRetries, draft: draft);
+      final _Outcome outcome;
+      try {
+        outcome = await _closeOnce(notebookId, maxRetries, draft: draft);
+      } on PseudonymResultStale {
+        if (staleNames) rethrow;
+        staleNames = true;
+        pass--;
+        continue;
+      }
       if (outcome is! _Stale) return (outcome as _Done).card;
       if (draft || pass == 1) {
         throw const SessionCardException(
@@ -157,19 +169,24 @@ class SessionCardService {
     );
     // Nobody signed in: the map can't swap, so nothing is sent.
     if (swapped == null) throw StateError('A signed-in session is required');
+    // A turn that couldn't be swapped safely goes as "[omitted]"; a
+    // candidate whose name couldn't is left out (the runtime remembers it
+    // without a note). Clamped to the runtime's limits: a stand-in can be
+    // longer than the name it replaced.
     final body = jsonEncode({
       'version': 2,
       if (draft) 'draft': true,
-      'turns': [
+      'turns': clampTurns([
         for (var i = 0; i < input.turns.length; i++)
-          {'speaker': input.turns[i].speaker, 'text': swapped.turns[i]},
-      ],
+          (speaker: input.turns[i].speaker, text: swapped.turns[i]),
+      ]),
       'entities': [
         for (var i = 0; i < input.candidates.length; i++)
-          {
-            'key': entityKey(notebookId, input.candidates[i].id),
-            'name': swapped.extras[i],
-          },
+          if (swapped.extras[i] != omittedText)
+            {
+              'key': entityKey(notebookId, input.candidates[i].id),
+              'name': clampText(swapped.extras[i], appInputLimits.entityName),
+            },
       ],
       'sourceRevision': input.revision,
     });
@@ -218,17 +235,23 @@ class SessionCardService {
       if (decoded['saved'] != false) return _Done(SessionCard.fromJson(card));
       // Through JSON once more: the swap returns loosely typed maps.
       final real =
-          jsonDecode(jsonEncode(await _swapBack(card))) as Map<String, dynamic>;
+          jsonDecode(jsonEncode(await _swapBack(card, swapped.snapshot)))
+              as Map<String, dynamic>;
       return _save(notebookId, real, draft: draft);
     }
     // Unreachable: the last attempt either returns or throws.
     throw const SessionCardException('The session card was not written');
   }
 
-  /// Model-written text swapped back to real names. What identifies the card
-  /// and the remember list's ids, names and types come from the database
-  /// and stay as they are; only the notes in it are the model's.
-  Future<Map<String, dynamic>> _swapBack(Map<String, dynamic> card) async {
+  /// Model-written text swapped back to real names, with the stand-ins as
+  /// they were when the request was swapped ([PseudonymService.restore]).
+  /// What identifies the card and the remember list's ids, names and types
+  /// come from the database and stay as they are; only the notes in it are
+  /// the model's.
+  Future<Map<String, dynamic>> _swapBack(
+    Map<String, dynamic> card,
+    StandInSnapshot snapshot,
+  ) async {
     const fixed = {
       'version',
       'notebookId',
@@ -237,24 +260,34 @@ class SessionCardService {
       'generatedAt',
       'remember',
     };
-    final out = <String, dynamic>{};
-    for (final entry in card.entries) {
-      out[entry.key] = fixed.contains(entry.key)
-          ? entry.value
-          : await _pseudonyms.rehydrateJson(entry.value);
-    }
     final remember = card['remember'];
+    final notes = [
+      if (remember is List)
+        for (final item in remember) item is Map ? item['note'] : null,
+    ];
+    // One call, so the whole card is checked against one state of the map.
+    final back = await _pseudonyms.restore(snapshot, {
+      'fields': {
+        for (final e in card.entries)
+          if (!fixed.contains(e.key)) e.key: e.value,
+      },
+      'notes': notes,
+    }) as Map;
+    final out = <String, dynamic>{
+      for (final e in card.entries)
+        e.key: fixed.contains(e.key) ? e.value : (back['fields'] as Map)[e.key],
+    };
     if (remember is List) {
+      final backNotes = back['notes'] as List;
       out['remember'] = [
-        for (final item in remember)
-          if (item is Map && item['note'] is String)
+        for (var i = 0; i < remember.length; i++)
+          if (remember[i] is Map && backNotes[i] is String)
             {
-              ...item.cast<String, dynamic>(),
-              'note': await _pseudonyms
-                  .rehydrateModelOutput(item['note'] as String),
+              ...(remember[i] as Map).cast<String, dynamic>(),
+              'note': backNotes[i]
             }
           else
-            item,
+            remember[i],
       ];
     }
     return out;
@@ -327,7 +360,7 @@ class _Stale extends _Outcome {
 }
 
 /// How a v2 close names an entity (contracts/close-session-v2.md): an id is
-/// the real name's slug, so it never goes in the body; this salted hash
+/// the real name's slug, so it never goes in the body; this namespaced hash
 /// does, and the runtime hashes the notebook's ids the same way.
 String entityKey(String notebookId, String entityId) =>
     sha256.convert(utf8.encode('$notebookId:$entityId')).toString();

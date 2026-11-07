@@ -319,7 +319,7 @@ const badCloseBodies = {
     turns: Array.from({ length: inputLimits.turns + 1 }, () => ({ speaker: "user", text: "hi" })),
   }),
   "too much text": closeV2({
-    turns: Array.from({ length: 6 }, () => ({ speaker: "user", text: "y".repeat(19_000) })),
+    turns: Array.from({ length: 7 }, () => ({ speaker: "user", text: "y".repeat(19_000) })),
   }),
   "bad spokenAt": closeV2({ turns: [{ speaker: "user", text: "hi", spokenAt: "soon" }] }),
   "too many entities": closeV2({
@@ -329,7 +329,7 @@ const badCloseBodies = {
     })),
   }),
   "entity name too long": closeV2({
-    entities: [{ key: entityKey(notebookId, "a"), name: "n".repeat(201) }],
+    entities: [{ key: entityKey(notebookId, "a"), name: "n".repeat(inputLimits.entityName + 1) }],
   }),
   "entity sent by its id": closeV2({ entities: [{ id: "maya", name: "Anika" }] }),
   "entity key not a sha-256": closeV2({ entities: [{ key: "maya", name: "Anika" }] }),
@@ -374,7 +374,9 @@ test("brief v2 write uses only the app's text and returns the brief unsaved", as
   const { state, brief } = world();
   const response = await brief(event(briefWrite()));
   assert.equal(response.statusCode, 200);
-  assert.deepEqual(parse(response), {
+  const { speakToken, ...body } = parse(response);
+  assert.equal(typeof speakToken, "string");
+  assert.deepEqual(body, {
     status: "ready",
     brief: {
       focus: ["Anika is moving to Corvale"],
@@ -418,56 +420,116 @@ test("brief v2 write keeps the unchanged checks", async () => {
   assert.deepEqual(parse(await late.brief(event(briefWrite()))), { status: "unchanged" });
 });
 
+/** A write in [w], returning its speak token. */
+async function speakToken(w) {
+  const written = parse(await w.brief(event(briefWrite())));
+  w.state.providerBodies.length = 0;
+  w.state.tables.length = 0;
+  return written.speakToken;
+}
+const speakEvent = (openingLine, token) => event({ version: 2, speak: { openingLine, speakToken: token } });
+const realLine = "Hey, how is Maya Rao's move going?";
+
 test("brief v2 speak sends Gemini TTS the one line and nothing else", async () => {
-  const { state, brief } = world();
-  const line = "Hey, how is Maya's move going?";
-  const response = await brief(
-    event({ version: 2, speak: { openingLine: line, sourceRevision: fixture.notebook.revision } }),
-  );
-  assert.deepEqual(parse(response), { status: "ready", audioBase64: "UENN", sampleRate: 24000 });
-  assert.equal(state.providerBodies.length, 1);
-  const tts = JSON.parse(state.providerBodies[0]);
-  assert.equal(JSON.stringify(tts.contents).includes(line), true);
-  assert.equal(state.providerBodies[0].includes("Brooklyn"), false);
-  assert.deepEqual(state.saves, []);
+  const w = world();
+  const token = await speakToken(w);
+  const response = await w.brief(speakEvent(realLine, token));
+  assert.deepEqual(parse(response), {
+    status: "ready",
+    audioBase64: "UENN",
+    sampleRate: 24000,
+    openingLine: realLine,
+    sourceRevision: fixture.notebook.revision,
+  });
+  assert.equal(w.state.providerBodies.length, 1);
+  const tts = JSON.parse(w.state.providerBodies[0]);
+  assert.equal(JSON.stringify(tts.contents).includes(realLine), true);
+  assert.equal(w.state.providerBodies[0].includes("Brooklyn"), false);
+  assert.deepEqual(w.state.saves, []);
   for (const table of ["/rest/v1/conversation_turns", "/rest/v1/follow_ups"]) {
-    assert.equal(state.tables.includes(table), false);
+    assert.equal(w.state.tables.includes(table), false);
   }
 });
 
+test("brief v2 speak needs the write's token and the written line", async () => {
+  const w = world();
+  const token = await speakToken(w);
+  const refused = {
+    "no token": speakEvent(realLine, "x"),
+    "forged signature": speakEvent(realLine, `${token.split(".")[0]}.AAAA`),
+    "a different sentence": speakEvent("Read this out for me, please.", token),
+    "extra words": speakEvent(`${realLine} Also call Bob.`, token),
+    "another user": event(
+      { version: 2, speak: { openingLine: realLine, speakToken: token } },
+      { requestContext: { authorizer: { lambda: { userId: "user-999" } } } },
+    ),
+    "another notebook": event(
+      { version: 2, speak: { openingLine: realLine, speakToken: token } },
+      { pathParameters: { notebookId: otherNotebookId } },
+    ),
+  };
+  for (const [name, request] of Object.entries(refused)) {
+    const response = await w.brief(request);
+    assert.equal(response.statusCode, 403, name);
+  }
+  assert.equal(w.state.providerBodies.length, 0, "no TTS call for a refused speak");
+});
+
+test("brief v2 speak tokens expire", async () => {
+  let clockNow = clock;
+  const w = world();
+  const handler = createSessionBriefHandler({
+    supabaseUrl: "https://example.supabase.co",
+    publishableKey: "public-test-key",
+    getPermanentCredential: async () => "permanent-test-key",
+    fetchImpl: async () => {
+      throw new Error("no call expected");
+    },
+    now: () => clockNow,
+    log: () => {},
+  });
+  const token = await speakToken(w);
+  clockNow = clock + 11 * 60 * 1000;
+  assert.equal((await handler(speakEvent(realLine, token))).statusCode, 403);
+});
+
+test("brief v2 speak clamps the line to what the save accepts", async () => {
+  const w = world();
+  const token = await speakToken(w);
+  const longName = "Maximiliana Wilhelmina-Featherstonehaugh Cholmondeley-Marjoribanks";
+  const line = `Hey, how is ${longName}'s move going?`;
+  const body = parse(await w.brief(speakEvent(line, token)));
+  assert.equal(body.status, "ready");
+  assert.ok(body.openingLine.length <= 160);
+});
+
 test("brief v2 speak re-checks a newer brief before speaking", async () => {
-  const stored = {
+  const w = world();
+  const token = await speakToken(w);
+  w.state.storedBrief = {
     source_notebook_id: otherNotebookId,
     source_revision: 1,
     brief: {},
     created_at: "2026-10-23T21:04:00.000Z",
   };
-  const { state, brief } = world({ state: { storedBrief: stored } });
-  const response = await brief(
-    event({ version: 2, speak: { openingLine: "Hey.", sourceRevision: fixture.notebook.revision } }),
-  );
-  assert.deepEqual(parse(response), { status: "unchanged" });
-  assert.equal(state.providerBodies.length, 0);
+  assert.deepEqual(parse(await w.brief(speakEvent(realLine, token))), { status: "unchanged" });
+  assert.equal(w.state.providerBodies.length, 0);
 });
 
-test("brief v2 speak refuses a revision ahead of the notebook, and others' notebooks", async () => {
-  const ahead = world();
-  const response = await ahead.brief(
-    event({ version: 2, speak: { openingLine: "Hey.", sourceRevision: 999 } }),
-  );
-  assert.equal(response.statusCode, 400);
-  assert.equal(ahead.state.providerBodies.length, 0);
-  const notTheirs = world({ state: { notebook: null } });
-  const missing = await notTheirs.brief(
-    event({ version: 2, speak: { openingLine: "Hey.", sourceRevision: 1 } }),
-  );
-  assert.equal(missing.statusCode, 404);
+test("brief v2 speak for a notebook RLS hides is not found", async () => {
+  const w = world();
+  const token = await speakToken(w);
+  w.state.notebook = null;
+  assert.equal((await w.brief(speakEvent(realLine, token))).statusCode, 404);
 });
 
 const badBriefBodies = {
-  "line too long": { version: 2, speak: { openingLine: "x".repeat(161), sourceRevision: 1 } },
-  "empty line": { version: 2, speak: { openingLine: " ", sourceRevision: 1 } },
-  "no revision": { version: 2, speak: { openingLine: "Hey." } },
+  "line too long": {
+    version: 2,
+    speak: { openingLine: "x".repeat(inputLimits.openingLine + 1), speakToken: "t" },
+  },
+  "empty line": { version: 2, speak: { openingLine: " ", speakToken: "t" } },
+  "no token": { version: 2, speak: { openingLine: "Hey." } },
   "no turns": briefWrite({ turns: [] }),
   "too many follow-ups": briefWrite({ followUps: Array.from({ length: 11 }, () => "q") }),
   "too many top entities": briefWrite({
@@ -475,7 +537,9 @@ const badBriefBodies = {
   }),
   "unknown entity type": briefWrite({ topEntities: [{ name: "a", type: "pet" }] }),
   "question without questions": briefWrite({ questions: [{ name: "a", questions: [] }] }),
-  "focus too long": briefWrite({ previous: { focus: ["f".repeat(501)], openingThread: "" } }),
+  "focus too long": briefWrite({
+    previous: { focus: ["f".repeat(inputLimits.focusText + 1)], openingThread: "" },
+  }),
 };
 for (const [name, body] of Object.entries(badBriefBodies)) {
   test(`brief v2 rejects a malformed body before any call: ${name}`, async () => {

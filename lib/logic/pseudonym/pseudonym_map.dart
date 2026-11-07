@@ -817,6 +817,39 @@ class PseudonymMap {
     });
   }
 
+  /// The stand-ins issued for [entityIds], each with the name
+  /// [rehydrateModelOutput] gives it now (LM-56). A request keeps this from
+  /// the moment it is swapped and turns its answer back with it, not with
+  /// whatever the map holds when the answer arrives.
+  StandInSnapshot snapshot(Iterable<String> entityIds) {
+    _buildBack();
+    final ids = entityIds.toSet();
+    final pairs = <String, ({String real, String entityId})>{};
+    for (final MapEntry(key: key, value: back) in _back!.entries) {
+      if (!ids.contains(back.entry.id)) continue;
+      final used = _spellings[key];
+      pairs[key] = (
+        real: used != null && used.length == 1 ? used.first : back.surface,
+        entityId: back.entry.id,
+      );
+    }
+    return StandInSnapshot._(pairs);
+  }
+
+  /// The stand-ins in [snapshot] that no longer stand for the same entity:
+  /// it was forgotten or removed, or the stand-in was retired or moved to
+  /// someone else. Output that uses one must not be turned back.
+  Set<String> invalidIn(StandInSnapshot snapshot) {
+    _buildBack();
+    return {
+      for (final MapEntry(key: key, value: pair) in snapshot._pairs.entries)
+        if (!_entries.containsKey(pair.entityId) ||
+            _back![key]?.entry.id != pair.entityId ||
+            key.split(' ').any(_retired.contains))
+          key,
+    };
+  }
+
   /// [rehydrateModelOutput] over every string in a decoded JSON value (maps, lists,
   /// strings), for a result that comes back structured. Keys are left alone.
   /// With [slugs], strings that look like an id (lowercase, hyphenated) get
@@ -952,5 +985,59 @@ class PseudonymMap {
       return replacement.toUpperCase();
     }
     return replacement;
+  }
+}
+
+/// A request's stand-ins and the real names they stood for when it was
+/// swapped (see [PseudonymMap.snapshot]). Plain data, so it can cross
+/// isolates; turning text back with it is cheap and runs anywhere.
+class StandInSnapshot {
+  StandInSnapshot._(this._pairs);
+
+  const StandInSnapshot.empty() : _pairs = const {};
+
+  /// Normalized stand-in -> the real name and its entity.
+  final Map<String, ({String real, String entityId})> _pairs;
+
+  bool get isEmpty => _pairs.isEmpty;
+  int get length => _pairs.length;
+
+  /// A snapshot holding both this one's stand-ins and [other]'s.
+  StandInSnapshot merge(StandInSnapshot other) =>
+      StandInSnapshot._({..._pairs, ...other._pairs});
+
+  static RegExp? _regex(Iterable<String> keys) {
+    final forms = keys.toList()..sort((a, b) => b.length.compareTo(a.length));
+    if (forms.isEmpty) return null;
+    return RegExp(
+      '$_backBefore(?:${forms.map(_pattern).join('|')})$_backAfter',
+      unicode: true,
+      caseSensitive: false,
+    );
+  }
+
+  /// Whether [text] uses any of the stand-ins [keys] (from
+  /// [PseudonymMap.invalidIn]).
+  static bool mentions(Set<String> keys, String text) =>
+      _regex(keys)?.hasMatch(text) ?? false;
+
+  /// As [PseudonymMap.rehydrateModelOutput], with this snapshot's pairs.
+  String rehydrate(String text) {
+    final re = _regex(_pairs.keys);
+    if (re == null) return text;
+    return text.replaceAllMapped(re, (m) {
+      final pair = _pairs[PseudonymMap._norm(m[0]!)];
+      return pair == null ? m[0]! : PseudonymMap._matchCase(m[0]!, pair.real);
+    });
+  }
+
+  /// [rehydrate] over every string in a decoded JSON value. Keys stay.
+  Object? rehydrateJson(Object? value) {
+    if (value is String) return rehydrate(value);
+    if (value is List) return [for (final v in value) rehydrateJson(v)];
+    if (value is Map) {
+      return {for (final e in value.entries) e.key: rehydrateJson(e.value)};
+    }
+    return value;
   }
 }

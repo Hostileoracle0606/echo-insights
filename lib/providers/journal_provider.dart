@@ -40,6 +40,7 @@ import '../services/session_card_service.dart';
 import '../services/turn_journal_service.dart';
 import 'opening_prep_provider.dart';
 import 'pseudonym_provider.dart';
+import '../services/model_inputs.dart' show transcriptSendChars;
 import 'quiet_mode_provider.dart';
 import 'supabase_provider.dart';
 import 'voice_services_provider.dart';
@@ -551,6 +552,20 @@ class JournalNotifier extends Notifier<JournalState> {
           onError: (Object error) =>
               vlog('session', 'name swap warm-up failed: ${error.runtimeType}'),
         ));
+  }
+
+  /// The newest turns the closing card and the brief will send (about
+  /// [transcriptSendChars] of text), oldest first: the only saved turns
+  /// worth swapping ahead of time.
+  static List<String> _recentTexts(List<ConversationTurn> turns) {
+    final out = <String>[];
+    var total = 0;
+    for (var i = turns.length - 1; i >= 0; i--) {
+      total += turns[i].text.length;
+      if (out.isNotEmpty && total > transcriptSendChars) break;
+      out.insert(0, turns[i].text);
+    }
+    return out;
   }
 
   /// Earlier turns first, then this run's (without the ones already saved).
@@ -1230,7 +1245,7 @@ class JournalNotifier extends Notifier<JournalState> {
           .load(notebookId)
           .timeout(const Duration(seconds: 5));
       vlog('session', 'loaded ${turns.length} saved turns');
-      _warmSwap(turns.map((turn) => turn.text));
+      _warmSwap(_recentTexts(turns));
       return turns;
     } catch (error) {
       vlog('session', 'saved transcript unavailable: $error');

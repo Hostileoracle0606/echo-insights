@@ -84,18 +84,22 @@ transcript; the brief is for the lower of it and the notebook's.
 
 | Field | Limit |
 |---|---|
-| `turns` | 1 to 1000; `speaker` `user` or `assistant`; `text` 1 to 20 000 characters; 100 000 characters in all; `spokenAt` optional ISO time |
-| `previous.focus` | at most 10 strings of at most 500 characters |
-| `previous.openingThread` | at most 1000 characters |
-| `followUps` | at most 10 strings of at most 1000 characters |
-| `questions` | at most 10; `name` at most 200 characters; 1 to 20 `questions` of at most 500 |
-| `topEntities` | at most 15; `name` at most 200 characters; `type` an entity type |
+| `turns` | 1 to 1000; `speaker` `user` or `assistant`; `text` 1 to 25 000 characters; 125 000 characters in all; `spokenAt` optional ISO time |
+| `previous.focus` | at most 10 strings of at most 625 characters |
+| `previous.openingThread` | at most 1250 characters |
+| `followUps` | at most 10 strings of at most 1250 characters |
+| `questions` | at most 10; `name` at most 250 characters; 1 to 20 `questions` of at most 625 |
+| `topEntities` | at most 15; `name` at most 250 characters; `type` an entity type |
+
+The caps are about 1.25 times the database's (a stand-in can be longer than
+the name it replaced); the app clamps to them. A turn the app could not swap
+safely is sent as `[omitted]`; any other item it could not swap is left out.
 
 A body outside these is a 400 `invalidRequest`, before any other call.
 
 | Status | Body | Meaning |
 |---|---|---|
-| 200 | `{"status":"ready","brief":{…},"sourceRevision":7}` | The brief text, not saved, with stand-ins in it. No speech call was made. |
+| 200 | `{"status":"ready","brief":{…},"sourceRevision":7,"speakToken":"…"}` | The brief text, not saved, with stand-ins in it, and the ticket for step 2. No speech call was made. |
 | 200 | `{"status":"unchanged"}` | As v1. |
 
 Other statuses as v1.
@@ -106,20 +110,34 @@ The app swaps the real names back into the brief, then sends the opening line
 alone:
 
 ```json
-{ "version": 2, "speak": { "openingLine": "Hey, how is Priya's move going?", "sourceRevision": 7 } }
+{ "version": 2, "speak": { "openingLine": "Hey, how is Priya's move going?", "speakToken": "…" } }
 ```
 
-`openingLine` 1 to 160 characters; `sourceRevision` the one step 1 returned.
-The runtime checks the notebook is the caller's, runs the "Repeated and late
-calls" rules again for that revision (a newer brief saved meanwhile is not
-replaced), and sends only `openingLine` to Gemini TTS. This one sentence is
-the only text with real names that goes to Google on this route.
+The app puts the names back with the stand-ins as they were when it swapped
+the request; if the brief uses one since retired, moved or forgotten, it is
+dropped unsaved and written once more.
+
+`openingLine` 1 to 200 characters; `speakToken` the one step 1 returned. The
+token is signed by the runtime and names the user, the notebook, the
+revision and the line it wrote, for 10 minutes. The runtime refuses (403
+`forbidden`) a missing, forged or expired token, one for another user or
+notebook, or a line that is not the written line with only its names
+changed (each capitalised run, or run of caseless letters such as 美咲, may
+differ; nothing else may). So the route speaks only lines it wrote: it is
+not a text-to-speech proxy. The token is not single use: once the app saves
+the brief, a repeat for that revision is `unchanged`, so a replay costs at
+most one speech call within its lifetime. The runtime then checks the
+notebook is the caller's, runs the "Repeated and late calls" rules again for
+that revision (a newer brief saved meanwhile is not replaced), clamps the
+line to 160 characters and sends only it to Gemini TTS. This one sentence is
+the only text with real names that goes to Google on this route (ruling R25).
 
 | Status | Body | Meaning |
 |---|---|---|
-| 200 | `{"status":"ready","audioBase64":"…","sampleRate":24000}` | The audio, not saved. |
+| 200 | `{"status":"ready","audioBase64":"…","sampleRate":24000,"openingLine":"…","sourceRevision":7}` | The audio, not saved, and the line exactly as spoken: the app saves that line. |
 | 200 | `{"status":"unchanged"}` | Nothing to speak or save. |
-| 400 | `invalidRequest` | Malformed body, or `sourceRevision` ahead of the notebook. |
+| 400 | `invalidRequest` | Malformed body, or the token's revision is ahead of the notebook. |
+| 403 | `forbidden` | No valid token for this user, notebook and line. |
 
 ### 3. Save
 
@@ -201,4 +219,6 @@ Fields may be added. Removing or renaming one, or changing a limit, needs v2.
   already treated a missing thread as `""`.
 - 2026-11-07 (LM-56): request v2 (write text, speak, save in the app). The
   stored brief, the read and request v1 are unchanged. Deploy the runtime
-  before releasing an app that sends v2.
+  before releasing an app that sends v2; an app that meets a runtime from
+  before v2 gets `{"status":"ready"}` with no brief (the runtime did the
+  whole write) and treats it as done.

@@ -9,33 +9,38 @@
 // v1 path, which reads the database and saves.
 //
 // Everything here is untrusted input from a signed-in caller. Shapes and
-// sizes are checked before anything else runs; the caps match what the
-// database itself would accept (conversation_turns.text, LM-46's RPC caps).
+// sizes are checked before anything else runs. The caps are about 1.25 times
+// what the database itself accepts (conversation_turns.text, LM-46's RPC
+// caps): the text arrives with names swapped, and a stand-in can be longer
+// than the name it replaced, which must not turn into a permanent 400. The
+// app clamps to these same numbers (lib/services/model_inputs.dart).
 
 import { createHash } from "node:crypto";
 
 export const inputLimits = Object.freeze({
   turns: 1000,
   // conversation_turns.text is 1..20000 characters.
-  turnText: 20_000,
+  turnText: 25_000,
   // All turn text together. The model reads the last 24 000 characters
   // (validate.mjs limits.transcriptChars); the app sends a little more.
-  totalTurnChars: 100_000,
+  totalTurnChars: 125_000,
   spokenAt: 40,
   entities: 500,
-  entityName: 200,
+  entityName: 250,
   // The brief's lists, as the v1 path reads them from the database.
   followUps: 10,
-  followUpText: 1000,
+  followUpText: 1250,
   questionEntities: 10,
   questionsPerEntity: 20,
-  questionText: 500,
+  questionText: 625,
   topEntities: 15,
-  // save_session_brief's caps (LM-46).
+  // save_session_brief's caps (LM-46), plus headroom.
   focusItems: 10,
-  focusText: 500,
-  openingThread: 1000,
-  openingLine: 160,
+  focusText: 625,
+  openingThread: 1250,
+  // The real line the app swapped back. The runtime clamps what it speaks
+  // to save_session_brief's 160 and hands that back for the save.
+  openingLine: 200,
 });
 
 const entityTypes = new Set([
@@ -52,8 +57,9 @@ const entityTypes = new Set([
 
 /**
  * How the app names an entity in a v2 body: never by its id, which is the
- * real name's slug, but by sha256("<notebookId>:<id>") in hex. The runtime
- * computes the same for the notebook's entities to match them up.
+ * real name's slug, but by a namespaced hash, sha256("<notebookId>:<id>") in
+ * hex. The runtime computes the same for the notebook's entities to match
+ * them up. Not secret: someone who suspects a name can hash a guess.
  */
 export function entityKey(notebookId, entityId) {
   return createHash("sha256").update(`${notebookId}:${entityId}`).digest("hex");
@@ -150,8 +156,9 @@ export function parseCloseRequest(body) {
  * POST /brief, v2. Two shapes:
  * - write: { version: 2, turns, previous, followUps, questions, topEntities,
  *   sourceRevision? } returns the brief text, unsaved;
- * - speak: { version: 2, speak: { openingLine, sourceRevision } } returns
- *   the audio for the line the app has swapped the names back into.
+ * - speak: { version: 2, speak: { openingLine, speakToken } } returns the
+ *   audio for the line the app has swapped the names back into. The token
+ *   comes from the write (see speak-token.mjs).
  * Returns { version: 1 } for an older app, the parsed request, or null.
  */
 export function parseBriefRequest(body) {
@@ -162,12 +169,12 @@ export function parseBriefRequest(body) {
     const speak = body.speak;
     if (!isObject(speak)) return null;
     if (!boundedString(speak.openingLine, inputLimits.openingLine)) return null;
-    if (!revision(speak.sourceRevision)) return null;
+    if (!boundedString(speak.speakToken, 2000)) return null;
     return {
       version: 2,
       kind: "speak",
       openingLine: speak.openingLine.trim(),
-      sourceRevision: speak.sourceRevision,
+      speakToken: speak.speakToken,
     };
   }
 

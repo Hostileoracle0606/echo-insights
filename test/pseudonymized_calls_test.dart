@@ -5,7 +5,12 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/testing.dart';
+import 'package:lumen/logic/pseudonym/pseudonym_map.dart';
+import 'package:lumen/logic/slugify.dart';
+import 'package:lumen/models/graph_patch.dart';
+import 'package:lumen/providers/pseudonym_provider.dart';
 import 'package:lumen/logic/turn_state.dart' show Speaker;
 import 'package:lumen/models/entity.dart';
 import 'package:lumen/models/follow_up.dart';
@@ -143,6 +148,81 @@ void main() {
       expect(patch.relations.single.target, 'Samantha');
       // The offered relation id maps back; one never offered is dropped.
       expect(patch.supersedes, ['priya-raman__sister_of__samantha']);
+    });
+
+    // The answer comes back after the map moved on: it is turned back with
+    // the stand-ins the request was swapped with, and dropped (and asked for
+    // once more) if one of them no longer stands for the same person.
+    Future<(GraphPatch, List<http.Request>)> midFlight(
+      PseudonymService pseudonyms,
+      Future<void> Function(String fakePriya) change,
+    ) async {
+      final requests = <http.Request>[];
+      final service = ExtractGraphService(
+        baseUrl: 'https://runtime.test',
+        accessTokenProvider: () async => 'tok',
+        pseudonyms: pseudonyms,
+        client: MockClient((request) async {
+          requests.add(request);
+          final context = (jsonDecode(request.body) as Map)['context'] as Map;
+          final fake = ((context['entities'] as List).first as Map)['name'];
+          if (requests.length == 1) await change(fake as String);
+          return json({
+            'patch': {
+              'entities': [
+                {'name': fake, 'type': 'person'},
+              ],
+              'relations': [],
+              'supersedes': [],
+            },
+          });
+        }),
+      );
+      final patch = await service.extract(
+        notebookId: notebookId,
+        turnId: 'turn-1',
+        extractorVersion: 'v',
+        text: 'Priya Raman called me today.',
+        state: JournalState.empty().copyWith(entities: {priya.id: priya}),
+        mode: 'granular',
+        maxRetries: 0,
+      );
+      return (patch, requests);
+    }
+
+    test('a stand-in reissued mid-flight is not turned back', () async {
+      final pseudonyms = testPseudonyms();
+      late String oldFake;
+      final (patch, requests) = await midFlight(pseudonyms, (fake) async {
+        oldFake = fake;
+        // A real person with the stand-in's name joins: the stand-in moves.
+        await pseudonyms.syncGraph([priya, entity(slugify(fake), fake)]);
+      });
+      expect(requests, hasLength(2), reason: 'dropped and asked once more');
+      final second =
+          ((jsonDecode(requests[1].body) as Map)['context']['entities'] as List)
+              .first['name'];
+      expect(second, isNot(oldFake));
+      expect(patch.entities.single.name, 'Priya Raman');
+    });
+
+    test('a person forgotten mid-flight is never turned back', () async {
+      final pseudonyms = testPseudonyms();
+      late String oldFake;
+      final (patch, requests) = await midFlight(pseudonyms, (fake) async {
+        oldFake = fake;
+        await pseudonyms.forget('priya-raman');
+      });
+      expect(requests, hasLength(2));
+      for (final e in patch.entities) {
+        expect(e.name, isNot(oldFake));
+      }
+      // The first answer named Priya by her old stand-in; it was dropped.
+      final restored = await pseudonyms.restore(
+        const StandInSnapshot.empty(),
+        oldFake,
+      );
+      expect(restored, oldFake);
     });
 
     test('the same turn gets the same extractor version; the map adds a hash',
@@ -334,6 +414,51 @@ void main() {
       expect(b.pseudonyms.longestSwap, lessThanOrEqualTo(longestTurn));
     });
 
+    test('a card naming someone forgotten mid-flight is dropped, asked again',
+        () async {
+      final map = testPseudonyms();
+      var calls = 0;
+      final saves = <Map<String, dynamic>?>[];
+      final service = SessionCardService(
+        baseUrl: 'https://runtime.test',
+        accessTokenProvider: () async => 'tok',
+        retryBaseDelay: Duration.zero,
+        inputs: FixedInputs(
+          cardInput: CardInput(revision: 7, turns: turns, candidates: [priya]),
+        ),
+        pseudonyms: map,
+        rpc: (fn, [params]) async {
+          saves.add(params);
+          return {'status': 'saved', 'card': params!['p_card']};
+        },
+        client: MockClient((request) async {
+          calls++;
+          final body = jsonDecode(request.body) as Map<String, dynamic>;
+          final names = [for (final e in body['entities'] as List) e['name']];
+          final fake = names.isEmpty ? 'someone' : names.first;
+          if (calls == 1) await map.forget('priya-raman');
+          return json({
+            'status': 'ready',
+            'saved': false,
+            'card': {
+              'version': 1,
+              'notebookId': notebookId,
+              'conversationMode': 'just_talk',
+              'sourceRevision': 7,
+              'generatedAt': '2026-11-07T10:00:00.000Z',
+              'title': "$fake's move",
+              'summary': 'You talked about $fake.',
+              'remember': [],
+              'notes': ['$fake is moving.'],
+            },
+          });
+        }),
+      );
+      await service.close(notebookId);
+      expect(calls, 2);
+      expect(saves, hasLength(1));
+    });
+
     test('a draft saves as a draft', () async {
       final b = build();
       await b.service.draft(notebookId);
@@ -401,6 +526,7 @@ void main() {
       List<Map<String, dynamic>?> saves
     }) build(
         {bool unchanged = false,
+        bool oldRuntime = false,
         int writeStatus = 200,
         PseudonymService? pseudonyms}) {
       final bodies = <Map<String, dynamic>>[];
@@ -422,9 +548,12 @@ void main() {
             return json({
               'status': 'ready',
               'audioBase64': 'UENN',
-              'sampleRate': 24000
+              'sampleRate': 24000,
+              'openingLine': (body['speak'] as Map)['openingLine'],
+              'sourceRevision': 7,
             });
           }
+          if (oldRuntime) return json({'status': 'ready'});
           if (writeStatus != 200) {
             return json({'status': 'rejected'}, writeStatus);
           }
@@ -433,6 +562,7 @@ void main() {
           return json({
             'status': 'ready',
             'sourceRevision': 7,
+            'speakToken': 'ticket',
             'brief': {
               'focus': ['$fake is moving away'],
               'openingThread': "$fake's move",
@@ -460,7 +590,7 @@ void main() {
         'speak': {
           'openingLine':
               "Hey, good to hear from you. How is Priya Raman's move going?",
-          'sourceRevision': 7,
+          'speakToken': 'ticket',
         },
       });
 
@@ -474,6 +604,13 @@ void main() {
         'openingLine':
             "Hey, good to hear from you. How is Priya Raman's move going?",
       });
+    });
+
+    test('a runtime from before v2 wrote the brief itself: done', () async {
+      final b = build(oldRuntime: true);
+      await b.service.requestBrief(notebookId);
+      expect(b.bodies, hasLength(1));
+      expect(b.saves, isEmpty);
     });
 
     test('unchanged: no speech, no save', () async {
@@ -525,14 +662,36 @@ void main() {
       expect(out!.turns[1], isNot(contains('Samantha')));
     });
 
-    test('an unchanged graph is not synced again', () async {
-      final map = testPseudonyms();
+    test('an unchanged graph is not synced again; a changed one is', () async {
+      final host = CountingHost();
+      final map = testPseudonyms(host: host);
       await map.syncGraph([priya, sam]);
-      final store = MemoryStore();
-      expect(store.saved, isNull);
-      final first = (await map.dehydrateAll(['Priya Raman']))!.single;
+      expect(host.count('_SyncEntitiesJob'), 1);
       await map.syncGraph([priya, sam]);
-      expect((await map.dehydrateAll(['Priya Raman']))!.single, first);
+      expect(host.count('_SyncEntitiesJob'), 1, reason: 'same graph');
+      await map.syncGraph([priya, sam, halvorsen]);
+      expect(host.count('_SyncEntitiesJob'), 2, reason: 'graph changed');
+    });
+
+    test('the app builds the service on the isolate host', () {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      expect(container.read(pseudonymServiceProvider).host,
+          isA<IsolatePseudonymHost>());
+    });
+
+    test('a piece that fails its round trip is sent as [omitted], counted',
+        () async {
+      final map = testPseudonyms(host: CountingHost(breakWhen: 'BREAK'));
+      await map.syncGraph([priya]);
+      final out = await map.swapTurns(
+        ['Priya Raman called.', 'BREAK this one', 'Then we ate.'],
+        extras: ['Priya Raman'],
+      );
+      expect(out!.turns[1], omittedText);
+      expect(out.turns[2], 'Then we ate.');
+      expect(out.omitted, 1);
+      expect(out.turns[0], isNot(contains('Priya')));
     });
 
     test('the map runs in a background isolate by default', () async {
@@ -553,6 +712,44 @@ void main() {
       );
     });
   });
+}
+
+/// Counts jobs by class; with [breakWhen], a swapped piece whose original
+/// contains it comes back failing its round trip.
+class CountingHost implements PseudonymHost {
+  CountingHost({this.breakWhen});
+  final String? breakWhen;
+  final _inner = InlinePseudonymHost();
+  final jobs = <String>[];
+
+  int count(String job) => jobs.where((j) => j == job).length;
+
+  @override
+  Future<R> run<R>(PseudonymJob<R> job) async {
+    jobs.add(job.runtimeType.toString());
+    final result = await _inner.run(job);
+    final marker = breakWhen;
+    if (marker != null && result is (List<Dehydrated>, String?, Set<String>)) {
+      final (List<Dehydrated> list, String? saved, Set<String> tokens) =
+          result as (List<Dehydrated>, String?, Set<String>);
+      return (
+        [
+          for (final d in list)
+            d.original.contains(marker)
+                ? Dehydrated(
+                    original: d.original,
+                    text: '${d.text} (not this)',
+                    replacements: d.replacements,
+                    mapChanged: false,
+                  )
+                : d,
+        ],
+        saved,
+        tokens,
+      ) as R;
+    }
+    return result;
+  }
 }
 
 class _Throws extends PseudonymJob<int> {

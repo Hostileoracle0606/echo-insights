@@ -12,13 +12,15 @@ import {
 } from "./core.mjs";
 import {
   briefFromModel,
+  briefLimits,
   briefPrompt,
   buildBriefMessage,
   writeSessionBriefFunction,
 } from "./brief-prompts.mjs";
 import { redactTexts, redactTurns } from "./redact.mjs";
 import { effectiveRevision, parseBriefRequest, readBody } from "./client-input.mjs";
-import { buildTranscript } from "./validate.mjs";
+import { readSpeakToken, sameLineButNames, signSpeakToken, speakTokenTtlMs } from "./speak-token.mjs";
+import { buildTranscript, cleanText } from "./validate.mjs";
 
 const defaultDeadlineMs = 27_000;
 const defaultSampleRate = 24_000;
@@ -125,10 +127,12 @@ export function createSessionBriefHandler({
   // One credential read per request, however many calls it makes (keyed by
   // the request's metrics object).
   const credentials = new WeakMap();
-  const gemini = async ({ metrics, startedAt }) => {
+  const secretFor = async (metrics) => {
     if (!credentials.has(metrics)) credentials.set(metrics, await credential());
-    return geminiCall({ metrics, startedAt, credential: credentials.get(metrics) });
+    return credentials.get(metrics);
   };
+  const gemini = async ({ metrics, startedAt }) =>
+    geminiCall({ metrics, startedAt, credential: await secretFor(metrics) });
   const geminiCall = ({ metrics, startedAt, credential: apiKey }) => ({
     fetchImpl,
     credential: apiKey,
@@ -224,7 +228,7 @@ export function createSessionBriefHandler({
 
   // v2 write: the app's text, redacted for forgotten names; the brief comes
   // back unsaved for the app to swap the names back into.
-  async function writeFromApp({ db, notebook, startedAt, metrics, request }) {
+  async function writeFromApp({ db, notebook, userId, startedAt, metrics, request }) {
     const input = await redactAppInput(db, request);
     const userTurns = input.turns.filter(
       (turn) => turn.speaker === "user" && turn.text.trim(),
@@ -251,28 +255,52 @@ export function createSessionBriefHandler({
       questions: input.questions,
       topEntities: input.topEntities,
     });
+    const sourceRevision = effectiveRevision(notebook.revision, request.sourceRevision);
     return {
       status: "ready",
       brief,
-      sourceRevision: effectiveRevision(notebook.revision, request.sourceRevision),
+      sourceRevision,
+      // The ticket for step 2: only this line, names changed, for this
+      // user, notebook and revision, for a few minutes.
+      speakToken: signSpeakToken(await secretFor(metrics), {
+        notebookId: notebook.id,
+        userId,
+        revision: sourceRevision,
+        line: brief.openingLine,
+        expiresAt: now() + speakTokenTtlMs,
+      }),
     };
   }
 
-  // v2 speak: the real opening line the app swapped back. The same
-  // "unchanged" checks run again first, so a newer brief saved meanwhile is
-  // not overwritten by this one.
-  async function speakForApp({ db, notebookId, startedAt, metrics, request }) {
-    const checked = await check({ db, notebookId, metrics, revision: request.sourceRevision });
+  // v2 speak: the real opening line the app swapped back. It needs the
+  // write's token, and must be the written line with only its names
+  // changed. The same "unchanged" checks run again first, so a newer brief
+  // saved meanwhile is not overwritten by this one. The line spoken (clamped
+  // to what save_session_brief takes) comes back for the save.
+  async function speakForApp({ db, notebookId, userId, startedAt, metrics, request }) {
+    const ticket = readSpeakToken(await secretFor(metrics), request.speakToken, now());
+    if (
+      !ticket ||
+      ticket.notebookId !== notebookId ||
+      ticket.userId !== userId ||
+      !sameLineButNames(ticket.line, request.openingLine)
+    ) {
+      throw new Rejection(403, "forbidden");
+    }
+    const checked = await check({ db, notebookId, metrics, revision: ticket.revision });
     if (checked === "unchanged") return { status: "unchanged" };
-    if (request.sourceRevision > Number(checked.notebook.revision)) {
+    if (ticket.revision > Number(checked.notebook.revision)) {
       throw new Rejection(400, "invalidRequest");
     }
-    const { audioBase64, sampleRate } = await speak({
-      metrics,
-      startedAt,
-      openingLine: request.openingLine,
-    });
-    return { status: "ready", audioBase64, sampleRate };
+    const openingLine = cleanText(request.openingLine, briefLimits.openingLine);
+    const { audioBase64, sampleRate } = await speak({ metrics, startedAt, openingLine });
+    return {
+      status: "ready",
+      audioBase64,
+      sampleRate,
+      openingLine,
+      sourceRevision: ticket.revision,
+    };
   }
 
   // Reads the notebook and decides whether a brief at [revision] (the
@@ -322,7 +350,7 @@ export function createSessionBriefHandler({
     return { notebook, stored };
   }
 
-  async function write({ db, notebookId, startedAt, metrics, request }) {
+  async function write({ db, notebookId, userId, startedAt, metrics, request }) {
     const checked = await check({
       db,
       notebookId,
@@ -332,7 +360,7 @@ export function createSessionBriefHandler({
     if (checked === "unchanged") return checked;
     const { notebook, stored } = checked;
     if (request.version === 2) {
-      return writeFromApp({ db, notebook, startedAt, metrics, request });
+      return writeFromApp({ db, notebook, userId, startedAt, metrics, request });
     }
 
     const [newestTurns, followUps, questionEntities, topEntities] = await Promise.all([
@@ -442,11 +470,11 @@ export function createSessionBriefHandler({
         metrics.stage = "speak";
         response = jsonResponse(
           200,
-          await speakForApp({ db, notebookId, startedAt, metrics, request }),
+          await speakForApp({ db, notebookId, userId, startedAt, metrics, request }),
         );
       } else {
         metrics.stage = "write";
-        const result = await write({ db, notebookId, startedAt, metrics, request });
+        const result = await write({ db, notebookId, userId, startedAt, metrics, request });
         response = jsonResponse(200, result === "unchanged" ? { status: result } : result);
       }
     } catch (error) {

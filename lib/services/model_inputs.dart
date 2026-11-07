@@ -55,6 +55,48 @@ abstract interface class ModelInputSource {
   Future<BriefInput> brief(String notebookId);
 }
 
+/// What the runtime accepts in a v2 body (client-input.mjs inputLimits):
+/// about 1.25 times the database's own caps, so a stand-in longer than the
+/// name it replaced fits. Everything the app sends is clamped to these.
+const appInputLimits = (
+  turns: 1000,
+  turnText: 25000,
+  totalTurnChars: 125000,
+  entityName: 250,
+  followUpText: 1250,
+  questionText: 625,
+  focusText: 625,
+  openingThread: 1250,
+);
+
+/// [text] cut to at most [max] characters.
+String clampText(String text, int max) =>
+    text.length <= max ? text : text.substring(0, max);
+
+/// Turns as the runtime takes them (`speaker`, `text`, `spokenAt`), each
+/// clamped, the oldest dropped first if the total would be too long.
+List<Map<String, dynamic>> clampTurns(
+  List<({String speaker, String text})> turns, {
+  List<String?>? spokenAt,
+}) {
+  final out = <Map<String, dynamic>>[];
+  var total = 0;
+  for (var i = turns.length - 1; i >= 0; i--) {
+    final text = clampText(turns[i].text, appInputLimits.turnText);
+    if (out.isNotEmpty && total + text.length > appInputLimits.totalTurnChars) {
+      break;
+    }
+    if (out.length == appInputLimits.turns) break;
+    total += text.length;
+    out.insert(0, {
+      'speaker': turns[i].speaker,
+      'text': text,
+      if (spokenAt?[i] != null) 'spokenAt': spokenAt![i],
+    });
+  }
+  return out;
+}
+
 /// How many remember candidates the app names for the card: the runtime
 /// keeps 8 (validate.mjs), chosen by the same order; the rest is slack for
 /// ties and for entities the runtime sees differently.
