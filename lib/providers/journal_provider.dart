@@ -1539,7 +1539,9 @@ class JournalNotifier extends Notifier<JournalState> {
 
   void _onMicFrame(LiveSessionLease lease, Uint8List frame) {
     if (!_liveSessionGuard.isCurrent(lease)) return;
-    if (_status == SessionStatus.paused) return;
+    if (_status == SessionStatus.paused || _status == SessionStatus.error) {
+      return;
+    }
     // Lumen's greeting has the floor on a new notebook's first session.
     if (!(_opening?.acceptsUserAudio ?? false)) return;
     final pcm = _echoGate.admit(frame, at: DateTime.now());
@@ -1571,8 +1573,8 @@ class JournalNotifier extends Notifier<JournalState> {
     _setStatus(SessionStatus.connecting);
     // A new session holds nothing off the record.
     _turnMachine.holdAssistantOffRecord = false;
-    // A reconnect that gave up left the error status with the mic and socket
-    // still in place; replacing them below would orphan them.
+    // Whatever a failed session hasn't finished closing yet; replacing it
+    // below would orphan it.
     if (_capture != null || _live != null || _session != null) {
       await _closeLiveTransportUnlocked();
     }
@@ -1836,6 +1838,7 @@ class JournalNotifier extends Notifier<JournalState> {
     bool isCurrent() => _isCurrentLiveSession(session.binding, session.live) &&
         identical(_session, session);
     if (_reconnecting || !isCurrent()) return;
+    if (_status == SessionStatus.error) return;
     final live = session.live;
     if (_status == SessionStatus.paused && !whilePaused) {
       vlog('session', 'connection lapsed while paused ($reason)');
@@ -1846,7 +1849,7 @@ class JournalNotifier extends Notifier<JournalState> {
     if (live.resumptionHandle == null && !fresh) {
       debugPrint('[journal] Gemini Live error without a resumption handle: '
           '$reason');
-      _setStatus(SessionStatus.error);
+      _failLiveSession(isCurrent);
       return;
     }
     _reconnecting = true;
@@ -1914,7 +1917,7 @@ class JournalNotifier extends Notifier<JournalState> {
       }
       if (isCurrent()) {
         debugPrint('[journal] Gemini Live could not reconnect');
-        _setStatus(SessionStatus.error);
+        _failLiveSession(isCurrent);
       }
     } finally {
       _reconnecting = false;
@@ -1924,6 +1927,24 @@ class JournalNotifier extends Notifier<JournalState> {
         unawaited(_reopenWithSavedContext(session));
       }
     }
+  }
+
+  /// The connection is gone for good. The dock shows idle in error, so the
+  /// mic stops now and the transport closes next: a socket left open would
+  /// keep taking audio and saving turns with no sign of it, and its close
+  /// would start a reconnect with no tap.
+  void _failLiveSession(bool Function() isCurrent) {
+    _setStatus(SessionStatus.error);
+    final capture = _capture;
+    _capture = null;
+    if (capture != null) {
+      unawaited(capture.stop().catchError((Object error) {
+        vlog('session', 'mic shutdown failed: ${error.runtimeType}');
+      }));
+    }
+    unawaited(_serializeLifecycle(() async {
+      if (isCurrent()) await _closeLiveTransportUnlocked();
+    }));
   }
 
   /// Plays the chosen opening clip through this session's player, once.
@@ -2055,6 +2076,8 @@ class JournalNotifier extends Notifier<JournalState> {
 
   /// One Gemini signal, now that the session is the user's.
   void _handleSignal(LiveSignal signal) {
+    // Failed, and the close is on its way: nothing more counts.
+    if (_status == SessionStatus.error) return;
     switch (signal) {
       // Meaningful transcript events, not cumulative sentence callbacks:
       // interim text is replaceable, and only a finalized, immutable

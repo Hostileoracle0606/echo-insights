@@ -57,9 +57,14 @@ class _FakeMic implements MicCapture {
     _onChunk = onChunk;
   }
 
+  /// Runs as the mic stops, with its callback still wired: a frame already
+  /// on its way when the session fails.
+  void Function()? onStop;
+
   @override
   Future<void> stop() async {
     stops += 1;
+    onStop?.call();
     _onChunk = null;
   }
 }
@@ -606,17 +611,150 @@ void main() {
     );
     await h.journal.enterNotebook(_notebookId);
     await h.startLive();
-    final old = h.socket;
 
-    old.serverCloses(); // no resumption handle: the session errors
+    h.socket.serverCloses(); // no resumption handle: the session errors
     await _settle();
     expect(h.container.read(sessionStatusProvider), SessionStatus.error);
-    expect(h.mic.stops, 0, reason: 'nothing has stopped it yet');
 
-    final starting = h.startLive();
-    await starting;
+    await h.startLive();
     expect(h.mic.stops, 1, reason: 'the old capture is stopped, not orphaned');
     expect(h.mic.starts, 2);
+  });
+
+  group('a session in error', () {
+    int audioFrames(FakeLiveSocket socket) => socket.audioFrames.length;
+
+    Future<void> openLive() async {
+      h = _Harness(
+        state: JournalState.empty().copyWith(entries: [_entry('Earlier.')]),
+        supabase: _EndingNotebooks(),
+      );
+      await h.journal.enterNotebook(_notebookId);
+      await h.startLive();
+    }
+
+    /// Three reconnect attempts, each waiting 8 s for a setup ack that doesn't
+    /// come. Returns the last socket, left open.
+    Future<FakeLiveSocket> giveUpOnSetupAck() async {
+      h.socket
+        ..serverSends({
+          'sessionResumptionUpdate': {'newHandle': 'h1', 'resumable': true},
+        })
+        ..serverCloses();
+      final deadline = DateTime.now().add(const Duration(seconds: 40));
+      while (h.container.read(sessionStatusProvider) != SessionStatus.error &&
+          DateTime.now().isBefore(deadline)) {
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+      }
+      expect(h.container.read(sessionStatusProvider), SessionStatus.error);
+      return h.socket;
+    }
+
+    test('goAway with no handle: the mic stops and the socket closes',
+        () async {
+      await openLive();
+      final socket = h.socket;
+
+      socket.serverSends({
+        'goAway': {'timeLeft': '30s'},
+      });
+      await _settle();
+
+      expect(h.container.read(sessionStatusProvider), SessionStatus.error);
+      expect(h.mic.recording, isFalse, reason: 'the dock shows idle');
+      expect(h.mic.stops, 1);
+      expect(socket.sinkImpl.closed, isTrue);
+
+      final frames = audioFrames(socket);
+      h.mic.speak(1);
+      await _settle();
+      expect(audioFrames(socket), frames);
+    });
+
+    test('nothing that arrives after the goAway is saved', () async {
+      await openLive();
+      final commits = h.commits.commits;
+
+      h.socket
+        ..serverSends({
+          'goAway': {'timeLeft': '30s'},
+        })
+        ..serverSends({
+          'serverContent': {
+            'inputTranscription': {'text': 'After the error.', 'finished': true},
+          },
+        })
+        ..serverSends({
+          'serverContent': {
+            'outputTranscription': {'text': 'A late reply.', 'finished': true},
+          },
+        })
+        ..serverSends({
+          'serverContent': {'turnComplete': true},
+        });
+      await _settle();
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+
+      expect(h.transcripts.saved, isEmpty);
+      expect(h.commits.commits, commits);
+    });
+
+    test('a frame already on its way as the session fails is dropped',
+        () async {
+      await openLive();
+      final socket = h.socket;
+      final frames = audioFrames(socket);
+      h.mic.onStop = () => h.mic.speak(1);
+
+      socket.serverSends({
+        'goAway': {'timeLeft': '30s'},
+      });
+      await _settle();
+
+      expect(h.mic.stops, 1);
+      expect(audioFrames(socket), frames);
+    });
+
+    test('a setup ack arriving after giving up sends nothing', () async {
+      await openLive();
+      final last = await giveUpOnSetupAck();
+      await _settle();
+      expect(h.mic.recording, isFalse);
+
+      h.mic.speak(1);
+      last.serverSends({'setupComplete': <String, dynamic>{}});
+      await _settle();
+      h.mic.speak(2);
+      await _settle();
+
+      expect(audioFrames(last), 0);
+      expect(h.container.read(sessionStatusProvider), SessionStatus.error);
+    }, timeout: const Timeout(Duration(seconds: 60)));
+
+    test('no connection opens by itself after giving up', () async {
+      await openLive();
+      final last = await giveUpOnSetupAck();
+      final sockets = h.sockets.length;
+
+      last.serverCloses(); // the stalled socket finally dies
+      await Future<void>.delayed(const Duration(milliseconds: 1500));
+
+      expect(h.sockets.length, sockets);
+      expect(h.container.read(sessionStatusProvider), SessionStatus.error);
+    }, timeout: const Timeout(Duration(seconds: 60)));
+
+    test('a tap after giving up starts cleanly', () async {
+      await openLive();
+      final last = await giveUpOnSetupAck();
+      await _settle();
+
+      await h.startLive();
+      await _settle();
+
+      expect(identical(h.socket, last), isFalse);
+      expect(h.mic.recording, isTrue);
+      expect(h.container.read(sessionStatusProvider), SessionStatus.live);
+    }, timeout: const Timeout(Duration(seconds: 60)));
   });
 
   test('the only caller of redaction is the card pipeline', () {
