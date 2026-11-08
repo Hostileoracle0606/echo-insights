@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../logic/memory_removal.dart' show withoutEntity;
 import '../logic/noise_filter.dart';
 import '../logic/pseudonym/pseudonym_map.dart' show StandInSnapshot;
 import '../logic/slugify.dart';
@@ -104,6 +105,17 @@ class ExtractGraphService {
   }) async {
     final trimmed = text.trim();
     if (trimmed.length < 6) return GraphPatch.empty();
+    // Someone forgotten or removed since [state] was taken (a retry after a
+    // forget mid-flight carries the state from before) is left out of the
+    // request, and of the map, so nothing can turn their name back.
+    final blocked = await _pseudonyms.blockedIds();
+    for (final id in blocked) {
+      if (state.entities.containsKey(id)) state = withoutEntity(state, id);
+    }
+    retrievedEntityIds = [
+      for (final id in retrievedEntityIds)
+        if (!blocked.contains(id)) id,
+    ];
     if (_baseUrl.isEmpty) {
       throw StateError('The secure graph-extraction route is not configured');
     }
@@ -201,9 +213,9 @@ class ExtractGraphService {
             decoded['patch'] is! Map<String, dynamic>) {
           throw const FormatException('Invalid graph-extraction response');
         }
-        final patch = await _swapBack(
-          decoded['patch'] as Map<String, dynamic>,
-          swapped,
+        final patch = _withoutBlocked(
+          await _swapBack(decoded['patch'] as Map<String, dynamic>, swapped),
+          blocked,
         );
         return filterNoise(patch, extra: {'lumen'});
       } catch (error) {
@@ -324,6 +336,24 @@ class ExtractGraphService {
       context: swappedContext,
       contextKey: jsonEncode(swappedContext),
       relationIds: relationIds,
+    );
+  }
+
+  /// [patch] without anything that would re-create a [blocked] entity: the
+  /// model may still name them from the user's own words.
+  GraphPatch _withoutBlocked(GraphPatch patch, Set<String> blocked) {
+    if (blocked.isEmpty) return patch;
+    bool gone(String name) => blocked.contains(slugify(name));
+    return GraphPatch(
+      entities: [
+        for (final e in patch.entities)
+          if (!gone(e.name)) e,
+      ],
+      relations: [
+        for (final r in patch.relations)
+          if (!gone(r.source) && !gone(r.target)) r,
+      ],
+      supersedes: patch.supersedes,
     );
   }
 

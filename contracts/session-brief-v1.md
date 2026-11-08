@@ -68,6 +68,7 @@ apps keep sending v1; the runtime answers both.
   "followUps": ["…"],
   "questions": [{ "name": "Anika", "questions": ["…"] }],
   "topEntities": [{ "name": "Anika", "type": "person" }],
+  "standIns": ["anika", "corvale"],
   "sourceRevision": 7
 }
 ```
@@ -90,10 +91,13 @@ transcript; the brief is for the lower of it and the notebook's.
 | `followUps` | at most 10 strings of at most 1250 characters |
 | `questions` | at most 10; `name` at most 250 characters; 1 to 20 `questions` of at most 625 |
 | `topEntities` | at most 15; `name` at most 250 characters; `type` an entity type |
+| `standIns` | at most 500 strings of at most 250 characters: the stand-ins the app swapped into this request (no real names), so the speak step knows which words of the line are names |
 
 The caps are about 1.25 times the database's (a stand-in can be longer than
 the name it replaced); the app clamps to them. A turn the app could not swap
 safely is sent as `[omitted]`; any other item it could not swap is left out.
+A conversation whose user turns are all `[omitted]` (or empty) is a 422
+`nothingToSummarize`, as one with no user turns.
 
 A body outside these is a 400 `invalidRequest`, before any other call.
 
@@ -119,12 +123,18 @@ dropped unsaved and written once more.
 
 `openingLine` 1 to 200 characters; `speakToken` the one step 1 returned. The
 token is signed by the runtime and names the user, the notebook, the
-revision and the line it wrote, for 10 minutes. The runtime refuses (403
-`forbidden`) a missing, forged or expired token, one for another user or
-notebook, or a line that is not the written line with only its names
-changed (each capitalised run, or run of caseless letters such as 美咲, may
-differ; nothing else may). So the route speaks only lines it wrote: it is
-not a text-to-speech proxy. The token is not single use: once the app saves
+revision, the line it wrote and where the stand-ins sit in it (token spans,
+found from `standIns`, case-insensitively), for 10 minutes. Both lines are
+split into tokens (words, and each punctuation mark on its own). Every token
+outside a stand-in's span must be identical; each span must be replaced by
+the name or an alias of one of the user's own entities, read with their
+token from `entities` and compared case-insensitively. The check walks the
+two lines once (a set of reachable positions per written token), so it is
+linear and never backtracks. The runtime refuses (403 `forbidden`) a
+missing, forged or expired token, one for another user or notebook, or a
+line that fails that check (free text in a name's place, a name not in the
+user's graph, any other word changed). So the route speaks only lines it
+wrote, with names from that user's graph: it is not a text-to-speech proxy. The token is not single use: once the app saves
 the brief, a repeat for that revision is `unchanged`, so a replay costs at
 most one speech call within its lifetime. The runtime then checks the
 notebook is the caller's, runs the "Repeated and late calls" rules again for
@@ -143,7 +153,17 @@ the only text with real names that goes to Google on this route (ruling R25).
 
 The app saves through `save_session_brief(p_notebook_id, p_source_revision,
 p_brief, p_audio_base64, p_sample_rate)` with the user's token, exactly as the
-runtime does on v1. Every check stays in that function: the caps, a revision
+runtime does on v1.
+
+If the line can't be spoken (with the real names back it is longer than 200
+characters, or the speak step answers 403), the app skips or drops the audio
+and saves the text with `p_audio_base64` null and the line clamped to 160
+characters (ending "…"). From 20261107000000 the function accepts no audio
+(null or empty) and stores an empty clip; `get_session_brief` then returns
+`audioBase64: ""`, the brief is not usable for playback (see "When a brief is
+usable"), and the opener plays the standard clip while the brief's focus and
+thread still carry forward. Audio that is present must still be valid,
+non-empty base64 within the cap. Every check stays in that function: the caps, a revision
 that is not newer for the same notebook is not saved, and a brief naming a
 forgotten person is not saved (`unchanged`).
 
@@ -165,7 +185,9 @@ ask to follow up on), the line is a warm greeting with no specific question and
 the thread is left empty, rather than the model inventing one. `focus` still
 needs at least one line: a 422 already covers a notebook where nothing was
 said, so there is always something to note as context. The save function independently rejects an empty or over-160 line, or
-empty audio, with Postgres `22023`.
+audio that isn't valid base64, with Postgres `22023`. Before 20261107000000 it
+also rejected empty audio; since LM-56, no audio means a text-only brief (see
+"Request v2", step 3).
 
 ## Opening audio
 

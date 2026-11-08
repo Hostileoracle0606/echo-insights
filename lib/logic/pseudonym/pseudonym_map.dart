@@ -1002,6 +1002,10 @@ class StandInSnapshot {
   bool get isEmpty => _pairs.isEmpty;
   int get length => _pairs.length;
 
+  /// The stand-ins (normalized, lowercase), so the runtime can tell which
+  /// words of a line it wrote are names.
+  Iterable<String> get standIns => _pairs.keys;
+
   /// A snapshot holding both this one's stand-ins and [other]'s.
   StandInSnapshot merge(StandInSnapshot other) =>
       StandInSnapshot._({..._pairs, ...other._pairs});

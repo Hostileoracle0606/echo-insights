@@ -19,7 +19,13 @@ import {
 } from "./brief-prompts.mjs";
 import { redactTexts, redactTurns } from "./redact.mjs";
 import { effectiveRevision, parseBriefRequest, readBody } from "./client-input.mjs";
-import { readSpeakToken, sameLineButNames, signSpeakToken, speakTokenTtlMs } from "./speak-token.mjs";
+import {
+  readSpeakToken,
+  sameLineButNames,
+  signSpeakToken,
+  slotSpans,
+  speakTokenTtlMs,
+} from "./speak-token.mjs";
 import { buildTranscript, cleanText } from "./validate.mjs";
 
 const defaultDeadlineMs = 27_000;
@@ -31,6 +37,13 @@ const speakPrefix = "Say warmly, unhurried and natural, like a friend catching u
 // still stops before the save would miss the Lambda's budget.
 const briefRetryDelaysMs = [2000, 4000, 8000];
 const weekdays = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+// A turn the app could not swap safely arrives as "[omitted]": it says
+// nothing, so a conversation of only those has nothing to write from.
+const isEmptyTurn = (text) => {
+  const trimmed = typeof text === "string" ? text.trim() : "";
+  return trimmed === "" || trimmed === "[omitted]";
+};
 
 const timeOf = (value) => (typeof value === "string" ? Date.parse(value) : Number.NaN);
 
@@ -231,7 +244,7 @@ export function createSessionBriefHandler({
   async function writeFromApp({ db, notebook, userId, startedAt, metrics, request }) {
     const input = await redactAppInput(db, request);
     const userTurns = input.turns.filter(
-      (turn) => turn.speaker === "user" && turn.text.trim(),
+      (turn) => turn.speaker === "user" && !isEmptyTurn(turn.text),
     );
     metrics.appTurns = input.turns.length;
     metrics.userTurns = userTurns.length;
@@ -267,6 +280,7 @@ export function createSessionBriefHandler({
         userId,
         revision: sourceRevision,
         line: brief.openingLine,
+        slots: slotSpans(brief.openingLine, request.standIns),
         expiresAt: now() + speakTokenTtlMs,
       }),
     };
@@ -279,12 +293,24 @@ export function createSessionBriefHandler({
   // to what save_session_brief takes) comes back for the save.
   async function speakForApp({ db, notebookId, userId, startedAt, metrics, request }) {
     const ticket = readSpeakToken(await secretFor(metrics), request.speakToken, now());
-    if (
-      !ticket ||
-      ticket.notebookId !== notebookId ||
-      ticket.userId !== userId ||
-      !sameLineButNames(ticket.line, request.openingLine)
-    ) {
+    if (!ticket || ticket.notebookId !== notebookId || ticket.userId !== userId) {
+      throw new Rejection(403, "forbidden");
+    }
+    // The names a slot may take: the user's own entities and their aliases,
+    // as RLS shows them to this token. Read only when the line has a slot.
+    let names = [];
+    if (ticket.slots.length > 0) {
+      const rows = await db.select("entities", {
+        select: "name,aliases:metadata->aliases",
+        limit: "5000",
+      });
+      if (!Array.isArray(rows)) throw new Rejection(503, "providerUnavailable");
+      names = rows.flatMap((row) => [
+        row?.name,
+        ...(Array.isArray(row?.aliases) ? row.aliases : []),
+      ]).filter((name) => typeof name === "string" && name.trim());
+    }
+    if (!sameLineButNames(ticket.line, ticket.slots, request.openingLine, names)) {
       throw new Rejection(403, "forbidden");
     }
     const checked = await check({ db, notebookId, metrics, revision: ticket.revision });

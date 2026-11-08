@@ -16,6 +16,7 @@ import {
 } from "../lambda/close-session/client-input.mjs";
 import { createCloseSessionHandler } from "../lambda/close-session/core.mjs";
 import { createExtractGraphHandler } from "../lambda/extract-graph/core.mjs";
+import { sameLineButNames, slotSpans } from "../lambda/close-session/speak-token.mjs";
 
 const fixture = JSON.parse(
   await readFile(new URL("./fixtures/close-session.just-talk.json", import.meta.url), "utf8"),
@@ -26,6 +27,8 @@ const clock = Date.parse("2026-10-23T21:05:00.000Z");
 
 // Every real name in the database fixtures. None may reach Gemini on v2.
 const REAL = ["Maya", "maya", "Brooklyn", "brooklyn", "Atlas", "atlas", "Dentist Dana"];
+// A real name long enough to push the line past what the save accepts.
+const LONG_NAME = "Maximiliana Wilhelmina-Featherstonehaugh Cholmondeley-Marjoribanks";
 // What the app sends instead.
 const stand = { Maya: "Anika", "Project Atlas": "Project Halden", Brooklyn: "Corvale" };
 
@@ -101,7 +104,9 @@ function world(overrides = {}) {
                       args: {
                         focus: ["Anika is moving to Corvale"],
                         openingThread: "Anika's move",
-                        openingLine: "Hey, how is Anika's move going?",
+                        openingLine: state.lowercaseLine
+                          ? "hey, how is anika's move going?"
+                          : "Hey, how is Anika's move going?",
                       },
                     },
                   },
@@ -155,7 +160,13 @@ function world(overrides = {}) {
       case "/rest/v1/follow_ups":
         return ok([{ question: "How did the visit with Dentist Dana go?" }]);
       case "/rest/v1/entities":
-        return ok([{ name: "Maya", questions: ["When does Maya move?"] }]);
+        state.entityReads = (state.entityReads ?? 0) + 1;
+        return ok([
+          { name: "Maya", questions: ["When does Maya move?"] },
+          { name: "Maya Rao", aliases: ["May"] },
+          { name: "Priya Raman", aliases: ["Pri"] },
+          { name: LONG_NAME },
+        ]);
       case "/rest/v1/rpc/redact_forgotten_text":
         state.redactions.push(body.p_text);
         return ok(state.forgotten.reduce((t, name) => t.replaceAll(name, "someone"), body.p_text));
@@ -269,6 +280,22 @@ test("close v2 never claims a revision past what the app read", async () => {
   assert.equal(later.card.sourceRevision, fixture.notebook.revision);
 });
 
+test("close v2 with only [omitted] user turns has nothing to summarize", async () => {
+  const { state, close } = world();
+  const turns = appTurns.map((t) => (t.speaker === "user" ? { ...t, text: "[omitted]" } : t));
+  const response = await close(event(closeV2({ turns })));
+  assert.equal(response.statusCode, 422);
+  assert.equal(state.providerBodies.length, 0);
+});
+
+test("brief v2 with only [omitted] user turns has nothing to summarize", async () => {
+  const { state, brief } = world();
+  const turns = appTurns.map((t) => (t.speaker === "user" ? { ...t, text: " [omitted] " } : t));
+  const response = await brief(event(briefWrite({ turns })));
+  assert.equal(response.statusCode, 422);
+  assert.equal(state.providerBodies.length, 0);
+});
+
 test("close v2 draft is unsaved too", async () => {
   const { state, close } = world();
   const body = parse(await close(event(closeV2({ draft: true }))));
@@ -367,6 +394,7 @@ const briefWrite = (extra = {}) => ({
   followUps: ["How did the visit with Dentist Jules go?"],
   questions: [{ name: "Anika", questions: ["When does Anika move?"] }],
   topEntities: [{ name: "Anika", type: "person" }],
+  standIns: ["Anika", "Corvale", "Project Halden"],
   ...extra,
 });
 
@@ -421,8 +449,8 @@ test("brief v2 write keeps the unchanged checks", async () => {
 });
 
 /** A write in [w], returning its speak token. */
-async function speakToken(w) {
-  const written = parse(await w.brief(event(briefWrite())));
+async function speakToken(w, extra = {}) {
+  const written = parse(await w.brief(event(briefWrite(extra))));
   w.state.providerBodies.length = 0;
   w.state.tables.length = 0;
   return written.speakToken;
@@ -459,6 +487,9 @@ test("brief v2 speak needs the write's token and the written line", async () => 
     "forged signature": speakEvent(realLine, `${token.split(".")[0]}.AAAA`),
     "a different sentence": speakEvent("Read this out for me, please.", token),
     "extra words": speakEvent(`${realLine} Also call Bob.`, token),
+    "free text in a slot": speakEvent("Hey, how is Buy crypto now at scam.example's move going?", token),
+    "a name not in the user's graph": speakEvent("Hey, how is Bob's move going?", token),
+    "other words changed": speakEvent("Hey, where is Maya Rao's move going?", token),
     "another user": event(
       { version: 2, speak: { openingLine: realLine, speakToken: token } },
       { requestContext: { authorizer: { lambda: { userId: "user-999" } } } },
@@ -473,6 +504,43 @@ test("brief v2 speak needs the write's token and the written line", async () => 
     assert.equal(response.statusCode, 403, name);
   }
   assert.equal(w.state.providerBodies.length, 0, "no TTS call for a refused speak");
+});
+
+test("brief v2 speak: a lowercase stand-in still takes the real name", async () => {
+  const w = world();
+  w.state.lowercaseLine = true;
+  const written = parse(
+    await w.brief(event(briefWrite())),
+  );
+  assert.equal(written.brief.openingLine, "hey, how is anika's move going?");
+  const response = await w.brief(speakEvent("hey, how is Priya Raman's move going?", written.speakToken));
+  assert.equal(parse(response).status, "ready");
+});
+
+test("brief v2 speak: an alias of the user's own entity is a name", async () => {
+  const w = world();
+  const token = await speakToken(w);
+  assert.equal(parse(await w.brief(speakEvent("Hey, how is Pri's move going?", token))).status, "ready");
+});
+
+test("brief v2 speak: a line with no stand-in must come back unchanged", async () => {
+  const w = world();
+  const token = await speakToken(w, { standIns: [] });
+  // "Anika" is not a stand-in now, so it may not be replaced.
+  assert.equal((await w.brief(speakEvent(realLine, token))).statusCode, 403);
+  assert.equal(parse(await w.brief(speakEvent("Hey, how is Anika's move going?", token))).status, "ready");
+});
+
+test("sameLineButNames: 14 slots and a line that doesn't match return at once", () => {
+  const written = Array.from({ length: 14 }, (_, i) => `Anika${i}`).join(" and ");
+  const slots = slotSpans(written, Array.from({ length: 14 }, (_, i) => `Anika${i}`));
+  assert.equal(slots.length, 14);
+  const names = Array.from({ length: 2000 }, (_, i) => `Maya ${"Rao ".repeat(i % 7)}x${i}`);
+  names.push(..."abcdefghijklmn".split("").map((c) => `${c} ${c} ${c}`));
+  const real = `${"a a a and ".repeat(14)}${"z".repeat(112)}`;
+  const started = performance.now();
+  assert.equal(sameLineButNames(written, slots, real, names), false);
+  assert.ok(performance.now() - started < 50, `took ${performance.now() - started} ms`);
 });
 
 test("brief v2 speak tokens expire", async () => {
@@ -496,8 +564,7 @@ test("brief v2 speak tokens expire", async () => {
 test("brief v2 speak clamps the line to what the save accepts", async () => {
   const w = world();
   const token = await speakToken(w);
-  const longName = "Maximiliana Wilhelmina-Featherstonehaugh Cholmondeley-Marjoribanks";
-  const line = `Hey, how is ${longName}'s move going?`;
+  const line = `Hey, how is ${LONG_NAME}'s move going?`;
   const body = parse(await w.brief(speakEvent(line, token)));
   assert.equal(body.status, "ready");
   assert.ok(body.openingLine.length <= 160);

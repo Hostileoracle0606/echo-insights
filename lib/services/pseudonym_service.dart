@@ -114,6 +114,13 @@ class PseudonymService {
   /// unchanged one costs only its hash.
   final _syncedGraphs = <int>[];
 
+  /// Entities forgotten or removed in this run. A graph passed in later may
+  /// still hold one (a request that was already under way carries the state
+  /// from before), so every sync drops these instead of adding them back,
+  /// and [blockedIds] lets callers leave them out too. Memory only: after a
+  /// restart the graph comes from the server, which no longer has them.
+  final _blocked = <String>{};
+
   final _pieces = <String, _Piece>{};
   Timer? _refreshTimer;
 
@@ -182,6 +189,7 @@ class PseudonymService {
   Future<void> _drop() async {
     _loadedOwner = null;
     _syncedGraphs.clear();
+    _blocked.clear();
     _pieces.clear();
     _refreshTimer?.cancel();
     _version++;
@@ -245,7 +253,8 @@ class PseudonymService {
     return _serial(() async {
       final owner = await _ensureLoaded();
       if (owner == null || _syncedGraphs.contains(graph)) return;
-      final (saved, tokens) = await _host.run(_SyncJob(list, names, dropped));
+      final (saved, tokens) =
+          await _host.run(_SyncJob(list, names, {...dropped, ..._blocked}));
       _remember(graph);
       if (saved != null) {
         _changed(tokens);
@@ -274,7 +283,8 @@ class PseudonymService {
     return _serial(() async {
       final owner = await _ensureLoaded();
       if (owner == null || _syncedGraphs.contains(graph)) return;
-      final (saved, tokens) = await _host.run(_SyncEntitiesJob(list));
+      final (saved, tokens) =
+          await _host.run(_SyncEntitiesJob(list, {..._blocked}));
       _remember(graph);
       if (saved != null) {
         _changed(tokens);
@@ -287,6 +297,10 @@ class PseudonymService {
     _syncedGraphs.add(graph);
     if (_syncedGraphs.length > 8) _syncedGraphs.removeAt(0);
   }
+
+  /// Entities forgotten or removed in this run (see [_blocked]). A request
+  /// built from older state leaves them out.
+  Future<Set<String>> blockedIds() => _serial(() async => {..._blocked});
 
   /// Swaps the real names in [text] for stand-ins. New names the recognizer
   /// finds get a stand-in first, and the map is saved before this returns,
@@ -508,9 +522,10 @@ class PseudonymService {
   Future<void> forget(String entityId) => _serial(() async {
         try {
           if (await _ensureLoaded() == null) return;
+          _blocked.add(entityId);
+          _syncedGraphs.clear();
           final (saved, tokens) = await _host.run(_ForgetJob(entityId));
           if (saved != null) {
-            _syncedGraphs.clear();
             _changed(tokens);
             await _save(saved);
           }
@@ -656,8 +671,9 @@ class _SyncJob extends PseudonymJob<(String?, Set<String>)> {
 }
 
 class _SyncEntitiesJob extends PseudonymJob<(String?, Set<String>)> {
-  const _SyncEntitiesJob(this.entities);
+  const _SyncEntitiesJob(this.entities, this.blocked);
   final List<Entity> entities;
+  final Set<String> blocked;
 
   @override
   (String?, Set<String>) run(PseudonymCell cell) => _SyncJob(
@@ -666,7 +682,7 @@ class _SyncEntitiesJob extends PseudonymJob<(String?, Set<String>)> {
             if (PseudonymEntity.fromEntity(e) case final p?) p,
         ],
         [for (final e in entities) e.name],
-        const {},
+        blocked,
       ).run(cell);
 }
 

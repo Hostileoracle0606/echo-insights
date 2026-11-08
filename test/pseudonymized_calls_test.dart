@@ -206,23 +206,78 @@ void main() {
       expect(patch.entities.single.name, 'Priya Raman');
     });
 
-    test('a person forgotten mid-flight is never turned back', () async {
+    test('forgotten mid-flight: the retry neither turns back nor re-adds them',
+        () async {
       final pseudonyms = testPseudonyms();
-      late String oldFake;
-      final (patch, requests) = await midFlight(pseudonyms, (fake) async {
-        oldFake = fake;
-        await pseudonyms.forget('priya-raman');
-      });
-      expect(requests, hasLength(2));
-      for (final e in patch.entities) {
-        expect(e.name, isNot(oldFake));
-      }
-      // The first answer named Priya by her old stand-in; it was dropped.
-      final restored = await pseudonyms.restore(
-        const StandInSnapshot.empty(),
-        oldFake,
+      final requests = <Map<String, dynamic>>[];
+      String? oldFake;
+      final service = ExtractGraphService(
+        baseUrl: 'https://runtime.test',
+        accessTokenProvider: () async => 'tok',
+        pseudonyms: pseudonyms,
+        client: MockClient((request) async {
+          final body = jsonDecode(request.body) as Map<String, dynamic>;
+          requests.add(body);
+          final names = [
+            for (final e in body['context']['entities'] as List) e['name'],
+          ];
+          if (requests.length == 1) {
+            // Priya's stand-in is the one for the entity with her id.
+            oldFake = names.first as String;
+            await pseudonyms.forget('priya-raman');
+          }
+          return json({
+            'patch': {
+              'entities': [
+                // The model answers with every name it was given, and also
+                // names her from the user's own words.
+                for (final n in names) {'name': n, 'type': 'person'},
+                {'name': 'Priya Raman', 'type': 'person'},
+              ],
+              'relations': [
+                {
+                  'source': 'Priya Raman',
+                  'target': names.last,
+                  'label': 'knows'
+                },
+              ],
+              'supersedes': [],
+            },
+          });
+        }),
       );
-      expect(restored, oldFake);
+      // The extraction holds the state from before the forget.
+      final patch = await service.extract(
+        notebookId: notebookId,
+        turnId: 'turn-1',
+        extractorVersion: 'v',
+        text: 'Priya Raman called me about Samantha.',
+        state: JournalState.empty()
+            .copyWith(entities: {priya.id: priya, sam.id: sam}),
+        mode: 'granular',
+        retrievedEntityIds: const ['priya-raman', 'samantha'],
+        maxRetries: 0,
+      );
+
+      expect(requests, hasLength(2), reason: 'first answer dropped');
+      // The retry's context no longer has her: not her stand-in, not her.
+      final retried = jsonEncode(requests[1]['context']);
+      expect(retried, isNot(contains(oldFake!)));
+      expect(retried, isNot(contains('Priya')));
+      expect(
+        (requests[1]['context']['entities'] as List).map((e) => e['name']),
+        hasLength(1),
+      );
+      // Nothing in the patch would re-create her.
+      expect(patch.entities.map((e) => e.name), ['Samantha']);
+      expect(patch.relations, isEmpty);
+      expect(await pseudonyms.blockedIds(), {'priya-raman'});
+      // And a later sync of a graph that still holds her doesn't bring her
+      // stand-in back: her name is no longer swapped or turned back.
+      await pseudonyms.syncGraph([priya, sam]);
+      final again = await pseudonyms.swapTurns(['Priya Raman called.']);
+      expect(again!.turns.single, 'Priya Raman called.');
+      expect(again.snapshot.standIns, isEmpty);
     });
 
     test('the same turn gets the same extractor version; the map adds a hash',
@@ -527,6 +582,8 @@ void main() {
     }) build(
         {bool unchanged = false,
         bool oldRuntime = false,
+        int speakStatus = 200,
+        String Function(String fake)? line,
         int writeStatus = 200,
         PseudonymService? pseudonyms}) {
       final bodies = <Map<String, dynamic>>[];
@@ -545,6 +602,10 @@ void main() {
           final body = jsonDecode(request.body) as Map<String, dynamic>;
           bodies.add(body);
           if (body['speak'] != null) {
+            if (speakStatus != 200) {
+              return json(
+                  {'status': 'rejected', 'code': 'forbidden'}, speakStatus);
+            }
             return json({
               'status': 'ready',
               'audioBase64': 'UENN',
@@ -566,7 +627,7 @@ void main() {
             'brief': {
               'focus': ['$fake is moving away'],
               'openingThread': "$fake's move",
-              'openingLine':
+              'openingLine': line?.call(fake as String) ??
                   "Hey, good to hear from you. How is $fake's move going?",
             },
           });
@@ -604,6 +665,43 @@ void main() {
         'openingLine':
             "Hey, good to hear from you. How is Priya Raman's move going?",
       });
+    });
+
+    test('the write names the stand-ins it swapped in', () async {
+      final b = build();
+      await b.service.requestBrief(notebookId);
+      final standIns = (b.bodies.first['standIns'] as List).cast<String>();
+      expect(standIns, isNotEmpty);
+      expectNoKnownName(jsonEncode(standIns));
+    });
+
+    test('a line too long to speak once names are back: text saved, no audio',
+        () async {
+      // Four stand-ins, each shorter than "Priya Raman", in a line just
+      // under the cap: the real line is over it.
+      final b = build(
+        line: (fake) => '$fake, $fake, $fake and $fake: '
+            '${'x' * (190 - 4 * fake.length - 9)}',
+      );
+      await b.service.requestBrief(notebookId);
+      expect(b.bodies, hasLength(1), reason: 'no speak request');
+      final save = b.saves.single!;
+      expect(save['p_audio_base64'], isNull);
+      expect(save['p_source_revision'], 7);
+      final saved = (save['p_brief'] as Map)['openingLine'] as String;
+      expect(saved.length, lessThanOrEqualTo(160));
+      expect(saved, startsWith('Priya Raman, Priya Raman'));
+      expect(saved, endsWith('…'));
+    });
+
+    test('a line the speak check refuses: text saved, no audio', () async {
+      final b = build(speakStatus: 403);
+      await b.service.requestBrief(notebookId);
+      expect(b.bodies, hasLength(2));
+      final save = b.saves.single!;
+      expect(save['p_audio_base64'], isNull);
+      expect((save['p_brief'] as Map)['openingLine'],
+          "Hey, good to hear from you. How is Priya Raman's move going?");
     });
 
     test('a runtime from before v2 wrote the brief itself: done', () async {
@@ -680,6 +778,20 @@ void main() {
           isA<IsolatePseudonymHost>());
     });
 
+    test('a map that never settles: turns go as [omitted], nothing blocks',
+        () async {
+      final map = testPseudonyms(
+        host: CountingHost(unsettled: true),
+        refreshDelay: const Duration(days: 1),
+      );
+      await map.syncGraph([priya]);
+      final out = await map.swapTurns(['Priya Raman called.', 'Then we ate.'],
+          extras: ['Priya Raman']).timeout(const Duration(seconds: 5));
+      expect(out!.turns, [omittedText, omittedText]);
+      expect(out.extras, [omittedText]);
+      expect(out.omitted, 3);
+    });
+
     test('a piece that fails its round trip is sent as [omitted], counted',
         () async {
       final map = testPseudonyms(host: CountingHost(breakWhen: 'BREAK'));
@@ -717,8 +829,12 @@ void main() {
 /// Counts jobs by class; with [breakWhen], a swapped piece whose original
 /// contains it comes back failing its round trip.
 class CountingHost implements PseudonymHost {
-  CountingHost({this.breakWhen});
+  CountingHost({this.breakWhen, this.unsettled = false});
   final String? breakWhen;
+
+  /// Every swap reports the map changed under the words it swapped, so the
+  /// service's version never settles.
+  final bool unsettled;
   final _inner = InlinePseudonymHost();
   final jobs = <String>[];
 
@@ -728,6 +844,11 @@ class CountingHost implements PseudonymHost {
   Future<R> run<R>(PseudonymJob<R> job) async {
     jobs.add(job.runtimeType.toString());
     final result = await _inner.run(job);
+    if (unsettled && result is (List<Dehydrated>, String?, Set<String>)) {
+      final (List<Dehydrated> list, String? _, Set<String> _) =
+          result as (List<Dehydrated>, String?, Set<String>);
+      return (list, '{}', {'priya', 'raman', 'then'}) as R;
+    }
     final marker = breakWhen;
     if (marker != null && result is (List<Dehydrated>, String?, Set<String>)) {
       final (List<Dehydrated> list, String? saved, Set<String> tokens) =

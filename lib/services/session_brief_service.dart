@@ -34,6 +34,12 @@ class SessionBriefException implements Exception {
 /// the real opening line alone goes back for its audio (the one sentence
 /// with real names Google's speech model hears), and the brief is saved
 /// through `save_session_brief`.
+/// The longest opening line the runtime's speak step takes (client-input.mjs).
+const speakLineCap = 200;
+
+/// The longest opening line save_session_brief stores.
+const savedLineCap = 160;
+
 class SessionBriefService {
   SessionBriefService({
     required String baseUrl,
@@ -174,6 +180,10 @@ class SessionBriefService {
               'type': input.topEntities[i].type,
             },
       ],
+      // Which words of the line the runtime writes are names, so the
+      // speak step lets only those change (and only to the user's own
+      // entities' names).
+      'standIns': swapped.snapshot.standIns.take(500).toList(),
       'sourceRevision': input.revision,
     });
     if (written['status'] == 'unchanged') return;
@@ -198,26 +208,57 @@ class SessionBriefService {
     }) as Map)
         .cast<String, dynamic>();
 
-    // The runtime speaks only the line it wrote, names changed, with the
-    // token from the write; it hands back the line it spoke (clamped to what
-    // the save accepts), and that is the line saved.
-    final spoken = await _post(url, accessToken, {
-      'version': 2,
-      'speak': {'openingLine': real['openingLine'], 'speakToken': token},
-    });
-    if (spoken['status'] == 'unchanged') return;
-    final audio = spoken['audioBase64'];
-    final sampleRate = spoken['sampleRate'];
-    final line = spoken['openingLine'];
-    final revision = spoken['sourceRevision'];
-    if (spoken['status'] != 'ready' ||
-        audio is! String ||
-        sampleRate is! int ||
-        line is! String ||
-        revision is! int) {
+    final writtenRevision = written['sourceRevision'];
+    if (writtenRevision is! int) {
       throw const FormatException('Invalid session-brief response');
     }
-    real['openingLine'] = line;
+
+    // The runtime speaks only the line it wrote, its stand-ins replaced by
+    // names from the user's own graph, with the token from the write; it
+    // hands back the line it spoke (clamped to what the save accepts), and
+    // that is the line saved.
+    //
+    // A line that can't be spoken (longer than the speak step takes once the
+    // real names are back, or refused by its check, e.g. a name the graph
+    // doesn't hold) still saves its text, with no audio: the next
+    // conversation opens with the standard clip (SessionBrief.usable needs
+    // audio) and the focus and thread carry forward. Nothing is lost and
+    // OpeningPrep sees a success, so it doesn't retry.
+    final restoredLine = real['openingLine'] as String;
+    String? audio;
+    var sampleRate = 24000;
+    var revision = writtenRevision;
+    if (restoredLine.length <= speakLineCap) {
+      try {
+        final spoken = await _post(url, accessToken, {
+          'version': 2,
+          'speak': {'openingLine': restoredLine, 'speakToken': token},
+        });
+        if (spoken['status'] == 'unchanged') return;
+        final spokenAudio = spoken['audioBase64'];
+        final spokenRate = spoken['sampleRate'];
+        final line = spoken['openingLine'];
+        final spokenRevision = spoken['sourceRevision'];
+        if (spoken['status'] != 'ready' ||
+            spokenAudio is! String ||
+            spokenRate is! int ||
+            line is! String ||
+            spokenRevision is! int) {
+          throw const FormatException('Invalid session-brief response');
+        }
+        audio = spokenAudio;
+        sampleRate = spokenRate;
+        revision = spokenRevision;
+        real['openingLine'] = line;
+      } on SessionBriefException catch (error) {
+        if (error.statusCode != 403) rethrow;
+      }
+    }
+    if (audio == null) {
+      real['openingLine'] = restoredLine.length <= savedLineCap
+          ? restoredLine
+          : '${restoredLine.substring(0, savedLineCap - 1).trimRight()}…';
+    }
 
     // save_session_brief keeps every rule the runtime's save had: caps, a
     // revision that isn't newer is not saved, and a brief naming a forgotten
@@ -226,6 +267,7 @@ class SessionBriefService {
       'p_notebook_id': notebookId,
       'p_source_revision': revision,
       'p_brief': real,
+      // Null: no audio (see above).
       'p_audio_base64': audio,
       'p_sample_rate': sampleRate,
     });

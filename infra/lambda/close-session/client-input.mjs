@@ -34,6 +34,7 @@ export const inputLimits = Object.freeze({
   questionsPerEntity: 20,
   questionText: 625,
   topEntities: 15,
+  standIns: 500,
   // save_session_brief's caps (LM-46), plus headroom.
   focusItems: 10,
   focusText: 625,
@@ -216,10 +217,16 @@ export function parseBriefRequest(body) {
     topEntities.push({ name: item.name, type: item.type });
   }
 
+  // The stand-ins the app swapped into this request, so the speak step can
+  // tell which words of the written line are names.
+  const standIns = parseStrings(body.standIns ?? [], inputLimits.standIns, inputLimits.entityName);
+  if (!standIns) return null;
+
   if (body.sourceRevision != null && !revision(body.sourceRevision)) return null;
   return {
     version: 2,
     kind: "write",
+    standIns,
     turns,
     previous,
     followUps,

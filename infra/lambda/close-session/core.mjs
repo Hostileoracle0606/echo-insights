@@ -249,8 +249,14 @@ export function createCloseSessionHandler({
     } else {
       turns = await redactTurns(db, [...newestTurns].reverse());
     }
+    // A turn the app could not swap safely arrives as "[omitted]": it says
+    // nothing, so a conversation of only those has nothing to summarize.
     const userTurns = turns.filter(
-      (turn) => turn?.speaker === "user" && typeof turn.text === "string" && turn.text.trim(),
+      (turn) =>
+        turn?.speaker === "user" &&
+        typeof turn.text === "string" &&
+        turn.text.trim() &&
+        turn.text.trim() !== "[omitted]",
     );
     metrics.turns = turns.length;
     metrics.userTurns = userTurns.length;

@@ -59,7 +59,9 @@ LM-55), and the card comes back unsaved.
 
 A turn the app could not swap safely (its round trip failed, or the name map
 would not settle) is sent as `[omitted]`, and a candidate whose name could not
-be swapped is left out. A body outside these limits, or a `version` other
+be swapped is left out. A conversation whose user turns are all `[omitted]`
+(or empty) is a 422 `nothingToSummarize`: no card is written from it. A body
+outside these limits, or a `version` other
 than 2, is a 400
 `invalidRequest` before any other call.
 
