@@ -4,7 +4,6 @@
 // (original header: end to end through the real
 // JournalNotifier and GeminiLiveClient: only the socket, the microphone, the
 // speaker and the token source are fakes.
-import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -14,7 +13,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lumen/audio/audio_output.dart';
 import 'package:lumen/audio/pcm_capture.dart';
 import 'package:lumen/audio/pcm_player.dart';
-import 'package:lumen/logic/resume_context.dart';
 import 'package:lumen/logic/turn_state.dart' hide CommitCommitted;
 import 'package:lumen/models/follow_up.dart';
 import 'package:lumen/models/graph_patch.dart';
@@ -31,7 +29,6 @@ import 'package:lumen/services/extraction_context.dart';
 import 'package:lumen/services/gemini_live_client.dart';
 import 'package:lumen/services/live_credentials.dart';
 import 'package:lumen/services/memory_control_service.dart';
-import 'package:lumen/logic/pseudonym/fake_names.dart';
 import 'package:lumen/logic/pseudonym/pseudonym_map.dart';
 import 'package:lumen/logic/slugify.dart';
 import 'package:lumen/logic/merge.dart' as merge_logic;
@@ -209,18 +206,6 @@ class _NoNotebookInserts implements SupabaseService {
       fail('unexpected Supabase call: ${invocation.memberName}');
 }
 
-/// Records notebooks marked ended; any other Supabase call fails the test.
-class _EndingNotebooks implements SupabaseService {
-  final ended = <String>[];
-
-  @override
-  Future<void> endNotebook(String notebookId) async => ended.add(notebookId);
-
-  @override
-  dynamic noSuchMethod(Invocation invocation) =>
-      fail('unexpected Supabase call: ${invocation.memberName}');
-}
-
 /// Records close-session requests; [onClose] decides how each one ends.
 class _FakeCards implements SessionCardService {
   final closed = <String>[];
@@ -272,16 +257,6 @@ class _FakeBriefs implements SessionBriefService {
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
-
-SessionBrief _brief() => SessionBrief(
-      focus: const ['Maya', 'the move'],
-      openingThread: 'how the move to Lisbon went',
-      openingLine: 'Hey, welcome back. How did the move to Lisbon go?',
-      createdAt: DateTime.utc(2026, 10, 27, 9, 30, 0, 0, 123),
-      playedAt: null,
-      pcm: Uint8List(24000), // 0.5 s at 24 kHz
-      sampleRate: 24000,
-    );
 
 class _FakeMemory implements MemoryControlService {
   final forgotten = <String>[];
@@ -405,12 +380,6 @@ List<Object?> _contextTexts(FakeLiveSocket socket) {
 /// The words of a bundled clip, as the app reads them.
 String _bundledText(String name) =>
     File('assets/audio/$name.txt').readAsStringSync().trim();
-
-List<String> _toolNames(List<Map<String, dynamic>> tools) => [
-      for (final tool in tools)
-        for (final declaration in tool['function_declarations'] as List)
-          (declaration as Map)['name'] as String,
-    ];
 
 JournalEntry _entry(String text) => JournalEntry(
       id: 'entry-1',
