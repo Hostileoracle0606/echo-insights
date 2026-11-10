@@ -88,6 +88,15 @@ void main() {
     expect(geminiLiveSystemInstruction, isNot(contains(returning)));
   });
 
+  test('the prompt says "someone" may stand in for a forgotten person, naming nobody',
+      () {
+    // BUG-2. Same wording as the Lambda prompts (infra/test/forgotten-note).
+    expect(
+        geminiLiveSystemInstruction,
+        contains('"someone" may stand in for a person the user asked you to '
+            "forget. Don't ask who it is, guess, or bring them up."));
+  });
+
   test('the prompt explains alreadyRaised both ways and an empty thread', () {
     final opening = geminiLiveSystemInstruction
         .split('SESSION OPENING:')

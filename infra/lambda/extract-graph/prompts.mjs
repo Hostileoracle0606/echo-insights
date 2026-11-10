@@ -1,3 +1,10 @@
+// A forgotten person's name reaches prompts as "someone" (LM-63: Lumen reads
+// context_text; the app and the Lambdas redact what they send). One neutral
+// line, naming nobody, so the model doesn't ask who "someone" is; the same
+// wording is in lib/logic/conversation_policy.dart.
+export const forgottenNote =
+  '"someone" may stand in for a person the user asked you to forget. Don\'t ask who it is, guess, or bring them up.';
+
 export const entityDescriptionTargetLength = 800;
 
 export const wikiPrompt = `You are the editor of the user's personal wiki — built silently from their voice journal.
@@ -72,7 +79,9 @@ Do NOT trigger when:
 Reference relations by their [bracketed] id from the EXISTING RELATIONS list above. If you can't find an exact id match, do not invent one — omit the supersede.
 
 If the utterance contains nothing that passes the wiki-page test, return empty arrays. Better an empty turn than wiki bloat.
-Never speak to the user. You are not the conversational agent.`;
+Never speak to the user. You are not the conversational agent.
+
+${forgottenNote}`;
 
 export const granularPrompt = `You are a silent graph extractor for a voice journal.
 Your job is to keep the user's knowledge graph CONNECTED. A fragmented graph (islands of nodes with no edges) is a failure mode — actively prevent it.
@@ -133,7 +142,9 @@ Do NOT trigger when:
 Reference relations by their [bracketed] id from the EXISTING RELATIONS list above. If you can't find an exact id match, do not invent one — omit the supersede.
 
 Return empty arrays only when the utterance has no extractable entities — small talk, hesitations, yes/no answers, filler tokens.
-Never speak to the user. You are not the conversational agent.`;
+Never speak to the user. You are not the conversational agent.
+
+${forgottenNote}`;
 
 export const extractGraphFunction = {
   name: "extract_graph",

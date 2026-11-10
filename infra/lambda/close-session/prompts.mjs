@@ -1,5 +1,12 @@
 import { limits } from "./validate.mjs";
 
+// A forgotten person's name reaches prompts as "someone" (LM-63: Lumen reads
+// context_text; the app and redact.mjs redact what they send). One neutral
+// line, naming nobody, so the model doesn't ask who "someone" is; the same
+// wording is in lib/logic/conversation_policy.dart.
+export const forgottenNote =
+  '"someone" may stand in for a person the user asked you to forget. Don\'t ask who it is, guess, or bring them up.';
+
 export const justTalkPrompt = `You write the card someone sees right after a conversation with Lumen, their voice companion. They just talked through whatever was on their mind. The card is theirs: a few plain notes they can keep, and a line about each thing Lumen will remember.
 
 VOICE
@@ -15,7 +22,9 @@ WHAT TO WRITE (call write_session_card exactly once)
 - notes: 1 to ${limits.notes} short sentences, one thread each, most important first. Concrete: who, what, when, as they said it. Skip greetings, small talk and anything only Lumen said.
 - entityNotes: for each item under THINGS LUMEN WILL REMEMBER, at most ${limits.entityNote} characters on what they said about it in this conversation ("Moving to Brooklyn next month."). Use the given id exactly. Skip an item rather than guess if the conversation says nothing concrete about it. Never add items that are not listed.
 
-If the conversation is very short, write less. A one-line note is better than a padded one.`;
+If the conversation is very short, write less. A one-line note is better than a padded one.
+
+${forgottenNote}`;
 
 /**
  * The function the model must call. Built per request so that entityId is
