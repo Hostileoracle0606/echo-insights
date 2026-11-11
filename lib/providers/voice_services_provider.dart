@@ -10,6 +10,7 @@ import 'journal_provider.dart'
     show forgottenThisRunProvider, turnJournalServiceProvider;
 import 'opening_prep_provider.dart';
 import 'pseudonym_provider.dart';
+import 'shared_log_provider.dart';
 import 'supabase_provider.dart';
 
 /// App-level voice services: they live for the signed-in user, not for a
@@ -36,6 +37,8 @@ final signedOutCleanupProvider = Provider<void Function()>((ref) {
     ref.read(forgottenThisRunProvider).clear();
     // The on-device name map holds real names: erased with the account.
     unawaited(ref.read(pseudonymServiceProvider).clear());
+    // What Lumen shared (LM-57) is erased with it.
+    unawaited(ref.read(sharedLogProvider).clearAll());
   };
 });
 

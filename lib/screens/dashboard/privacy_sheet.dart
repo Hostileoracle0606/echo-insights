@@ -7,6 +7,7 @@ import '../../security/app_lock_provider.dart';
 import '../../theme/lumen_colors.dart';
 import '../../theme/lumen_text.dart';
 import '../../widgets/transcript_retention.dart';
+import '../privacy/shared_log_screen.dart';
 import '../privacy/who_hears_you_screen.dart';
 
 /// The dashboard's shield button: opens [PrivacySheet].
@@ -194,6 +195,18 @@ class _PrivacySheetState extends ConsumerState<PrivacySheet> {
                     )
                   : Icon(Icons.ios_share, color: colors.ink),
               onTap: _exporting ? null : _export,
+            ),
+            ListTile(
+              key: const Key('sharedLogTile'),
+              contentPadding: EdgeInsets.zero,
+              title: const Text('What Lumen shared'),
+              subtitle: Text(
+                'The exact text Lumen sent for each session, kept on this '
+                'phone for 7 days.',
+                style: small,
+              ),
+              trailing: Icon(Icons.chevron_right, color: colors.ink),
+              onTap: () => showSharedLog(context),
             ),
             ListTile(
               key: const Key('whoHearsYouTile'),

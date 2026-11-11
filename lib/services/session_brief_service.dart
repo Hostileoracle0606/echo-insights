@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
@@ -5,6 +6,7 @@ import 'package:http/http.dart' as http;
 import '../models/session_brief.dart';
 import 'model_inputs.dart';
 import 'pseudonym_service.dart';
+import 'shared_log.dart';
 
 /// Calls a Supabase RPC and returns its JSON result.
 typedef BriefRpc = Future<Object?> Function(
@@ -47,12 +49,14 @@ class SessionBriefService {
     required BriefRpc rpc,
     required ModelInputSource inputs,
     required PseudonymService pseudonyms,
+    SharedLog? log,
     http.Client? client,
   })  : _baseUrl = baseUrl.replaceFirst(RegExp(r'/$'), ''),
         _accessTokenProvider = accessTokenProvider,
         _rpc = rpc,
         _inputs = inputs,
         _pseudonyms = pseudonyms,
+        _log = log,
         _client = client ?? http.Client();
 
   final String _baseUrl;
@@ -60,6 +64,7 @@ class SessionBriefService {
   final BriefRpc _rpc;
   final ModelInputSource _inputs;
   final PseudonymService _pseudonyms;
+  final SharedLog? _log;
   final http.Client _client;
 
   /// Writes the brief for [notebookId] (text, then audio, then the save).
@@ -137,7 +142,8 @@ class SessionBriefService {
     bool usable(int at) => out[at] != omittedText;
     String text(int at, int max) => clampText(out[at], max);
 
-    final written = await _post(url, accessToken, {
+    final written =
+        await _post(url, accessToken, notebookId, SharedKind.briefWrite, {
       'version': 2,
       'turns': clampTurns(
         [
@@ -230,7 +236,8 @@ class SessionBriefService {
     var revision = writtenRevision;
     if (restoredLine.length <= speakLineCap) {
       try {
-        final spoken = await _post(url, accessToken, {
+        final spoken =
+            await _post(url, accessToken, notebookId, SharedKind.briefSpeak, {
           'version': 2,
           'speak': {'openingLine': restoredLine, 'speakToken': token},
         });
@@ -287,8 +294,21 @@ class SessionBriefService {
   Future<Map<String, dynamic>> _post(
     Uri url,
     String accessToken,
+    String notebookId,
+    SharedKind kind,
     Map<String, dynamic> body,
   ) async {
+    // The speak token is a credential: left out of the log (LM-57). The
+    // speak request's line is the real one, and is labelled so in the log.
+    final speak = body['speak'];
+    unawaited(_log?.record(notebookId, kind, {
+      ...body,
+      if (speak is Map)
+        'speak': {
+          for (final e in speak.entries)
+            if (e.key != 'speakToken') e.key: e.value,
+        },
+    }));
     final response = await _client.post(
       url,
       headers: {

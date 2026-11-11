@@ -52,6 +52,7 @@ void main() {
     expect(page, contains(reachClaim));
     expect(page, contains(phoneClaim));
     expect(page, contains(exportClaim));
+    expect(page, contains(sharedLogClaim));
     expect(page, contains(supabaseClaim));
     expect(page, contains(usClaim));
     for (final line in gatedClaims.values) {

@@ -40,6 +40,7 @@ import '../services/session_card_service.dart';
 import '../services/turn_journal_service.dart';
 import 'opening_prep_provider.dart';
 import 'pseudonym_provider.dart';
+import 'shared_log_provider.dart';
 import '../services/model_inputs.dart' show transcriptSendChars;
 import 'quiet_mode_provider.dart';
 import 'supabase_provider.dart';
@@ -1058,6 +1059,8 @@ class JournalNotifier extends Notifier<JournalState> {
     _suppressed.add(entityId);
     // The on-device name map forgets them too (LM-55).
     unawaited(ref.read(pseudonymServiceProvider).forget(entityId));
+    // Speak lines in the shared log may hold their real name (LM-57).
+    unawaited(ref.read(sharedLogProvider).forgetSpeakEntries());
     state = withoutEntity(state, entityId);
     // The server may have deleted the brief; the copy held here must not be
     // spoken at the next opening.
@@ -1079,6 +1082,7 @@ class JournalNotifier extends Notifier<JournalState> {
       await pending.service.removeEntity(entityId);
       _forgottenThisRun.add(entityId);
       unawaited(ref.read(pseudonymServiceProvider).forget(entityId));
+      unawaited(ref.read(sharedLogProvider).forgetSpeakEntries());
       pending.done.complete(RemovalOutcome.removed);
     } catch (error) {
       // Not removed on the server, so not suppressed there either: show the

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
@@ -13,6 +14,7 @@ import '../models/journal_state.dart';
 import 'extraction_context.dart';
 import 'model_inputs.dart' show clampText;
 import 'pseudonym_service.dart';
+import 'shared_log.dart';
 
 const int _maxInProgressPolls = 40;
 const int _maxInProgressDelayMs = 2000;
@@ -43,15 +45,18 @@ class ExtractGraphService {
   final Future<String?> Function() _accessTokenProvider;
   final http.Client _client;
   final PseudonymService _pseudonyms;
+  final SharedLog? _log;
 
   ExtractGraphService({
     required String baseUrl,
     required Future<String?> Function() accessTokenProvider,
     required PseudonymService pseudonyms,
+    SharedLog? log,
     http.Client? client,
   })  : _baseUrl = baseUrl.replaceFirst(RegExp(r'/$'), ''),
         _accessTokenProvider = accessTokenProvider,
         _pseudonyms = pseudonyms,
+        _log = log,
         _client = client ?? http.Client();
 
   Future<GraphPatch> extract({
@@ -147,13 +152,17 @@ class ExtractGraphService {
     // retry of identical text still finds its cached result.
     final version =
         '$extractorVersion#ps-${_fnv64(swapped.text + swapped.contextKey)}';
-    final requestBody = jsonEncode({
+    final request = {
       'turnId': turnId,
       'extractorVersion': version,
       'text': swapped.text,
       'mode': mode,
       'context': swapped.context,
-    });
+    };
+    // What is logged is the map that is encoded and sent (LM-57); a retry
+    // sends the same body, so it is one entry.
+    unawaited(_log?.record(notebookId, SharedKind.extraction, request));
+    final requestBody = jsonEncode(request);
     final url = Uri.parse(
       '$_baseUrl/v1/notebooks/${Uri.encodeComponent(notebookId)}/extractions',
     );

@@ -86,6 +86,12 @@ const exportClaim =
     'Your journal is yours to take: Privacy has "Export my journal", a zip '
     'of your conversations, cards and map as data and as notes.';
 
+// LM-57. The live voice conversation is not in the log, so the line says so.
+const sharedLogClaim =
+    'In the iPhone app you can see exactly what Lumen sent for each session, '
+    'kept on your phone for 7 days. The live voice conversation is not '
+    'part of it.';
+
 /// Lines for controls that may not have shipped; shown only when listed in
 /// the `shipped` set passed to the screen.
 const Map<PrivacyFeature, String> gatedClaims = {

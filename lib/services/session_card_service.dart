@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
@@ -7,6 +8,7 @@ import '../models/session_card.dart';
 import '../logic/pseudonym/pseudonym_map.dart' show StandInSnapshot;
 import 'model_inputs.dart';
 import 'pseudonym_service.dart';
+import 'shared_log.dart';
 
 /// Reads the stored card JSON for a notebook (`session_cards.card`), or null.
 typedef SessionCardReader = Future<Object?> Function(String notebookId);
@@ -54,6 +56,7 @@ class SessionCardService {
   final Duration _retryBaseDelay;
   final ModelInputSource _inputs;
   final PseudonymService _pseudonyms;
+  final SharedLog? _log;
   final CardRpc _rpc;
 
   /// Calls still running, by notebook: leaving a notebook fires one in the
@@ -67,11 +70,13 @@ class SessionCardService {
     http.Client? client,
     required ModelInputSource inputs,
     required PseudonymService pseudonyms,
+    SharedLog? log,
     required CardRpc rpc,
     SessionCardReader? readCard,
     Duration retryBaseDelay = const Duration(milliseconds: 500),
   })  : _inputs = inputs,
         _pseudonyms = pseudonyms,
+        _log = log,
         _rpc = rpc,
         _baseUrl = baseUrl.replaceFirst(RegExp(r'/$'), ''),
         _accessTokenProvider = accessTokenProvider,
@@ -173,7 +178,7 @@ class SessionCardService {
     // candidate whose name couldn't is left out (the runtime remembers it
     // without a note). Clamped to the runtime's limits: a stand-in can be
     // longer than the name it replaced.
-    final body = jsonEncode({
+    final request = {
       'version': 2,
       if (draft) 'draft': true,
       'turns': clampTurns([
@@ -189,7 +194,14 @@ class SessionCardService {
             },
       ],
       'sourceRevision': input.revision,
-    });
+    };
+    // What is logged is the map that is encoded and sent (LM-57).
+    unawaited(_log?.record(
+      notebookId,
+      draft ? SharedKind.draft : SharedKind.card,
+      request,
+    ));
+    final body = jsonEncode(request);
 
     for (var attempt = 0; attempt <= maxRetries; attempt++) {
       final http.Response response;

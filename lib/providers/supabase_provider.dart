@@ -16,6 +16,7 @@ import '../services/supabase_service.dart';
 import '../services/transcript_retention_service.dart';
 import '../services/transcript_store.dart';
 import 'pseudonym_provider.dart';
+import 'shared_log_provider.dart';
 
 final supabaseClientProvider = Provider<SupabaseClient>((ref) {
   return Supabase.instance.client;
@@ -69,6 +70,7 @@ final extractGraphServiceProvider = Provider<ExtractGraphService>((ref) {
     baseUrl: Env.notebookRuntimeUrl,
     accessTokenProvider: () => _accessToken(client),
     pseudonyms: ref.watch(pseudonymServiceProvider),
+    log: ref.watch(sharedLogProvider),
   );
 });
 
@@ -87,6 +89,7 @@ final sessionCardServiceProvider = Provider<SessionCardService>((ref) {
     accessTokenProvider: () => _accessToken(client),
     inputs: ref.watch(modelInputSourceProvider),
     pseudonyms: ref.watch(pseudonymServiceProvider),
+    log: ref.watch(sharedLogProvider),
     rpc: (fn, [params]) => client.rpc(fn, params: params),
     readCard: (notebookId) async {
       final row = await client
@@ -124,5 +127,6 @@ final sessionBriefServiceProvider = Provider<SessionBriefService>((ref) {
     rpc: (fn, [params]) => client.rpc(fn, params: params),
     inputs: ref.watch(modelInputSourceProvider),
     pseudonyms: ref.watch(pseudonymServiceProvider),
+    log: ref.watch(sharedLogProvider),
   );
 });
