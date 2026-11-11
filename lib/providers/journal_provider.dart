@@ -1059,8 +1059,8 @@ class JournalNotifier extends Notifier<JournalState> {
     _suppressed.add(entityId);
     // The on-device name map forgets them too (LM-55).
     unawaited(ref.read(pseudonymServiceProvider).forget(entityId));
-    // Speak lines in the shared log may hold their real name (LM-57).
-    unawaited(ref.read(sharedLogProvider).forgetSpeakEntries());
+    // What Lumen shared may hold their real name (LM-57): all of it goes.
+    _forgetSharedLog();
     state = withoutEntity(state, entityId);
     // The server may have deleted the brief; the copy held here must not be
     // spoken at the next opening.
@@ -1082,7 +1082,7 @@ class JournalNotifier extends Notifier<JournalState> {
       await pending.service.removeEntity(entityId);
       _forgottenThisRun.add(entityId);
       unawaited(ref.read(pseudonymServiceProvider).forget(entityId));
-      unawaited(ref.read(sharedLogProvider).forgetSpeakEntries());
+      _forgetSharedLog();
       pending.done.complete(RemovalOutcome.removed);
     } catch (error) {
       // Not removed on the server, so not suppressed there either: show the
@@ -1092,6 +1092,16 @@ class JournalNotifier extends Notifier<JournalState> {
       await _reloadSnapshot();
       pending.done.complete(RemovalOutcome.failed);
     }
+  }
+
+  /// Clears "What Lumen shared" (LM-57). A clear that fails is retried by
+  /// the next launch's sweep; the type is all that is logged.
+  void _forgetSharedLog() {
+    unawaited(
+      ref.read(sharedLogProvider).forgetPerson().catchError((Object error) {
+        debugPrint('Clearing the shared log failed: ${error.runtimeType}');
+      }),
+    );
   }
 
   void _syncBackgroundFlush() {

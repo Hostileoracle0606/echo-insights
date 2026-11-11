@@ -38,7 +38,12 @@ final signedOutCleanupProvider = Provider<void Function()>((ref) {
     // The on-device name map holds real names: erased with the account.
     unawaited(ref.read(pseudonymServiceProvider).clear());
     // What Lumen shared (LM-57) is erased with it.
-    unawaited(ref.read(sharedLogProvider).clearAll());
+    unawaited(
+      ref.read(sharedLogProvider).clearAll().catchError((Object error) {
+        // The type only; the next launch's sweep finishes it.
+        debugPrint('Clearing the shared log failed: ${error.runtimeType}');
+      }),
+    );
   };
 });
 

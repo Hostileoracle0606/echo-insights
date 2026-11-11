@@ -38,10 +38,20 @@ void main() {
   late DateTime now;
   late List<(String, FileProtectionLevel)> protections;
   late SharedLog log;
+  late List<String> backups;
+  Object? protectError;
+  Object? backupError;
 
   SharedLog makeLog({int maxBytes = 256 * 1024}) => SharedLog(
         directoryProvider: () async => dir,
-        protect: (path, level) async => protections.add((path, level)),
+        protect: (path, level) async {
+          if (protectError != null) throw protectError!;
+          protections.add((path, level));
+        },
+        excludeFromBackup: (path) async {
+          if (backupError != null) throw backupError!;
+          backups.add(path);
+        },
         now: () => now,
         maxBytes: maxBytes,
       );
@@ -50,14 +60,24 @@ void main() {
     dir = Directory.systemTemp.createTempSync('shared_log_test');
     now = DateTime.utc(2026, 11, 10, 12);
     protections = [];
+    backups = [];
+    protectError = null;
+    backupError = null;
     log = makeLog();
   });
-  tearDown(() => dir.deleteSync(recursive: true));
+  tearDown(() {
+    // Undo any chmod a test left behind so the folder can go.
+    Process.runSync('chmod', ['-R', 'u+rwx', dir.path]);
+    dir.deleteSync(recursive: true);
+  });
 
   List<File> files() => Directory('${dir.path}/shared-log-v1')
       .listSync()
       .whereType<File>()
       .toList();
+
+  void chmod(String mode, String path) =>
+      Process.runSync('chmod', [mode, path]);
 
   group('the log', () {
     test('lists newest first with kind, time and notebook', () async {
@@ -122,20 +142,15 @@ void main() {
       expect(await log.readAll(), isEmpty);
     });
 
-    test('forgetting a person deletes every speak entry, keeps the rest',
-        () async {
+    test('forgetting a person deletes the whole log, every session', () async {
       await log.record(nb, SharedKind.briefWrite, {'v': 'write'});
       await log.record(nb, SharedKind.briefSpeak, {
         'speak': {'openingLine': 'How is Priya Raman?'}
       });
-      await log.record('only-speak', SharedKind.briefSpeak, {
-        'speak': {'openingLine': 'Hi Sam'}
-      });
-      await log.forgetSpeakEntries();
-      final all = await log.readAll();
-      expect(all.map((e) => e.kind), [SharedKind.briefWrite]);
-      expect(files(), hasLength(1));
-      expect(files().single.readAsStringSync(), isNot(contains('Priya')));
+      await log.record('other', SharedKind.extraction, {'text': 'swapped'});
+      await log.forgetPerson();
+      expect(files(), isEmpty);
+      expect(await log.readAll(), isEmpty);
     });
 
     test('a damaged file reads as empty and is replaced by the next entry',
@@ -178,9 +193,9 @@ void main() {
       final journal =
           File('lib/providers/journal_provider.dart').readAsStringSync();
       expect(
-        'forgetSpeakEntries'.allMatches(journal).length,
+        '_forgetSharedLog();'.allMatches(journal).length,
         2,
-        reason: 'forget and removal both clear speak lines',
+        reason: 'forget and removal both clear the log',
       );
     });
 
@@ -194,6 +209,153 @@ void main() {
         expect(text, isNot(contains('shared_log')), reason: path);
         expect(text, isNot(contains('SharedLog')), reason: path);
       }
+    });
+  });
+
+  group('deletion fails closed (fix round 1)', () {
+    test('forgetting deletes a file it cannot read (phone locked)', () async {
+      await log.record(nb, SharedKind.briefSpeak, {
+        'speak': {'openingLine': 'How is Priya Raman?'}
+      });
+      await log.record('b', SharedKind.extraction, {'t': 1});
+      File('${dir.path}/shared-log-v1/c.json').writeAsStringSync('{not json');
+      final locked = files().firstWhere((f) => f.path.contains(nb));
+      chmod('000', locked.path);
+      await log.forgetPerson();
+      expect(files(), isEmpty);
+    });
+
+    test('a temp file is removed when the write fails', () async {
+      await log.record(nb, SharedKind.extraction, {'t': 1});
+      protectError = const FileSystemException('locked');
+      await log.record(nb, SharedKind.card, {'t': 2});
+      expect(
+          Directory('${dir.path}/shared-log-v1').listSync().map((e) => e.path),
+          everyElement(endsWith('.json')));
+    });
+
+    test('stale temp files go with clear, sweep, notebook and person',
+        () async {
+      File tmp(String id) => File('${dir.path}/shared-log-v1/$id.json.tmp');
+      await log.record(nb, SharedKind.extraction, {'t': 1});
+      for (final id in [nb, 'x', 'y', 'z']) {
+        tmp(id).writeAsStringSync('{"entries":[]}');
+      }
+      await log.forgetNotebook(nb);
+      expect(tmp(nb).existsSync(), isFalse);
+      await log.sweep();
+      expect(tmp('x').existsSync(), isFalse);
+      await log.clearAll();
+      expect(tmp('y').existsSync(), isFalse);
+      tmp('z').writeAsStringSync('{}');
+      await log.forgetPerson();
+      expect(files(), isEmpty);
+      expect(
+          Directory('${dir.path}/shared-log-v1')
+              .listSync()
+              .where((e) => e.path.endsWith('.tmp')),
+          isEmpty);
+    });
+
+    test('a record after a delete does not bring the log back', () async {
+      await log.record(nb, SharedKind.extraction, {'t': 1});
+      await log.forgetNotebook(nb);
+      await log.record(nb, SharedKind.briefSpeak, {
+        'speak': {'openingLine': 'Priya Raman'}
+      });
+      expect(files(), isEmpty);
+      await log.record('other', SharedKind.extraction, {'t': 2});
+      expect(files(), hasLength(1));
+    });
+
+    test('after forgetting a person no speak line is recorded this run',
+        () async {
+      await log.forgetPerson();
+      await log.record(nb, SharedKind.briefSpeak, {
+        'speak': {'openingLine': 'Priya Raman'}
+      });
+      expect(files(), isEmpty);
+      await log.record(nb, SharedKind.briefWrite, {'v': 'swapped'});
+      expect(await log.read(nb), hasLength(1));
+    });
+
+    test('a deletion that failed is retried by the next sweep', () async {
+      await log.record(nb, SharedKind.extraction, {'t': 1});
+      final folder = '${dir.path}/shared-log-v1';
+      chmod('555', folder);
+      await expectLater(log.forgetPerson(), throwsA(anything));
+      chmod('755', folder);
+      expect(files(), isNotEmpty);
+      // A new launch.
+      await makeLog().sweep();
+      expect(files(), isEmpty);
+    });
+
+    test('a failed notebook delete is retried by the next sweep', () async {
+      await log.record(nb, SharedKind.extraction, {'t': 1});
+      await log.record('keep', SharedKind.extraction, {'t': 2});
+      final folder = '${dir.path}/shared-log-v1';
+      chmod('555', folder);
+      await expectLater(log.forgetNotebook(nb), throwsA(anything));
+      chmod('755', folder);
+      await makeLog().sweep();
+      expect(files().map((f) => f.path), [endsWith('keep.json')]);
+    });
+
+    test('the callers handle a failed deletion', () {
+      for (final path in [
+        'lib/providers/journal_provider.dart',
+        'lib/providers/voice_services_provider.dart',
+      ]) {
+        final text = File(path).readAsStringSync();
+        final at = text.indexOf('sharedLogProvider');
+        expect(at, greaterThan(0));
+        expect(text, contains('catchError'), reason: path);
+      }
+      final journal =
+          File('lib/providers/journal_provider.dart').readAsStringSync();
+      expect(
+        RegExp(r'unawaited\(\s*ref\s*\.read\(sharedLogProvider\)\s*\.forgetPerson\(\)\s*\.catchError')
+            .allMatches(journal),
+        hasLength(1),
+        reason: 'the one helper, which handles the failure',
+      );
+      expect(
+        File('lib/providers/voice_services_provider.dart').readAsStringSync(),
+        matches(RegExp(r'clearAll\(\)\s*\.catchError')),
+      );
+    });
+
+    test('a read error in record keeps the history and writes nothing',
+        () async {
+      await log.record(nb, SharedKind.extraction, {'t': 'old'});
+      final file = files().single;
+      chmod('000', file.path);
+      await log.record(nb, SharedKind.card, {'t': 'new'});
+      chmod('644', file.path);
+      final read = await log.read(nb);
+      expect(read.map((e) => e.body['t']), ['old']);
+    });
+
+    test('no file is left unprotected: a failed protect writes nothing',
+        () async {
+      protectError = const FileSystemException('cannot protect');
+      await log.record(nb, SharedKind.extraction, {'t': 1});
+      expect(files(), isEmpty);
+      expect(await log.read(nb), isEmpty);
+    });
+
+    test('a failed backup exclusion writes nothing', () async {
+      backupError = const FileSystemException('no');
+      await log.record(nb, SharedKind.extraction, {'t': 1});
+      expect(files(), isEmpty);
+    });
+
+    test('the folder and each file are excluded from backup', () async {
+      await log.record(nb, SharedKind.extraction, {'t': 1});
+      await log.record(nb, SharedKind.card, {'t': 2});
+      expect(backups, contains('${dir.path}/shared-log-v1'));
+      expect(backups.where((p) => p.endsWith('$nb.json.tmp')), hasLength(2));
     });
   });
 
@@ -438,6 +600,7 @@ void main() {
       expect(sharedLogClaim, contains('exactly what Lumen sent'));
       expect(sharedLogClaim, contains('7 days'));
       expect(sharedLogClaim, contains('live voice conversation is not'));
+      expect(sharedLogClaim, contains('Forgetting a person clears it'));
       expect(File('src/routes/security.tsx').readAsStringSync(),
           contains(sharedLogClaim));
     });

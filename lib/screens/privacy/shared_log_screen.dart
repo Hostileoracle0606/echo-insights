@@ -101,7 +101,7 @@ class _SharedLogScreenState extends ConsumerState<SharedLogScreen> {
                 else if (entries == null || entries.isEmpty)
                   Text(
                     'Nothing to show. Requests appear here after a '
-                    'conversation.',
+                    'conversation, and forgetting a person clears them.',
                     key: const Key('sharedLogEmpty'),
                     style: small,
                   )

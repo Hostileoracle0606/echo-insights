@@ -6,6 +6,9 @@ import 'package:path_provider/path_provider.dart';
 
 import '../security/file_protection.dart';
 
+/// The native backup exclusion (a named function so it can be a default).
+Future<void> lumenExcludeFromBackup(String path) => excludeFromBackup(path);
+
 /// Which model-bound request an entry records (LM-57).
 enum SharedKind {
   extraction('Extraction', 'extraction'),
@@ -77,26 +80,39 @@ class SharedRequest {
 /// model, as it was sent (names already swapped, LM-56).
 ///
 /// One file per notebook in the app support folder, protected with
-/// `NSFileProtectionComplete`. It is never uploaded, never part of an export,
-/// and never printed. Entries older than [retention] are swept at launch and
-/// when a log is read; the file goes with its session, and all of it goes on
-/// sign-out. A failure to log never fails the request being logged.
+/// `NSFileProtectionComplete` and left out of backups. It is never uploaded,
+/// never part of an export, and never printed. Entries older than
+/// [retention] are swept at launch and when a log is read; the file goes
+/// with its session, and all of it goes on sign-out or when a person is
+/// forgotten. A failure to log never fails the request being logged, and a
+/// file that can't be protected and left out of backups is never written.
+///
+/// Deleting fails closed: a delete that can't finish is remembered (outside
+/// the log's folder) and finished by the next [sweep], and nothing is read
+/// before it is deleted, so a file that can't be opened (the phone is
+/// locked) still goes.
 class SharedLog {
   SharedLog({
     Future<Directory> Function()? directoryProvider,
     FileProtector? protect,
+    Future<void> Function(String path)? excludeFromBackup,
     DateTime Function()? now,
     this.retention = const Duration(days: 7),
     this.maxBytes = 256 * 1024,
   })  : _directoryProvider =
             directoryProvider ?? getApplicationSupportDirectory,
-        _protect = protect ?? protectFile,
+        _protect = protect ?? protectFileStrict,
+        _exclude = excludeFromBackup ?? lumenExcludeFromBackup,
         _now = now ?? DateTime.now;
 
   static const int _version = 1;
+  static const _pendingName = 'shared-log-pending';
 
   final Future<Directory> Function() _directoryProvider;
+
+  /// Must throw when it can't protect the file: the write is then dropped.
   final FileProtector _protect;
+  final Future<void> Function(String path) _exclude;
   final DateTime Function() _now;
   final Duration retention;
 
@@ -104,6 +120,14 @@ class SharedLog {
   /// entry always stays).
   final int maxBytes;
   Future<void> _tail = Future<void>.value();
+
+  /// Sessions deleted in this run: a request still being recorded for one
+  /// must not bring its file back.
+  final Set<String> _deleted = {};
+
+  /// A person was forgotten in this run: no speak line (it carries a real
+  /// name) is recorded for the rest of it.
+  bool _personForgotten = false;
 
   /// Records [body] (the object the request was built from) for
   /// [notebookId]. Call it at the one place the request is built, with the
@@ -113,13 +137,20 @@ class SharedLog {
     SharedKind kind,
     Map<String, dynamic> body,
   ) async {
+    bool refused() =>
+        _deleted.contains(notebookId) ||
+        (_personForgotten && kind == SharedKind.briefSpeak);
+    if (refused()) return;
     try {
       // A round trip through JSON: the entry holds what was encoded, and
       // later changes to [body] cannot reach it.
       final copy =
           (jsonDecode(jsonEncode(body)) as Map).cast<String, dynamic>();
       await _serialized(() async {
+        if (refused()) return;
         final file = await _file(notebookId);
+        // A file that can't be read (the phone is locked) is left as it is:
+        // writing now would replace the history with one entry.
         final entries = await _load(file, notebookId);
         entries.add(SharedRequest(
           kind: kind,
@@ -138,67 +169,153 @@ class SharedLog {
   /// [notebookId]'s entries, newest first (older than [retention] swept).
   Future<List<SharedRequest>> read(String notebookId) => _serialized(() async {
         final file = await _file(notebookId);
-        final entries = await _load(file, notebookId);
-        final fresh = _fresh(entries);
-        if (fresh.length != entries.length) await _write(file, fresh);
-        return fresh.reversed.toList();
+        final fresh = await _freshOf(file, notebookId);
+        return (fresh ?? const <SharedRequest>[]).reversed.toList();
       });
 
   /// Every session's entries, newest first.
   Future<List<SharedRequest>> readAll() => _serialized(() async {
         final all = <SharedRequest>[];
         for (final file in await _files()) {
-          final id = _idOf(file);
-          final entries = await _load(file, id);
-          final fresh = _fresh(entries);
-          if (fresh.length != entries.length) await _write(file, fresh);
-          all.addAll(fresh);
+          all.addAll(await _freshOf(file, _idOf(file)) ?? const []);
         }
         all.sort((a, b) => b.at.compareTo(a.at));
         return all;
       });
 
-  /// Drops what is older than [retention] from every file (app launch).
+  /// Finishes any delete that failed earlier, removes leftover temp files,
+  /// and drops what is older than [retention] from every file (app launch).
   Future<void> sweep() => _serialized(() async {
+        await _finishPending();
+        for (final temp in await _temps()) {
+          await temp.delete();
+        }
         for (final file in await _files()) {
-          final entries = await _load(file, _idOf(file));
-          final fresh = _fresh(entries);
-          if (fresh.length != entries.length) await _write(file, fresh);
+          await _freshOf(file, _idOf(file));
         }
       });
 
   /// The session was deleted.
-  Future<void> forgetNotebook(String notebookId) => _serialized(() async {
-        final file = await _file(notebookId);
-        if (await file.exists()) await file.delete();
-      });
+  Future<void> forgetNotebook(String notebookId) {
+    // At once, so a request still being recorded can't bring it back.
+    _deleted.add(notebookId);
+    return _serialized(() async {
+      await _markPending(notebook: notebookId);
+      await _deleteNotebook(notebookId);
+      await _clearPending(notebook: notebookId);
+    });
+  }
 
   /// Sign-out: nothing is left for the next account.
-  Future<void> clearAll() => _serialized(() async {
-        for (final file in await _files()) {
-          await file.delete();
-        }
-      });
+  Future<void> clearAll() => _serialized(_wipe);
 
-  /// Someone was forgotten (LM-49). The log holds swapped text, except the
-  /// speak request, whose line may carry that person's real name. It has no
-  /// way to tell whose name a line holds, so every speak entry goes, for
-  /// every session.
-  Future<void> forgetSpeakEntries() => _serialized(() async {
-        for (final file in await _files()) {
-          final entries = await _load(file, _idOf(file));
-          final kept = [
-            for (final e in entries)
-              if (!e.carriesRealNames) e,
-          ];
-          if (kept.length == entries.length) continue;
-          if (kept.isEmpty) {
-            await file.delete();
-          } else {
-            await _write(file, kept);
-          }
-        }
-      });
+  /// Someone was forgotten (LM-49). The speak request's line may carry their
+  /// real name, and a name the swap missed could be in any other entry, so
+  /// the whole log goes, for every session. Nothing is opened first.
+  Future<void> forgetPerson() {
+    _personForgotten = true;
+    return _serialized(_wipe);
+  }
+
+  Future<void> _wipe() async {
+    await _markPending(all: true);
+    final directory = await _logDirectory();
+    await for (final entity in directory.list()) {
+      if (entity is File) await entity.delete();
+    }
+    await _clearPending(all: true);
+  }
+
+  Future<void> _deleteNotebook(String notebookId) async {
+    final file = await _file(notebookId);
+    for (final f in [file, File('${file.path}.tmp')]) {
+      if (await f.exists()) await f.delete();
+    }
+  }
+
+  /// A deletion that didn't finish is kept outside the log's folder, so the
+  /// next launch can finish it.
+  Future<File> _pendingFile() async =>
+      File('${(await _directoryProvider()).path}/$_pendingName');
+
+  Future<Map<String, dynamic>> _readPending() async {
+    try {
+      final file = await _pendingFile();
+      if (!await file.exists()) return {};
+      final decoded = jsonDecode(await file.readAsString());
+      return decoded is Map ? decoded.cast<String, dynamic>() : {};
+    } catch (_) {
+      return {};
+    }
+  }
+
+  Future<void> _markPending({String? notebook, bool all = false}) async {
+    try {
+      final pending = await _readPending();
+      final notebooks = {
+        ...((pending['notebooks'] as List?) ?? const []).cast<String>(),
+        if (notebook != null) notebook,
+      };
+      final file = await _pendingFile();
+      await file.writeAsString(jsonEncode({
+        'all': all || pending['all'] == true,
+        'notebooks': notebooks.toList(),
+      }));
+      try {
+        await _exclude(file.path);
+      } catch (_) {}
+    } catch (_) {
+      // Best effort: the delete itself still runs.
+    }
+  }
+
+  Future<void> _clearPending({String? notebook, bool all = false}) async {
+    try {
+      final file = await _pendingFile();
+      if (all) {
+        if (await file.exists()) await file.delete();
+        return;
+      }
+      final pending = await _readPending();
+      final notebooks = ((pending['notebooks'] as List?) ?? const [])
+          .cast<String>()
+          .where((id) => id != notebook)
+          .toList();
+      if (notebooks.isEmpty && pending['all'] != true) {
+        if (await file.exists()) await file.delete();
+      } else {
+        await file.writeAsString(
+          jsonEncode({'all': pending['all'] == true, 'notebooks': notebooks}),
+        );
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _finishPending() async {
+    final pending = await _readPending();
+    if (pending['all'] == true) {
+      await _wipe();
+      return;
+    }
+    for (final id
+        in ((pending['notebooks'] as List?) ?? const []).cast<String>()) {
+      await _deleteNotebook(id);
+      await _clearPending(notebook: id);
+    }
+  }
+
+  /// [file]'s entries within [retention], rewritten if some were older. Null
+  /// when the file can't be read now.
+  Future<List<SharedRequest>?> _freshOf(File file, String id) async {
+    try {
+      final entries = await _load(file, id);
+      final fresh = _fresh(entries);
+      if (fresh.length != entries.length) await _write(file, fresh);
+      return fresh;
+    } on FileSystemException {
+      return null;
+    }
+  }
 
   List<SharedRequest> _fresh(List<SharedRequest> entries) {
     final cutoff = _now().subtract(retention);
@@ -227,19 +344,24 @@ class SharedLog {
     return result;
   }
 
-  Future<Directory>? _directory;
+  Directory? _directory;
+  bool _directorySecured = false;
 
-  Future<Directory> _logDirectory() {
-    return _directory ??= () async {
-      final root = await _directoryProvider();
-      final directory = Directory('${root.path}/shared-log-v$_version');
-      await directory.create(recursive: true);
-      return directory;
-    }()
-        .catchError((Object error) {
-      _directory = null;
-      throw error;
-    });
+  Future<Directory> _logDirectory() async {
+    final existing = _directory;
+    if (existing != null) return existing;
+    final root = await _directoryProvider();
+    final directory = Directory('${root.path}/shared-log-v$_version');
+    await directory.create(recursive: true);
+    return _directory = directory;
+  }
+
+  /// Before anything is written: the folder (and so what is in it) is left
+  /// out of backups. A failure drops the write.
+  Future<void> _secureDirectory() async {
+    if (_directorySecured) return;
+    await _exclude((await _logDirectory()).path);
+    _directorySecured = true;
   }
 
   Future<File> _file(String notebookId) async {
@@ -255,17 +377,26 @@ class SharedLog {
     ];
   }
 
+  Future<List<File>> _temps() async {
+    final directory = await _logDirectory();
+    return [
+      await for (final f in directory.list())
+        if (f is File && f.path.endsWith('.tmp')) f,
+    ];
+  }
+
   String _idOf(File file) {
     final name = file.uri.pathSegments.last;
     return Uri.decodeComponent(name.substring(0, name.length - '.json'.length));
   }
 
-  /// A damaged or foreign file reads as empty (and is overwritten by the
-  /// next entry) rather than failing the caller.
+  /// A missing file is empty, and so is one that isn't a log (it is
+  /// overwritten by the next entry). A file that can't be read throws.
   Future<List<SharedRequest>> _load(File file, String notebookId) async {
+    if (!await file.exists()) return <SharedRequest>[];
+    final text = await file.readAsString();
     try {
-      if (!await file.exists()) return <SharedRequest>[];
-      final decoded = jsonDecode(await file.readAsString());
+      final decoded = jsonDecode(text);
       if (decoded is! Map || decoded['entries'] is! List) {
         return <SharedRequest>[];
       }
@@ -280,14 +411,26 @@ class SharedLog {
     }
   }
 
+  /// Through a temp file that is protected and left out of backups before it
+  /// takes the file's place; whatever goes wrong, no temp file is left, and
+  /// no unprotected file is.
   Future<void> _write(File file, List<SharedRequest> entries) async {
+    final temp = File('${file.path}.tmp');
     if (entries.isEmpty) {
       if (await file.exists()) await file.delete();
       return;
     }
-    final temp = File('${file.path}.tmp');
-    await temp.writeAsString(_encode(entries), flush: true);
-    await _protect(temp.path, FileProtectionLevel.complete);
-    await temp.rename(file.path);
+    try {
+      await _secureDirectory();
+      await temp.writeAsString(_encode(entries), flush: true);
+      await _protect(temp.path, FileProtectionLevel.complete);
+      await _exclude(temp.path);
+      await temp.rename(file.path);
+    } catch (_) {
+      try {
+        if (await temp.exists()) await temp.delete();
+      } catch (_) {}
+      rethrow;
+    }
   }
 }

@@ -33,7 +33,8 @@ import UIKit
 /// entitlement covers files created by default; this sets a class on a file
 /// explicitly and reads one back for verification.
 ///
-/// Channel `lumen/file_protection`: set {path, level} · get {path}
+/// Channel `lumen/file_protection`: set {path, level} · get {path} ·
+/// excludeFromBackup {path}
 enum FileProtection {
   static func register(messenger: FlutterBinaryMessenger) {
     let channel = FlutterMethodChannel(name: "lumen/file_protection", binaryMessenger: messenger)
@@ -48,6 +49,12 @@ enum FileProtection {
           let level: FileProtectionType =
             (args["level"] as? String) == "completeUnlessOpen" ? .completeUnlessOpen : .complete
           try FileManager.default.setAttributes([.protectionKey: level], ofItemAtPath: path)
+          result(nil)
+        case "excludeFromBackup":
+          var url = URL(fileURLWithPath: path)
+          var values = URLResourceValues()
+          values.isExcludedFromBackup = true
+          try url.setResourceValues(values)
           result(nil)
         case "get":
           let attributes = try FileManager.default.attributesOfItem(atPath: path)
