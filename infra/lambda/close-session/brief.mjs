@@ -20,6 +20,7 @@ import {
 import { redactTexts, redactTurns } from "./redact.mjs";
 import { effectiveRevision, parseBriefRequest, readBody } from "./client-input.mjs";
 import {
+  nameSet,
   readSpeakToken,
   sameLineButNames,
   signSpeakToken,
@@ -29,6 +30,8 @@ import {
 import { buildTranscript, cleanText } from "./validate.mjs";
 
 const defaultDeadlineMs = 27_000;
+// Entity rows the speak check reads (hosted PostgREST's default max_rows).
+const speakNameRows = 1000;
 const defaultSampleRate = 24_000;
 const speakPrefix = "Say warmly, unhurried and natural, like a friend catching up: ";
 
@@ -298,17 +301,19 @@ export function createSessionBriefHandler({
     }
     // The names a slot may take: the user's own entities and their aliases,
     // as RLS shows them to this token. Read only when the line has a slot.
-    let names = [];
+    // Hosted PostgREST returns at most 1,000 rows (its max_rows), so the read
+    // asks for that many, most recently seen first: the names a brief opens
+    // with are recent ones. A name beyond them is refused, and the app then
+    // saves the brief without audio.
+    let names = new Set();
     if (ticket.slots.length > 0) {
       const rows = await db.select("entities", {
         select: "name,aliases:metadata->aliases",
-        limit: "5000",
+        order: "last_seen.desc",
+        limit: String(speakNameRows),
       });
       if (!Array.isArray(rows)) throw new Rejection(503, "providerUnavailable");
-      names = rows.flatMap((row) => [
-        row?.name,
-        ...(Array.isArray(row?.aliases) ? row.aliases : []),
-      ]).filter((name) => typeof name === "string" && name.trim());
+      names = nameSet(rows);
     }
     if (!sameLineButNames(ticket.line, ticket.slots, request.openingLine, names)) {
       throw new Rejection(403, "forbidden");

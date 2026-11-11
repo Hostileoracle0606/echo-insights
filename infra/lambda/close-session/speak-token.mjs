@@ -76,7 +76,7 @@ export function tokenize(line) {
   return String(line).match(tokenPattern) ?? [];
 }
 
-const lower = (tokens) => tokens.map((t) => t.toLocaleLowerCase("und"));
+const lower = (tokens) => tokens.map((t) => t.toLowerCase());
 
 /**
  * Where the stand-ins sit in [line]: [start, end) token spans, left to right,
@@ -90,7 +90,9 @@ export function slotSpans(line, standIns) {
     .filter((t) => t.length > 0)
     .sort((a, b) => b.length - a.length);
   const spans = [];
-  for (let i = 0; i < tokens.length; ) {
+  // At most [maxSlots]: past that the words stay literal, and a line whose
+  // names changed there fails the check (the app then saves it without audio).
+  for (let i = 0; i < tokens.length && spans.length < maxSlots; ) {
     const hit = forms.find((f) => f.every((t, k) => tokens[i + k] === t));
     if (hit) {
       spans.push([i, i + hit.length]);
@@ -102,35 +104,69 @@ export function slotSpans(line, standIns) {
   return spans;
 }
 
+// Bounds on what the check spends, whatever the user's graph or the line
+// holds: a name is at most this many words (and characters), a row brings at
+// most this many aliases, a line at most this many slots.
+export const maxNameTokens = 8;
+export const maxNameChars = 100;
+export const maxAliasesPerRow = 20;
+export const maxSlots = 16;
+
 /**
- * True when [real] is [written] with each slot (a stand-in's span) replaced
- * by one of [names] (the user's own entity names and aliases, read with
- * their token), compared case-insensitively, and every other token
- * identical. Runs as a set of reachable positions in [real], one step per
- * written token: linear in the line times the names that share a first
- * word, never backtracking, never free text in a slot.
+ * The names a slot may take, from `entities` rows ({ name, aliases }): one
+ * Set entry per name, lowercase, its words joined by single spaces. Names
+ * over [maxNameTokens] words or [maxNameChars] characters are dropped, and
+ * at most [maxAliasesPerRow] aliases are taken from a row.
+ */
+export function nameSet(rows) {
+  const names = new Set();
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const aliases = Array.isArray(row?.aliases) ? row.aliases.slice(0, maxAliasesPerRow) : [];
+    for (const name of [row?.name, ...aliases]) {
+      if (typeof name !== "string" || name.length > maxNameChars) continue;
+      const tokens = tokenize(name.toLowerCase());
+      if (tokens.length === 0 || tokens.length > maxNameTokens) continue;
+      names.add(tokens.join(" "));
+    }
+  }
+  return names;
+}
+
+/**
+ * True when [real] is [written] with each slot (a stand-in's span, from the
+ * signed token) replaced by one of [names] (a [nameSet]: the user's own
+ * entity names and aliases), compared case-insensitively, and every other
+ * token identical. One pass over the written tokens, keeping the set of
+ * reachable positions in [real]; at a slot each position is tried against
+ * the Set for 1..[maxNameTokens] words. The cost is about slots × positions
+ * × maxNameTokens lookups, whatever the graph holds; nothing backtracks and
+ * a slot never takes free text. Malformed spans (overlapping, out of range,
+ * more than [maxSlots]) fail closed.
  */
 export function sameLineButNames(written, spans, real, names) {
   const w = tokenize(written);
   const r = tokenize(real);
   const rl = lower(r);
-  const byFirst = new Map();
-  for (const name of names) {
-    const t = lower(tokenize(name));
-    if (t.length === 0 || t.length > r.length) continue;
-    const list = byFirst.get(t[0]) ?? [];
-    list.push(t);
-    byFirst.set(t[0], list);
+  if (!Array.isArray(spans) || spans.length > maxSlots) return false;
+  const slotAt = new Map();
+  let last = 0;
+  for (const span of spans) {
+    const [start, end] = Array.isArray(span) ? span : [];
+    if (!Number.isInteger(start) || !Number.isInteger(end)) return false;
+    if (start < last || end <= start || end > w.length) return false;
+    slotAt.set(start, end);
+    last = end;
   }
-  const slotAt = new Map(spans.map(([start, end]) => [start, end]));
   let at = new Set([0]);
   for (let i = 0; i < w.length && at.size > 0; ) {
     const next = new Set();
     const end = slotAt.get(i);
     if (end !== undefined) {
       for (const p of at) {
-        for (const name of byFirst.get(rl[p]) ?? []) {
-          if (name.every((t, k) => rl[p + k] === t)) next.add(p + name.length);
+        let key = "";
+        for (let len = 1; len <= maxNameTokens && p + len <= rl.length; len += 1) {
+          key = len === 1 ? rl[p] : `${key} ${rl[p + len - 1]}`;
+          if (names.has(key)) next.add(p + len);
         }
       }
       i = end;

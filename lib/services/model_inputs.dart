@@ -69,9 +69,15 @@ const appInputLimits = (
   openingThread: 1250,
 );
 
-/// [text] cut to at most [max] characters.
-String clampText(String text, int max) =>
-    text.length <= max ? text : text.substring(0, max);
+/// [text] cut to at most [max] UTF-16 code units, never between the two
+/// halves of a surrogate pair (an emoji or a rare CJK character).
+String clampText(String text, int max) {
+  if (text.length <= max) return text;
+  var end = max;
+  final last = text.codeUnitAt(end - 1);
+  if (last >= 0xD800 && last <= 0xDBFF) end -= 1;
+  return text.substring(0, end);
+}
 
 /// Turns as the runtime takes them (`speaker`, `text`, `spokenAt`), each
 /// clamped, the oldest dropped first if the total would be too long.

@@ -16,7 +16,12 @@ import {
 } from "../lambda/close-session/client-input.mjs";
 import { createCloseSessionHandler } from "../lambda/close-session/core.mjs";
 import { createExtractGraphHandler } from "../lambda/extract-graph/core.mjs";
-import { sameLineButNames, slotSpans } from "../lambda/close-session/speak-token.mjs";
+import {
+  maxSlots,
+  nameSet,
+  sameLineButNames,
+  slotSpans,
+} from "../lambda/close-session/speak-token.mjs";
 
 const fixture = JSON.parse(
   await readFile(new URL("./fixtures/close-session.just-talk.json", import.meta.url), "utf8"),
@@ -535,12 +540,66 @@ test("sameLineButNames: 14 slots and a line that doesn't match return at once", 
   const written = Array.from({ length: 14 }, (_, i) => `Anika${i}`).join(" and ");
   const slots = slotSpans(written, Array.from({ length: 14 }, (_, i) => `Anika${i}`));
   assert.equal(slots.length, 14);
-  const names = Array.from({ length: 2000 }, (_, i) => `Maya ${"Rao ".repeat(i % 7)}x${i}`);
-  names.push(..."abcdefghijklmn".split("").map((c) => `${c} ${c} ${c}`));
+  const names = nameSet([
+    ...Array.from({ length: 2000 }, (_, i) => ({ name: `Maya ${"Rao ".repeat(i % 7)}x${i}` })),
+    ..."abcdefghijklmn".split("").map((c) => ({ name: `${c} ${c} ${c}` })),
+  ]);
   const real = `${"a a a and ".repeat(14)}${"z".repeat(112)}`;
   const started = performance.now();
   assert.equal(sameLineButNames(written, slots, real, names), false);
-  assert.ok(performance.now() - started < 50, `took ${performance.now() - started} ms`);
+  // Generous for slow CI runners; it takes about a millisecond.
+  assert.ok(performance.now() - started < 250, `took ${performance.now() - started} ms`);
+});
+
+test("sameLineButNames: an adversarial graph can't make the check slow", () => {
+  // 5,000 rows x 50 aliases of "a", "a a", "a a a", ... and a line of "a"s.
+  const aliases = Array.from({ length: 50 }, (_, i) => Array(i + 1).fill("a").join(" "));
+  const rows = Array.from({ length: 5000 }, (_, i) => ({ name: `a ${i}`, aliases }));
+  const names = nameSet(rows);
+  // Per row: at most 20 aliases, at most 8 words; the Set holds each once.
+  assert.ok(names.size <= 5000 + 8, `${names.size} names`);
+  const standIns = Array.from({ length: 40 }, (_, i) => `Anika${i}`);
+  const written = standIns.join(" ");
+  const slots = slotSpans(written, standIns);
+  assert.equal(slots.length, maxSlots, "slots are capped");
+  const real = `${"a ".repeat(150)}b`;
+  const started = performance.now();
+  assert.equal(sameLineButNames(written, slots, real, names), false);
+  const took = performance.now() - started;
+  assert.ok(took < 100, `took ${took} ms`);
+});
+
+test("nameSet: reading the most the speak step reads stays cheap", () => {
+  // 1,000 rows (the read's cap), each a 100-character name and 20 aliases of
+  // 50 accented words: the most a graph can make the runtime tokenize.
+  const rows = Array.from({ length: 1000 }, () => ({
+    name: "x".repeat(100),
+    aliases: Array(20).fill("é ".repeat(50)),
+  }));
+  const started = performance.now();
+  nameSet(rows);
+  const took = performance.now() - started;
+  assert.ok(took < 250, `took ${took} ms`);
+});
+
+test("sameLineButNames: malformed spans fail closed", () => {
+  const names = nameSet([{ name: "Priya" }]);
+  const ok = slotSpans("Hi Anika.", ["Anika"]);
+  assert.equal(sameLineButNames("Hi Anika.", ok, "Hi Priya.", names), true);
+  for (const spans of [[[1, 1]], [[1, 5]], [[1, 2], [1, 2]], Array(17).fill([1, 2]), "x"]) {
+    assert.equal(sameLineButNames("Hi Anika.", spans, "Hi Priya.", names), false);
+  }
+});
+
+test("nameSet drops over-long names and caps aliases per row", () => {
+  const names = nameSet([
+    { name: "one two three four five six seven eight nine", aliases: ["x".repeat(101)] },
+    { name: "Priya", aliases: Array.from({ length: 30 }, (_, i) => `Alias${i}`) },
+  ]);
+  assert.equal(names.has("one two three four five six seven eight nine"), false);
+  assert.equal(names.has("x".repeat(101)), false);
+  assert.equal(names.has("alias19"), true);
+  assert.equal(names.has("alias20"), false);
 });
 
 test("brief v2 speak tokens expire", async () => {

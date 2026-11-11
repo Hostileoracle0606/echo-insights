@@ -257,7 +257,7 @@ class SessionBriefService {
     if (audio == null) {
       real['openingLine'] = restoredLine.length <= savedLineCap
           ? restoredLine
-          : '${restoredLine.substring(0, savedLineCap - 1).trimRight()}…';
+          : '${clampText(restoredLine, savedLineCap - 1).trimRight()}…';
     }
 
     // save_session_brief keeps every rule the runtime's save had: caps, a

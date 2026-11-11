@@ -735,6 +735,12 @@ void main() {
     });
   });
 
+  test('clamping never splits a surrogate pair', () {
+    expect(clampText('ab😀c', 3), 'ab');
+    expect(clampText('ab😀c', 4), 'ab😀');
+    expect(clampText('abc', 5), 'abc');
+  });
+
   test('entity keys match the runtime (sha256 of "<notebook>:<id>")', () {
     // infra/test/pseudonymized-requests.test.mjs checks the same value.
     expect(entityKey('nb', 'priya'),

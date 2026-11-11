@@ -127,10 +127,17 @@ revision, the line it wrote and where the stand-ins sit in it (token spans,
 found from `standIns`, case-insensitively), for 10 minutes. Both lines are
 split into tokens (words, and each punctuation mark on its own). Every token
 outside a stand-in's span must be identical; each span must be replaced by
-the name or an alias of one of the user's own entities, read with their
-token from `entities` and compared case-insensitively. The check walks the
-two lines once (a set of reachable positions per written token), so it is
-linear and never backtracks. The runtime refuses (403 `forbidden`) a
+the name or an alias of one of the user's own entities, compared
+case-insensitively. The names are read with the user's token from
+`entities`, most recently seen first, at most 1,000 rows (hosted
+PostgREST's default `max_rows`); a row gives its name and at most 20
+aliases, and a name over 8 words or 100 characters is not used. They go
+into one set (lowercase, words joined by single spaces). The check walks the
+two lines once, keeping a set of reachable positions; at a span it looks up
+each position's next 1 to 8 words in that set. Its cost is bounded by the
+spans (at most 16, set at write time and signed), the real line's length
+and 8, whatever the graph holds; it never backtracks. A name beyond the
+1,000 rows is refused (the app then saves the brief without audio). The runtime refuses (403 `forbidden`) a
 missing, forged or expired token, one for another user or notebook, or a
 line that fails that check (free text in a name's place, a name not in the
 user's graph, any other word changed). So the route speaks only lines it

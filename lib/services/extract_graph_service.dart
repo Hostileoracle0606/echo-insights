@@ -11,6 +11,7 @@ import '../models/follow_up.dart';
 import '../models/graph_patch.dart';
 import '../models/journal_state.dart';
 import 'extraction_context.dart';
+import 'model_inputs.dart' show clampText;
 import 'pseudonym_service.dart';
 
 const int _maxInProgressPolls = 40;
@@ -392,8 +393,7 @@ const _maxLabel = 160;
 const _maxRecentTurn = 4000;
 const _maxFollowUp = 1000;
 
-String _clamp(String text, int max) =>
-    text.length <= max ? text : text.substring(0, max);
+String _clamp(String text, int max) => clampText(text, max);
 
 class _SwappedRequest {
   const _SwappedRequest({
