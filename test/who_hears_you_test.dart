@@ -179,8 +179,12 @@ void main() {
 
     testWidgets('the app shows every shipped control', (t) async {
       await _pumpScreen(t, const WhoHearsYouScreen());
-      for (final line in gatedClaims.values) {
-        expect(find.text(line), findsOneWidget);
+      for (final entry in gatedClaims.entries) {
+        expect(
+          find.text(entry.value),
+          shipped.contains(entry.key) ? findsOneWidget : findsNothing,
+          reason: '${entry.key}',
+        );
       }
     });
 
