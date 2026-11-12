@@ -182,17 +182,20 @@ class SupabaseModelInputs implements ModelInputSource {
     // The revision first: a turn saved after it may be missing from the
     // turns, so the card must not claim to cover it.
     final revision = await _revision(notebookId);
-    final turns = await _turns(notebookId);
-    // The runtime's order (validate.mjs rememberCandidates): mentions, then
-    // the most recent, then id.
-    final rows = await _client
-        .from('entities')
-        .select('id, name, type, description, metadata, mentions, last_seen')
-        .eq('notebook_id', notebookId)
-        .order('mentions', ascending: false)
-        .order('last_seen', ascending: false)
-        .order('id', ascending: true)
-        .limit(cardCandidateCount);
+    // Independent reads, after the revision: together (M3).
+    final (turns, rows) = await (
+      _turns(notebookId),
+      // The runtime's order (validate.mjs rememberCandidates): mentions,
+      // then the most recent, then id.
+      _client
+          .from('entities')
+          .select('id, name, type, description, metadata, mentions, last_seen')
+          .eq('notebook_id', notebookId)
+          .order('mentions', ascending: false)
+          .order('last_seen', ascending: false)
+          .order('id', ascending: true)
+          .limit(cardCandidateCount),
+    ).wait;
     return CardInput(
       revision: revision,
       turns: turns,
