@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:math';
 
 import 'package:crypto/crypto.dart';
+import 'package:flutter/foundation.dart' show visibleForTesting;
 
 import '../models/entity.dart';
 import '../models/journal_entry.dart';
@@ -155,6 +156,7 @@ class ForgetRedactor {
   }
 
   void _forgetMemory() {
+    _redacted.clear();
     _key = null;
     _hashes.clear();
     _insideHashes.clear();
@@ -163,6 +165,7 @@ class ForgetRedactor {
   }
 
   void _remember(String hash, int words, bool inside) {
+    _redacted.clear();
     _hashes[hash] = words;
     if (words > _maxWords) _maxWords = words;
     if (inside) {
@@ -187,9 +190,28 @@ class ForgetRedactor {
 
   bool _hit(String piece) => _hashes.containsKey(_hash(slugify(piece)));
 
+  // redact() over a whole journal runs on every extraction and snapshot
+  // load, and the same texts come back each time: results are remembered
+  // until the forgotten set changes (M2).
+  final Map<String, String> _redacted = {};
+  static const _redactedCacheMax = 4096;
+
+  /// Texts actually scanned (not served from the cache), for tests.
+  @visibleForTesting
+  int scans = 0;
+
   /// [text] with every forgotten name replaced by "someone".
   String redact(String text) {
     if (_hashes.isEmpty || text.isEmpty || _key == null) return text;
+    final cached = _redacted[text];
+    if (cached != null) return cached;
+    scans += 1;
+    final result = _scan(text);
+    if (_redacted.length >= _redactedCacheMax) _redacted.clear();
+    return _redacted[text] = result;
+  }
+
+  String _scan(String text) {
     final toks = <String>[];
     final word = <bool>[];
     for (final m in _token.allMatches(text)) {
@@ -316,14 +338,7 @@ class ForgetRedactor {
           ),
       },
       entries: [
-        for (final e in next.entries)
-          JournalEntry(
-            id: e.id,
-            text: redact(e.text),
-            createdAt: e.createdAt,
-            entityIds: e.entityIds,
-            relationIds: e.relationIds,
-          ),
+        for (final e in next.entries) _entry(e),
       ],
       followUps: [
         for (final f in next.followUps)
@@ -332,6 +347,18 @@ class ForgetRedactor {
               !f.targetEntityIds.any(dropped.contains))
             f,
       ],
+    );
+  }
+
+  JournalEntry _entry(JournalEntry e) {
+    final text = redact(e.text);
+    if (text == e.text) return e;
+    return JournalEntry(
+      id: e.id,
+      text: text,
+      createdAt: e.createdAt,
+      entityIds: e.entityIds,
+      relationIds: e.relationIds,
     );
   }
 

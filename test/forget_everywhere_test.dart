@@ -311,6 +311,48 @@ void main() {
     });
   });
 
+  group('redaction is not repeated for the same text (Phase 2, M2)', () {
+    JournalState journal(int n) => JournalState.empty().copyWith(entries: [
+          for (var i = 0; i < n; i++)
+            JournalEntry(
+              id: 'e$i',
+              text: i == 3 ? 'Priya Raman called me' : 'Walked the dog $i',
+              createdAt: DateTime.utc(2026, 11, 1),
+              entityIds: const [],
+              relationIds: const [],
+            ),
+        ]);
+
+    test('the second pass over a state scans nothing new', () {
+      final r = ForgetRedactor()..add('priya-raman', ['Priya Raman']);
+      final first = r.redactState(journal(500));
+      final scanned = r.scans;
+      expect(scanned, greaterThanOrEqualTo(500));
+      final second = r.redactState(journal(500));
+      expect(r.scans, scanned, reason: 'every text came from the cache');
+      expect(second.entries[3].text, first.entries[3].text);
+      expect(first.entries[3].text, 'someone called me');
+    });
+
+    test('a new forget is applied to texts already cached', () {
+      final r = ForgetRedactor();
+      r.add('will', ['Will']);
+      expect(r.redact('Priya Raman called'), 'Priya Raman called');
+      r.add('priya-raman', ['Priya Raman']);
+      expect(r.redact('Priya Raman called'), 'someone called');
+    });
+
+    test('sign-out empties the cache', () async {
+      final store = MemoryStore();
+      final r = ForgetRedactor(store: store, ownerId: () => 'u1');
+      await r.ensureLoaded();
+      r.add('priya-raman', ['Priya Raman']);
+      expect(r.redact('Priya Raman called'), 'someone called');
+      await r.clear();
+      expect(r.redact('Priya Raman called'), 'Priya Raman called');
+    });
+  });
+
   group('owners and in-flight loads (Phase 2, M7)', () {
     test('a load in flight for one owner is not reused for the next', () async {
       final store = _SlowStore();
