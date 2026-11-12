@@ -128,13 +128,18 @@ class _VoiceServicesScopeState extends ConsumerState<VoiceServicesScope>
     if (_binding == null) {
       final journal = ref.read(turnJournalServiceProvider);
       final openingPrep = ref.read(openingPrepProvider);
+      final sharedLog = ref.read(sharedLogProvider);
       _binding = VoiceServicesBinding(
         credentials: ref.read(liveCredentialsProvider),
         audioOutput: ref.read(audioOutputProvider),
         runtimeConfigured:
             ref.read(notebookRuntimeServiceProvider).isConfigured,
         // Both are best-effort and independent; neither blocks a session.
-        warmUp: () => Future.wait([journal.warmUp(), openingPrep.refresh()]),
+        warmUp: () {
+          // Signed in again: "What Lumen shared" records once more (LM-57).
+          sharedLog.resume();
+          return Future.wait([journal.warmUp(), openingPrep.refresh()]);
+        },
         // Coming back also re-asks for a brief that failed earlier.
         onResume: () => Future.wait(
             [openingPrep.refresh(), openingPrep.retryPendingBrief()]),

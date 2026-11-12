@@ -359,6 +359,130 @@ void main() {
     });
   });
 
+  group('pending deletes and the rest of round 2', () {
+    File pendingFile() => File('${dir.path}/shared-log-pending');
+    void seedPending(Map<String, dynamic> m) =>
+        pendingFile().writeAsStringSync(jsonEncode(m));
+
+    test('a seeded "all" is finished by sweep and its file removed', () async {
+      await log.record(nb, SharedKind.extraction, {'t': 1});
+      await log.record('b', SharedKind.briefSpeak, {'t': 2});
+      seedPending({'all': true, 'notebooks': []});
+      await makeLog().sweep();
+      expect(files(), isEmpty);
+      expect(pendingFile().existsSync(), isFalse);
+    });
+
+    test('seeded notebooks are finished by sweep, the rest kept', () async {
+      await log.record(nb, SharedKind.extraction, {'t': 1});
+      await log.record('b', SharedKind.extraction, {'t': 2});
+      await log.record('keep', SharedKind.extraction, {'t': 3});
+      seedPending({
+        'all': false,
+        'notebooks': [nb, 'b']
+      });
+      await makeLog().sweep();
+      expect(files().map((f) => f.path), [endsWith('keep.json')]);
+      expect(pendingFile().existsSync(), isFalse);
+    });
+
+    test('a failed delete leaves a pending file that sweep clears', () async {
+      await log.record(nb, SharedKind.extraction, {'t': 1});
+      final folder = '${dir.path}/shared-log-v1';
+      chmod('555', folder);
+      await expectLater(log.forgetPerson(), throwsA(anything));
+      chmod('755', folder);
+      expect(pendingFile().existsSync(), isTrue);
+      expect(jsonDecode(pendingFile().readAsStringSync())['all'], isTrue);
+      await makeLog().sweep();
+      expect(files(), isEmpty);
+      expect(pendingFile().existsSync(), isFalse);
+    });
+
+    test('the pending file is protected and out of backups; if not, it stays',
+        () async {
+      await log.record(nb, SharedKind.extraction, {'t': 1});
+      final folder = '${dir.path}/shared-log-v1';
+      chmod('555', folder);
+      await expectLater(log.forgetNotebook(nb), throwsA(anything));
+      chmod('755', folder);
+      expect(protections.map((p) => p.$1), contains(pendingFile().path));
+      expect(backups, contains(pendingFile().path));
+
+      protectError = const FileSystemException('locked');
+      backupError = const FileSystemException('no');
+      chmod('555', folder);
+      await expectLater(log.forgetPerson(), throwsA(anything));
+      chmod('755', folder);
+      protectError = null;
+      backupError = null;
+      expect(pendingFile().existsSync(), isTrue, reason: 'retry still happens');
+      await makeLog().sweep();
+      expect(files(), isEmpty);
+    });
+
+    test('an unreadable or damaged pending file means delete everything',
+        () async {
+      await log.record(nb, SharedKind.extraction, {'t': 1});
+      pendingFile().writeAsStringSync('{not json');
+      await makeLog().sweep();
+      expect(files(), isEmpty);
+      expect(pendingFile().existsSync(), isFalse);
+    });
+
+    test('a file that is not text is skipped by record, deleted by sweep',
+        () async {
+      await log.record(nb, SharedKind.extraction, {'t': 1});
+      final file = files().single;
+      file.writeAsBytesSync([0xff, 0xfe, 0xfd]);
+      await log.record(nb, SharedKind.card, {'t': 2});
+      expect(file.readAsBytesSync(), [0xff, 0xfe, 0xfd]);
+      expect(await log.read(nb), isEmpty);
+      await log.sweep();
+      expect(files(), isEmpty);
+      await log.record(nb, SharedKind.card, {'t': 3});
+      file.writeAsBytesSync([0xff, 0xfe]);
+      await log.forgetPerson();
+      expect(files(), isEmpty);
+    });
+
+    test('after sign-out nothing is recorded until the next sign-in', () async {
+      await log.record(nb, SharedKind.extraction, {'t': 1});
+      await log.clearAll();
+      await log.record(nb, SharedKind.extraction, {'t': 2});
+      await log.record('other', SharedKind.card, {'t': 3});
+      expect(files(), isEmpty);
+      log.resume();
+      await log.record(nb, SharedKind.extraction, {'t': 4});
+      expect(files(), hasLength(1));
+    });
+
+    test('a failed wipe is retried before anything is shown', () async {
+      await log.record(nb, SharedKind.extraction, {'t': 1});
+      seedPending({'all': true, 'notebooks': []});
+      final folder = '${dir.path}/shared-log-v1';
+      chmod('555', folder);
+      expect(await log.read(nb), isEmpty, reason: 'not shown while pending');
+      expect(await log.readAll(), isEmpty);
+      chmod('755', folder);
+      expect(files(), hasLength(1));
+      expect(await log.read(nb), isEmpty);
+      expect(files(), isEmpty, reason: 'the read finished the wipe');
+      expect(pendingFile().existsSync(), isFalse);
+    });
+
+    test('the app shares one instance, with launch included', () {
+      expect(identical(SharedLog.instance, SharedLog.instance), isTrue);
+      expect(File('lib/main.dart').readAsStringSync(),
+          contains('SharedLog.instance.sweep()'));
+      expect(File('lib/providers/shared_log_provider.dart').readAsStringSync(),
+          contains('SharedLog.instance'));
+      expect(
+          File('lib/providers/voice_services_provider.dart').readAsStringSync(),
+          contains('sharedLog.resume()'));
+    });
+  });
+
   group('wired at the request', () {
     test('extraction: the logged body is the body sent, no credential',
         () async {

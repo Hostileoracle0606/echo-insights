@@ -23,7 +23,7 @@ Future<void> main() async {
   // Journal exports left in the temporary directory by earlier runs.
   unawaited(sweepStaleExports());
   // Entries in "What Lumen shared" older than 7 days (LM-57).
-  unawaited(SharedLog().sweep().catchError((Object _) {}));
+  unawaited(SharedLog.instance.sweep().catchError((Object _) {}));
 
   runApp(const ProviderScope(child: LumenApp()));
 }

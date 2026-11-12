@@ -247,11 +247,13 @@ class JournalNotifier extends Notifier<JournalState> {
     // List.sort is not guaranteed stable; break ties by original position.
     final indexed = rows.indexed.toList()
       ..sort((a, b) {
-        final byTime = compareInstants(a.$2.turn.startedAt, b.$2.turn.startedAt);
+        final byTime =
+            compareInstants(a.$2.turn.startedAt, b.$2.turn.startedAt);
         return byTime != 0 ? byTime : a.$1.compareTo(b.$1);
       });
     return [for (final (_, row) in indexed) row];
   }
+
   bool get extracting => _extracting;
   UpsertActivity? get activity => _activity;
   RecallActivity? get recall => _recall;
@@ -316,6 +318,7 @@ class JournalNotifier extends Notifier<JournalState> {
     }
     return opening?.inProgress ?? false;
   }
+
   int get revision => _revision;
 
   @override
@@ -776,10 +779,10 @@ class JournalNotifier extends Notifier<JournalState> {
     try {
       final retrieval =
           await ref.read(retrieveMemoryServiceProvider).retrieveResult(
-        query: effect.transcript,
-        notebookId: effect.key.notebookId,
-        state: state,
-      );
+                query: effect.transcript,
+                notebookId: effect.key.notebookId,
+                state: state,
+              );
       vlog('timing', 'extract retrieve +${clock.elapsedMilliseconds}ms');
       final openFollowUps = state.followUps.where((item) => !item.answered);
       final patch = await extractService.extract(
@@ -1038,8 +1041,8 @@ class JournalNotifier extends Notifier<JournalState> {
     _syncBackgroundFlush();
     _suppressed.remove(entityId);
 
-    state = pending.hidden
-        .restoreInto(state, (id) => _pendingRemovals[id]?.hidden);
+    state =
+        pending.hidden.restoreInto(state, (id) => _pendingRemovals[id]?.hidden);
     pending.done.complete(RemovalOutcome.undone);
     return true;
   }
@@ -1888,7 +1891,8 @@ class JournalNotifier extends Notifier<JournalState> {
     bool whilePaused = false,
     bool fresh = false,
   }) async {
-    bool isCurrent() => _isCurrentLiveSession(session.binding, session.live) &&
+    bool isCurrent() =>
+        _isCurrentLiveSession(session.binding, session.live) &&
         identical(_session, session);
     if (_reconnecting || !isCurrent()) return;
     if (_status == SessionStatus.error) return;

@@ -92,6 +92,9 @@ class SharedRequest {
 /// before it is deleted, so a file that can't be opened (the phone is
 /// locked) still goes.
 class SharedLog {
+  /// The one instance the app uses, so every caller shares one queue.
+  static final SharedLog instance = SharedLog();
+
   SharedLog({
     Future<Directory> Function()? directoryProvider,
     FileProtector? protect,
@@ -129,6 +132,13 @@ class SharedLog {
   /// name) is recorded for the rest of it.
   bool _personForgotten = false;
 
+  /// Signed out in this run: nothing is recorded until [resume] (the next
+  /// sign-in), so a request of the old account can't land after the wipe.
+  bool _signedOut = false;
+
+  /// Records are accepted again (a sign-in).
+  void resume() => _signedOut = false;
+
   /// Records [body] (the object the request was built from) for
   /// [notebookId]. Call it at the one place the request is built, with the
   /// exact map that is then encoded and sent. Never throws.
@@ -138,6 +148,7 @@ class SharedLog {
     Map<String, dynamic> body,
   ) async {
     bool refused() =>
+        _signedOut ||
         _deleted.contains(notebookId) ||
         (_personForgotten && kind == SharedKind.briefSpeak);
     if (refused()) return;
@@ -168,6 +179,9 @@ class SharedLog {
 
   /// [notebookId]'s entries, newest first (older than [retention] swept).
   Future<List<SharedRequest>> read(String notebookId) => _serialized(() async {
+        // A delete that failed is finished first; if it can't be, nothing
+        // is shown.
+        if (!await _retryPending()) return const <SharedRequest>[];
         final file = await _file(notebookId);
         final fresh = await _freshOf(file, notebookId);
         return (fresh ?? const <SharedRequest>[]).reversed.toList();
@@ -175,6 +189,7 @@ class SharedLog {
 
   /// Every session's entries, newest first.
   Future<List<SharedRequest>> readAll() => _serialized(() async {
+        if (!await _retryPending()) return const <SharedRequest>[];
         final all = <SharedRequest>[];
         for (final file in await _files()) {
           all.addAll(await _freshOf(file, _idOf(file)) ?? const []);
@@ -191,7 +206,8 @@ class SharedLog {
           await temp.delete();
         }
         for (final file in await _files()) {
-          await _freshOf(file, _idOf(file));
+          // A file that isn't text can never be shown: it goes.
+          await _freshOf(file, _idOf(file), deleteCorrupt: true);
         }
       });
 
@@ -207,7 +223,10 @@ class SharedLog {
   }
 
   /// Sign-out: nothing is left for the next account.
-  Future<void> clearAll() => _serialized(_wipe);
+  Future<void> clearAll() {
+    _signedOut = true;
+    return _serialized(_wipe);
+  }
 
   /// Someone was forgotten (LM-49). The speak request's line may carry their
   /// real name, and a name the swap missed could be in any other entry, so
@@ -238,15 +257,32 @@ class SharedLog {
   Future<File> _pendingFile() async =>
       File('${(await _directoryProvider()).path}/$_pendingName');
 
+  /// What is pending. A pending file that exists but can't be read (the
+  /// phone is locked, or it is damaged) counts as "delete everything".
   Future<Map<String, dynamic>> _readPending() async {
+    final File file;
     try {
-      final file = await _pendingFile();
+      file = await _pendingFile();
       if (!await file.exists()) return {};
-      final decoded = jsonDecode(await file.readAsString());
-      return decoded is Map ? decoded.cast<String, dynamic>() : {};
     } catch (_) {
       return {};
     }
+    try {
+      final decoded = jsonDecode(await file.readAsString());
+      if (decoded is Map) return decoded.cast<String, dynamic>();
+    } catch (_) {}
+    return {'all': true};
+  }
+
+  /// Written protected and left out of backups; if either fails the file
+  /// stays anyway, so the retry still happens (it holds only ids).
+  Future<void> _writePending(Map<String, dynamic> pending) async {
+    final file = await _pendingFile();
+    await file.writeAsString(jsonEncode(pending));
+    try {
+      await _protect(file.path, FileProtectionLevel.complete);
+      await _exclude(file.path);
+    } catch (_) {}
   }
 
   Future<void> _markPending({String? notebook, bool all = false}) async {
@@ -256,14 +292,10 @@ class SharedLog {
         ...((pending['notebooks'] as List?) ?? const []).cast<String>(),
         if (notebook != null) notebook,
       };
-      final file = await _pendingFile();
-      await file.writeAsString(jsonEncode({
+      await _writePending({
         'all': all || pending['all'] == true,
         'notebooks': notebooks.toList(),
-      }));
-      try {
-        await _exclude(file.path);
-      } catch (_) {}
+      });
     } catch (_) {
       // Best effort: the delete itself still runs.
     }
@@ -284,9 +316,10 @@ class SharedLog {
       if (notebooks.isEmpty && pending['all'] != true) {
         if (await file.exists()) await file.delete();
       } else {
-        await file.writeAsString(
-          jsonEncode({'all': pending['all'] == true, 'notebooks': notebooks}),
-        );
+        await _writePending({
+          'all': pending['all'] == true,
+          'notebooks': notebooks,
+        });
       }
     } catch (_) {}
   }
@@ -304,14 +337,32 @@ class SharedLog {
     }
   }
 
+  /// Finishes a delete that failed earlier. False when it can't be.
+  Future<bool> _retryPending() async {
+    try {
+      await _finishPending();
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// [file]'s entries within [retention], rewritten if some were older. Null
   /// when the file can't be read now.
-  Future<List<SharedRequest>?> _freshOf(File file, String id) async {
+  Future<List<SharedRequest>?> _freshOf(
+    File file,
+    String id, {
+    bool deleteCorrupt = false,
+  }) async {
     try {
       final entries = await _load(file, id);
       final fresh = _fresh(entries);
       if (fresh.length != entries.length) await _write(file, fresh);
       return fresh;
+    } on FormatException {
+      // Not text (damaged): never shown.
+      if (deleteCorrupt) await file.delete();
+      return null;
     } on FileSystemException {
       return null;
     }
@@ -394,7 +445,9 @@ class SharedLog {
   /// overwritten by the next entry). A file that can't be read throws.
   Future<List<SharedRequest>> _load(File file, String notebookId) async {
     if (!await file.exists()) return <SharedRequest>[];
-    final text = await file.readAsString();
+    // Bytes first: a read that fails is an I/O error (FileSystemException);
+    // bytes that aren't text are a FormatException.
+    final text = utf8.decode(await file.readAsBytes());
     try {
       final decoded = jsonDecode(text);
       if (decoded is! Map || decoded['entries'] is! List) {
