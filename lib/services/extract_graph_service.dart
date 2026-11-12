@@ -117,6 +117,7 @@ class ExtractGraphService {
     // recent conversation and the graph, here, on every attempt: a retry
     // after a forget mid-flight carries the words from before it.
     final forgotten = _forgotten;
+    await forgotten?.ensureLoaded();
     if (forgotten != null && !forgotten.isEmpty) {
       text = forgotten.redact(text);
       recentConversation = [

@@ -14,7 +14,7 @@ abstract interface class PseudonymStore {
 /// passcode), never in a file or preference the sandbox exposes, never sent
 /// to the server, and not carried to another device by a backup.
 class KeychainPseudonymStore implements PseudonymStore {
-  KeychainPseudonymStore([FlutterSecureStorage? storage])
+  KeychainPseudonymStore([FlutterSecureStorage? storage, this.key = mapKey])
       : _storage = storage ??
             const FlutterSecureStorage(
               iOptions: IOSOptions(
@@ -23,7 +23,13 @@ class KeychainPseudonymStore implements PseudonymStore {
             );
   final FlutterSecureStorage _storage;
 
-  static const key = 'privacy.pseudonym_map';
+  /// The Keychain item this store reads and writes.
+  final String key;
+
+  static const mapKey = 'privacy.pseudonym_map';
+
+  /// LM-63: the keyed hashes of forgotten names, beside the map.
+  static const forgottenKey = 'privacy.forgotten_names';
 
   @override
   Future<String?> read() => _storage.read(key: key);

@@ -226,6 +226,9 @@ class JournalNotifier extends Notifier<JournalState> {
   // LM-63: the names forgotten since launch, redacted from everything the
   // app assembles for Lumen. Cleared on sign-out.
   ForgetRedactor get _redactor => ref.read(forgetRedactorProvider);
+  // Someone was forgotten while the session was connecting: it is replaced
+  // by a fresh one as soon as it is up.
+  bool _reopenOnActivation = false;
   final Map<String, _PendingRemoval> _pendingRemovals = {};
   BackgroundFlush? _backgroundFlush;
   Set<String> get suppressedEntityIds => Set.unmodifiable(_suppressed);
@@ -793,6 +796,7 @@ class JournalNotifier extends Notifier<JournalState> {
     final extractService = ref.read(extractGraphServiceProvider);
     final clock = Stopwatch()..start();
     try {
+      await _redactor.ensureLoaded();
       final retrieval =
           await ref.read(retrieveMemoryServiceProvider).retrieveResult(
                 query: _redactor.redact(effect.transcript),
@@ -931,6 +935,9 @@ class JournalNotifier extends Notifier<JournalState> {
       _lastPatches.remove(turn.turnId);
       _dispatchTurn(
           CommitCommitted(turnId: turn.turnId, revision: outcome.revision));
+      // The server dropped or renamed something (LM-63: an id that spells a
+      // forgotten name is stored under another): its graph is the truth.
+      if (outcome.suppressedIds.isNotEmpty) await _reloadSnapshot();
       return;
     }
     if (outcome is commit_service.CommitConflict) {
@@ -997,8 +1004,10 @@ class JournalNotifier extends Notifier<JournalState> {
       ..addAll(_forgottenThisRun);
     // A snapshot read before a forget landed still names them (LM-63).
     var next = _redactor.redactState(snapshot.state);
-    for (final id in _pendingRemovals.keys) {
-      next = withoutEntity(next, id);
+    // And a read that raced a removal, a forget or a commit the server
+    // thinned still holds what this run dropped.
+    for (final id in {..._pendingRemovals.keys, ..._forgottenThisRun}) {
+      if (next.entities.containsKey(id)) next = withoutEntity(next, id);
     }
     return next;
   }
@@ -1077,6 +1086,7 @@ class JournalNotifier extends Notifier<JournalState> {
   Future<void> forgetEntity(String entityId, {String? name}) async {
     // Every name they go by here: the given one, and the same person under
     // another id (the server drops those rows too).
+    await _redactor.ensureLoaded();
     final own = state.entities[entityId]?.name ?? name;
     final slugs = {entityId, if (own != null) slugify(own)};
     final names = {
@@ -1105,6 +1115,9 @@ class JournalNotifier extends Notifier<JournalState> {
       // conversation is up (as off the record, LM-50).
       _turnMachine.holdAssistantOffRecord = true;
       unawaited(_reopenWithSavedContext(session, reason: 'forgot someone'));
+    } else if (_status == SessionStatus.connecting) {
+      // Still connecting: the new conversation starts once this one is up.
+      _reopenOnActivation = true;
     }
     // The server may have deleted the brief; the copy held here must not be
     // spoken at the next opening.
@@ -1270,6 +1283,8 @@ class JournalNotifier extends Notifier<JournalState> {
 
   Future<void> _loadNotebookUnlocked(String notebookId) async {
     final clock = Stopwatch()..start();
+    // Who this account forgot, before anything is read or sent (LM-63).
+    await _redactor.ensureLoaded();
     final commitService = ref.read(notebookCommitServiceProvider);
     // The snapshot and the saved conversation are independent reads, so they
     // share one round trip's wait. _loadHistory never throws.
@@ -1917,6 +1932,11 @@ class JournalNotifier extends Notifier<JournalState> {
     );
     if (continuing) prepared.live.releaseInput();
     vlog('timing', 'live');
+    if (_reopenOnActivation) {
+      _reopenOnActivation = false;
+      _turnMachine.holdAssistantOffRecord = true;
+      unawaited(_reopenWithSavedContext(prepared, reason: 'forgot someone'));
+    }
     return const NotebookTransitionResult.success();
   }
 
@@ -2484,6 +2504,7 @@ class JournalNotifier extends Notifier<JournalState> {
     _turnMachine.offTheRecord = false;
     _turnMachine.holdAssistantOffRecord = false;
     _reopenAfterReconnect = false;
+    _reopenOnActivation = false;
     _wentOffRecord = false;
     _savedAtOpen = {};
     _history.clear();

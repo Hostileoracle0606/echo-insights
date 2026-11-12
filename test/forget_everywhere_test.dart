@@ -136,15 +136,15 @@ void main() {
       expect(r.isEmpty, isFalse);
       r.clear();
       expect(r.redact('Priya Raman'), 'Priya Raman');
-      expect(r.spells('priya-raman-foundation'), isFalse);
+      expect(r.spells('priya-raman-foundation', 'Priya Raman Foundation'), isFalse);
     });
 
     test('knows an id that spells the name', () {
       final r = _forgetPriya();
-      expect(r.spells('priya-raman-foundation'), isTrue);
-      expect(r.spells('the-priya-raman-fund'), isTrue);
-      expect(r.spells('priya-ramanathan'), isFalse);
-      expect(r.spells('priya-nair'), isFalse);
+      expect(r.spells('priya-raman-foundation', 'Priya Raman Foundation'), isTrue);
+      expect(r.spells('the-priya-raman-fund', 'The Priya Raman Fund'), isTrue);
+      expect(r.spells('priya-ramanathan', 'Priya Ramanathan'), isFalse);
+      expect(r.spells('priya-nair', 'Priya Nair'), isFalse);
     });
 
     test('the graph state as the server leaves it (BUG-4, BUG-5)', () {
@@ -307,6 +307,62 @@ void main() {
       expect(reserved, isNot(contains('raman')));
       expect(reserved, containsAll(['priya', 'nair']),
           reason: 'Priya Nair is still a real name: no stand-in may take it');
+    });
+  });
+
+  group('stored forgotten names (fix round 1)', () {
+    test('hashes only, matched like the server after a reload', () async {
+      final store = MemoryStore();
+      final first = ForgetRedactor(store: store, ownerId: () => 'u1');
+      await first.ensureLoaded();
+      first.add('priya-raman', ['Priya Raman']);
+      first.add('will', ['Will']);
+      first.add('li-lei', ['李雷']);
+      await first.flush();
+      final saved = store.saved!.toLowerCase();
+      for (final word in ['priya', 'raman', 'will', '李雷']) {
+        expect(saved, isNot(contains(word)), reason: '"$word" stored');
+      }
+
+      final again = ForgetRedactor(store: store, ownerId: () => 'u1');
+      await again.ensureLoaded();
+      expect(again.redact('PRIYA RAMAN called. Priya-Raman too.'), 'someone called. someone too.');
+      expect(again.redact('Priya Nair met Priya Ramanathan.'), 'Priya Nair met Priya Ramanathan.');
+      expect(again.redact('Will said we will go.'), 'someone said we will go.');
+      expect(again.redact('我和李雷去了'), '我和someone去了');
+    });
+
+    test('ids are judged by the entity name: forgetting Will, Grace and Mark', () {
+      final r = ForgetRedactor()
+        ..add('will', ['Will'])
+        ..add('grace', ['Grace'])
+        ..add('mark', ['Mark']);
+      final state = JournalState.empty().copyWith(entities: {
+        for (final e in [
+          entity('will-power', 'will power', type: EntityType.concept),
+          entity('good-will', 'good will', type: EntityType.concept),
+          entity('grace-period', 'grace period', type: EntityType.concept),
+          entity('mark-down', 'mark down', type: EntityType.concept),
+          entity('grace-hopper-prize', 'Grace Hopper Prize', type: EntityType.event),
+        ])
+          e.id: e,
+      });
+      final next = r.redactState(state);
+      expect(next.entities.keys,
+          unorderedEquals(['will-power', 'good-will', 'grace-period', 'mark-down']));
+      expect(r.spells('will-power', 'will power'), isFalse);
+      expect(r.spells('grace-hopper-prize', 'Grace Hopper Prize'), isTrue);
+    });
+
+    test('sign-out clears memory and the store', () async {
+      final store = MemoryStore();
+      final r = ForgetRedactor(store: store, ownerId: () => 'u1');
+      await r.ensureLoaded();
+      r.add('priya-raman', ['Priya Raman']);
+      await r.flush();
+      await r.clear();
+      expect(store.saved, isNull);
+      expect(r.redact('Priya Raman'), 'Priya Raman');
     });
   });
 }

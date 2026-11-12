@@ -4,6 +4,7 @@
 // (original header: end to end through the real
 // JournalNotifier and GeminiLiveClient: only the socket, the microphone, the
 // speaker and the token source are fakes.
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -42,7 +43,12 @@ import 'package:lumen/services/supabase_service.dart';
 import 'package:lumen/services/transcript_store.dart';
 import 'package:lumen/services/turn_journal_service.dart';
 
+import 'package:lumen/logic/forget_redaction.dart';
+import 'package:lumen/providers/forget_redactor_provider.dart';
+import 'package:lumen/services/pseudonym_store.dart';
+
 import 'support/fake_live_socket.dart';
+import 'support/pseudonyms.dart' show MemoryStore;
 
 const _notebookId = '8e03b8f4-4f20-4df3-8398-d854adc32b14';
 const _otherNotebookId = '5c1d2a9e-7b3f-4e8a-9d61-0f2b7c4e8a13';
@@ -87,10 +93,15 @@ class _FakeCommits implements NotebookCommitService {
   JournalState state;
   bool failSnapshots = false;
   int commits = 0;
+  int snapshotReads = 0;
+
+  /// What the server says it dropped from the next commit.
+  List<String> suppressNext = const [];
 
   @override
   Future<NotebookSnapshot?> getNotebookSnapshot(String notebookId) async {
     if (failSnapshots) throw StateError('offline');
+    snapshotReads += 1;
     return NotebookSnapshot(notebookId: notebookId, revision: 3, state: state);
   }
 
@@ -103,9 +114,12 @@ class _FakeCommits implements NotebookCommitService {
     required NotebookChange change,
   }) async {
     commits += 1;
+    final suppressed = suppressNext;
+    suppressNext = const [];
     return CommitCommitted(
       requestId: requestId,
       revision: expectedRevision + 1,
+      suppressedIds: suppressed,
     );
   }
 
@@ -141,6 +155,9 @@ class _FakeExtractor implements ExtractGraphService {
   final texts = <String>[];
   final recent = <String>[];
 
+  /// The patch the next call returns (then empty again).
+  GraphPatch? next;
+
   @override
   Future<GraphPatch> extract({
     required String notebookId,
@@ -157,7 +174,9 @@ class _FakeExtractor implements ExtractGraphService {
   }) async {
     texts.add(text);
     recent.addAll(recentConversation.map((t) => t.text));
-    return GraphPatch.empty();
+    final patch = next ?? GraphPatch.empty();
+    next = null;
+    return patch;
   }
 
   @override
@@ -283,8 +302,11 @@ class _Harness {
     List<ConversationTurn> history = const [],
     Duration openingTimeout = const Duration(seconds: 10),
     SupabaseService? supabase,
+    PseudonymStore? forgottenStore,
   })  : transcripts = _FakeTranscripts(history),
-        commits = _FakeCommits(state ?? JournalState.empty()) {
+        commits = _FakeCommits(state ?? JournalState.empty()),
+        forgotten = ForgetRedactor(
+            store: forgottenStore ?? MemoryStore(), ownerId: () => 'user-1') {
     credentials = LiveCredentials(fetch: () async {
       tokensMinted += 1;
       final now = DateTime.now();
@@ -307,6 +329,7 @@ class _Harness {
       sessionCardServiceProvider.overrideWithValue(cards),
       sessionBriefServiceProvider.overrideWithValue(briefs),
       memoryControlServiceProvider.overrideWithValue(memory),
+      forgetRedactorProvider.overrideWithValue(forgotten),
       liveCredentialsProvider.overrideWithValue(credentials),
       audioOutputProvider.overrideWithValue(
         AudioOutput(createPlayer: () => PcmPlayer(backend: _Backend())),
@@ -333,6 +356,7 @@ class _Harness {
 
   final _FakeTranscripts transcripts;
   final _FakeCommits commits;
+  final ForgetRedactor forgotten;
   final extractor = _FakeExtractor();
   final retrievals = _NoMemory();
   final cards = _FakeCards();
@@ -840,6 +864,100 @@ void main() {
       expect(ids, containsAll(['halvorsen-group', 'city-marathon', 'priya-nair']));
       final names = h.container.read(journalProvider).entities.values.map((e) => e.name);
       expect(names.join(' ').toLowerCase(), isNot(contains('raman')));
+    });
+  });
+
+  group('forget everywhere, fix round 1 (LM-63)', () {
+    test('a forget survives a restart: the name said again reaches no request, graph or later context',
+        () async {
+      final store = MemoryStore();
+      h = _Harness(state: _beforeForget(), forgottenStore: store);
+      await h.journal.enterNotebook(_notebookId);
+      h.commits.state = _afterForget(entriesRedacted: true);
+      await h.journal.forgetEntity('priya-raman');
+      await h.forgotten.flush();
+      expect((store.saved ?? '').toLowerCase(), isNot(contains('priya')),
+          reason: 'only keyed hashes are stored, never the name');
+      expect((store.saved ?? '').toLowerCase(), isNot(contains('raman')));
+      h.dispose();
+
+      // The app restarts: a new container, nothing in memory.
+      h = _Harness(state: _afterForget(entriesRedacted: true), forgottenStore: store);
+      await h.journal.enterNotebook(_notebookId);
+      await h.startLive();
+      _userSays(h.socket, 'Priya Raman called again about her leg.');
+      await _settle();
+      expect(h.extractor.texts.last, 'someone called again about her leg.');
+      expect(h.retrievals.queries.last, 'someone called again about her leg.');
+      final graph = h.container.read(journalProvider);
+      expect(graph.entities.values.map((e) => e.name).join(' ').toLowerCase(),
+          isNot(contains('raman')));
+
+      // A later context: the conversation is reopened from saved context.
+      h.commits.state = _afterForget(entriesRedacted: true);
+      await h.journal.forgetEntity('halvorsen-group', name: 'Halvorsen Group');
+      await h.waitForSocket(2);
+      h.socket.serverSends({'setupComplete': <String, dynamic>{}});
+      await _settle();
+      expect(jsonEncode(h.socket.sent).toLowerCase(), isNot(contains('raman')),
+          reason: 'only the live echo of that turn heard her name');
+      expect(h.journal.transcriptRows.map((r) => r.turn.text),
+          contains('Priya Raman called again about her leg.'));
+    });
+
+    test('another account\'s forgotten names are not read', () async {
+      final store = MemoryStore();
+      final mine = ForgetRedactor(store: store, ownerId: () => 'user-1');
+      await mine.ensureLoaded();
+      mine.add('priya-raman', ['Priya Raman']);
+      await mine.flush();
+      final theirs = ForgetRedactor(store: store, ownerId: () => 'user-2');
+      await theirs.ensureLoaded();
+      expect(theirs.redact('Priya Raman'), 'Priya Raman');
+      expect(store.saved, isNull, reason: 'discarded, not kept for later');
+    });
+
+    test('after a commit the server dropped ids from, the device adopts its snapshot', () async {
+      h = _Harness(state: _afterForget(entriesRedacted: true));
+      await h.journal.enterNotebook(_notebookId);
+      await h.startLive();
+      final server = _afterForget(entriesRedacted: true);
+      h.commits.state = server.copyWith(entities: {
+        ...server.entities,
+        'someone-foundation': _ent('someone-foundation', 'someone Foundation', EntityType.organization),
+      });
+      h.extractor.next = GraphPatch.fromJson({
+        'entities': [
+          {'name': 'Priya Raman Foundation', 'type': 'organization'},
+        ],
+        'relations': <Object>[],
+        'supersedes': <String>[],
+      });
+      h.commits.suppressNext = const ['priya-raman-foundation'];
+      final reads = h.commits.snapshotReads;
+      _userSays(h.socket, 'The Priya Raman Foundation paid for it.');
+      await _settle();
+      expect(h.commits.snapshotReads, greaterThan(reads));
+      final ids = h.container.read(journalProvider).entities.keys;
+      expect(ids, contains('someone-foundation'));
+      expect(ids, isNot(contains('priya-raman-foundation')));
+    });
+
+    test('a forget while connecting still ends in a fresh conversation', () async {
+      h = _Harness(state: _beforeForget(), history: [
+        _turn('t1', Speaker.user, 'Priya Raman called about the marathon.'),
+      ]);
+      await h.journal.enterNotebook(_notebookId);
+      h.commits.state = _afterForget(entriesRedacted: true);
+      await h.startLive(beforeSetup: () {
+        unawaited(h.journal.forgetEntity('priya-raman'));
+      });
+      await _settle();
+      await h.waitForSocket(2);
+      h.socket.serverSends({'setupComplete': <String, dynamic>{}});
+      await _settle();
+      expect(h.socket.setup['session_resumption'], isEmpty);
+      expect(jsonEncode(h.socket.sent).toLowerCase(), isNot(contains('raman')));
     });
   });
 }

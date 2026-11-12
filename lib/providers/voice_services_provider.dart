@@ -36,7 +36,8 @@ final signedOutCleanupProvider = Provider<void Function()>((ref) {
   return () {
     ref.read(openingPrepProvider).clear();
     ref.read(forgottenThisRunProvider).clear();
-    ref.read(forgetRedactorProvider).clear();
+    // The hashes of the people they forgot, in memory and the Keychain.
+    unawaited(ref.read(forgetRedactorProvider).clear());
     // The on-device name map holds real names: erased with the account.
     unawaited(ref.read(pseudonymServiceProvider).clear());
     // What Lumen shared (LM-57) is erased with it.
@@ -131,6 +132,7 @@ class _VoiceServicesScopeState extends ConsumerState<VoiceServicesScope>
       final journal = ref.read(turnJournalServiceProvider);
       final openingPrep = ref.read(openingPrepProvider);
       final sharedLog = ref.read(sharedLogProvider);
+      final forgotten = ref.read(forgetRedactorProvider);
       _binding = VoiceServicesBinding(
         credentials: ref.read(liveCredentialsProvider),
         audioOutput: ref.read(audioOutputProvider),
@@ -140,7 +142,12 @@ class _VoiceServicesScopeState extends ConsumerState<VoiceServicesScope>
         warmUp: () {
           // Signed in again: "What Lumen shared" records once more (LM-57).
           sharedLog.resume();
-          return Future.wait([journal.warmUp(), openingPrep.refresh()]);
+          return Future.wait([
+            journal.warmUp(),
+            openingPrep.refresh(),
+            // Who this account forgot, before anything is sent (LM-63).
+            forgotten.ensureLoaded(),
+          ]);
         },
         // Coming back also re-asks for a brief that failed earlier.
         onResume: () => Future.wait(
