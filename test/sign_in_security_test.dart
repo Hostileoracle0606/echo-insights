@@ -12,6 +12,8 @@ import 'package:lumen/services/account_auth_service.dart';
 import 'package:lumen/theme/lumen_theme.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'package:lumen/providers/voice_services_provider.dart';
+
 import 'support/fake_auth_gateway.dart';
 
 class _Auth implements LockAuthenticator {
@@ -227,5 +229,90 @@ void main() {
     await t.pumpAndSettle();
     expect(gateway.calls, contains('deletePasskey:pk1'));
     expect(lock.reasons, ['Add a passkey', 'Remove a passkey']);
+  });
+
+  group('sign out of this phone (Phase 2, I1)', () {
+    late int cleanups;
+
+    Future<void> pumpOut(
+      WidgetTester t, {
+      List<Override> extra = const [],
+    }) async {
+      cleanups = 0;
+      await t.pumpWidget(
+        ProviderScope(
+          overrides: [
+            accountAuthServiceProvider.overrideWithValue(
+              AccountAuthService(gateway),
+            ),
+            lockAuthenticatorProvider.overrideWithValue(lock),
+            privacyCoverProvider.overrideWithValue(_Cover()),
+            privacyPreferenceStoreProvider.overrideWithValue(_Store()),
+            signedOutCleanupProvider.overrideWithValue(() => cleanups += 1),
+            ...extra,
+          ],
+          child: MaterialApp(
+            theme: LumenTheme.light(),
+            home: Builder(
+              builder: (context) => Scaffold(
+                body: TextButton(
+                  key: const Key('openSheet'),
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const Scaffold(
+                        body: SingleChildScrollView(child: SignInSecurity()),
+                      ),
+                    ),
+                  ),
+                  child: const Text('open'),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await t.tap(find.byKey(const Key('openSheet')));
+      await t.pumpAndSettle();
+      await t.tap(find.byKey(const Key('signInSecurityTile')));
+      await t.pumpAndSettle();
+    }
+
+    testWidgets('asks for Face ID, signs out this phone, runs the cleanup, '
+        'and leaves the screen', (t) async {
+      await pumpOut(t);
+      expect(find.byKey(const Key('signOutThisPhoneTile')), findsOneWidget);
+
+      await t.tap(find.byKey(const Key('signOutThisPhoneTile')));
+      await t.pumpAndSettle();
+
+      expect(lock.reasons, ['Sign out of this phone']);
+      expect(gateway.calls, contains('signOut'));
+      expect(cleanups, 1);
+      expect(find.byKey(const Key('signInSecurityTile')), findsNothing,
+          reason: 'the privacy screen is closed, the router shows login');
+    });
+
+    testWidgets('a failed Face ID signs nothing out and cleans nothing',
+        (t) async {
+      lock.passes = false;
+      await pumpOut(t);
+      await t.tap(find.byKey(const Key('signOutThisPhoneTile')));
+      await t.pumpAndSettle();
+
+      expect(gateway.calls, isNot(contains('signOut')));
+      expect(cleanups, 0);
+    });
+
+    testWidgets('a failed sign-out keeps the data and says so plainly',
+        (t) async {
+      gateway.signOutError = StateError('secret');
+      await pumpOut(t);
+      await t.tap(find.byKey(const Key('signOutThisPhoneTile')));
+      await t.pumpAndSettle();
+
+      expect(cleanups, 0);
+      expect(find.byKey(const Key('signInSecurityProblem')), findsOneWidget);
+      expect(find.textContaining('secret'), findsNothing);
+    });
   });
 }

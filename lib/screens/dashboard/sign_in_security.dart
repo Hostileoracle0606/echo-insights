@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../env.dart';
 import '../../providers/supabase_provider.dart';
+import '../../providers/voice_services_provider.dart';
 import '../../security/app_lock_provider.dart';
 import '../../services/account_auth_service.dart';
 import '../../theme/lumen_colors.dart';
@@ -86,6 +87,36 @@ class _SignInSecurityState extends ConsumerState<SignInSecurity> {
     }
   }
 
+  /// Ends this phone's session after Face ID or the passcode, then erases
+  /// what the account left on the phone (the same cleanup as a remote
+  /// sign-out) and closes the privacy screen; the router shows login. If
+  /// signing out fails nothing is erased: the account is still signed in.
+  Future<void> _signOutThisPhone() async {
+    if (!await requireReauth(context, reason: 'Sign out of this phone')) return;
+    if (!mounted) return;
+    setState(() {
+      _busyId = 'signOutThisPhone';
+      _problem = null;
+    });
+    try {
+      await ref.read(accountAuthServiceProvider).signOutThisDevice();
+    } catch (_) {
+      // Never show the error text: it can carry a token or an address.
+      if (mounted) {
+        setState(() {
+          _problem = 'Could not sign out. Check your connection.';
+          _busyId = null;
+        });
+      }
+      return;
+    }
+    ref.read(signedOutCleanupProvider)();
+    if (mounted) {
+      setState(() => _busyId = null);
+      await Navigator.of(context).maybePop();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = context.lumenColors;
@@ -136,7 +167,7 @@ class _SignInSecurityState extends ConsumerState<SignInSecurity> {
             _appleLinked
                 ? 'Linked to this account.'
                 : 'Link your Apple ID to this account so you can sign in '
-                    'with it. Asks for Face ID first.',
+                    'with it. Asks for Face ID or your passcode first.',
             style: small,
           ),
           trailing: _appleLinked
@@ -181,7 +212,7 @@ class _SignInSecurityState extends ConsumerState<SignInSecurity> {
             title: const Text('Add a passkey'),
             subtitle: Text(
               'Sign in with Face ID instead of a password. Asks for Face ID '
-              'first.',
+              'or your passcode first.',
               style: small,
             ),
             trailing: Icon(Icons.add, color: colors.ink),
@@ -224,6 +255,19 @@ class _SignInSecurityState extends ConsumerState<SignInSecurity> {
                     child: const Text('Sign out'),
                   ),
           ),
+        ListTile(
+          key: const Key('signOutThisPhoneTile'),
+          contentPadding: EdgeInsets.zero,
+          leading: Icon(Icons.logout, color: colors.ink),
+          title: const Text('Sign out of this phone'),
+          subtitle: Text(
+            'Erases what Lumen keeps on this phone for this account. Your '
+            'journal stays in your account. Asks for Face ID or your '
+            'passcode first.',
+            style: small,
+          ),
+          onTap: _busyId != null ? null : _signOutThisPhone,
+        ),
         if (_devices.length > 1)
           Padding(
             padding: const EdgeInsets.only(bottom: 8),

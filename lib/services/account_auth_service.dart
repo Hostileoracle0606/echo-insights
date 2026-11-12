@@ -104,6 +104,9 @@ abstract interface class AuthGateway {
   Future<void> deletePasskey(String id);
 
   Future<Object?> rpc(String function, [Map<String, dynamic>? params]);
+
+  /// Ends this phone's session only (scope local); other devices stay in.
+  Future<void> signOut();
 }
 
 class SupabaseAuthGateway implements AuthGateway {
@@ -171,6 +174,9 @@ class SupabaseAuthGateway implements AuthGateway {
   @override
   Future<Object?> rpc(String function, [Map<String, dynamic>? params]) =>
       _client.rpc(function, params: params);
+
+  @override
+  Future<void> signOut() => _client.auth.signOut(scope: SignOutScope.local);
 }
 
 /// Sign in with Apple, passkeys, and the signed-in device list (LM-58).
@@ -243,6 +249,10 @@ class AccountAuthService {
   Future<List<Passkey>> passkeys() => _gateway.listPasskeys();
 
   Future<void> removePasskey(String id) => _gateway.deletePasskey(id);
+
+  /// Signs this phone out (this session only). The caller then erases what
+  /// the account left on the phone.
+  Future<void> signOutThisDevice() => _gateway.signOut();
 
   Future<List<DeviceSession>> devices() async {
     final rows = await _gateway.rpc('list_my_sessions');

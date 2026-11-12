@@ -26,6 +26,7 @@ class FakeAuthGateway implements AuthGateway {
   List<UserIdentity> identityList = const [];
   List<Passkey> passkeyList = const [];
   Object? rpcResult;
+  Object? signOutError;
 
   @override
   String generateRawNonce() => nonce;
@@ -76,6 +77,12 @@ class FakeAuthGateway implements AuthGateway {
 
   @override
   Future<void> deletePasskey(String id) async => calls.add('deletePasskey:$id');
+
+  @override
+  Future<void> signOut() async {
+    calls.add('signOut');
+    if (signOutError != null) throw signOutError!;
+  }
 
   @override
   Future<Object?> rpc(String function, [Map<String, dynamic>? params]) async {
