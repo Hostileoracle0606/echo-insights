@@ -391,7 +391,10 @@ class PseudonymMap {
   }
 
   /// Removes [entityId] and everything derived from it: its real name, its
-  /// aliases and its stand-ins. The stand-ins are retired, not reused.
+  /// aliases and its stand-ins. The stand-ins are retired, not reused. The
+  /// words of its names leave the reserved list too (LM-63, BUG-7), unless
+  /// another name still in the map uses them; the next [sync] adds back any
+  /// the graph still has.
   bool forget(String entityId) {
     final entry = _entries.remove(entityId);
     if (entry == null) return false;
@@ -399,6 +402,13 @@ class PseudonymMap {
       _retired.addAll(_tokens(fake));
     }
     _retired.addAll(_tokens(entry.fake));
+    final kept = {
+      for (final e in _entries.values)
+        for (final s in e.surfaces) ..._tokens(s),
+    };
+    for (final surface in entry.surfaces) {
+      _reserved.removeAll(_tokens(surface).where((t) => !kept.contains(t)));
+    }
     _invalidate();
     return true;
   }

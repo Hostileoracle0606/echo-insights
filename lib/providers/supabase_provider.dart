@@ -15,6 +15,7 @@ import '../services/session_deletion_service.dart';
 import '../services/supabase_service.dart';
 import '../services/transcript_retention_service.dart';
 import '../services/transcript_store.dart';
+import 'forget_redactor_provider.dart';
 import 'pseudonym_provider.dart';
 import 'shared_log_provider.dart';
 
@@ -71,6 +72,7 @@ final extractGraphServiceProvider = Provider<ExtractGraphService>((ref) {
     accessTokenProvider: () => _accessToken(client),
     pseudonyms: ref.watch(pseudonymServiceProvider),
     log: ref.watch(sharedLogProvider),
+    forgotten: ref.watch(forgetRedactorProvider),
   );
 });
 

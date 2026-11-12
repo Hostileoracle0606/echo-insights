@@ -13,6 +13,7 @@ import '../audio/voice_engine.dart';
 import '../logic/agenda.dart' as agenda_logic;
 import '../logic/conversation_policy.dart';
 import '../logic/echo_gate.dart';
+import '../logic/forget_redaction.dart';
 import '../logic/live_session_guard.dart';
 import '../logic/live_signal_gate.dart';
 import '../logic/opening_choice.dart';
@@ -20,6 +21,7 @@ import '../logic/resume_context.dart';
 import '../logic/memory_removal.dart';
 import '../logic/merge.dart' as merge_logic;
 import '../logic/session_opening_coordinator.dart';
+import '../logic/slugify.dart';
 import '../logic/transcript_assembler.dart';
 import '../logic/turn_effect_queue.dart';
 import '../logic/turn_state.dart';
@@ -38,6 +40,7 @@ import '../services/notebook_runtime_service.dart';
 import '../services/retrieve_memory_service.dart';
 import '../services/session_card_service.dart';
 import '../services/turn_journal_service.dart';
+import 'forget_redactor_provider.dart';
 import 'opening_prep_provider.dart';
 import 'pseudonym_provider.dart';
 import 'shared_log_provider.dart';
@@ -220,6 +223,9 @@ class JournalNotifier extends Notifier<JournalState> {
   // Ids removed or forgotten since launch, or dropped by the server on a
   // commit, kept across snapshot reloads. Cleared on sign-out.
   Set<String> get _forgottenThisRun => ref.read(forgottenThisRunProvider);
+  // LM-63: the names forgotten since launch, redacted from everything the
+  // app assembles for Lumen. Cleared on sign-out.
+  ForgetRedactor get _redactor => ref.read(forgetRedactorProvider);
   final Map<String, _PendingRemoval> _pendingRemovals = {};
   BackgroundFlush? _backgroundFlush;
   Set<String> get suppressedEntityIds => Set.unmodifiable(_suppressed);
@@ -390,7 +396,10 @@ class JournalNotifier extends Notifier<JournalState> {
   /// Replaces the connection with a new conversation on Gemini's side,
   /// seeded only from what is saved, then lets Lumen's turns be saved again.
   /// If it can't reconnect the session errors, and they stay unsaved.
-  Future<void> _reopenWithSavedContext(_PreparedLive session) async {
+  Future<void> _reopenWithSavedContext(
+    _PreparedLive session, {
+    String reason = 'back on the record',
+  }) async {
     if (_reconnecting) {
       _reopenAfterReconnect = true;
       return;
@@ -400,7 +409,7 @@ class JournalNotifier extends Notifier<JournalState> {
       ..holdInput();
     await _reconnect(
       session,
-      'back on the record',
+      reason,
       whilePaused: true,
       fresh: true,
     );
@@ -581,6 +590,13 @@ class JournalNotifier extends Notifier<JournalState> {
         if (!saved.contains(turn.turnId)) turn,
     ];
   }
+
+  /// [_earlierConversation] as Lumen may read it (LM-63): the server's
+  /// redacted words for saved turns, and this run's forgotten names
+  /// redacted. The transcript view keeps the words as they were said.
+  List<ConversationTurn> get _lumenConversation => [
+        for (final turn in _earlierConversation) _redactor.turnForLumen(turn),
+      ];
 
   bool get _continuesConversation => continuesConversation(
         conversation: _earlierConversation,
@@ -779,7 +795,7 @@ class JournalNotifier extends Notifier<JournalState> {
     try {
       final retrieval =
           await ref.read(retrieveMemoryServiceProvider).retrieveResult(
-                query: effect.transcript,
+                query: _redactor.redact(effect.transcript),
                 notebookId: effect.key.notebookId,
                 state: state,
               );
@@ -789,11 +805,11 @@ class JournalNotifier extends Notifier<JournalState> {
         notebookId: effect.key.notebookId,
         turnId: effect.key.turnId,
         extractorVersion: extractorVersion,
-        text: effect.transcript,
+        text: _redactor.redact(effect.transcript),
         state: state,
         mode: 'granular',
         recentConversation: _conversation
-            .map((turn) => (role: turn.role, text: turn.text))
+            .map((turn) => (role: turn.role, text: _redactor.redact(turn.text)))
             .toList(growable: false),
         retrievedEntityIds: retrieval.entityIds,
         answeringFollowUp: openFollowUps.isEmpty ? null : openFollowUps.last,
@@ -979,7 +995,8 @@ class JournalNotifier extends Notifier<JournalState> {
       ..clear()
       ..addAll(_pendingRemovals.keys)
       ..addAll(_forgottenThisRun);
-    var next = snapshot.state;
+    // A snapshot read before a forget landed still names them (LM-63).
+    var next = _redactor.redactState(snapshot.state);
     for (final id in _pendingRemovals.keys) {
       next = withoutEntity(next, id);
     }
@@ -1050,8 +1067,23 @@ class JournalNotifier extends Notifier<JournalState> {
   /// Forgets [entityId] on the server (LM-49), then drops it here and
   /// reloads the active notebook so the graph, the cards' source and the
   /// suppression all match the server. Throws if the server call fails, with
-  /// nothing changed on the device.
-  Future<void> forgetEntity(String entityId) async {
+  /// nothing changed on the device. [name] is the name it was shown under,
+  /// for when this notebook doesn't hold it.
+  ///
+  /// LM-63: from here on Lumen can't bring them up. Their name is redacted
+  /// here at once, as the server did (so a failed reload changes nothing),
+  /// and a live conversation, which already heard it, is replaced by a new
+  /// one seeded only from the redacted context.
+  Future<void> forgetEntity(String entityId, {String? name}) async {
+    // Every name they go by here: the given one, and the same person under
+    // another id (the server drops those rows too).
+    final own = state.entities[entityId]?.name ?? name;
+    final slugs = {entityId, if (own != null) slugify(own)};
+    final names = {
+      if (own != null) own,
+      for (final e in state.entities.values)
+        if (slugs.contains(e.id) || slugs.contains(slugify(e.name))) e.name,
+    };
     await ref.read(memoryControlServiceProvider).forgetEntity(entityId);
     // A removal still inside its undo window is superseded by this.
     _pendingRemovals.remove(entityId)
@@ -1064,7 +1096,16 @@ class JournalNotifier extends Notifier<JournalState> {
     unawaited(ref.read(pseudonymServiceProvider).forget(entityId));
     // What Lumen shared may hold their real name (LM-57): all of it goes.
     _forgetSharedLog();
-    state = withoutEntity(state, entityId);
+    _redactor.add(entityId, names);
+    state = _redactor.redactState(withoutEntity(state, entityId));
+    final session = _session;
+    if (session != null &&
+        (_status == SessionStatus.live || _status == SessionStatus.paused)) {
+      // Gemini heard the name. Its replies aren't saved until the new
+      // conversation is up (as off the record, LM-50).
+      _turnMachine.holdAssistantOffRecord = true;
+      unawaited(_reopenWithSavedContext(session, reason: 'forgot someone'));
+    }
     // The server may have deleted the brief; the copy held here must not be
     // spoken at the next opening.
     await ref.read(openingPrepProvider).reloadOrDropBrief();
@@ -1132,8 +1173,8 @@ class JournalNotifier extends Notifier<JournalState> {
   // favour of ordered replay over a freshly reloaded snapshot.
 
   Map<String, dynamic> _buildGraphSummary() {
-    final agenda =
-        agenda_logic.buildAgenda(state, lastUserText: _lastTranscript);
+    final agenda = agenda_logic.buildAgenda(state,
+        lastUserText: _redactor.redact(_lastTranscript));
     final sessionElapsedMin = _sessionStartedAt == null
         ? 0
         : DateTime.now().difference(_sessionStartedAt!).inMinutes;
@@ -1187,7 +1228,7 @@ class JournalNotifier extends Notifier<JournalState> {
           .toList(),
       'recentAgentQuestions': _conversation
           .where((turn) => turn.role == Speaker.assistant)
-          .map((turn) => turn.text)
+          .map((turn) => _redactor.redact(turn.text))
           .where((text) => text.isNotEmpty)
           .take(8)
           .toList(),
@@ -1198,7 +1239,7 @@ class JournalNotifier extends Notifier<JournalState> {
   Future<Map<String, dynamic>> _retrieveMemory(
       Map<String, dynamic> args, bool Function() isCurrent) async {
     final notebookId = _activeNotebookId;
-    final query = (args['query'] as String?)?.trim() ?? '';
+    final query = _redactor.redact((args['query'] as String?)?.trim() ?? '');
     // Over-call guardrails: tiny query, identical repeat (within turn), per-turn cap.
     if (notebookId == null ||
         query.length < 2 ||
@@ -1860,7 +1901,7 @@ class JournalNotifier extends Notifier<JournalState> {
     prepared.live.sendHistory(
       continuing
           ? resumeContext(
-              conversation: _earlierConversation,
+              conversation: _lumenConversation,
               entries: state.entries,
             )
           : const [],
@@ -1946,7 +1987,7 @@ class JournalNotifier extends Notifier<JournalState> {
               ..sendHistory(
                 continuing
                     ? resumeContext(
-                        conversation: _earlierConversation,
+                        conversation: _lumenConversation,
                         entries: state.entries,
                       )
                     : const [],

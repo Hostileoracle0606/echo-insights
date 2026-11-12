@@ -77,13 +77,15 @@ void main() {
     expect(awsClaim, isNot(contains('7 days')));
   });
 
-  // What the controls really do: transcripts keep the name, off the record
-  // still reaches Google, and auto-forget leaves cards and memory.
+  // What the controls really do: transcripts keep the name for the user and
+  // Lumen reads them redacted (LM-63), off the record still reaches Google,
+  // and auto-forget leaves cards and memory.
   test('the shipped controls claim only what they do', () {
     final forget = gatedClaims[PrivacyFeature.forgetPerson]!;
-    expect(forget, contains('transcripts keep what you said'));
-    expect(forget, contains('Lumen can still read your past conversations'));
-    expect(forget, contains('it may bring the name up'));
+    expect(forget, contains("Lumen won't bring them up again"));
+    expect(forget, contains("they're gone from your maps"));
+    expect(forget, contains('transcripts keep your words for you to read'));
+    expect(forget, isNot(contains('may bring the name up')));
     expect(forget, contains('a nickname or a first name alone'));
     expect(forget, isNot(contains('leave your journal')));
     expect(gatedClaims[PrivacyFeature.offTheRecord]!, contains('Google'));

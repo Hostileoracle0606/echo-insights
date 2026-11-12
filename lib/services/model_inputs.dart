@@ -126,6 +126,15 @@ List<InputTurn> recentTurns(List<InputTurn> turns,
   return kept;
 }
 
+/// A `conversation_turns` row as the model reads it: with forgotten names
+/// redacted (LM-63, `context_text`), never the verbatim words the
+/// transcript view shows.
+InputTurn inputTurnFromRow(Map<String, dynamic> row) => (
+      speaker: row['speaker'] == 'user' ? 'user' : 'assistant',
+      text: (row['context_text'] as String?) ?? row['text'] as String,
+      spokenAt: row['spoken_at'] as String?,
+    );
+
 class SupabaseModelInputs implements ModelInputSource {
   SupabaseModelInputs(this._client);
 
@@ -143,19 +152,13 @@ class SupabaseModelInputs implements ModelInputSource {
   Future<List<InputTurn>> _turns(String notebookId) async {
     final rows = await _client
         .from('conversation_turns')
-        .select('speaker, text, spoken_at')
+        .select('speaker, text, spoken_at, context_text')
         .eq('notebook_id', notebookId)
         .order('spoken_at', ascending: false)
         .order('turn_id', ascending: false)
         .limit(1000);
-    return recentTurns([
-      for (final row in rows.reversed)
-        (
-          speaker: row['speaker'] == 'user' ? 'user' : 'assistant',
-          text: row['text'] as String,
-          spokenAt: row['spoken_at'] as String?,
-        ),
-    ]);
+    return recentTurns(
+        [for (final row in rows.reversed) inputTurnFromRow(row)]);
   }
 
   static Entity _entity(Map<String, dynamic> row) => Entity(

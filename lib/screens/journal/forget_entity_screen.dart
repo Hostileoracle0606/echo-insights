@@ -47,7 +47,9 @@ class _ForgetEntityScreenState extends ConsumerState<ForgetEntityScreen> {
       return;
     }
     try {
-      await ref.read(journalProvider.notifier).forgetEntity(widget.entityId);
+      await ref
+          .read(journalProvider.notifier)
+          .forgetEntity(widget.entityId, name: widget.name);
       ref.invalidate(notebooksProvider);
       if (mounted) Navigator.of(context).pop(true);
     } catch (_) {
@@ -148,10 +150,10 @@ class _ForgetEntityScreenState extends ConsumerState<ForgetEntityScreen> {
           ),
         const SizedBox(height: 16),
         Text(
-          "Lumen won't add $name back if you use that name later. A nickname "
-          'or a first name alone can slip through. '
-          'What you said stays in your past conversations. Lumen can still '
-          'read those, so it may bring the name up.',
+          "Lumen won't bring $name up again, or add them back if you use "
+          'that name later. A nickname or a first name alone can slip '
+          'through. Your past conversations keep your words for you to read; '
+          'Lumen reads them with the name replaced.',
           style: TextStyle(fontSize: 13, height: 1.4, color: colors.mutedForeground),
         ),
         if (_failed) ...[

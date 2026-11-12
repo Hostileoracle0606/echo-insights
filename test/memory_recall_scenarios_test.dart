@@ -139,6 +139,7 @@ class _FakeTurnJournal implements TurnJournalService {
 /// Records what reaches the extraction model.
 class _FakeExtractor implements ExtractGraphService {
   final texts = <String>[];
+  final recent = <String>[];
 
   @override
   Future<GraphPatch> extract({
@@ -155,6 +156,7 @@ class _FakeExtractor implements ExtractGraphService {
     int maxRetries = 2,
   }) async {
     texts.add(text);
+    recent.addAll(recentConversation.map((t) => t.text));
     return GraphPatch.empty();
   }
 
@@ -163,6 +165,8 @@ class _FakeExtractor implements ExtractGraphService {
 }
 
 class _NoMemory implements RetrieveMemoryService {
+  final queries = <String>[];
+
   @override
   Future<MemoryRetrieval> retrieveResult({
     required String query,
@@ -170,8 +174,10 @@ class _NoMemory implements RetrieveMemoryService {
     JournalState? state,
     RetrievalScope scope = RetrievalScope.notebook,
     Duration? timeout,
-  }) async =>
-      MemoryRetrieval.empty;
+  }) async {
+    queries.add(query);
+    return MemoryRetrieval.empty;
+  }
 
   @override
   Future<String> retrieve({
@@ -292,7 +298,7 @@ class _Harness {
     container = ProviderContainer(overrides: [
       notebookCommitServiceProvider.overrideWithValue(commits),
       extractGraphServiceProvider.overrideWithValue(extractor),
-      retrieveMemoryServiceProvider.overrideWithValue(_NoMemory()),
+      retrieveMemoryServiceProvider.overrideWithValue(retrievals),
       turnJournalServiceProvider.overrideWithValue(_FakeTurnJournal()),
       transcriptStoreProvider.overrideWithValue(transcripts),
       openingTimeoutProvider.overrideWithValue(openingTimeout),
@@ -328,6 +334,7 @@ class _Harness {
   final _FakeTranscripts transcripts;
   final _FakeCommits commits;
   final extractor = _FakeExtractor();
+  final retrievals = _NoMemory();
   final cards = _FakeCards();
   final briefs = _FakeBriefs();
   final memory = _FakeMemory();
@@ -458,6 +465,31 @@ JournalState _afterForget({bool entriesRedacted = false}) => _stateOf([
           : 'Priya Raman has a stress fracture. Priya Nair is at Halvorsen Group.')
     ]);
 
+ConversationTurn _turn(String id, Speaker role, String text, {String? contextText}) =>
+    ConversationTurn(
+      turnId: id,
+      role: role,
+      text: text,
+      createdAt: '2026-11-05T10:00:0${id.length % 10}Z',
+      contextText: contextText,
+    );
+
+Future<void> _settle() async {
+  for (var i = 0; i < 20; i++) {
+    await Future<void>.delayed(const Duration(milliseconds: 5));
+  }
+}
+
+void _userSays(FakeLiveSocket socket, String text) => socket
+  ..serverSends({
+    'serverContent': {
+      'inputTranscription': {'text': text, 'finished': true},
+    },
+  })
+  ..serverSends({
+    'serverContent': {'turnComplete': true},
+  });
+
 Future<String> _newSessionContext(_Harness h, {String id = _notebookId}) async {
   final entering = h.journal.enterNotebook(id);
   await h.waitForSocket(h.sockets.length + 1);
@@ -562,21 +594,21 @@ void main() {
       await h.startLive();
       final summary = (_contextTexts(h.socket).first as String);
       expect(summary.toLowerCase(), isNot(contains('raman')));
-    },
-        skip: 'BUG-5: withoutEntity drops only the entity, relations and ids; other '
-            'entities\' redacted-on-the-server text (openQuestions, descriptions) '
-            'stays in memory and is sent in [graph summary] until a reload succeeds');
+      expect(summary, contains('How is someone\'s training going?'),
+          reason: 'redacted at the forget, as the server does (LM-63)');
+      expect(summary, contains('Priya Nair'));
+    });
 
+    // The fake mirrors the server, which since LM-63 returns each entry's
+    // context_text (see memory_recall_scenarios_test.sql, BUG-2).
     test('resume context after forget does not repeat her name', () async {
-      h = _Harness(state: _afterForget());
+      h = _Harness(state: _afterForget(entriesRedacted: true));
       await h.journal.enterNotebook(_notebookId);
       await h.startLive();
       final texts = _contextTexts(h.socket).map((t) => '$t').join('\n');
       expect(texts.toLowerCase(), isNot(contains('raman')));
-    },
-        skip: 'BUG-2: get_notebook_snapshot returns journal_entries.text unredacted '
-            'after forget (R10); resumeContext sends it to Gemini. Fake mirrors the '
-            'server (see memory_recall_scenarios_test.sql, BUG-2)');
+      expect(texts, contains('someone has a stress fracture'));
+    });
   });
 
   group('name swap (LM-55) across sessions', () {
@@ -687,10 +719,7 @@ void main() {
       final map = mapFor(s1)..dehydrate(utterance);
       map.forget('priya-raman');
       expect(jsonEncode(map.toJson()).toLowerCase(), isNot(contains('raman')));
-    },
-        skip: 'BUG-7: PseudonymMap.forget leaves "raman" in toJson()[\'reserved\'] '
-            '(persisted to the Keychain). Existing tests only check the capitalised '
-            'form, which the lowercase reserved list never contains.');
+    });
 
     test('after forget the swap no longer masks her, and the server drops her on commit', () {
       final map = mapFor(s1)..forget('priya-raman');
@@ -709,6 +738,108 @@ void main() {
       );
       expect(merged.next.entities.containsKey('priya-raman'), isFalse,
           reason: 'the device honours the suppression it learned from suppressedIds');
+    });
+  });
+
+  group('forget everywhere (LM-63)', () {
+    test('saved turns reach Lumen as the server redacted them; the transcript keeps the words',
+        () async {
+      h = _Harness(
+        state: _afterForget(entriesRedacted: true),
+        history: [
+          _turn('t1', Speaker.user, 'Priya Raman has a stress fracture.',
+              contextText: 'someone has a stress fracture.'),
+          _turn('t2', Speaker.assistant, 'How is Priya Raman now?',
+              contextText: 'How is someone now?'),
+        ],
+      );
+      await h.journal.enterNotebook(_notebookId);
+      await h.startLive();
+      final sent = jsonEncode(h.socket.sent).toLowerCase();
+      expect(sent, isNot(contains('raman')));
+      expect(sent, contains('someone has a stress fracture.'));
+      expect(
+        h.journal.transcriptRows.map((r) => r.turn.text),
+        contains('Priya Raman has a stress fracture.'),
+        reason: 'the transcript view shows what was said',
+      );
+    });
+
+    test('a forget mid-session reconnects fresh, seeded without her', () async {
+      h = _Harness(
+        state: _beforeForget(),
+        history: [
+          _turn('t1', Speaker.user, 'Priya Raman called about the marathon.'),
+          _turn('t2', Speaker.assistant, 'How is Priya Raman feeling?'),
+        ],
+      );
+      await h.journal.enterNotebook(_notebookId);
+      await h.startLive();
+      expect(jsonEncode(h.socket.sent), contains('Raman'),
+          reason: 'before the forget, the earlier conversation names her');
+      final first = h.socket;
+      final tokens = h.tokensMinted;
+
+      h.commits.state = _afterForget(entriesRedacted: true);
+      await h.journal.forgetEntity('priya-raman');
+      await h.waitForSocket(2);
+      expect(h.socket, isNot(same(first)));
+      expect(h.socket.setup['session_resumption'], isEmpty,
+          reason: 'no handle: nothing Gemini heard is carried over');
+      expect(h.tokensMinted, greaterThan(tokens), reason: 'a new token');
+
+      h.socket.serverSends({'setupComplete': <String, dynamic>{}});
+      await _settle();
+      final sent = jsonEncode(h.socket.sent);
+      expect(sent.toLowerCase(), isNot(contains('raman')));
+      expect(sent, contains('someone called about the marathon.'));
+      expect(sent, contains('[graph summary]'));
+      expect(
+        h.journal.transcriptRows.map((r) => r.turn.text),
+        contains('Priya Raman called about the marathon.'),
+      );
+    });
+
+    test('after a forget, extraction and retrieval never carry her name', () async {
+      h = _Harness(state: _beforeForget());
+      await h.journal.enterNotebook(_notebookId);
+      await h.startLive();
+      _userSays(h.socket, 'I ran with Priya Raman yesterday.');
+      await _settle();
+      h.commits.state = _afterForget(entriesRedacted: true);
+      await h.journal.forgetEntity('priya-raman');
+      await h.waitForSocket(2);
+      h.socket.serverSends({'setupComplete': <String, dynamic>{}});
+      await _settle();
+
+      _userSays(h.socket, 'PRIYA RAMAN called again, and Priya Nair too.');
+      await _settle();
+      final afterForget = h.extractor.texts.last;
+      expect(afterForget, 'someone called again, and Priya Nair too.');
+      expect(h.extractor.recent.last.toLowerCase(), isNot(contains('raman')));
+      expect(h.retrievals.queries.last, 'someone called again, and Priya Nair too.');
+      expect(h.transcripts.saved.map((t) => t.text),
+          contains('PRIYA RAMAN called again, and Priya Nair too.'),
+          reason: 'the user\'s own words are saved as said');
+    });
+
+    test('the graph drops her duplicate under another id and ids that spell her', () async {
+      final state = _beforeForget().copyWith(entities: {
+        ..._beforeForget().entities,
+        'e-1700000000000': _ent('e-1700000000000', 'Priya Raman', EntityType.person),
+        'priya-raman-foundation':
+            _ent('priya-raman-foundation', 'Priya Raman Foundation', EntityType.organization),
+      });
+      h = _Harness(state: state);
+      await h.journal.enterNotebook(_notebookId);
+      h.commits.failSnapshots = true;
+      await h.journal.forgetEntity('priya-raman');
+      final ids = h.container.read(journalProvider).entities.keys;
+      expect(ids, isNot(contains('e-1700000000000')));
+      expect(ids, isNot(contains('priya-raman-foundation')));
+      expect(ids, containsAll(['halvorsen-group', 'city-marathon', 'priya-nair']));
+      final names = h.container.read(journalProvider).entities.values.map((e) => e.name);
+      expect(names.join(' ').toLowerCase(), isNot(contains('raman')));
     });
   });
 }

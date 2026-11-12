@@ -240,12 +240,20 @@ class ConversationTurn {
     required this.createdAt,
     String? startedAt,
     this.input = TurnInput.voice,
+    this.contextText,
   }) : startedAt = startedAt ?? createdAt;
 
   final String turnId;
   final Speaker role;
+
+  /// What was said, as the transcript view shows it.
   final String text;
   final TurnInput input;
+
+  /// LM-63: [text] with the names of forgotten people redacted, as the
+  /// server stores it for Lumen to read (`conversation_turns.context_text`).
+  /// Null when there is nothing to redact, or for a turn of this run.
+  final String? contextText;
 
   /// When the turn finalized.
   final String createdAt;

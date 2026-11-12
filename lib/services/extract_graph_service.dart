@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../logic/forget_redaction.dart';
 import '../logic/memory_removal.dart' show withoutEntity;
 import '../logic/noise_filter.dart';
 import '../logic/pseudonym/pseudonym_map.dart' show StandInSnapshot;
@@ -46,17 +47,20 @@ class ExtractGraphService {
   final http.Client _client;
   final PseudonymService _pseudonyms;
   final SharedLog? _log;
+  final ForgetRedactor? _forgotten;
 
   ExtractGraphService({
     required String baseUrl,
     required Future<String?> Function() accessTokenProvider,
     required PseudonymService pseudonyms,
     SharedLog? log,
+    ForgetRedactor? forgotten,
     http.Client? client,
   })  : _baseUrl = baseUrl.replaceFirst(RegExp(r'/$'), ''),
         _accessTokenProvider = accessTokenProvider,
         _pseudonyms = pseudonyms,
         _log = log,
+        _forgotten = forgotten,
         _client = client ?? http.Client();
 
   Future<GraphPatch> extract({
@@ -109,6 +113,24 @@ class ExtractGraphService {
     required int tokenBudget,
     required int maxRetries,
   }) async {
+    // LM-63: a person forgotten in this run is redacted from the turn, the
+    // recent conversation and the graph, here, on every attempt: a retry
+    // after a forget mid-flight carries the words from before it.
+    final forgotten = _forgotten;
+    if (forgotten != null && !forgotten.isEmpty) {
+      text = forgotten.redact(text);
+      recentConversation = [
+        for (final turn in recentConversation)
+          (role: turn.role, text: forgotten.redact(turn.text)),
+      ];
+      state = forgotten.redactState(state);
+      final answering = answeringFollowUp;
+      if (answering != null &&
+          (forgotten.names(answering.question) ||
+              forgotten.names(answering.reason))) {
+        answeringFollowUp = null;
+      }
+    }
     final trimmed = text.trim();
     if (trimmed.length < 6) return GraphPatch.empty();
     // Someone forgotten or removed since [state] was taken (a retry after a

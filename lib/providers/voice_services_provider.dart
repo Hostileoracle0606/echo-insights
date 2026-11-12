@@ -8,6 +8,7 @@ import '../services/live_credentials.dart';
 import 'auth_provider.dart';
 import 'journal_provider.dart'
     show forgottenThisRunProvider, turnJournalServiceProvider;
+import 'forget_redactor_provider.dart';
 import 'opening_prep_provider.dart';
 import 'pseudonym_provider.dart';
 import 'shared_log_provider.dart';
@@ -35,6 +36,7 @@ final signedOutCleanupProvider = Provider<void Function()>((ref) {
   return () {
     ref.read(openingPrepProvider).clear();
     ref.read(forgottenThisRunProvider).clear();
+    ref.read(forgetRedactorProvider).clear();
     // The on-device name map holds real names: erased with the account.
     unawaited(ref.read(pseudonymServiceProvider).clear());
     // What Lumen shared (LM-57) is erased with it.
