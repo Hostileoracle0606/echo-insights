@@ -55,6 +55,7 @@ class ForgetSync {
     required this.clearSharedLog,
     required this.reloadBrief,
     required this.setBriefTrusted,
+    this.accountEntityIds,
     this.pruneNames,
     DateTime Function()? now,
     this.minGap = const Duration(minutes: 1),
@@ -71,8 +72,13 @@ class ForgetSync {
   /// Reloads the brief from the server, dropping the held copy if it can't.
   final Future<void> Function() reloadBrief;
 
-  /// Drops name-map entries for entities not in the graph any more.
-  final Future<void> Function(Set<String> liveEntityIds)? pruneNames;
+  /// Every entity id in the account, across all notebooks (the
+  /// `user_entities` view), read in full. The name map spans the account, so
+  /// it is only ever pruned against this, never against one notebook.
+  final Future<Set<String>> Function()? accountEntityIds;
+
+  /// Drops name-map entries for ids not in the set it is given.
+  final Future<void> Function(Set<String> accountEntityIds)? pruneNames;
   final void Function(bool trusted) setBriefTrusted;
   final DateTime Function() _now;
 
@@ -83,18 +89,27 @@ class ForgetSync {
   DateTime? _lastOk;
   Future<void> _tail = Future.value();
 
-  /// Looks at the marker and cleans if it went up. [liveEntityIds] (the
-  /// entities in the graph just loaded) lets the name map be pruned; without
-  /// it the log and brief are cleaned now and the marker is kept as unseen,
-  /// so the next check that has the graph finishes the job. [force] is false
-  /// for checks driven by snapshots, which are throttled. Never throws.
-  Future<void> check({Set<String>? liveEntityIds, bool force = true}) {
-    final run = _tail.then((_) => _check(liveEntityIds, force));
+  /// The marker whose log and brief clean-up is done, in this run. A repeat
+  /// check (a resume while the name-map prune is still owed) does not wipe
+  /// the log or reload the brief again.
+  ForgottenMarker? _handled;
+  String? _handledOwner;
+
+  /// Looks at the marker and cleans if it went up: the shared log, the held
+  /// brief, and the name map (pruned against the whole account's entities).
+  /// If the account's entities can't be read the marker is kept as unseen
+  /// and the prune is retried by the next check. A [force]d check (sign-in,
+  /// resume) distrusts the held brief at once, synchronously, and trusts it
+  /// again only when the check succeeds; one that is not forced (driven by a
+  /// snapshot) is throttled. Never throws.
+  Future<void> check({bool force = true}) {
+    if (force) setBriefTrusted(false);
+    final run = _tail.then((_) => _check(force));
     _tail = run.then<void>((_) {}, onError: (Object _, StackTrace __) {});
     return run;
   }
 
-  Future<void> _check(Set<String>? live, bool force) async {
+  Future<void> _check(bool force) async {
     try {
       final owner = ownerId();
       if (owner == null) return;
@@ -109,38 +124,53 @@ class ForgetSync {
         return;
       }
       final seen = await _read(owner);
-      var record = true;
+      var finished = true;
       if (marker.isNewerThan(seen)) {
-        try {
-          await clearSharedLog();
-        } catch (error) {
-          debugPrint('Clearing the shared log failed: ${error.runtimeType}');
-        }
-        await reloadBrief();
-        if (live != null) {
+        if (_handledOwner != owner || !_same(_handled, marker)) {
           try {
-            await pruneNames?.call(live);
-          } catch (_) {}
-        } else if (pruneNames != null) {
-          record = false;
+            await clearSharedLog();
+          } catch (error) {
+            debugPrint('Clearing the shared log failed: ${error.runtimeType}');
+          }
+          await reloadBrief();
+          _handled = marker;
+          _handledOwner = owner;
+        }
+        final ids = accountEntityIds;
+        final prune = pruneNames;
+        if (ids != null && prune != null) {
+          try {
+            await prune(await ids());
+          } catch (_) {
+            finished = false;
+          }
         }
       }
       setBriefTrusted(true);
-      _lastOk = _now();
-      if (record) await _write(owner, marker);
+      // An unfinished prune must not hold the next check back.
+      _lastOk = finished ? _now() : null;
+      if (finished) await _write(owner, marker);
     } catch (error) {
       debugPrint('Forget check failed: ${error.runtimeType}');
     }
   }
 
-  /// This device made the forget itself and has cleaned up: remember the
-  /// marker so the next check doesn't repeat it. Never throws.
+  static bool _same(ForgottenMarker? a, ForgottenMarker b) =>
+      a != null && a.count == b.count && a.latest == b.latest;
+
+  /// This device made a forget itself and has cleaned up: remember the
+  /// marker, but only if it moved by exactly that one person since the last
+  /// one seen. If it moved by more (another device forgot someone at the
+  /// same time) or was never seen, it is left for the next [check], which
+  /// cleans for the other device's forget too. Never throws.
   Future<void> acknowledge() async {
     try {
       final owner = ownerId();
       if (owner == null) return;
       final marker = ForgottenMarker.parse(await fetch());
-      if (marker != null) await _write(owner, marker);
+      final seen = await _read(owner);
+      if (marker == null || seen == null) return;
+      if (marker.count == seen.count + 1) await _write(owner, marker);
     } catch (_) {}
   }
 

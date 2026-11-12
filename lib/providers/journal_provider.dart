@@ -1011,10 +1011,10 @@ class JournalNotifier extends Notifier<JournalState> {
       if (next.entities.containsKey(id)) next = withoutEntity(next, id);
     }
     // A forget made on another phone: this one's log, held brief and name
-    // map are cleaned (throttled; never blocks the adopt).
+    // map are cleaned (throttled; never blocks the adopt). The name map is
+    // pruned against the whole account, not this notebook's entities.
     unawaited(runForgetCheck(
       () => ref.read(forgetSyncProvider),
-      live: next.entities.keys.toSet(),
       force: false,
     ));
     return next;

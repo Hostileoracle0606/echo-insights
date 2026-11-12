@@ -59,6 +59,7 @@ class VoiceServicesBinding {
     this.warmUp,
     this.onResume,
     this.onSignedOut,
+    this.onBackground,
   });
 
   final LiveCredentials credentials;
@@ -71,6 +72,10 @@ class VoiceServicesBinding {
   /// Runs when the app returns to the foreground (signed in): refreshes the
   /// session brief.
   final Future<void> Function()? onResume;
+
+  /// Runs when the app leaves the foreground (signed in): a held brief is
+  /// distrusted until the forget check after the next resume succeeds.
+  final void Function()? onBackground;
 
   /// Runs on sign-out: drops per-account state held for the opening.
   final void Function()? onSignedOut;
@@ -116,6 +121,7 @@ class VoiceServicesBinding {
         onResume?.call();
       case AppLifecycleState.paused:
       case AppLifecycleState.hidden:
+        onBackground?.call();
         credentials.pause();
       case AppLifecycleState.inactive:
       case AppLifecycleState.detached:
@@ -173,6 +179,9 @@ class _VoiceServicesScopeState extends ConsumerState<VoiceServicesScope>
           openingPrep.retryPendingBrief(),
         ]),
         onSignedOut: ref.read(signedOutCleanupProvider),
+        // Fails closed: until a check after the next resume succeeds, the
+        // held brief (it may name someone forgotten elsewhere) isn't played.
+        onBackground: () => openingPrep.setForgetCheckOk(false),
       );
     }
     _binding!.signedInChanged(signedIn, userId: userId);

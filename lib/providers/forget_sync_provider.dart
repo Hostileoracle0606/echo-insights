@@ -18,11 +18,30 @@ final forgetSyncProvider = Provider<ForgetSync>((ref) {
     ownerId: _signedInUserId,
     clearSharedLog: () => ref.read(sharedLogProvider).forgetPerson(),
     reloadBrief: () => ref.read(openingPrepProvider).reloadOrDropBrief(),
-    pruneNames: (live) => ref.read(pseudonymServiceProvider).pruneTo(live),
+    accountEntityIds: () => _accountEntityIds(ref.read(supabaseClientProvider)),
+    pruneNames: (ids) => ref.read(pseudonymServiceProvider).pruneTo(ids),
     setBriefTrusted: (ok) =>
         ref.read(openingPrepProvider).setForgetCheckOk(ok),
   );
 });
+
+/// Every entity id in the account (all notebooks), page by page. Throws if
+/// any page fails: a partial list must never be pruned against.
+Future<Set<String>> _accountEntityIds(SupabaseClient client) async {
+  const page = 1000;
+  final ids = <String>{};
+  for (var from = 0;; from += page) {
+    final rows = await client
+        .from('user_entities')
+        .select('id')
+        .order('id')
+        .range(from, from + page - 1);
+    for (final row in rows) {
+      ids.add(row['id'] as String);
+    }
+    if (rows.length < page) return ids;
+  }
+}
 
 /// The Keychain item holding the last forgotten-people marker seen.
 const forgetMarkerKey = 'privacy.forget_marker';
@@ -40,11 +59,10 @@ String? _signedInUserId() {
 /// `() => ref.read(forgetSyncProvider)`.
 Future<void> runForgetCheck(
   ForgetSync Function() sync, {
-  Set<String>? live,
   bool force = true,
 }) async {
   try {
-    await sync().check(liveEntityIds: live, force: force);
+    await sync().check(force: force);
   } catch (error) {
     debugPrint('Forget check not run: ${error.runtimeType}');
   }

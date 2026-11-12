@@ -92,6 +92,10 @@ class _SignInSecurityState extends ConsumerState<SignInSecurity> {
   /// sign-out) and closes the privacy screen; the router shows login. If
   /// signing out fails nothing is erased: the account is still signed in.
   Future<void> _signOutThisPhone() async {
+    // Read before any await: the provider is still reachable if this screen
+    // is gone by the time sign-out finishes.
+    final cleanup = ref.read(signedOutCleanupProvider);
+    final service = ref.read(accountAuthServiceProvider);
     if (!await requireReauth(context, reason: 'Sign out of this phone')) return;
     if (!mounted) return;
     setState(() {
@@ -99,7 +103,7 @@ class _SignInSecurityState extends ConsumerState<SignInSecurity> {
       _problem = null;
     });
     try {
-      await ref.read(accountAuthServiceProvider).signOutThisDevice();
+      await service.signOutThisDevice();
     } catch (_) {
       // Never show the error text: it can carry a token or an address.
       if (mounted) {
@@ -110,7 +114,7 @@ class _SignInSecurityState extends ConsumerState<SignInSecurity> {
       }
       return;
     }
-    ref.read(signedOutCleanupProvider)();
+    cleanup();
     if (mounted) {
       setState(() => _busyId = null);
       await Navigator.of(context).maybePop();
