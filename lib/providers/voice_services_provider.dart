@@ -77,8 +77,21 @@ class VoiceServicesBinding {
   /// Without a runtime URL there is nothing to fetch tokens from.
   final bool runtimeConfigured;
   bool _signedIn = false;
+  String? _userId;
 
-  void signedInChanged(bool signedIn) {
+  /// [userId] lets a change of account with no signed-out event between (a
+  /// token swap, a second sign-in) clean up like a sign-out: otherwise the
+  /// next account would inherit the last one's names, brief and shared log.
+  void signedInChanged(bool signedIn, {String? userId}) {
+    if (signedIn &&
+        _signedIn &&
+        userId != null &&
+        _userId != null &&
+        userId != _userId) {
+      signedInChanged(false);
+    }
+    if (signedIn) _userId = userId ?? _userId;
+    if (!signedIn) _userId = null;
     if (signedIn == _signedIn) return;
     _signedIn = signedIn;
     if (signedIn) {
@@ -126,7 +139,7 @@ class _VoiceServicesScopeState extends ConsumerState<VoiceServicesScope>
   // client, which a signed-out (or unconfigured) app may not have.
   VoiceServicesBinding? _binding;
 
-  void _signedInChanged(bool signedIn) {
+  void _signedInChanged(bool signedIn, [String? userId]) {
     if (!signedIn && _binding == null) return;
     if (_binding == null) {
       final journal = ref.read(turnJournalServiceProvider);
@@ -136,8 +149,9 @@ class _VoiceServicesScopeState extends ConsumerState<VoiceServicesScope>
       _binding = VoiceServicesBinding(
         credentials: ref.read(liveCredentialsProvider),
         audioOutput: ref.read(audioOutputProvider),
-        runtimeConfigured:
-            ref.read(notebookRuntimeServiceProvider).isConfigured,
+        runtimeConfigured: ref
+            .read(notebookRuntimeServiceProvider)
+            .isConfigured,
         // Both are best-effort and independent; neither blocks a session.
         warmUp: () {
           // Signed in again: "What Lumen shared" records once more (LM-57).
@@ -150,19 +164,22 @@ class _VoiceServicesScopeState extends ConsumerState<VoiceServicesScope>
           ]);
         },
         // Coming back also re-asks for a brief that failed earlier.
-        onResume: () => Future.wait(
-            [openingPrep.refresh(), openingPrep.retryPendingBrief()]),
+        onResume: () => Future.wait([
+          openingPrep.refresh(),
+          openingPrep.retryPendingBrief(),
+        ]),
         onSignedOut: ref.read(signedOutCleanupProvider),
       );
     }
-    _binding!.signedInChanged(signedIn);
+    _binding!.signedInChanged(signedIn, userId: userId);
   }
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _signedInChanged(ref.read(authProvider).valueOrNull != null);
+    final user = ref.read(authProvider).valueOrNull;
+    _signedInChanged(user != null, user?.id);
   }
 
   @override
@@ -179,7 +196,7 @@ class _VoiceServicesScopeState extends ConsumerState<VoiceServicesScope>
   @override
   Widget build(BuildContext context) {
     ref.listen(authProvider, (_, next) {
-      _signedInChanged(next.valueOrNull != null);
+      _signedInChanged(next.valueOrNull != null, next.valueOrNull?.id);
     });
     // Any touch means someone is here: keep the held token fresh (refreshes
     // stop after a stretch without activity).

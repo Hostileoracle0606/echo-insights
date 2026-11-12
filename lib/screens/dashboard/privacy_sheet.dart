@@ -9,6 +9,7 @@ import '../../theme/lumen_text.dart';
 import '../../widgets/transcript_retention.dart';
 import '../privacy/shared_log_screen.dart';
 import '../privacy/who_hears_you_screen.dart';
+import 'sign_in_security.dart';
 
 /// The dashboard's shield button: opens [PrivacySheet].
 class PrivacyButton extends StatelessWidget {
@@ -172,6 +173,7 @@ class _PrivacySheetState extends ConsumerState<PrivacySheet> {
               ),
               children: const [TranscriptRetentionChoices()],
             ),
+            const SignInSecurity(),
             ListTile(
               key: const Key('exportJournalTile'),
               contentPadding: EdgeInsets.zero,

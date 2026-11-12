@@ -113,7 +113,7 @@ void main() {
     expect(page, contains(exportClaim));
   });
 
-  test('unverified claims stay off; the three controls are shipped', () {
+  test('unverified claims stay off; every control is shipped', () {
     expect(paidTierVerified, isFalse);
     expect(supabaseEncryptionVerified, isFalse);
     expect(shipped, PrivacyFeature.values.toSet());

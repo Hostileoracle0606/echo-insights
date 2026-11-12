@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../env.dart';
+import '../services/account_auth_service.dart';
 import '../services/extract_graph_service.dart';
 import '../services/fresh_access_token.dart';
 import '../services/memory_control_service.dart';
@@ -38,6 +39,13 @@ Future<String?> _accessToken(SupabaseClient client) => freshAccessToken(
 
 final supabaseServiceProvider = Provider<SupabaseService>((ref) {
   return SupabaseService(ref.watch(supabaseClientProvider));
+});
+
+/// Sign in with Apple, passkeys and the device list (LM-58).
+final accountAuthServiceProvider = Provider<AccountAuthService>((ref) {
+  return AccountAuthService(
+    SupabaseAuthGateway(ref.watch(supabaseClientProvider)),
+  );
 });
 
 final notebookCommitServiceProvider = Provider<NotebookCommitService>((ref) {
