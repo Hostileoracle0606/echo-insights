@@ -71,7 +71,7 @@ select throws_ok($$ select count(*) from public.suppression_keys $$,
 -- ── preview (A) ────────────────────────────────────────────────────────────
 select is(
   public.forget_entity_preview('priya'),
-  '{"notebooks":2,"relations":1,"followUps":2,"askedQuestions":1,"cards":1,"briefDeleted":true}'::jsonb,
+  '{"notebooks":2,"relations":1,"followUps":2,"askedQuestions":1,"cards":1,"briefDeleted":true,"transcriptPassages":0}'::jsonb,
   'preview: counts what would go');
 select is((select count(*)::int from public.entities where id = 'priya'), 2,
   'preview: removes nothing');
