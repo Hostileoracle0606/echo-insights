@@ -1,3 +1,4 @@
+import 'dart:async';
 // LM-63: once a person is forgotten, nothing the app assembles for a model
 // names them, no graph state holds them (ids that spell the name included),
 // and the user's own transcript keeps their words.
@@ -310,6 +311,28 @@ void main() {
     });
   });
 
+  group('owners and in-flight loads (Phase 2, M7)', () {
+    test('a load in flight for one owner is not reused for the next', () async {
+      final store = _SlowStore();
+      final a = ForgetRedactor(store: store, ownerId: () => 'owner-a');
+      await a.ensureLoaded();
+      a.add('priya-raman', ['Priya Raman']);
+      await a.flush();
+      store.delay = true;
+
+      var owner = 'owner-a';
+      final r = ForgetRedactor(store: store, ownerId: () => owner);
+      final first = r.ensureLoaded();
+      owner = 'owner-b';
+      final second = r.ensureLoaded();
+      store.release();
+      await Future.wait([first, second]);
+
+      expect(r.isEmpty, isTrue, reason: "owner-b must not inherit owner-a's hashes");
+      expect(r.redact('Priya Raman called'), 'Priya Raman called');
+    });
+  });
+
   group('stored forgotten names (fix round 1)', () {
     test('hashes only, matched like the server after a reload', () async {
       final store = MemoryStore();
@@ -365,4 +388,16 @@ void main() {
       expect(r.redact('Priya Raman'), 'Priya Raman');
     });
   });
+}
+
+class _SlowStore extends MemoryStore {
+  bool delay = false;
+  final _gate = Completer<void>();
+  void release() => _gate.complete();
+
+  @override
+  Future<String?> read() async {
+    if (delay) await _gate.future;
+    return super.read();
+  }
 }

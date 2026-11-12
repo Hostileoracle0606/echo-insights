@@ -58,6 +58,7 @@ class ForgetRedactor {
   bool _inside = false;
   String? _loadedOwner;
   Future<void>? _loading;
+  String? _loadingOwner;
   Future<void> _saving = Future.value();
 
   bool get isEmpty => _hashes.isEmpty;
@@ -73,7 +74,18 @@ class ForgetRedactor {
       return Future.value();
     }
     if (_loadedOwner == owner) return Future.value();
-    return _loading ??= _load(store, owner).whenComplete(() => _loading = null);
+    // An in-flight load belongs to the owner that started it: another owner
+    // arriving meanwhile (an account switch) waits for it, then loads its own.
+    final inFlight = _loading;
+    if (inFlight != null) {
+      if (_loadingOwner == owner) return inFlight;
+      return inFlight.then((_) => ensureLoaded());
+    }
+    _loadingOwner = owner;
+    return _loading = _load(store, owner).whenComplete(() {
+      _loading = null;
+      _loadingOwner = null;
+    });
   }
 
   Future<void> _load(PseudonymStore store, String owner) async {
