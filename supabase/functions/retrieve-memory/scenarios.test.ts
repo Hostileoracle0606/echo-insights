@@ -141,10 +141,16 @@ const MENTION_S2 = {
   conversationMode: "just_talk",
   notebookStartedAt: "2026-11-05T17:07:45+00:00",
 };
+/** S2's entry as get_entity_mentions returns it after the forget (LM-63: context_text). */
+const MENTION_S2_AFTER_FORGET = {
+  ...MENTION_S2,
+  excerpt:
+    "someone has a stress fracture and may skip the marathon. Priya Nair at Halvorsen Group is planning a Lisbon trip.",
+};
 const MENTION_S4 = {
   turnId: null,
   entryId: "entry-s4",
-  excerpt: "Priya Raman called again. Work at Halvorsen Group is better; back to work.",
+  excerpt: "someone called again. Work at Halvorsen Group is better; back to work.",
   spokenAt: null,
   createdAt: "2026-11-07T17:07:45+00:00",
   notebookId: "a1000000-0000-0000-0000-000000000004",
@@ -162,10 +168,10 @@ const mentionsAfterAutoForget = (id: string) => {
 const mentionsAfterForget = (id: string) => {
   switch (id) {
     case "halvorsen-group":
-      return { total: 2, mentions: [MENTION_S4, MENTION_S2] };
+      return { total: 2, mentions: [MENTION_S4, MENTION_S2_AFTER_FORGET] };
     case "priya-nair":
     case "lisbon-trip":
-      return { total: 1, mentions: [MENTION_S2] };
+      return { total: 1, mentions: [MENTION_S2_AFTER_FORGET] };
     default:
       return { total: 0, mentions: [] }; // priya-raman: no entry carries her id any more
   }
@@ -310,18 +316,15 @@ Deno.test("the context never carries journal text, only entities and relations",
   assert(!res.body.context.includes("called again"), "quotes stay out of the private context");
 });
 
-// ── the gap: transcript text is quoted back verbatim ───────────────────────
+// ── quotes after forget ─────────────────────────────────────────────────────
 // The handler passes get_entity_mentions excerpts through (it holds no list of
-// forgotten names and could not match them if it did). Forget leaves
-// journal_entries.text alone (ruling R10), so the excerpt of an entry that
-// names her still reaches the quotes of any entity that entry also mentions:
-// here Halvorsen Group, whose entry carries her name. That is Lumen being given
-// "Priya Raman called again" as something the user said. Found by the pgTAP
-// scenario (BUG-2); the fix is in the database (redact the excerpt, or redact
-// journal_entries on forget), then this test passes unchanged.
+// forgotten names and could not match them if it did). Since LM-63 the
+// database returns each excerpt from journal_entries.context_text, redacted on
+// forget and on insert (BUG-2); the fixtures above are its output at this
+// point of the story, so the user's own words still reach the quotes, without
+// her name.
 Deno.test({
   name: "after forget, retrieval quotes do not repeat the forgotten name",
-  ignore: true, // BUG-2: get_entity_mentions returns journal_entries.text unredacted
   fn: async () => {
     const h = harness(rpcsAfterForget());
     const res = await h.call("Halvorsen Group");
@@ -333,11 +336,17 @@ Deno.test({
 
 Deno.test({
   name: "after forget, nothing in the whole response repeats the forgotten name",
-  ignore: true, // BUG-2, same cause
   fn: async () => {
     for (const query of ["Halvorsen Group", "Lisbon trip", "work"]) {
       const res = await harness(rpcsAfterForget()).call(query);
       assert(!everything(res.body).includes("priya raman"), `${query}: ${everything(res.body)}`);
     }
   },
+});
+
+Deno.test("after forget, a quote keeps the user's words around the redacted name", async () => {
+  const res = await harness(rpcsAfterForget()).call("Halvorsen Group");
+  const texts = res.body.quotes.map((q: { text: string }) => q.text);
+  assert(texts.includes("someone called again. Work at Halvorsen Group is better; back to work."), JSON.stringify(texts));
+  assert(texts.some((t: string) => t.includes("Priya Nair at Halvorsen Group")), "the other Priya is quoted whole");
 });

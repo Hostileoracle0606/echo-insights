@@ -560,11 +560,9 @@ select is(jsonb_array_length(public.get_user_graph() -> 'relations'), 3, '5a rem
 select is(public.redact_forgotten_text('Work was fine, back to work. Work talk.'), 'Work was fine, back to work. Work talk.',
   '5a remove: the word "work" is not redacted in text');
 reset role;
-select todo_start('BUG-3: Remove bumps the notebook revision, so a card that does not mention the entity goes stale (Forget fixed this in R6, Remove did not)');
 select is((select source_revision from public.session_cards where notebook_id = 'a1000000-0000-0000-0000-000000000001'),
           (select revision from public.notebooks where id = 'a1000000-0000-0000-0000-000000000001'),
   '5a remove: S1''s card, which does not mention "work" the entity, is still current');
-select todo_end();
 select is((select count(*)::int from public.entity_embeddings where entity_id = 'work'), 0, '5a remove: its embedding is gone');
 select is((select array_agg(kind order by kind) from public.entity_suppressions
            where user_id = 'a0000000-0000-0000-0000-000000000001'), array['removed'], '5a remove: stored as a removal, not a forget');
@@ -662,11 +660,9 @@ select is((select card -> 'notes' from public.session_cards where notebook_id = 
   '5b forget: and redacted like a final card');
 select is((select card ->> 'summary' from public.session_cards where notebook_id = 'a1000000-0000-0000-0000-000000000005'), 'someone ran.',
   '5b forget: summary too');
-select is((select name from public.entities where id = 'priya-raman-foundation'), 'someone Foundation',
+select is((select name from public.entities where id = 'someone-foundation'), 'someone Foundation',
   '5b forget: an entity that merely contains her name is renamed');
-select todo_start('BUG-4: the id of that entity still spells her name and is returned by user-level recall');
 select ok(not (public.get_user_graph()::text ilike '%priya-raman%'), '5b forget: no recalled entity id spells her name');
-select todo_end();
 reset role;
 delete from public.notebooks where id = 'a1000000-0000-0000-0000-000000000005';
 select public._t_as('a0000000-0000-0000-0000-000000000001');
@@ -734,8 +730,7 @@ select is(public._t_brief('a1000000-0000-0000-0000-000000000004', 'Hi. How is wo
   'saved', '5b forget: a brief with the removed word "work" is saved');
 select is(public._t_brief_of() ->> 'openingLine', 'Hi. How is work at Halvorsen Group?', '5b forget: and not redacted');
 
--- The transcript and quotes still hold her name (R10): a gap, shown here.
-select todo_start('BUG-2: quotes and snapshot entries still return the forgotten name (journal_entries.text is not redacted)');
+-- The stored transcript keeps her name for the user (R10); what Lumen reads of it does not (LM-63).
 select ok(not exists (
     select 1 from jsonb_array_elements(public.get_entity_mentions('halvorsen-group') -> 'mentions') m
     where m ->> 'excerpt' ilike '%priya raman%'),
@@ -744,7 +739,6 @@ select ok(not exists (
     select 1 from jsonb_array_elements(public.get_notebook_snapshot('a1000000-0000-0000-0000-000000000002') -> 'state' -> 'entries') e
     where e ->> 'text' ilike '%priya raman%'),
   '5b forget: a reopened notebook''s entries (resume context) do not repeat her name');
-select todo_end();
 
 reset role;
 select * from public._t_isolation('5 remove and forget');
