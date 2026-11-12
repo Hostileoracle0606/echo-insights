@@ -706,7 +706,12 @@ test("extract-graph forwards only what the request carried", async () => {
           ],
         });
       }
-      // The notebook check; the database is never a source of prompt text.
+      // The database only redacts (LM-63), with the user's token; nothing
+      // else it holds becomes prompt text.
+      if (url.pathname === "/rest/v1/rpc/redact_forgotten_text") {
+        return ok(JSON.parse(init.body).p_text);
+      }
+      // The notebook check.
       return ok([{ id: notebookId, name: "Maya" }]);
     },
   });

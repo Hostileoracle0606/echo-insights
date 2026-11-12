@@ -42,7 +42,30 @@ function requestEvent(overrides = {}) {
   };
 }
 
+/**
+ * [fetchImpl] with the user-token redaction call answered: each forgotten
+ * name replaced, the way redact_forgotten_text does. Calls are recorded.
+ */
+function withRedaction(fetchImpl, { forgotten = [], calls = [] } = {}) {
+  return async (url, init = {}) => {
+    if (String(url).includes("/rest/v1/rpc/redact_forgotten_text")) {
+      calls.push({ url: String(url), headers: init.headers, body: JSON.parse(init.body) });
+      const text = forgotten.reduce(
+        (out, name) => out.replaceAll(name, "someone"),
+        JSON.parse(init.body).p_text,
+      );
+      return { ok: true, json: async () => text };
+    }
+    return fetchImpl(url, init);
+  };
+}
+
 function dependencies(overrides = {}) {
+  const merged = rawDependencies(overrides);
+  return { ...merged, fetchImpl: withRedaction(merged.fetchImpl, overrides.redaction) };
+}
+
+function rawDependencies(overrides = {}) {
   return {
     supabaseUrl: "https://example.supabase.co",
     publishableKey: "public-test-key",
@@ -686,3 +709,95 @@ test("rejects the legacy agent role at the canonical extraction seam", async () 
   assert.deepEqual(JSON.parse(response.body), { error: "invalidRequest" });
   assert.equal(requested, false);
 });
+
+// ── LM-63: a forgotten name never reaches Gemini ────────────────────────────
+
+function geminiAndNotebook(providerBodies) {
+  return async (url, options) => {
+    if (String(url).includes("/rest/v1/notebooks")) {
+      return { ok: true, json: async () => [{ id: notebookId }] };
+    }
+    providerBodies.push(options.body);
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        candidates: [
+          {
+            content: {
+              parts: [
+                {
+                  functionCall: {
+                    name: "extract_graph",
+                    args: { entities: [], relations: [], supersedes: [] },
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      }),
+    };
+  };
+}
+
+function forgottenEvent() {
+  return requestEvent({
+    text: "Priya Raman called again about the marathon.",
+    context: {
+      entities: [{ id: "city-marathon", name: "City Marathon", type: "event" }],
+      relations: [],
+      recentConversation: [
+        { role: "assistant", text: "How is Priya Raman?" },
+        { role: "user", text: "Fine, Priya Raman is fine." },
+      ],
+      answeringFollowUp: { question: "Did Priya Raman run?", reason: "Priya Raman trains" },
+    },
+  });
+}
+
+test("the turn, recent conversation and question are redacted as the user before Gemini", async () => {
+  const providerBodies = [];
+  const calls = [];
+  const handle = createExtractGraphHandler(
+    dependencies({
+      fetchImpl: geminiAndNotebook(providerBodies),
+      redaction: { forgotten: ["Priya Raman"], calls },
+    }),
+  );
+  const response = await handle(forgottenEvent());
+  assert.equal(response.statusCode, 200);
+  assert.equal(providerBodies.length, 1);
+  assert.doesNotMatch(providerBodies[0], /Raman/);
+  assert.match(providerBodies[0], /someone called again about the marathon/);
+  assert.match(providerBodies[0], /Did someone run\?/);
+  assert.equal(calls.length, 1, "one call for every text");
+  assert.equal(calls[0].headers.authorization, "Bearer signed-user-token", "with the user's own token");
+  assert.equal(calls[0].body.p_text.split("\u0001").length, 5);
+});
+
+for (const [label, answer] of [
+  ["fails", { ok: false, json: async () => ({}) }],
+  ["answers something other than text", { ok: true, json: async () => ({ text: "x" }) }],
+  ["answers misaligned text", { ok: true, json: async () => "one blob" }],
+]) {
+  test(`if redaction ${label}, nothing is claimed and Gemini is never called`, async () => {
+    const providerBodies = [];
+    let acquired = false;
+    const gemini = geminiAndNotebook(providerBodies);
+    const handle = createExtractGraphHandler(
+      rawDependencies({
+        acquireExtraction: async () => {
+          acquired = true;
+          return { status: "acquired" };
+        },
+        fetchImpl: async (url, options) =>
+          String(url).includes("/rest/v1/rpc/redact_forgotten_text") ? answer : gemini(url, options),
+      }),
+    );
+    const response = await handle(forgottenEvent());
+    assert.equal(response.statusCode, 503);
+    assert.equal(acquired, false);
+    assert.equal(providerBodies.length, 0);
+  });
+}

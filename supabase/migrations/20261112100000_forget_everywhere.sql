@@ -13,12 +13,15 @@
 -- 200-character row (500 turns: 216 ms, local), on every snapshot load and
 -- retrieval. Here it runs once per row: on insert, only for a user who has
 -- forgotten someone, and on forget, only for rows whose slugged text contains
--- one of the person's slugs.
+-- one of the person's slugs. Rows written before this migration are filled
+-- by 20261112100100, outside this file's table locks.
 --
 -- 2. Ids. A slug can spell a forgotten name ("priya-raman-foundation"). Forget
--- rewrites such ids everywhere they are stored, and a commit rewrites them on
--- the way in, so no graph payload carries one (BUG-4). The person under
--- another id (a name that redacts to exactly "someone") is removed too.
+-- renames such entities everywhere they are stored, and a commit renames them
+-- on the way in, so no graph payload carries one (BUG-4). Whether an id spells
+-- the name is read from the entity's name, with the same rules as any text, so
+-- forgetting Will leaves "will-power" alone. The person under another id (a
+-- name that redacts to exactly "someone") is removed too.
 --
 -- 3. Remove (BUG-3). Removing an entity bumps the notebooks it was in. A card
 -- that was current and doesn't remember that entity stays current, as Forget
@@ -27,8 +30,12 @@
 -- ────────────────────────────────────────────────────────────
 -- 1. context_text
 -- ────────────────────────────────────────────────────────────
+-- Adding a nullable column is instant, but waits for the table lock: give up
+-- rather than queue every read behind a long transaction.
+set lock_timeout = '5s';
 alter table public.journal_entries add column context_text text;
 alter table public.conversation_turns add column context_text text;
+reset lock_timeout;
 
 comment on column public.journal_entries.context_text is
   'What Lumen reads: text with forgotten names redacted. Null when text names no forgotten person.';
@@ -56,7 +63,10 @@ begin
 end;
 $$;
 
--- Kept by the database, whatever a client sends.
+-- Kept by the database, whatever a client sends. The share lock on the
+-- notebook queues a turn saved during a forget (which holds every notebook
+-- for update) until the forget commits, so it is redacted with the new name;
+-- a turn saved just before is committed before the forget reads the turns.
 create function public._set_context_text()
 returns trigger
 language plpgsql
@@ -64,6 +74,7 @@ security definer
 set search_path = public, pg_temp
 as $$
 begin
+  perform 1 from public.notebooks where id = new.notebook_id for share;
   new.context_text := public._context_text(new.user_id, new.text);
   return new;
 end;
@@ -75,12 +86,6 @@ create trigger journal_entries_context_text
 create trigger conversation_turns_context_text
   before insert or update of text on public.conversation_turns
   for each row execute function public._set_context_text();
-
--- Existing rows of users who already forgot someone.
-update public.journal_entries set text = text
-  where user_id in (select user_id from public.entity_suppressions where kind = 'forgotten');
-update public.conversation_turns set text = text
-  where user_id in (select user_id from public.entity_suppressions where kind = 'forgotten');
 
 -- _slugify without its 60-character cut: the slug of a whole text, so a
 -- person's slug can be looked for inside it.
@@ -98,12 +103,14 @@ $$;
 -- 2. Ids that spell a forgotten name
 -- ────────────────────────────────────────────────────────────
 
--- p_id with any forgotten name in it redacted and slugged again
--- ("priya-raman-foundation" -> "someone-foundation"); p_id itself otherwise,
--- so an id another client slugged differently is left alone. Each word is
--- capitalised first, so a one-word name matches in an id as in a sentence.
--- An id that is only the name comes back as it is.
-create function public._redact_id(p_uid uuid, p_id text)
+-- The id an entity named p_name is stored under once its forgotten names are
+-- redacted: the redacted name, slugged ("priya-raman-foundation" named
+-- "Priya Raman Foundation" -> "someone-foundation"). p_id itself when the
+-- name names no one forgotten, when the id doesn't spell the name (made from
+-- it, or its words read as text name them; a lowercase "will-power" never
+-- does), or when the whole name is the person (that id is dropped instead:
+-- suppressed on commit, removed on forget).
+create function public._redact_id(p_uid uuid, p_id text, p_name text)
 returns text
 language plpgsql
 stable
@@ -111,38 +118,67 @@ security definer
 set search_path = public, pg_temp
 as $$
 declare
-  v_in text;
+  v_name text;
+  v_words text := replace(coalesce(p_id, ''), '-', ' ');
   v_out text;
 begin
-  if coalesce(p_id, '') = '' then
+  if coalesce(p_id, '') = '' or coalesce(p_name, '') = '' then
     return p_id;
   end if;
-  v_in := initcap(p_id);
-  v_out := public._slugify(public.redact_forgotten(p_uid, v_in));
-  -- Unchanged, or the whole id is the person: that id is dropped, not renamed
-  -- (suppressed on commit, removed on forget).
-  if v_out = 'someone' or public.redact_forgotten(p_uid, v_in) = v_in then
+  v_name := public.redact_forgotten(p_uid, p_name);
+  if v_name = p_name then
+    return p_id;
+  end if;
+  if p_id <> public._slugify(p_name) and public.redact_forgotten(p_uid, v_words) = v_words then
+    return p_id;
+  end if;
+  v_out := public._slugify(v_name);
+  if v_out in ('', 'someone') then
     return p_id;
   end if;
   return v_out;
 end;
 $$;
 
--- A relation id is "<source>__<label>__<target>": its two ends as entity ids.
-create function public._redact_relation_id(p_uid uuid, p_id text)
+-- A relation id is "<source>__<label>__<target>": its ends mapped by p_map.
+create function public._map_relation_id(p_id text, p_map jsonb)
 returns text
 language plpgsql
-stable
-security definer
-set search_path = public, pg_temp
+immutable
 as $$
 declare
   v_parts text[] := string_to_array(p_id, '__');
 begin
   if cardinality(v_parts) <> 3 then
-    return public._redact_id(p_uid, p_id);
+    return p_id;
   end if;
-  return public._redact_id(p_uid, v_parts[1]) || '__' || v_parts[2] || '__' || public._redact_id(p_uid, v_parts[3]);
+  return coalesce(p_map ->> v_parts[1], v_parts[1]) || '__' || v_parts[2] || '__'
+         || coalesce(p_map ->> v_parts[3], v_parts[3]);
+end;
+$$;
+
+-- Asks embed-entities to embed these notebooks again (the insert trigger's
+-- request): a renamed entity lost its embedding with its old id.
+create function public._enqueue_embed(p_notebook_ids uuid[])
+returns void
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_nb uuid;
+  v_url text := (select decrypted_secret from vault.decrypted_secrets where name = 'embed_entities_url');
+  v_secret text := (select decrypted_secret from vault.decrypted_secrets where name = 'embed_internal_secret');
+begin
+  if v_url is null or v_url = '' or v_secret is null or v_secret = '' then
+    return;
+  end if;
+  foreach v_nb in array array(select distinct x from unnest(p_notebook_ids) x) loop
+    perform net.http_post(
+      url     := v_url,
+      headers := jsonb_build_object('Content-Type', 'application/json', 'x-internal-secret', v_secret),
+      body    := jsonb_build_object('notebookId', v_nb));
+  end loop;
 end;
 $$;
 
@@ -159,10 +195,11 @@ as $$
   ) m;
 $$;
 
--- Rewrites every stored id of p_uid's that spells a forgotten name. Where the
--- new id is already taken in that notebook, the old row goes and the one
--- already there stays. Returns the notebooks that changed.
-create function public._forget_rename_ids(p_uid uuid)
+-- Rewrites every stored id of p_uid's that spells a forgotten name, judged by
+-- the names in p_names ({id: name}, read before the forget redacted them).
+-- Where the new id is already taken in that notebook, the old row goes and
+-- the one already there stays. Returns the notebooks that changed.
+create function public._forget_rename_ids(p_uid uuid, p_names jsonb)
 returns uuid[]
 language plpgsql
 security definer
@@ -175,11 +212,12 @@ declare
   v_more uuid[];
 begin
   select coalesce(jsonb_object_agg(id, new_id), '{}') into v_map from (
-    select x.id, public._redact_id(p_uid, x.id) as new_id
-    from (select distinct e.id from public.entities e where e.user_id = p_uid) x
+    select x.key as id, public._redact_id(p_uid, x.key, x.value) as new_id
+    from jsonb_each_text(p_names) x
+    where exists (select 1 from public.entities e where e.user_id = p_uid and e.id = x.key)
   ) m where new_id <> id;
   select coalesce(jsonb_object_agg(id, new_id), '{}') into v_rmap from (
-    select x.id, public._redact_relation_id(p_uid, x.id) as new_id
+    select x.id, public._map_relation_id(x.id, v_map) as new_id
     from (select distinct r.id from public.relations r where r.user_id = p_uid) x
   ) m where new_id <> id;
   if v_map = '{}'::jsonb and v_rmap = '{}'::jsonb then
@@ -260,11 +298,13 @@ begin
   update public.notebooks nb
      set entity_count = (select count(*) from public.entities e where e.notebook_id = nb.id)
    where nb.id = any(v_touched);
+  perform public._enqueue_embed(v_touched);
   return v_touched;
 end;
 $$;
 
--- An incoming change with every id that spells a forgotten name rewritten,
+-- An incoming change with every entity whose id spells a forgotten name
+-- renamed (see _redact_id) and its id rewritten wherever the change uses it,
 -- and each entity and relation once (the first wins). Old ids that changed
 -- are listed under 'renamed', for the device to drop.
 create function public._commit_redact_ids(p_uid uuid, p_change jsonb)
@@ -280,18 +320,16 @@ declare
   v_rmap jsonb;
   v_field text;
 begin
+  -- By each incoming entity's name; ids elsewhere in the change follow.
   select coalesce(jsonb_object_agg(id, new_id), '{}') into v_map from (
-    select x.id, public._redact_id(p_uid, x.id) as new_id from (
-      select value ->> 'id' as id from jsonb_array_elements(coalesce(p_change -> 'entities', '[]'))
-      union select value ->> 'source' from jsonb_array_elements(coalesce(p_change -> 'relations', '[]'))
-      union select value ->> 'target' from jsonb_array_elements(coalesce(p_change -> 'relations', '[]'))
-      union select jsonb_array_elements_text(coalesce(p_change -> 'entry' -> 'entityIds', '[]'))
-      union select jsonb_array_elements_text(coalesce(p_change -> 'followUp' -> 'targetEntityIds', '[]'))
-      union select jsonb_array_elements_text(coalesce(p_change -> 'askedQuestion' -> 'targetEntityIds', '[]'))
-    ) x where x.id is not null
+    select distinct on (x.id) x.id, public._redact_id(p_uid, x.id, x.name) as new_id from (
+      select value ->> 'id' as id, value ->> 'name' as name, ord
+      from jsonb_array_elements(case when jsonb_typeof(p_change -> 'entities') = 'array'
+                                     then p_change -> 'entities' else '[]'::jsonb end) with ordinality as t(value, ord)
+    ) x where x.id is not null order by x.id, x.ord
   ) m where new_id <> id;
   select coalesce(jsonb_object_agg(id, new_id), '{}') into v_rmap from (
-    select x.id, public._redact_relation_id(p_uid, x.id) as new_id from (
+    select x.id, public._map_relation_id(x.id, v_map) as new_id from (
       select value ->> 'id' as id from jsonb_array_elements(coalesce(p_change -> 'relations', '[]'))
       union select jsonb_array_elements_text(coalesce(p_change -> 'entry' -> 'relationIds', '[]'))
     ) x where x.id is not null
@@ -519,6 +557,7 @@ declare
   v_inside boolean;
   v_words int;
   v_dups jsonb;
+  v_names jsonb;
   v_counts jsonb;
   v_mid jsonb;
   v_touched uuid[];
@@ -542,7 +581,14 @@ begin
     from public.entities e
    where e.user_id = v_uid and e.id <> p_entity_id
      and (public._redact_text(e.name, v_key, v_hashes, v_inside, v_words) = 'someone'
-          or public._slugify(public._redact_text(initcap(e.id), v_key, v_hashes, v_inside, v_words)) = 'someone');
+          or e.id = any(v_slugs));
+
+  -- Names as they are now: the forget redacts them, and an id is judged by
+  -- its entity's name.
+  select coalesce(jsonb_object_agg(id, name), '{}') into v_names from (
+    select distinct on (e.id) e.id, e.name from public.entities e
+    where e.user_id = v_uid order by e.id, e.last_seen desc
+  ) n;
 
   v_counts := public._forget_entity_core(p_entity_id);
   v_mid := public._revisions(v_uid);
@@ -550,7 +596,7 @@ begin
   -- Their rows go, by notebook: the same id elsewhere can be someone else.
   -- Removed, not forgotten, since an id can be a plain word ("priya").
   v_touched := public._drop_entity_rows(v_uid, v_dups);
-  v_more := public._forget_rename_ids(v_uid);
+  v_more := public._forget_rename_ids(v_uid, v_names);
   v_touched := v_touched || v_more;
 
   -- What Lumen reads of the user's words. The trigger recomputes each row;
@@ -696,10 +742,11 @@ $$;
 revoke all on function public._context_text(uuid, text) from public, anon, authenticated;
 revoke all on function public._set_context_text() from public, anon, authenticated;
 revoke all on function public._slug_text(text) from public, anon, authenticated;
-revoke all on function public._redact_id(uuid, text) from public, anon, authenticated;
-revoke all on function public._redact_relation_id(uuid, text) from public, anon, authenticated;
+revoke all on function public._redact_id(uuid, text, text) from public, anon, authenticated;
+revoke all on function public._map_relation_id(text, jsonb) from public, anon, authenticated;
+revoke all on function public._enqueue_embed(uuid[]) from public, anon, authenticated;
 revoke all on function public._map_ids(text[], jsonb) from public, anon, authenticated;
-revoke all on function public._forget_rename_ids(uuid) from public, anon, authenticated;
+revoke all on function public._forget_rename_ids(uuid, jsonb) from public, anon, authenticated;
 revoke all on function public._commit_redact_ids(uuid, jsonb) from public, anon, authenticated;
 revoke all on function public._commit_apply_turn_redacted(uuid, uuid, jsonb) from public, anon, authenticated;
 revoke all on function public._commit_apply_turn(uuid, uuid, jsonb) from public, anon, authenticated;
