@@ -1,5 +1,6 @@
 // LM-57, "What Lumen shared": what is logged is the body that was sent,
 // kept 7 days on the phone, gone with the session and the account.
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -452,7 +453,7 @@ void main() {
       await log.record(nb, SharedKind.extraction, {'t': 2});
       await log.record('other', SharedKind.card, {'t': 3});
       expect(files(), isEmpty);
-      log.resume();
+      await log.resume();
       await log.record(nb, SharedKind.extraction, {'t': 4});
       expect(files(), hasLength(1));
     });
@@ -716,6 +717,85 @@ void main() {
         'session_card_service.dart',
         'session_brief_service.dart',
       });
+    });
+  });
+
+  group('owner scope (Phase 2, M1)', () {
+    late String? owner;
+
+    SharedLog ownedLog({Future<Directory> Function()? directory}) => SharedLog(
+          directoryProvider: directory ?? () async => dir,
+          protect: (path, level) async {},
+          excludeFromBackup: (path) async {},
+          now: () => now,
+          ownerId: () => owner,
+        );
+
+    setUp(() => owner = 'user-a');
+
+    test("one account's entries are not shown to the next", () async {
+      final owned = ownedLog();
+      await owned.record(nb, SharedKind.extraction, {'text': 'a'});
+      expect(await owned.readAll(), hasLength(1));
+      owner = 'user-b';
+      expect(await owned.readAll(), isEmpty);
+      expect(await owned.read(nb), isEmpty);
+      await owned.record(nb, SharedKind.card, {'text': 'b'});
+      expect((await owned.read(nb)).single.body, {'text': 'b'},
+          reason: "B's write drops A's entry from the same file");
+      owner = null;
+      expect(await owned.readAll(), isEmpty, reason: 'nobody signed in');
+    });
+
+    test('a record begun by A that lands after the switch to B is refused',
+        () async {
+      final gate = Completer<Directory>();
+      final owned = ownedLog(directory: () => gate.future);
+      final late = owned.record(nb, SharedKind.extraction, {'text': 'a'});
+      owner = 'user-b';
+      gate.complete(dir);
+      await late;
+      owned.resume();
+      expect(await owned.readAll(), isEmpty);
+      expect(files().isEmpty || (await owned.readAll()).isEmpty, isTrue);
+    });
+
+    test('nothing is recorded with nobody signed in', () async {
+      owner = null;
+      final owned = ownedLog();
+      await owned.record(nb, SharedKind.extraction, {'text': 'x'});
+      owner = 'user-a';
+      expect(await owned.readAll(), isEmpty);
+    });
+
+    test('resume waits for the wipe, and records are refused until then',
+        () async {
+      final gate = Completer<Directory>();
+      var first = true;
+      final owned = ownedLog(directory: () {
+        if (first) {
+          first = false;
+          return Future.value(dir);
+        }
+        return gate.future;
+      });
+      await owned.record(nb, SharedKind.extraction, {'text': 'a'});
+      final cleared = owned.clearAll();
+      owner = 'user-b';
+      var resumed = false;
+      final resume = owned.resume().then((_) => resumed = true);
+      await owned.record(nb, SharedKind.card, {'text': 'b-early'});
+      await pumpEventQueue();
+      expect(resumed, isFalse, reason: 'the wipe has not finished');
+
+      gate.complete(dir);
+      await cleared;
+      await resume;
+      expect(resumed, isTrue);
+      expect(await owned.readAll(), isEmpty,
+          reason: 'the early record was refused, A is gone');
+      await owned.record(nb, SharedKind.card, {'text': 'b-late'});
+      expect((await owned.readAll()).single.body, {'text': 'b-late'});
     });
   });
 

@@ -155,8 +155,8 @@ class _VoiceServicesScopeState extends ConsumerState<VoiceServicesScope>
         // Both are best-effort and independent; neither blocks a session.
         warmUp: () {
           // Signed in again: "What Lumen shared" records once more (LM-57).
-          sharedLog.resume();
           return Future.wait([
+            sharedLog.resume(),
             journal.warmUp(),
             openingPrep.refresh(),
             // Who this account forgot, before anything is sent (LM-63).

@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:path_provider/path_provider.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../security/file_protection.dart';
 
@@ -39,6 +40,7 @@ class SharedRequest {
     required this.at,
     required this.notebookId,
     required this.body,
+    this.owner,
   });
 
   final SharedKind kind;
@@ -48,6 +50,10 @@ class SharedRequest {
   /// The request body as sent (a decoded JSON object), minus credentials.
   final Map<String, dynamic> body;
 
+  /// The account that was signed in when the request was built. Entries of
+  /// another account are never read or kept (M1).
+  final String? owner;
+
   /// Whether this entry holds a real, unswapped name.
   bool get carriesRealNames => kind == SharedKind.briefSpeak;
 
@@ -56,6 +62,7 @@ class SharedRequest {
         'at': at.toUtc().toIso8601String(),
         'notebookId': notebookId,
         'body': body,
+        if (owner != null) 'owner': owner,
       };
 
   static SharedRequest? tryParse(Object? json) {
@@ -72,7 +79,17 @@ class SharedRequest {
       at: at,
       notebookId: id,
       body: body.cast<String, dynamic>(),
+      owner: json['owner'] is String ? json['owner'] as String : null,
     );
+  }
+}
+
+/// The signed-in user's id, or null when nobody is (or auth isn't up).
+String? _signedInUserId() {
+  try {
+    return Supabase.instance.client.auth.currentUser?.id;
+  } catch (_) {
+    return null;
   }
 }
 
@@ -93,20 +110,22 @@ class SharedRequest {
 /// locked) still goes.
 class SharedLog {
   /// The one instance the app uses, so every caller shares one queue.
-  static final SharedLog instance = SharedLog();
+  static final SharedLog instance = SharedLog(ownerId: _signedInUserId);
 
   SharedLog({
     Future<Directory> Function()? directoryProvider,
     FileProtector? protect,
     Future<void> Function(String path)? excludeFromBackup,
     DateTime Function()? now,
+    String? Function()? ownerId,
     this.retention = const Duration(days: 7),
     this.maxBytes = 256 * 1024,
   })  : _directoryProvider =
             directoryProvider ?? getApplicationSupportDirectory,
         _protect = protect ?? protectFileStrict,
         _exclude = excludeFromBackup ?? lumenExcludeFromBackup,
-        _now = now ?? DateTime.now;
+        _now = now ?? DateTime.now,
+        _ownerId = ownerId;
 
   static const int _version = 1;
   static const _pendingName = 'shared-log-pending';
@@ -117,6 +136,11 @@ class SharedLog {
   final FileProtector _protect;
   final Future<void> Function(String path) _exclude;
   final DateTime Function() _now;
+
+  /// The signed-in user. When set, an entry carries its owner and only the
+  /// current user's are read, kept or written; a request built by one
+  /// account that lands after a switch is refused. Null: no scoping.
+  final String? Function()? _ownerId;
   final Duration retention;
 
   /// A file is trimmed from its oldest end to stay under this (the newest
@@ -136,8 +160,13 @@ class SharedLog {
   /// sign-in), so a request of the old account can't land after the wipe.
   bool _signedOut = false;
 
-  /// Records are accepted again (a sign-in).
-  void resume() => _signedOut = false;
+  /// Records are accepted again (a sign-in), once a wipe still running from
+  /// the sign-out has finished: a late record of the last account can never
+  /// land in the next one's log.
+  Future<void> resume() async {
+    await _tail;
+    _signedOut = false;
+  }
 
   /// Records [body] (the object the request was built from) for
   /// [notebookId]. Call it at the one place the request is built, with the
@@ -147,8 +176,11 @@ class SharedLog {
     SharedKind kind,
     Map<String, dynamic> body,
   ) async {
+    final ownerOf = _ownerId;
+    final owner = ownerOf?.call();
     bool refused() =>
         _signedOut ||
+        (ownerOf != null && (owner == null || ownerOf() != owner)) ||
         _deleted.contains(notebookId) ||
         (_personForgotten && kind == SharedKind.briefSpeak);
     if (refused()) return;
@@ -168,6 +200,7 @@ class SharedLog {
           at: _now(),
           notebookId: notebookId,
           body: copy,
+          owner: owner,
         ));
         await _write(file, _trimmed(_fresh(entries)));
       });
@@ -456,12 +489,19 @@ class SharedLog {
       return [
         for (final raw in decoded['entries'] as List)
           if (SharedRequest.tryParse(raw) case final e?
-              when e.notebookId == notebookId)
+              when e.notebookId == notebookId && _isMine(e))
             e,
       ];
     } catch (_) {
       return <SharedRequest>[];
     }
+  }
+
+  bool _isMine(SharedRequest entry) {
+    final ownerId = _ownerId;
+    if (ownerId == null) return true;
+    final current = ownerId();
+    return current != null && entry.owner == current;
   }
 
   /// Through a temp file that is protected and left out of backups before it
