@@ -804,7 +804,8 @@ void main() {
       expect(sharedLogClaim, contains('exactly what Lumen sent'));
       expect(sharedLogClaim, contains('7 days'));
       expect(sharedLogClaim, contains('live voice conversation is not'));
-      expect(sharedLogClaim, contains('Forgetting a person clears it'));
+      expect(sharedLogClaim, contains('while the phone is locked'));
+      expect(sharedLogClaim, contains('Removing or forgetting a person clears it'));
       expect(File('src/routes/security.tsx').readAsStringSync(),
           contains(sharedLogClaim));
     });

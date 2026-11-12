@@ -92,7 +92,8 @@ const exportClaim =
 const sharedLogClaim =
     'In the iPhone app you can see exactly what Lumen sent for each session, '
     'kept on your phone for 7 days. The live voice conversation is not '
-    'part of it. Forgetting a person clears it.';
+    'part of it, and neither is anything sent while the phone is locked. '
+    'Removing or forgetting a person clears it.';
 
 /// Lines for controls that may not have shipped; shown only when listed in
 /// the `shipped` set passed to the screen.

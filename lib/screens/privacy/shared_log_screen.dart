@@ -85,7 +85,9 @@ class _SharedLogScreenState extends ConsumerState<SharedLogScreen> {
                   'The text Lumen sent to its text model, as it left your '
                   'phone, with the names of people, places and '
                   'organizations it recognized swapped for made-up ones. '
-                  'Kept on this phone for 7 days. Never uploaded.',
+                  'Kept on this phone for 7 days. Never uploaded. Anything sent '
+                  "while the phone is locked isn't recorded, and removing or "
+                  'forgetting a person clears all of it.',
                   style: body,
                 ),
                 const SizedBox(height: 8),

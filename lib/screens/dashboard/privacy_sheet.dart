@@ -184,7 +184,8 @@ class _PrivacySheetState extends ConsumerState<PrivacySheet> {
                           'try again.'
                     : _exportStatus ??
                           'A zip with your whole journal as data and as '
-                              'Markdown notes. Asks for Face ID first.',
+                              'Markdown notes. Asks for Face ID or your '
+                              'passcode first.',
                 style: _exportFailed
                     ? small.copyWith(color: colors.destructive)
                     : small,
