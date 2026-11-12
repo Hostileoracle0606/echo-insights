@@ -27,7 +27,10 @@ String _firstName(User? user) {
     }
   }
   final email = user?.email;
-  if (email != null && email.contains('@')) {
+  // A hidden Apple email is a random string, not a name to greet.
+  if (email != null &&
+      email.contains('@') &&
+      !email.toLowerCase().endsWith('@privaterelay.appleid.com')) {
     final handle = email.split('@').first.split(RegExp(r'[._+-]')).first;
     if (handle.isNotEmpty && handle.length <= 14) {
       return handle[0].toUpperCase() + handle.substring(1);

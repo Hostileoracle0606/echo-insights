@@ -24,6 +24,7 @@ class Env {
         String.fromEnvironment('SUPABASE_PUBLISHABLE_KEY'),
     'VITE_SUPABASE_PUBLISHABLE_KEY':
         String.fromEnvironment('VITE_SUPABASE_PUBLISHABLE_KEY'),
+    'PASSKEYS_ENABLED': String.fromEnvironment('PASSKEYS_ENABLED'),
   };
 
   static String _first(List<String> keys) {
@@ -58,4 +59,11 @@ class Env {
           'VITE_SUPABASE_PUBLISHABLE_KEY',
         ],
       );
+
+  /// Passkeys are a Supabase beta and need the Associated Domains entitlement
+  /// for the relying-party domain (docs/security/launch-checklist.md section
+  /// 9). Off unless the build says `--dart-define=PASSKEYS_ENABLED=true`, so
+  /// no button appears that cannot work.
+  static bool get passkeysEnabled =>
+      (_clean(_defined['PASSKEYS_ENABLED']) ?? '').toLowerCase() == 'true';
 }

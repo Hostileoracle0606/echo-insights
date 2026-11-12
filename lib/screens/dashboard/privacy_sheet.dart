@@ -7,6 +7,7 @@ import '../../security/app_lock_provider.dart';
 import '../../theme/lumen_colors.dart';
 import '../../theme/lumen_text.dart';
 import '../../widgets/transcript_retention.dart';
+import 'sign_in_security.dart';
 import '../privacy/who_hears_you_screen.dart';
 
 /// The dashboard's shield button: opens [PrivacySheet].
@@ -171,6 +172,7 @@ class _PrivacySheetState extends ConsumerState<PrivacySheet> {
               ),
               children: const [TranscriptRetentionChoices()],
             ),
+            const SignInSecurity(),
             ListTile(
               key: const Key('exportJournalTile'),
               contentPadding: EdgeInsets.zero,

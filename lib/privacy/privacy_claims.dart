@@ -17,12 +17,13 @@ const bool supabaseEncryptionVerified = false;
 
 /// Controls whose lines render only when the feature is in this set. A line
 /// joins it only once the control is in the app.
-enum PrivacyFeature { forgetPerson, offTheRecord, autoForget }
+enum PrivacyFeature { forgetPerson, offTheRecord, autoForget, deviceList }
 
 const Set<PrivacyFeature> shipped = <PrivacyFeature>{
   PrivacyFeature.forgetPerson,
   PrivacyFeature.offTheRecord,
   PrivacyFeature.autoForget,
+  PrivacyFeature.deviceList,
 };
 
 /// The Google line for the screen and the page.
@@ -96,4 +97,8 @@ const Map<PrivacyFeature, String> gatedClaims = {
   PrivacyFeature.autoForget:
       'You can have old transcripts deleted automatically after 7, 30 or 90 '
       'days. Cards and what Lumen remembers stay.',
+  PrivacyFeature.deviceList:
+      'Privacy lists the devices signed in to your account, and you can sign '
+      'one out. It can no longer renew its sign-in, but it may keep working '
+      'for up to an hour.',
 };

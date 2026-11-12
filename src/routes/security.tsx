@@ -71,6 +71,7 @@ const IPHONE_CONTROLS: string[] = [
   "You can forget a person from their page. They leave your map and the questions Lumen would ask, and their name is replaced in your cards and in what Lumen remembers about others. Mentioning that name later doesn't bring them back. Lumen matches the name they were saved under, so a nickname or a first name alone can slip through. Your saved transcripts keep what you said, and Lumen can still read your past conversations, so it may bring the name up.",
   "Off the record: Lumen doesn't save what you say while it is on, and writes no card from it. Your voice still goes to Google so Lumen can answer.",
   "You can have old transcripts deleted automatically after 7, 30 or 90 days. Cards and what Lumen remembers stay.",
+  "Privacy lists the devices signed in to your account, and you can sign one out. It can no longer renew its sign-in, but it may keep working for up to an hour.",
 ];
 
 function SecurityPage() {
