@@ -23,7 +23,8 @@ const Set<PrivacyFeature> shipped = <PrivacyFeature>{
   PrivacyFeature.forgetPerson,
   PrivacyFeature.offTheRecord,
   PrivacyFeature.autoForget,
-  PrivacyFeature.deviceList,
+  // deviceList: off until the staging check in docs/security/launch-checklist.md
+  // section 9 passes (DELETE on auth.sessions, JWT expiry of 3600 s or less).
 };
 
 /// The Google line for the screen and the page.

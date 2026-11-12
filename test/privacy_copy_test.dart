@@ -55,8 +55,14 @@ void main() {
     expect(page, contains(sharedLogClaim));
     expect(page, contains(supabaseClaim));
     expect(page, contains(usClaim));
-    for (final line in gatedClaims.values) {
-      expect(page, contains(line));
+    // Only the controls that are shipped; the rest stay off the page.
+    for (final entry in gatedClaims.entries) {
+      if (shipped.contains(entry.key)) {
+        expect(page, contains(entry.value));
+      } else {
+        expect(page, isNot(contains(entry.value)),
+            reason: '${entry.key} is not shipped');
+      }
     }
   });
 
@@ -113,10 +119,18 @@ void main() {
     expect(page, contains(exportClaim));
   });
 
-  test('unverified claims stay off; every control is shipped', () {
+  // R30: the device-list claim rests on hosted facts nobody has checked yet
+  // (DELETE on auth.sessions, JWT expiry of an hour or less). It ships with
+  // the checklist's staging check, not before.
+  test('unverified claims stay off; the verified controls are shipped', () {
     expect(paidTierVerified, isFalse);
     expect(supabaseEncryptionVerified, isFalse);
-    expect(shipped, PrivacyFeature.values.toSet());
+    expect(shipped, {
+      PrivacyFeature.forgetPerson,
+      PrivacyFeature.offTheRecord,
+      PrivacyFeature.autoForget,
+    });
+    expect(shipped, isNot(contains(PrivacyFeature.deviceList)));
   });
 
   test('the page has no wording the security review ruled out', () {
