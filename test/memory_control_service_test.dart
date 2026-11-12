@@ -50,7 +50,20 @@ void main() {
 
       final done = await service.forgetEntity('priya');
       expect(calls.last.$1, 'forget_entity');
+      // Off: the one-argument RPC, as every older build calls it.
+      expect(calls.last.$2, {'p_entity_id': 'priya'});
       expect(done.followUps, 1);
+    });
+
+    test('forgetEntity with eraseTranscripts asks the server to rewrite them',
+        () async {
+      response = {'notebooks': 1, 'transcriptPassages': 7};
+
+      expect((await service.previewForget('priya')).transcriptPassages, 7);
+      final done = await service.forgetEntity('priya', eraseTranscripts: true);
+      expect(calls.last.$1, 'forget_entity');
+      expect(calls.last.$2, {'p_entity_id': 'priya', 'p_erase_transcripts': true});
+      expect(done.transcriptPassages, 7);
     });
 
     test('removeEntity calls remove_entity', () async {

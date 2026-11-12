@@ -17,11 +17,13 @@ class _Auth implements LockAuthenticator {
   _Auth({this.passes = true});
   bool passes;
   int prompts = 0;
+  final reasons = <String>[];
   @override
   Future<bool> isAvailable() async => true;
   @override
   Future<bool> authenticate(String reason) async {
     prompts += 1;
+    reasons.add(reason);
     return passes;
   }
 }
@@ -33,15 +35,18 @@ class _Journal extends JournalNotifier {
   final bool fail;
   final forgotten = <String>[];
   final names = <String?>[];
+  final erased = <bool>[];
 
   @override
   JournalState build() => _seed;
 
   @override
-  Future<void> forgetEntity(String entityId, {String? name}) async {
+  Future<void> forgetEntity(String entityId,
+      {String? name, bool eraseTranscripts = false}) async {
     if (fail) throw Exception('boom');
     forgotten.add(entityId);
     names.add(name);
+    erased.add(eraseTranscripts);
     state = state.copyWith(entities: {...state.entities}..remove(entityId));
   }
 }
@@ -66,6 +71,7 @@ const _counts = {
   'askedQuestions': 1,
   'cards': 1,
   'briefDeleted': true,
+  'transcriptPassages': 12,
 };
 
 Future<({_Journal journal, List<String> rpcs})> _open(
@@ -119,6 +125,18 @@ Future<void> _toConfirmation(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
+Future<void> _tapVisible(WidgetTester tester, Finder finder) async {
+  // The confirmation is a lazy list: scroll until the control is built.
+  await tester.scrollUntilVisible(finder, 120,
+      scrollable: find
+          .descendant(
+              of: find.byType(ForgetEntityScreen),
+              matching: find.byType(Scrollable))
+          .first);
+  await tester.pumpAndSettle();
+  await tester.tap(finder);
+}
+
 void main() {
   testWidgets('the note sheet offers Forget with a 44 pt target',
       (tester) async {
@@ -155,6 +173,98 @@ void main() {
     expect(find.textContaining('keep your words for you to read'),
         findsOneWidget);
     expect(find.textContaining('may bring the name up'), findsNothing);
+    expect(find.textContaining('Lumen can still read those'), findsNothing);
+  });
+
+  group('also erase them from my saved transcripts', () {
+    Finder toggle() => find.widgetWithText(
+        SwitchListTile, 'Also erase Priya from my saved transcripts');
+
+    testWidgets('is off by default, and Forget then leaves transcripts alone',
+        (tester) async {
+      final opened = await _open(tester);
+      await _toConfirmation(tester);
+
+      await tester.ensureVisible(toggle());
+      expect(tester.widget<SwitchListTile>(toggle()).value, isFalse);
+      expect(find.textContaining("can't be undone"), findsOneWidget);
+      expect(find.textContaining('12 passages'), findsOneWidget);
+
+      await _tapVisible(tester, find.widgetWithText(FilledButton, 'Forget Priya'));
+      await tester.pumpAndSettle();
+      expect(opened.journal.forgotten, ['priya']);
+      expect(opened.journal.erased, [false]);
+    });
+
+    testWidgets('on, Forget also erases', (tester) async {
+      final auth = _Auth();
+      final opened = await _open(tester, auth: auth);
+      await _toConfirmation(tester);
+
+      await tester.ensureVisible(toggle());
+      await tester.tap(toggle());
+      await tester.pumpAndSettle();
+      expect(tester.widget<SwitchListTile>(toggle()).value, isTrue);
+
+      await _tapVisible(tester, find.widgetWithText(FilledButton, 'Forget Priya'));
+      await tester.pumpAndSettle();
+      // A plain confirmation first: nothing is sent until it is accepted.
+      expect(find.text('Erase Priya from your transcripts?'), findsOneWidget);
+      expect(opened.journal.forgotten, isEmpty);
+      await tester.tap(find.text('Erase and forget'));
+      await tester.pumpAndSettle();
+      expect(opened.journal.forgotten, ['priya']);
+      expect(opened.journal.erased, [true]);
+      // Behind the same re-auth as Forget; its reason names nobody.
+      expect(auth.prompts, 1);
+      expect(auth.reasons.single, contains('erase'));
+      expect(auth.reasons.single, isNot(contains('Priya')));
+    });
+
+    testWidgets('on, cancelling the confirmation forgets nothing',
+        (tester) async {
+      final auth = _Auth();
+      final opened = await _open(tester, auth: auth);
+      await _toConfirmation(tester);
+
+      await tester.ensureVisible(toggle());
+      await tester.tap(toggle());
+      await tester.pumpAndSettle();
+      await _tapVisible(tester, find.widgetWithText(FilledButton, 'Forget Priya'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Cancel').last);
+      await tester.pumpAndSettle();
+
+      expect(auth.prompts, 0);
+      expect(opened.journal.forgotten, isEmpty);
+      expect(find.byType(ForgetEntityScreen), findsOneWidget);
+    });
+
+    testWidgets('a failed re-auth with it on changes nothing', (tester) async {
+      final auth = _Auth(passes: false);
+      final opened = await _open(tester, auth: auth);
+      await _toConfirmation(tester);
+
+      await tester.ensureVisible(toggle());
+      await tester.tap(toggle());
+      await tester.pumpAndSettle();
+      await _tapVisible(tester, find.widgetWithText(FilledButton, 'Forget Priya'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Erase and forget'));
+      await tester.pumpAndSettle();
+
+      expect(auth.prompts, 1);
+      expect(opened.journal.forgotten, isEmpty);
+      expect(opened.journal.erased, isEmpty);
+      expect(opened.rpcs, ['forget_entity_preview']);
+      expect(find.byType(ForgetEntityScreen), findsOneWidget);
+    });
+
+    testWidgets('is not offered when no transcript names them', (tester) async {
+      await _open(tester, preview: {..._counts, 'transcriptPassages': 0});
+      await _toConfirmation(tester);
+      expect(toggle(), findsNothing);
+    });
   });
 
   testWidgets('the brief line is left out when nothing will be deleted',
@@ -168,7 +278,7 @@ void main() {
     final opened = await _open(tester);
     await _toConfirmation(tester);
 
-    await tester.tap(find.text('Cancel'));
+    await _tapVisible(tester, find.text('Cancel'));
     await tester.pumpAndSettle();
 
     expect(opened.journal.forgotten, isEmpty);
@@ -180,7 +290,7 @@ void main() {
     final opened = await _open(tester);
     await _toConfirmation(tester);
 
-    await tester.tap(find.widgetWithText(FilledButton, 'Forget Priya'));
+    await _tapVisible(tester, find.widgetWithText(FilledButton, 'Forget Priya'));
     await tester.pumpAndSettle();
 
     expect(opened.journal.forgotten, ['priya']);
@@ -196,7 +306,7 @@ void main() {
     final opened = await _open(tester, auth: auth);
     await _toConfirmation(tester);
 
-    await tester.tap(find.widgetWithText(FilledButton, 'Forget Priya'));
+    await _tapVisible(tester, find.widgetWithText(FilledButton, 'Forget Priya'));
     await tester.pumpAndSettle();
 
     expect(auth.prompts, 1);
@@ -204,7 +314,7 @@ void main() {
     expect(find.byType(ForgetEntityScreen), findsOneWidget);
 
     auth.passes = true;
-    await tester.tap(find.widgetWithText(FilledButton, 'Forget Priya'));
+    await _tapVisible(tester, find.widgetWithText(FilledButton, 'Forget Priya'));
     await tester.pumpAndSettle();
     expect(opened.journal.forgotten, ['priya']);
   });
@@ -214,7 +324,7 @@ void main() {
     final opened = await _open(tester, failForget: true);
     await _toConfirmation(tester);
 
-    await tester.tap(find.widgetWithText(FilledButton, 'Forget Priya'));
+    await _tapVisible(tester, find.widgetWithText(FilledButton, 'Forget Priya'));
     await tester.pumpAndSettle();
 
     expect(find.byType(ForgetEntityScreen), findsOneWidget);

@@ -1091,7 +1091,12 @@ class JournalNotifier extends Notifier<JournalState> {
   /// here at once, as the server did (so a failed reload changes nothing),
   /// and a live conversation, which already heard it, is replaced by a new
   /// one seeded only from the redacted context.
-  Future<void> forgetEntity(String entityId, {String? name}) async {
+  ///
+  /// With [eraseTranscripts], the server also erases the name from the
+  /// user's saved turns and entries (their own words, for good), and the open
+  /// notebook's saved turns are read again so the transcript shows that.
+  Future<void> forgetEntity(String entityId,
+      {String? name, bool eraseTranscripts = false}) async {
     // Every name they go by here: the given one, and the same person under
     // another id (the server drops those rows too).
     await _redactor.ensureLoaded();
@@ -1102,7 +1107,9 @@ class JournalNotifier extends Notifier<JournalState> {
       for (final e in state.entities.values)
         if (slugs.contains(e.id) || slugs.contains(slugify(e.name))) e.name,
     };
-    await ref.read(memoryControlServiceProvider).forgetEntity(entityId);
+    await ref
+        .read(memoryControlServiceProvider)
+        .forgetEntity(entityId, eraseTranscripts: eraseTranscripts);
     // This phone cleans up below; remember the marker so the check on resume
     // doesn't repeat it.
     unawaited(ref.read(forgetSyncProvider).acknowledge());
@@ -1134,6 +1141,23 @@ class JournalNotifier extends Notifier<JournalState> {
     // spoken at the next opening.
     await ref.read(openingPrepProvider).reloadOrDropBrief();
     await _reloadSnapshot();
+    if (eraseTranscripts) await _reloadHistory();
+  }
+
+  /// The open notebook's saved turns again, after the server erased a name
+  /// from them, so the transcript shows the words as they are now stored. If
+  /// they can't be read, none are kept: a shorter transcript until the
+  /// notebook is opened again, not the erased name.
+  Future<void> _reloadHistory() async {
+    final notebookId = _activeNotebookId;
+    if (notebookId == null) return;
+    final turns = await _loadHistory(notebookId);
+    if (notebookId != _activeNotebookId) return;
+    _history
+      ..clear()
+      ..addAll(turns);
+    _savedTurnIds.addAll(turns.map((turn) => turn.turnId));
+    _notifyUi();
   }
 
   /// Sends every removal still inside its undo window, now.

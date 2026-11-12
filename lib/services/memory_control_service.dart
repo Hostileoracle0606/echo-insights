@@ -16,6 +16,7 @@ class ForgetPreview {
     required this.askedQuestions,
     required this.cards,
     required this.briefDeleted,
+    this.transcriptPassages = 0,
   });
 
   factory ForgetPreview.fromJson(Map<dynamic, dynamic> json) => ForgetPreview(
@@ -25,6 +26,7 @@ class ForgetPreview {
         askedQuestions: (json['askedQuestions'] as num?)?.toInt() ?? 0,
         cards: (json['cards'] as num?)?.toInt() ?? 0,
         briefDeleted: json['briefDeleted'] == true,
+        transcriptPassages: (json['transcriptPassages'] as num?)?.toInt() ?? 0,
       );
 
   final int notebooks;
@@ -33,6 +35,10 @@ class ForgetPreview {
   final int askedQuestions;
   final int cards;
   final bool briefDeleted;
+
+  /// Saved turns and journal entries that name the person: what "also
+  /// replace their name in my saved transcripts" would rewrite.
+  final int transcriptPassages;
 }
 
 /// The user's controls over what Lumen keeps (LM-29): a thin adapter over
@@ -77,8 +83,16 @@ class MemoryControlService {
   /// follow-ups and asked questions go, a brief that mentions it is deleted,
   /// its name is redacted from cards, and a hashed suppression keeps later
   /// conversations from adding it back. Safe to retry.
-  Future<ForgetPreview> forgetEntity(String entityId) async {
-    final data = await _rpc('forget_entity', {'p_entity_id': entityId});
+  ///
+  /// With [eraseTranscripts], the server also replaces the name with
+  /// "someone" in the user's saved turns and journal entries. That edits
+  /// their own words for good.
+  Future<ForgetPreview> forgetEntity(String entityId,
+      {bool eraseTranscripts = false}) async {
+    final data = await _rpc('forget_entity', {
+      'p_entity_id': entityId,
+      if (eraseTranscripts) 'p_erase_transcripts': true,
+    });
     return ForgetPreview.fromJson(data as Map);
   }
 }

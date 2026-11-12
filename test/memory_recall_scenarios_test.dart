@@ -212,7 +212,7 @@ class _NoMemory implements RetrieveMemoryService {
 
 class _FakeTranscripts implements TranscriptStore {
   _FakeTranscripts(this.turns);
-  final List<ConversationTurn> turns;
+  List<ConversationTurn> turns;
   final saved = <ConversationTurn>[];
 
   @override
@@ -285,9 +285,12 @@ class _FakeBriefs implements SessionBriefService {
 
 class _FakeMemory implements MemoryControlService {
   final forgotten = <String>[];
+  final erased = <bool>[];
   @override
-  Future<ForgetPreview> forgetEntity(String entityId) async {
+  Future<ForgetPreview> forgetEntity(String entityId,
+      {bool eraseTranscripts = false}) async {
     forgotten.add(entityId);
+    erased.add(eraseTranscripts);
     return const ForgetPreview(
         notebooks: 2, relations: 1, followUps: 1, askedQuestions: 1, cards: 2, briefDeleted: true);
   }
@@ -632,6 +635,58 @@ void main() {
       final texts = _contextTexts(h.socket).map((t) => '$t').join('\n');
       expect(texts.toLowerCase(), isNot(contains('raman')));
       expect(texts, contains('someone has a stress fracture'));
+    });
+    group('with a notebook open', () {
+      ConversationTurn turn(String id, Speaker role, String text) =>
+          ConversationTurn(
+            turnId: id,
+            role: role,
+            text: text,
+            createdAt: '2026-11-05T17:07:45.000Z',
+            startedAt: '2026-11-05T17:07:45.000Z',
+          );
+      final said = [
+        turn('t1', Speaker.user, 'Priya Raman called again.'),
+        turn('t2', Speaker.assistant, 'How is Priya Raman doing?'),
+      ];
+      // The rows after an erase: text rewritten on the server.
+      final erased = [
+        turn('t1', Speaker.user, 'someone called again.'),
+        turn('t2', Speaker.assistant, 'How is someone doing?'),
+      ];
+
+      test('a forget keeps the transcript\'s words; Lumen reads them redacted',
+          () async {
+        h = _Harness(state: _beforeForget(), history: said);
+        await h.journal.enterNotebook(_notebookId);
+        h.transcripts.turns = erased; // not read again without an erase
+        h.commits.state = _afterForget();
+        await h.journal.forgetEntity('priya-raman');
+        expect(h.memory.erased, [false]);
+        expect(h.journal.transcriptRows.map((r) => r.turn.text),
+            contains('Priya Raman called again.'));
+        await h.startLive();
+        final texts = _contextTexts(h.socket).map((t) => '$t').join('\n');
+        expect(texts, contains('someone called again.'));
+        expect(texts.toLowerCase(), isNot(contains('raman')));
+      });
+
+      test('a forget with erase reloads the saved turns as now stored',
+          () async {
+        h = _Harness(state: _beforeForget(), history: said);
+        await h.journal.enterNotebook(_notebookId);
+        h.transcripts.turns = erased;
+        h.commits.state = _afterForget();
+        await h.journal.forgetEntity('priya-raman', eraseTranscripts: true);
+        expect(h.memory.erased, [true]);
+        final shown = h.journal.transcriptRows.map((r) => r.turn.text);
+        expect(shown, contains('someone called again.'));
+        expect(shown.join(' ').toLowerCase(), isNot(contains('raman')));
+        await h.startLive();
+        final texts = _contextTexts(h.socket).map((t) => '$t').join('\n');
+        expect(texts, contains('someone called again.'));
+        expect(texts.toLowerCase(), isNot(contains('raman')));
+      });
     });
   });
 

@@ -105,7 +105,8 @@ const Map<PrivacyFeature, String> gatedClaims = {
       'cards and what it remembers about others. Mentioning that name later '
       "doesn't bring them back. Lumen matches the name they were saved under, "
       'so a nickname or a first name alone can slip through. Your saved '
-      'transcripts keep your words for you to read.',
+      'transcripts keep your words for you to read, unless you also choose to '
+      'erase the name from them, which replaces it for good.',
   PrivacyFeature.offTheRecord:
       "Off the record: Lumen doesn't save what you say while it is on, and "
       'writes no card from it. Your voice still goes to Google so Lumen can '

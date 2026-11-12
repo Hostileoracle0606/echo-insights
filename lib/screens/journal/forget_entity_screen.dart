@@ -29,17 +29,27 @@ class _ForgetEntityScreenState extends ConsumerState<ForgetEntityScreen> {
   late Future<ForgetPreview> _preview = _load();
   bool _forgetting = false;
   bool _failed = false;
+  // Off by default: on, it rewrites the user's own words for good.
+  bool _eraseTranscripts = false;
 
   Future<ForgetPreview> _load() =>
       ref.read(memoryControlServiceProvider).previewForget(widget.entityId);
 
   Future<void> _forget() async {
+    final erase = _eraseTranscripts;
+    // Erasing edits the user's own words for good: say so once more, plainly,
+    // before the re-auth that both paths go through.
+    if (erase && !await _confirmErase()) return;
+    if (!mounted) return;
     setState(() {
       _forgetting = true;
       _failed = false;
     });
     // The reason stays generic: it reaches the system prompt, so no name.
-    final passed = await requireReauth(context, reason: 'Forget this person');
+    final passed = await requireReauth(context,
+        reason: erase
+            ? 'Forget this person and erase their name from your transcripts'
+            : 'Forget this person');
     if (!mounted) return;
     if (!passed) {
       // A failed or cancelled check forgets nothing.
@@ -49,7 +59,8 @@ class _ForgetEntityScreenState extends ConsumerState<ForgetEntityScreen> {
     try {
       await ref
           .read(journalProvider.notifier)
-          .forgetEntity(widget.entityId, name: widget.name);
+          .forgetEntity(widget.entityId,
+              name: widget.name, eraseTranscripts: erase);
       ref.invalidate(notebooksProvider);
       if (mounted) Navigator.of(context).pop(true);
     } catch (_) {
@@ -61,6 +72,32 @@ class _ForgetEntityScreenState extends ConsumerState<ForgetEntityScreen> {
         });
       }
     }
+  }
+
+  Future<bool> _confirmErase() async {
+    final name = widget.name;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Erase $name from your transcripts?'),
+        content: const Text(
+          'Your saved transcripts will say "someone" where you said the '
+          "name. You won't be able to read the original words again, and "
+          "this can't be undone.",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Erase and forget'),
+          ),
+        ],
+      ),
+    );
+    return ok == true;
   }
 
   @override
@@ -156,6 +193,27 @@ class _ForgetEntityScreenState extends ConsumerState<ForgetEntityScreen> {
           'Lumen reads them with the name replaced.',
           style: TextStyle(fontSize: 13, height: 1.4, color: colors.mutedForeground),
         ),
+        if (preview.transcriptPassages > 0) ...[
+          const SizedBox(height: 12),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            value: _eraseTranscripts,
+            onChanged: _forgetting
+                ? null
+                : (on) => setState(() => _eraseTranscripts = on),
+            title: Text('Also erase $name from my saved transcripts',
+                style: TextStyle(fontSize: 15, color: colors.ink)),
+            subtitle: Text(
+              'Replaces the name with "someone" in '
+              '${preview.transcriptPassages} '
+              '${preview.transcriptPassages == 1 ? 'passage' : 'passages'} '
+              "of what you said. This permanently edits your own words and "
+              "can't be undone.",
+              style: TextStyle(
+                  fontSize: 13, height: 1.4, color: colors.mutedForeground),
+            ),
+          ),
+        ],
         if (_failed) ...[
           const SizedBox(height: 12),
           Text("Couldn't forget $name. Try again.",
