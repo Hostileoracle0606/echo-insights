@@ -413,6 +413,19 @@ class PseudonymMap {
     return true;
   }
 
+  /// Drops every graph entity of the map that is not in [liveIds] (a person
+  /// forgotten on another device): its real name, aliases and stand-ins go,
+  /// as in [forget]. Names learned from speech, which were never in the
+  /// graph, stay. True if the map changed.
+  bool pruneTo(Set<String> liveIds) {
+    var changed = false;
+    for (final entry in _entries.values.toList()) {
+      if (entry.learned || liveIds.contains(entry.id)) continue;
+      changed |= forget(entry.id);
+    }
+    return changed;
+  }
+
   PseudonymEntry? _adoptByName(PseudonymEntity e) {
     // A name found by recognition that the graph now has under its own id.
     for (final entry in _entries.values.toList()) {

@@ -290,6 +290,26 @@ void main() {
     });
   });
 
+  group('prune (forgotten on another device)', () {
+    test('drops graph entities that are gone, keeps the rest and learned names',
+        () async {
+      final r = FakeRecognizer(
+          const [RecognizedName('Teodor', PseudonymKind.person)]);
+      final s = PseudonymService(ownerId: () => 'u1', store: store, recognizer: r);
+      await s.sync([person('priya', 'Priya'), person('sam', 'Samantha')]);
+      await s.dehydrate('Teodor called');
+      expect(store.saved, contains('Priya'));
+      expect(store.saved, contains('Teodor'));
+
+      await s.pruneTo({'sam'});
+
+      expect(store.saved, isNot(contains('Priya')));
+      expect(store.saved, contains('Samantha'));
+      expect(store.saved, contains('Teodor'), reason: 'learned, never in the graph');
+      expect((await s.dehydrate('Priya called')).text, 'Priya called');
+    });
+  });
+
   group('forget', () {
     test('forgetting a person removes them from the stored map', () async {
       final s = PseudonymService(ownerId: () => 'u1', store: store);

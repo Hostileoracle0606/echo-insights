@@ -41,6 +41,7 @@ import '../services/retrieve_memory_service.dart';
 import '../services/session_card_service.dart';
 import '../services/turn_journal_service.dart';
 import 'forget_redactor_provider.dart';
+import 'forget_sync_provider.dart';
 import 'opening_prep_provider.dart';
 import 'pseudonym_provider.dart';
 import 'shared_log_provider.dart';
@@ -1009,6 +1010,13 @@ class JournalNotifier extends Notifier<JournalState> {
     for (final id in {..._pendingRemovals.keys, ..._forgottenThisRun}) {
       if (next.entities.containsKey(id)) next = withoutEntity(next, id);
     }
+    // A forget made on another phone: this one's log, held brief and name
+    // map are cleaned (throttled; never blocks the adopt).
+    unawaited(runForgetCheck(
+      () => ref.read(forgetSyncProvider),
+      live: next.entities.keys.toSet(),
+      force: false,
+    ));
     return next;
   }
 
@@ -1095,6 +1103,9 @@ class JournalNotifier extends Notifier<JournalState> {
         if (slugs.contains(e.id) || slugs.contains(slugify(e.name))) e.name,
     };
     await ref.read(memoryControlServiceProvider).forgetEntity(entityId);
+    // This phone cleans up below; remember the marker so the check on resume
+    // doesn't repeat it.
+    unawaited(ref.read(forgetSyncProvider).acknowledge());
     // A removal still inside its undo window is superseded by this.
     _pendingRemovals.remove(entityId)
       ?..timer.cancel()

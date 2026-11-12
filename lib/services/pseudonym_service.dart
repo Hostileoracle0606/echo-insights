@@ -534,6 +534,23 @@ class PseudonymService {
         }
       });
 
+  /// A person was forgotten on another device: entities of the map that the
+  /// graph (as just loaded, [liveEntityIds]) no longer has leave it, like
+  /// [forget]. Names learned from speech stay.
+  Future<void> pruneTo(Set<String> liveEntityIds) => _serial(() async {
+        try {
+          if (await _ensureLoaded() == null) return;
+          _syncedGraphs.clear();
+          final (saved, tokens) = await _host.run(_PruneJob(liveEntityIds));
+          if (saved != null) {
+            _changed(tokens);
+            await _save(saved);
+          }
+        } catch (_) {
+          // Nothing readable to prune.
+        }
+      });
+
   /// Sign-out: the map is erased from memory and the Keychain. If the
   /// Keychain delete fails the map is not read again (see [_wipePending]) and
   /// a map saved for another account is discarded at the next load anyway.
@@ -737,6 +754,18 @@ class _RehydrateJsonJob extends PseudonymJob<Object?> {
   @override
   Object? run(PseudonymCell cell) =>
       cell.map!.rehydrateJson(value, slugs: slugs);
+}
+
+class _PruneJob extends PseudonymJob<(String?, Set<String>)> {
+  const _PruneJob(this.liveIds);
+  final Set<String> liveIds;
+  @override
+  (String?, Set<String>) run(PseudonymCell cell) {
+    final map = cell.map!;
+    final before = _entries(map);
+    if (!map.pruneTo(liveIds)) return (null, const {});
+    return (_json(map), _touched(before, _entries(map)));
+  }
 }
 
 class _ForgetJob extends PseudonymJob<(String?, Set<String>)> {

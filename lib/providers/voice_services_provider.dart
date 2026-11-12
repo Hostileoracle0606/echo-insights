@@ -9,6 +9,7 @@ import 'auth_provider.dart';
 import 'journal_provider.dart'
     show forgottenThisRunProvider, turnJournalServiceProvider;
 import 'forget_redactor_provider.dart';
+import 'forget_sync_provider.dart';
 import 'opening_prep_provider.dart';
 import 'pseudonym_provider.dart';
 import 'shared_log_provider.dart';
@@ -161,10 +162,13 @@ class _VoiceServicesScopeState extends ConsumerState<VoiceServicesScope>
             openingPrep.refresh(),
             // Who this account forgot, before anything is sent (LM-63).
             forgotten.ensureLoaded(),
+            // A forget made on another phone (I2).
+            runForgetCheck(() => ref.read(forgetSyncProvider)),
           ]);
         },
         // Coming back also re-asks for a brief that failed earlier.
         onResume: () => Future.wait([
+            runForgetCheck(() => ref.read(forgetSyncProvider)),
           openingPrep.refresh(),
           openingPrep.retryPendingBrief(),
         ]),
