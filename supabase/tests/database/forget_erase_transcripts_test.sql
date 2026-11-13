@@ -11,7 +11,7 @@
 create extension if not exists pgtap;
 
 begin;
-select plan(47);
+select plan(55);
 
 insert into auth.users (id) values
   ('11111111-1111-1111-1111-111111111111'),
@@ -52,6 +52,7 @@ insert into public.conversation_turns (notebook_id, turn_id, user_id, speaker, t
   ('a1111111-0000-0000-0000-000000000001', 'w3', '11111111-1111-1111-1111-111111111111', 'user', 'Free Will is a big topic.', now()),
   ('a1111111-0000-0000-0000-000000000001', 'w4', '11111111-1111-1111-1111-111111111111', 'user', 'Will Smith was on TV.', now()),
   ('a1111111-0000-0000-0000-000000000001', 'w5', '11111111-1111-1111-1111-111111111111', 'user', 'It takes will-power.', now()),
+  ('a1111111-0000-0000-0000-000000000002', 'x1', '11111111-1111-1111-1111-111111111111', 'user', 'we met maya chen downtown.', now()),
   ('b2222222-0000-0000-0000-000000000001', 'u1', '22222222-2222-2222-2222-222222222222', 'user', 'Maya Chen visited.', now());
 
 insert into public.session_cards (notebook_id, user_id, conversation_mode, source_revision, card) values
@@ -104,12 +105,14 @@ select is(public.forget_entity_preview('maya-chen') -> 'transcriptPassagesCapped
   'preview: and says it stopped');
 select is(jsonb_array_length(public.forget_erase_sample('maya-chen') -> 'passages'), 3,
   'sample: three passages by default');
-select ok((select bool_and(p ->> 'before' like '%Maya Chen%' and p ->> 'after' like '%someone%'
-                           and p ->> 'after' not like '%Maya Chen%')
+select ok((select bool_and(p ->> 'before' ilike '%Maya Chen%' and p ->> 'after' like '%someone%'
+                           and p ->> 'after' not ilike '%Maya Chen%')
            from jsonb_array_elements(public.forget_erase_sample('maya-chen') -> 'passages') p),
   'sample: each passage before (with the name) and after (with "someone")');
 select is(jsonb_array_length(public.forget_erase_sample('maya-chen', 50) -> 'passages'), 5,
   'sample: at most 5');
+select is(public.forget_erase_sample('maya-chen') -> 'passages' -> 0 ->> 'before', 'we met maya chen downtown.',
+  'sample: a match not written as saved ("maya chen") comes first, the riskier kind');
 
 -- ── R35: the forget commits, the erase is queued ───────────────────────────
 create temp table job (id uuid);
@@ -125,6 +128,22 @@ select is((select context_text from public.conversation_turns where turn_id = 't
 select is((select jsonb_agg(p ->> 'id') from jsonb_array_elements(public.forget_erase_pending()) p),
   (select jsonb_agg(id::text) from job), 'the job is pending for its owner');
 
+-- The job holds no readable name, and no unkeyed hash of one.
+reset role;
+select ok((select row_to_json(j)::text from public.forget_erase_jobs j) !~* '(maya|chen)',
+  'no job column holds the name or its slug');
+select ok(not exists (
+  select 1 from public.forget_erase_jobs j,
+         unnest(j.hashes) h
+   where h = encode(extensions.hmac(convert_to('maya-chen', 'UTF8'), '\x00'::bytea, 'sha256'), 'hex')),
+  'no zero-key (unkeyed) hash is stored');
+select is((select hashes from public.forget_erase_jobs),
+  array[public._suppression_hash('11111111-1111-1111-1111-111111111111', 'maya-chen')],
+  'the job holds the keyed hash of each name to erase');
+select isnt((select cutoff from public.forget_erase_jobs), null, 'and the time of the forget');
+set local role authenticated;
+set local request.jwt.claim.sub = '11111111-1111-1111-1111-111111111111';
+
 -- Another user can neither see nor run it.
 set local request.jwt.claim.sub = '22222222-2222-2222-2222-222222222222';
 select is(public.forget_erase_pending(), '[]'::jsonb, 'another user sees no pending erase');
@@ -138,6 +157,17 @@ select is((select text from public.conversation_turns where turn_id = 'bulk-001'
 insert into steps select 1, public.forget_erase_step((select id from job), 100);
 select is((select result -> 'finished' from steps where n = 1), 'false'::jsonb, 'the first step is not the last');
 select cmp_ok((select (result ->> 'remaining')::int from steps where n = 1), '>', 0, 'and says how many rows are left to check');
+
+-- Saved after the forget: one in a notebook already passed (N1), one in a
+-- notebook not yet reached (N2's turns sort before 'zz').
+reset role;
+insert into public.conversation_turns (notebook_id, turn_id, user_id, speaker, text, spoken_at, created_at) values
+  ('a1111111-0000-0000-0000-000000000001', 'late-1', '11111111-1111-1111-1111-111111111111', 'user',
+   'Maya Chen again, later.', now(), now() + interval '1 minute'),
+  ('a1111111-0000-0000-0000-000000000002', 'zz-late', '11111111-1111-1111-1111-111111111111', 'user',
+   'Maya Chen again, much later.', now(), now() + interval '1 minute');
+set local role authenticated;
+set local request.jwt.claim.sub = '11111111-1111-1111-1111-111111111111';
 do $$
 declare i int := 2;
 begin
@@ -149,8 +179,11 @@ begin
 end $$;
 select ok((select (result ->> 'finished')::boolean and (result ->> 'remaining')::int = 0
            from steps order by n desc limit 1), 'the steps finish, with 0 remaining');
-select is((select sum((result ->> 'rewritten')::int)::int from steps), 604,
-  'every turn and entry that named her was rewritten once');
+select is((select sum((result ->> 'rewritten')::int)::int from steps), 605,
+  'every turn and entry that named her when she was forgotten was rewritten once');
+select ok(not exists (select 1 from steps where (result ->> 'remaining')::int = 0
+                                            and not (result ->> 'finished')::boolean),
+  'no step says 0 remaining without being finished');
 select ok((select bool_and((result ->> 'remaining')::int >= 0) from steps), 'remaining never goes negative');
 select is(public.forget_erase_pending(), '[]'::jsonb, 'a finished job is gone (with the name it held)');
 select is(public.forget_erase_step((select id from job), 100) ->> 'rewritten', '0', 'a step after the end does nothing');
@@ -158,8 +191,14 @@ select is(public.forget_erase_step((select id from job), 100) ->> 'rewritten', '
 reset role;
 select is((select count(*)::int from public.forget_erase_jobs), 0, 'no job row is left');
 select is((select count(*)::int from public.conversation_turns
-           where user_id = '11111111-1111-1111-1111-111111111111' and text like '%Maya Chen%'), 0,
+           where user_id = '11111111-1111-1111-1111-111111111111' and text like '%Maya Chen%'
+             and turn_id not like '%late%'), 0,
   'turns: none of the caller''s names her, across notebooks and batches');
+select is((select text from public.conversation_turns where turn_id = 'x1'), 'we met someone downtown.',
+  'turns: a lowercase match is erased too');
+select is((select string_agg(text, ' | ' order by turn_id) from public.conversation_turns where turn_id like '%late%'),
+  'Maya Chen again, later. | Maya Chen again, much later.',
+  'turns saved after the forget are not erased, in a passed notebook or one not yet reached');
 select is((select text from public.conversation_turns where turn_id = 'bulk-600'), 'Turn 600: someone said hi.',
   'turns: the last batch is rewritten');
 select is((select text from public.conversation_turns where turn_id = 't2'), 'How is someone?', 'turns: Lumen''s turns too');
@@ -175,7 +214,8 @@ select is((select context_text from public.conversation_turns where turn_id = 't
   'context_text: recomputed from the new text, still redacting Sam');
 select is((select count(*)::int from public.conversation_turns
            where user_id = '11111111-1111-1111-1111-111111111111'
-             and context_text is distinct from public._context_text(user_id, text)), 0,
+             and context_text is distinct from public._context_text(user_id, text)
+             and turn_id not like '%late%'), 0,
   'context_text matches text on every turn of the caller''s');
 select is((select text from public.conversation_turns where turn_id = 'u1'), 'Maya Chen visited.',
   'other users: their turns are untouched');

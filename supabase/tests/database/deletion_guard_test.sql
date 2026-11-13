@@ -115,8 +115,8 @@ insert into public.session_cards (notebook_id, user_id, conversation_mode, sourc
   select nid, uid, 'just_talk', 1, '{}'::jsonb from who;
 insert into public.session_briefs (user_id, source_notebook_id, source_revision, brief, audio, sample_rate)
   select uid, nid, 1, '{}'::jsonb, '\x00', 24000 from who;
-insert into public.forget_erase_jobs (user_id, entity_hash, slugs)
-  select uid, 'hash', array['maya-chen'] from who;
+insert into public.forget_erase_jobs (user_id, entity_hash, hashes, max_words)
+  select uid, 'hash', array['h'], 2 from who;
 insert into public.retrieve_rate_limits (scope, window_start, count)
   select s, now(), 1 from who, unnest(array['user:' || uid, 'notebook:' || nid]) s;
 

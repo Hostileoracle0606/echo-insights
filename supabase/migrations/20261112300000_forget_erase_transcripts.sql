@@ -25,9 +25,13 @@
 -- stay consistent. Revisions are not bumped: the forget already moved every
 -- notebook whose entries name the person, and current cards stay current (R6).
 --
--- The job holds the person's slugs (the names to look for) until it
--- finishes, then the row is deleted. Clients can't read the table; the
--- account's deletion cascades to it. It is not part of the export.
+-- The job holds no readable name: only the keyed hashes of the names to
+-- erase (_suppression_hash, the user's own key, as entity_suppressions holds
+-- them), how many words the longest has, and the time of the forget. Rows
+-- saved after that time are not erased. The row is deleted when the job
+-- finishes. Clients can't read the table; the account's deletion cascades to
+-- it. It is not part of the export. The preview and sample match with the
+-- zero key: they store nothing.
 
 -- ────────────────────────────────────────────────────────────
 -- Matching
@@ -43,8 +47,9 @@ as $$
   select coalesce(array_agg(s order by s), '{}') from unnest(p_slugs) s where public._slug_words(s) >= 2;
 $$;
 
--- p_text with this person's slugs replaced (zero key, as _forget_counts and
--- LM-63's forget do), so the sample, the count and the rewrite agree.
+-- p_text with this person's slugs replaced, with the zero key, for the
+-- preview and the sample, which store nothing. The erase itself matches the
+-- same names through the job's keyed hashes and the user's key.
 create function public._transcript_redact(p_text text, p_slugs text[])
 returns text
 language sql
@@ -140,6 +145,7 @@ as $$
 declare
   v_uid uuid := auth.uid();
   v_erase text[];
+  v_names text[];
 begin
   if v_uid is null then
     raise exception 'not authenticated' using errcode = '42501';
@@ -151,23 +157,37 @@ begin
   if cardinality(v_erase) = 0 then
     return jsonb_build_object('available', false, 'passages', '[]'::jsonb);
   end if;
-  -- The first passages found, not the newest: sorting would run the
-  -- matcher on every row that may name them.
+  -- The names as saved, to tell a match written that way from one that isn't.
+  v_names := array(select distinct e.name from public.entities e
+                    where e.user_id = v_uid and e.id = p_entity_id and coalesce(e.name, '') <> '');
+  -- Riskier passages first: where the name isn't written as it was saved
+  -- ("maya chen", "MAYA Chen"), the match is the least obvious. Ranked on
+  -- the cheap prefilter, then the matcher runs on the first 50 candidates
+  -- only, not on every row that may name them.
   return jsonb_build_object('available', true, 'passages', coalesce((
-    select jsonb_agg(jsonb_build_object('before', m.b, 'after', m.a))
+    select jsonb_agg(jsonb_build_object('before', m.b, 'after', m.a) order by m.risky desc, m.ord)
     from (
-      select r.b, r.a from (
-        select c.b, public._transcript_redact(c.b, v_erase) as a
+      select r.b, r.a, r.risky, r.ord from (
+        select c.b, c.risky, c.ord, public._transcript_redact(c.b, v_erase) as a
         from (
-          select left(t.text, 400) as b
-            from public.notebooks nb join public.conversation_turns t on t.notebook_id = nb.id
-           where nb.user_id = v_uid and public._transcript_may_name(t.text, v_erase)
-          union all
-          select left(e.text, 400) from public.journal_entries e
-           where e.user_id = v_uid and public._transcript_may_name(e.text, v_erase)
+          select x.b, x.risky, row_number() over (order by x.risky desc) as ord
+          from (
+            select y.b, not exists (select 1 from unnest(v_names) n where strpos(y.b, n) > 0) as risky
+            from (
+              select left(t.text, 400) as b
+                from public.notebooks nb join public.conversation_turns t on t.notebook_id = nb.id
+               where nb.user_id = v_uid and public._transcript_may_name(t.text, v_erase)
+              union all
+              select left(e.text, 400) from public.journal_entries e
+               where e.user_id = v_uid and public._transcript_may_name(e.text, v_erase)
+            ) y
+          ) x
+          order by x.risky desc
+          limit 50
         ) c
       ) r
       where r.a <> r.b
+      order by r.risky desc, r.ord
       limit least(greatest(coalesce(p_limit, 3), 1), 5)
     ) m
   ), '[]'::jsonb));
@@ -183,8 +203,14 @@ create table public.forget_erase_jobs (
   user_id uuid not null references auth.users (id) on delete cascade,
   -- _suppression_hash of the entity id: one job per person, no name.
   entity_hash text not null,
-  -- The person's names to erase, until the job ends.
-  slugs text[] not null,
+  -- The names to erase, as keyed hashes (_suppression_hash): never a
+  -- readable name, never an unkeyed hash.
+  hashes text[] not null,
+  -- The matcher's settings for those names.
+  max_words int not null,
+  match_inside boolean not null default false,
+  -- When the person was forgotten: rows saved later are not erased.
+  cutoff timestamptz not null default now(),
   -- Cursor: the notebook being read (null: not started), its turns then its
   -- entries, each in its index order.
   notebook_id uuid,
@@ -230,10 +256,15 @@ begin
   end if;
 
   v_counts := public.forget_entity(p_entity_id);
-  insert into public.forget_erase_jobs (user_id, entity_hash, slugs)
-    values (v_uid, public._suppression_hash(v_uid, p_entity_id), v_erase)
+  insert into public.forget_erase_jobs (user_id, entity_hash, hashes, max_words, match_inside)
+    values (v_uid, public._suppression_hash(v_uid, p_entity_id),
+            array(select public._suppression_hash(v_uid, s) from unnest(v_erase) s),
+            (select max(public._slug_words(s)) from unnest(v_erase) s),
+            exists (select 1 from unnest(v_erase) s where public._no_word_gaps(s)))
     on conflict (user_id, entity_hash) do update
-      set slugs = excluded.slugs, notebook_id = null, phase = 'turns', last_turn = '',
+      set hashes = excluded.hashes, max_words = excluded.max_words,
+          match_inside = excluded.match_inside, cutoff = excluded.cutoff,
+          rewritten = 0, notebook_id = null, phase = 'turns', last_turn = '',
           last_entry_at = null, last_entry_id = null
     returning id into v_job;
   return v_counts || jsonb_build_object('eraseJobId', v_job);
@@ -267,22 +298,26 @@ stable
 security definer
 set search_path = public, pg_temp
 as $$
+  -- Only rows saved by the forget count: later ones aren't erased.
   select case when p_job.notebook_id is null then
     (select count(*) from public.notebooks nb join public.conversation_turns t on t.notebook_id = nb.id
-      where nb.user_id = p_job.user_id)
-    + (select count(*) from public.journal_entries e where e.user_id = p_job.user_id)
+      where nb.user_id = p_job.user_id and t.created_at <= p_job.cutoff)
+    + (select count(*) from public.journal_entries e
+        where e.user_id = p_job.user_id and e.created_at <= p_job.cutoff)
   else
     (select count(*) from public.notebooks nb join public.conversation_turns t on t.notebook_id = nb.id
-      where nb.user_id = p_job.user_id and nb.id > p_job.notebook_id)
+      where nb.user_id = p_job.user_id and nb.id > p_job.notebook_id and t.created_at <= p_job.cutoff)
     + (select count(*) from public.notebooks nb join public.journal_entries e on e.notebook_id = nb.id
-        where nb.user_id = p_job.user_id and nb.id > p_job.notebook_id)
+        where nb.user_id = p_job.user_id and nb.id > p_job.notebook_id and e.created_at <= p_job.cutoff)
     + case when p_job.phase = 'turns' then
         (select count(*) from public.conversation_turns t
-          where t.notebook_id = p_job.notebook_id and t.turn_id > p_job.last_turn)
-        + (select count(*) from public.journal_entries e where e.notebook_id = p_job.notebook_id)
+          where t.notebook_id = p_job.notebook_id and t.turn_id > p_job.last_turn
+            and t.created_at <= p_job.cutoff)
+        + (select count(*) from public.journal_entries e
+            where e.notebook_id = p_job.notebook_id and e.created_at <= p_job.cutoff)
       else
         (select count(*) from public.journal_entries e
-          where e.notebook_id = p_job.notebook_id
+          where e.notebook_id = p_job.notebook_id and e.created_at <= p_job.cutoff
             and (e.created_at, e.id) > (coalesce(p_job.last_entry_at, '-infinity'),
                                         coalesce(p_job.last_entry_id, '00000000-0000-0000-0000-000000000000')))
       end
@@ -309,6 +344,8 @@ declare
   v_last_turn text;
   v_last_at timestamptz;
   v_last_id uuid;
+  v_key bytea;
+  v_remaining int;
 begin
   if v_uid is null then
     raise exception 'not authenticated' using errcode = '42501';
@@ -318,6 +355,8 @@ begin
   if not found then
     return jsonb_build_object('rewritten', 0, 'total', 0, 'remaining', 0, 'finished', true);
   end if;
+  -- The user's key, once: the job's hashes were made with it.
+  select k.key into v_key from public.suppression_keys k where k.user_id = v_uid;
 
   while v_budget > 0 loop
     if v_job.notebook_id is null then
@@ -328,12 +367,15 @@ begin
     if v_job.phase = 'turns' then
       -- The matcher runs once per candidate row.
       with batch as (
-        select t.turn_id, t.text from public.conversation_turns t
+        select t.turn_id, t.text, t.context_text, t.created_at from public.conversation_turns t
          where t.notebook_id = v_job.notebook_id and t.turn_id > v_job.last_turn
          order by t.turn_id limit v_budget
       ), cand as materialized (
-        select b.turn_id, b.text, public._transcript_redact(b.text, v_job.slugs) as out
-          from batch b where public._transcript_may_name(b.text, v_job.slugs)
+        -- A row naming her has context_text (LM-63); only those, saved by
+        -- the forget, are matched.
+        select b.turn_id, b.text,
+               public._redact_text(b.text, v_key, v_job.hashes, v_job.match_inside, v_job.max_words) as out
+          from batch b where b.context_text is not null and b.created_at <= v_job.cutoff
       ), changed as (
         update public.conversation_turns t set text = c.out
           from cand c
@@ -355,14 +397,15 @@ begin
       v_budget := v_budget - v_seen;
     else
       with batch as (
-        select e.id, e.created_at, e.text from public.journal_entries e
+        select e.id, e.created_at, e.text, e.context_text from public.journal_entries e
          where e.notebook_id = v_job.notebook_id
            and (e.created_at, e.id) > (coalesce(v_job.last_entry_at, '-infinity'),
                                        coalesce(v_job.last_entry_id, '00000000-0000-0000-0000-000000000000'))
          order by e.created_at, e.id limit v_budget
       ), cand as materialized (
-        select b.id, b.text, public._transcript_redact(b.text, v_job.slugs) as out
-          from batch b where public._transcript_may_name(b.text, v_job.slugs)
+        select b.id, b.text,
+               public._redact_text(b.text, v_key, v_job.hashes, v_job.match_inside, v_job.max_words) as out
+          from batch b where b.context_text is not null and b.created_at <= v_job.cutoff
       ), changed as (
         update public.journal_entries e set text = c.out
           from cand c
@@ -396,7 +439,11 @@ begin
   end loop;
 
   v_job.rewritten := v_job.rewritten + v_rewritten;
-  if v_job.notebook_id is null then
+  if v_job.notebook_id is not null then
+    v_remaining := public._erase_remaining(v_job);
+  end if;
+  -- Nothing left to check is finished, never "0 remaining, not finished".
+  if v_job.notebook_id is null or v_remaining = 0 then
     -- Done: the names go with the row.
     delete from public.forget_erase_jobs where id = v_job.id;
     return jsonb_build_object('rewritten', v_rewritten, 'total', v_job.rewritten,
@@ -408,7 +455,7 @@ begin
          rewritten = v_job.rewritten
    where id = v_job.id;
   return jsonb_build_object('rewritten', v_rewritten, 'total', v_job.rewritten,
-                            'remaining', public._erase_remaining(v_job), 'finished', false);
+                            'remaining', v_remaining, 'finished', false);
 end;
 $$;
 
