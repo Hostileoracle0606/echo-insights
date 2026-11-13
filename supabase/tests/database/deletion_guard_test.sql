@@ -20,7 +20,7 @@
 create extension if not exists pgtap;
 
 begin;
-select plan(2 + 3 * 17);
+select plan(2 + 3 * 18);
 
 -- ── inventory: table → predicate selecting one user's rows ─────────────────
 -- Placeholders: %U% user id, %N% that user's notebook id, %S% runtime session id.
@@ -41,6 +41,7 @@ insert into inventory values
   ('conversation_runtime_sessions','user_id = ''%U%'''),
   ('session_cards',                'user_id = ''%U%'''),
   ('session_briefs',               'user_id = ''%U%'''),
+  ('forget_erase_jobs',            'user_id = ''%U%'''),
   -- owned through a notebook / session only (no user_id): cascade from notebooks
   ('notebook_commit_requests',     'notebook_id = ''%N%'''),
   ('conversation_runtime_inbox',   'session_id = ''%S%'''),
@@ -114,6 +115,8 @@ insert into public.session_cards (notebook_id, user_id, conversation_mode, sourc
   select nid, uid, 'just_talk', 1, '{}'::jsonb from who;
 insert into public.session_briefs (user_id, source_notebook_id, source_revision, brief, audio, sample_rate)
   select uid, nid, 1, '{}'::jsonb, '\x00', 24000 from who;
+insert into public.forget_erase_jobs (user_id, entity_hash, slugs)
+  select uid, 'hash', array['maya-chen'] from who;
 insert into public.retrieve_rate_limits (scope, window_start, count)
   select s, now(), 1 from who, unnest(array['user:' || uid, 'notebook:' || nid]) s;
 

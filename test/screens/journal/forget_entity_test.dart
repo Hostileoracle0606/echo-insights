@@ -6,6 +6,7 @@ import 'package:lumen/models/entity.dart';
 import 'package:lumen/models/journal_state.dart';
 import 'package:lumen/providers/journal_provider.dart';
 import 'package:lumen/providers/supabase_provider.dart';
+import 'package:lumen/providers/transcript_erase_provider.dart';
 import 'package:lumen/screens/journal/entity_note_sheet.dart';
 import 'package:lumen/screens/journal/forget_entity_screen.dart';
 import 'package:lumen/security/app_lock.dart';
@@ -41,13 +42,14 @@ class _Journal extends JournalNotifier {
   JournalState build() => _seed;
 
   @override
-  Future<void> forgetEntity(String entityId,
+  Future<String?> forgetEntity(String entityId,
       {String? name, bool eraseTranscripts = false}) async {
     if (fail) throw Exception('boom');
     forgotten.add(entityId);
     names.add(name);
     erased.add(eraseTranscripts);
     state = state.copyWith(entities: {...state.entities}..remove(entityId));
+    return eraseTranscripts ? 'job-1' : null;
   }
 }
 
@@ -72,6 +74,14 @@ const _counts = {
   'cards': 1,
   'briefDeleted': true,
   'transcriptPassages': 12,
+  'eraseAvailable': true,
+};
+
+const _sample = {
+  'available': true,
+  'passages': [
+    {'before': 'I saw Priya Raman at lunch.', 'after': 'I saw someone at lunch.'},
+  ],
 };
 
 Future<({_Journal journal, List<String> rpcs})> _open(
@@ -79,6 +89,7 @@ Future<({_Journal journal, List<String> rpcs})> _open(
   Map<String, Object?> preview = _counts,
   bool failForget = false,
   bool failPreview = false,
+  bool failStep = false,
   _Auth? auth,
 }) async {
   await tester.binding.setSurfaceSize(const Size(402, 874));
@@ -92,9 +103,19 @@ Future<({_Journal journal, List<String> rpcs})> _open(
       memoryControlServiceProvider
           .overrideWithValue(MemoryControlService.withRpc((fn, params) async {
         rpcs.add(fn);
-        if (failPreview) throw Exception('offline');
-        return preview;
+        switch (fn) {
+          case 'forget_entity_preview':
+            if (failPreview) throw Exception('offline');
+            return preview;
+          case 'forget_erase_sample':
+            return _sample;
+          case 'forget_erase_step':
+            if (failStep) throw Exception('offline');
+            return {'rewritten': 12, 'total': 12, 'remaining': 0, 'finished': true};
+        }
+        throw StateError(fn);
       })),
+      eraseFinishedHookProvider.overrideWithValue(() async {}),
     ],
     child: MaterialApp(
       theme: LumenTheme.light(),
@@ -180,6 +201,18 @@ void main() {
     Finder toggle() => find.widgetWithText(
         SwitchListTile, 'Also erase Priya from my saved transcripts');
 
+    Future<void> turnOn(WidgetTester tester) async {
+      await tester.ensureVisible(toggle());
+      await tester.tap(toggle());
+      await tester.pumpAndSettle();
+    }
+
+    Future<void> tapForget(WidgetTester tester) async {
+      await _tapVisible(
+          tester, find.widgetWithText(FilledButton, 'Forget Priya'));
+      await tester.pumpAndSettle();
+    }
+
     testWidgets('is off by default, and Forget then leaves transcripts alone',
         (tester) async {
       final opened = await _open(tester);
@@ -190,35 +223,111 @@ void main() {
       expect(find.textContaining("can't be undone"), findsOneWidget);
       expect(find.textContaining('12 passages'), findsOneWidget);
 
-      await _tapVisible(tester, find.widgetWithText(FilledButton, 'Forget Priya'));
-      await tester.pumpAndSettle();
+      await tapForget(tester);
       expect(opened.journal.forgotten, ['priya']);
       expect(opened.journal.erased, [false]);
+      expect(opened.rpcs, isNot(contains('forget_erase_step')));
     });
 
-    testWidgets('on, Forget also erases', (tester) async {
+    testWidgets('its copy covers Lumen\'s lines and the name as saved',
+        (tester) async {
+      await _open(tester);
+      await _toConfirmation(tester);
+      await tester.ensureVisible(toggle());
+      expect(find.textContaining('what you and Lumen said'), findsOneWidget);
+      expect(find.textContaining('as it was saved'), findsOneWidget);
+      expect(find.textContaining('nickname or first name alone stays'),
+          findsOneWidget);
+    });
+
+    testWidgets('a capped count says so', (tester) async {
+      await _open(tester, preview: {
+        ..._counts,
+        'transcriptPassages': 500,
+        'transcriptPassagesCapped': true,
+      });
+      await _toConfirmation(tester);
+      await tester.ensureVisible(toggle());
+      expect(find.textContaining('500+ passages'), findsOneWidget);
+    });
+
+    testWidgets('is not offered for a one-word name, and says why (R34)',
+        (tester) async {
+      await _open(tester, preview: {..._counts, 'eraseAvailable': false});
+      await _toConfirmation(tester);
+      expect(toggle(), findsNothing);
+      expect(find.textContaining('not available for one-word names'),
+          findsOneWidget);
+      expect(find.textContaining('could change other words too'),
+          findsOneWidget);
+    });
+
+    testWidgets(
+        'on: the confirmation shows a sample with the name highlighted, '
+        'before re-auth', (tester) async {
       final auth = _Auth();
       final opened = await _open(tester, auth: auth);
       await _toConfirmation(tester);
-
-      await tester.ensureVisible(toggle());
-      await tester.tap(toggle());
-      await tester.pumpAndSettle();
+      await turnOn(tester);
       expect(tester.widget<SwitchListTile>(toggle()).value, isTrue);
 
-      await _tapVisible(tester, find.widgetWithText(FilledButton, 'Forget Priya'));
-      await tester.pumpAndSettle();
-      // A plain confirmation first: nothing is sent until it is accepted.
+      await tapForget(tester);
       expect(find.text('Erase Priya from your transcripts?'), findsOneWidget);
+      expect(opened.rpcs, ['forget_entity_preview', 'forget_erase_sample']);
+      expect(auth.prompts, 0);
       expect(opened.journal.forgotten, isEmpty);
+      final highlighted = find.byWidgetPredicate((w) {
+        if (w is! RichText) return false;
+        var hit = false;
+        w.text.visitChildren((span) {
+          if (span is TextSpan &&
+              span.text == 'Priya Raman' &&
+              span.style?.fontWeight == FontWeight.w700) {
+            hit = true;
+          }
+          return true;
+        });
+        return hit;
+      });
+      expect(highlighted, findsOneWidget);
+      expect(find.textContaining('at lunch.', findRichText: true), findsOneWidget);
+    });
+
+    testWidgets('on: Forget, then the erase runs to the end', (tester) async {
+      final auth = _Auth();
+      final opened = await _open(tester, auth: auth);
+      await _toConfirmation(tester);
+      await turnOn(tester);
+      await tapForget(tester);
       await tester.tap(find.text('Erase and forget'));
       await tester.pumpAndSettle();
+
       expect(opened.journal.forgotten, ['priya']);
       expect(opened.journal.erased, [true]);
+      expect(opened.rpcs, contains('forget_erase_step'));
       // Behind the same re-auth as Forget; its reason names nobody.
       expect(auth.prompts, 1);
       expect(auth.reasons.single, contains('erase'));
       expect(auth.reasons.single, isNot(contains('Priya')));
+      expect(find.byType(ForgetEntityScreen), findsNothing);
+      expect(find.text('Forgot Priya'), findsOneWidget);
+    });
+
+    testWidgets('on: an interrupted erase says it will continue',
+        (tester) async {
+      final opened = await _open(tester, failStep: true);
+      await _toConfirmation(tester);
+      await turnOn(tester);
+      await tapForget(tester);
+      await tester.tap(find.text('Erase and forget'));
+      await tester.pumpAndSettle();
+
+      expect(opened.journal.forgotten, ['priya']);
+      expect(find.textContaining('continues the next time you open Lumen'),
+          findsOneWidget);
+      await tester.tap(find.widgetWithText(FilledButton, 'Done'));
+      await tester.pumpAndSettle();
+      expect(find.byType(ForgetEntityScreen), findsNothing);
     });
 
     testWidgets('on, cancelling the confirmation forgets nothing',
@@ -226,12 +335,8 @@ void main() {
       final auth = _Auth();
       final opened = await _open(tester, auth: auth);
       await _toConfirmation(tester);
-
-      await tester.ensureVisible(toggle());
-      await tester.tap(toggle());
-      await tester.pumpAndSettle();
-      await _tapVisible(tester, find.widgetWithText(FilledButton, 'Forget Priya'));
-      await tester.pumpAndSettle();
+      await turnOn(tester);
+      await tapForget(tester);
       await tester.tap(find.text('Cancel').last);
       await tester.pumpAndSettle();
 
@@ -244,19 +349,15 @@ void main() {
       final auth = _Auth(passes: false);
       final opened = await _open(tester, auth: auth);
       await _toConfirmation(tester);
-
-      await tester.ensureVisible(toggle());
-      await tester.tap(toggle());
-      await tester.pumpAndSettle();
-      await _tapVisible(tester, find.widgetWithText(FilledButton, 'Forget Priya'));
-      await tester.pumpAndSettle();
+      await turnOn(tester);
+      await tapForget(tester);
       await tester.tap(find.text('Erase and forget'));
       await tester.pumpAndSettle();
 
       expect(auth.prompts, 1);
       expect(opened.journal.forgotten, isEmpty);
       expect(opened.journal.erased, isEmpty);
-      expect(opened.rpcs, ['forget_entity_preview']);
+      expect(opened.rpcs, ['forget_entity_preview', 'forget_erase_sample']);
       expect(find.byType(ForgetEntityScreen), findsOneWidget);
     });
 
@@ -264,6 +365,7 @@ void main() {
       await _open(tester, preview: {..._counts, 'transcriptPassages': 0});
       await _toConfirmation(tester);
       expect(toggle(), findsNothing);
+      expect(find.textContaining('one-word names'), findsNothing);
     });
   });
 

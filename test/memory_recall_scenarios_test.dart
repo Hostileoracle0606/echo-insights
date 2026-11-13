@@ -671,14 +671,19 @@ void main() {
         expect(texts.toLowerCase(), isNot(contains('raman')));
       });
 
-      test('a forget with erase reloads the saved turns as now stored',
+      test('once the erase finishes, the saved turns are read as now stored',
           () async {
         h = _Harness(state: _beforeForget(), history: said);
         await h.journal.enterNotebook(_notebookId);
-        h.transcripts.turns = erased;
         h.commits.state = _afterForget();
         await h.journal.forgetEntity('priya-raman', eraseTranscripts: true);
         expect(h.memory.erased, [true]);
+        // The forget doesn't wait for the erase (R35): the words are as said
+        // until the erase's steps finish and it reloads them.
+        expect(h.journal.transcriptRows.map((r) => r.turn.text),
+            contains('Priya Raman called again.'));
+        h.transcripts.turns = erased;
+        await h.journal.reloadSavedTurns();
         final shown = h.journal.transcriptRows.map((r) => r.turn.text);
         expect(shown, contains('someone called again.'));
         expect(shown.join(' ').toLowerCase(), isNot(contains('raman')));
