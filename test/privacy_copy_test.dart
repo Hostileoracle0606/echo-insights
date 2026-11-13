@@ -92,8 +92,10 @@ void main() {
     expect(forget, contains("Lumen won't bring them up again"));
     expect(forget, contains("they're gone from your maps"));
     expect(forget, contains('transcripts keep your words for you to read'));
-    expect(forget, contains('unless you also choose to erase the name'));
-    expect(forget, contains('replaces it for good'));
+    expect(forget, contains('For a name of two or more words'));
+    expect(forget, contains('as it was saved'));
+    expect(forget, contains('what you and Lumen said'));
+    expect(forget, contains('replaces it with “someone” for good'));
     expect(forget, isNot(contains('may bring the name up')));
     expect(forget, isNot(contains('Lumen can still read')));
     expect(forget, contains('a nickname or a first name alone'));
