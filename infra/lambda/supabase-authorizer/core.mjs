@@ -12,8 +12,12 @@ export function createSupabaseAuthorizer({ supabaseUrl, publishableKey, fetchImp
     const token = bearerToken(event?.headers);
     if (!token) return { isAuthorized: false };
 
+    // API Gateway caches this answer per token, denials included. When
+    // Supabase can't answer, throwing fails just this request (a 500 the
+    // client retries) instead of locking the token out for the cache's TTL.
+    let response;
     try {
-      const response = await fetchImpl(`${supabaseUrl}/auth/v1/user`, {
+      response = await fetchImpl(`${supabaseUrl}/auth/v1/user`, {
         method: "GET",
         headers: {
           apikey: publishableKey,
@@ -21,8 +25,15 @@ export function createSupabaseAuthorizer({ supabaseUrl, publishableKey, fetchImp
         },
         signal: AbortSignal.timeout(5000),
       });
-      if (!response.ok) return { isAuthorized: false };
+    } catch (error) {
+      throw new Error("Supabase auth is unreachable", { cause: error });
+    }
+    if (response.status === 429 || response.status >= 500) {
+      throw new Error(`Supabase auth answered ${response.status}`);
+    }
+    if (!response.ok) return { isAuthorized: false };
 
+    try {
       const user = await response.json();
       if (!user || typeof user.id !== "string" || user.id.length === 0) {
         return { isAuthorized: false };
@@ -37,5 +48,10 @@ export function createSupabaseAuthorizer({ supabaseUrl, publishableKey, fetchImp
     }
   }
 
-  return guardHandler("supabase-authorizer", authorize, () => ({ isAuthorized: false }));
+  // A throw is logged by class only, then fails the request with a fixed,
+  // content-free error: a 500 API Gateway doesn't cache, where a deny would
+  // lock a valid token out for the cache's TTL (infra-stack.ts).
+  return guardHandler("supabase-authorizer", authorize, () => {
+    throw new Error("Supabase auth unavailable");
+  });
 }

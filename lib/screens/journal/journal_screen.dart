@@ -280,7 +280,10 @@ class _JournalScreenState extends ConsumerState<JournalScreen>
   Future<void> _leaveToCard() async {
     if (_leaving) return;
     setState(() => _leaving = true);
-    final result = await ref.read(journalProvider.notifier).leaveNotebook();
+    // Returns once the live transport is closed; the last writes and the
+    // final card finish behind the card screen, which shows the draft.
+    final result =
+        await ref.read(journalProvider.notifier).leaveNotebookForCard();
     if (!mounted) return;
     if (result.succeeded) {
       if (result.nothingSaved) {

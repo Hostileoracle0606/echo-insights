@@ -13,6 +13,7 @@ import '../../models/entity.dart' show EntityType;
 import '../../models/session_card.dart';
 import '../../providers/export_provider.dart';
 import '../../providers/journal_provider.dart' show removeUndoWindow;
+import '../../providers/leaving_notebooks_provider.dart';
 import '../../providers/supabase_provider.dart';
 import '../../services/markdown_export.dart';
 import '../../services/notebook_commit_service.dart';
@@ -29,7 +30,11 @@ enum _Phase { loading, ready, noCard, failed }
 
 /// Where leaving a conversation lands (LM-16): the card it ended with.
 ///
-/// The notebook is already left, so nothing here reads `journalProvider`:
+/// The live conversation is already closed, so nothing here reads
+/// `journalProvider`; the rest of leaving (its last writes, then the final
+/// card) may still be running, and is waited on through
+/// [leavingNotebooksProvider].
+///
 /// the card, the notebook's revision and the user's removed entities (the
 /// snapshot carries both) and the export are all fetched by [notebookId].
 /// The screen never edits the card; removing an item removes it from memory.
@@ -52,6 +57,10 @@ class _ClosingCardScreenState extends ConsumerState<ClosingCardScreen> {
 
   // Bumped by Try again, so a slower earlier attempt can't land late.
   int _attempt = 0;
+
+  // Leaving didn't finish (the last writes didn't drain, or the notebook
+  // couldn't be marked ended): Try again leaves again.
+  LeaveIncomplete? _leaveFailure;
 
   late final CardRemovals _removals;
   ScaffoldMessengerState? _messenger;
@@ -97,14 +106,20 @@ class _ClosingCardScreenState extends ConsumerState<ClosingCardScreen> {
   // ─── Loading ──────────────────────────────────────────────────────────────
 
   /// One close call per attempt (leaving usually started it already, and
-  /// the service shares that request). A stored card that matches the
-  /// notebook's revision shows first if it arrives before close returns.
+  /// the service shares that request). While leaving still drains, close
+  /// waits for it: asked earlier, it would write the card from a revision
+  /// the drain is about to move. A stored card (a draft, or one that
+  /// matches the notebook's revision) shows first if it arrives before
+  /// close returns.
   void _load() {
     final attempt = ++_attempt;
     final id = widget.notebookId;
     final cards = ref.read(sessionCardServiceProvider);
     final snapshot = _snapshot();
-    final closing = cards.close(id);
+    final leaving = ref.read(leavingNotebooksProvider).pending(id);
+    final closing = leaving == null
+        ? cards.close(id)
+        : leaving.then((_) => cards.close(id));
     unawaited(_showStored(attempt, cards.load(id), snapshot));
     unawaited(_showClosed(attempt, closing, snapshot));
   }
@@ -162,6 +177,15 @@ class _ClosingCardScreenState extends ConsumerState<ClosingCardScreen> {
         return;
       }
       _show(card, snap);
+    } on LeaveIncomplete catch (error) {
+      debugPrint('Leaving did not finish: $error');
+      if (!_current(attempt)) return;
+      // The phase stays: a stored draft still shows under the message,
+      // even if it arrives after this.
+      setState(() {
+        _leaveFailure = error;
+        _updating = false;
+      });
     } catch (error) {
       debugPrint('Closing card failed: $error');
       if (!_current(attempt)) return;
@@ -179,7 +203,8 @@ class _ClosingCardScreenState extends ConsumerState<ClosingCardScreen> {
     bool updating = false,
   }) {
     setState(() {
-      _updating = updating;
+      // Nothing more is on its way while leaving hasn't finished.
+      _updating = updating && _leaveFailure == null;
       _card = card;
       _phase = switch (card.conversationMode) {
         ConversationMode.justTalk ||
@@ -195,6 +220,27 @@ class _ClosingCardScreenState extends ConsumerState<ClosingCardScreen> {
     unawaited(HapticFeedback.lightImpact());
     setState(() => _phase = _Phase.loading);
     _load();
+  }
+
+  /// Leaves again (it tracks the new attempt), then asks for the card as
+  /// on arrival. A card already showing stays, marked as updating.
+  Future<void> _leaveAgain(LeaveIncomplete failure) async {
+    unawaited(HapticFeedback.lightImpact());
+    final attempt = ++_attempt;
+    setState(() {
+      _leaveFailure = null;
+      if (_phase == _Phase.ready) {
+        _updating = true;
+      } else {
+        _phase = _Phase.loading;
+      }
+    });
+    try {
+      await failure.retry();
+    } catch (error) {
+      debugPrint('Leaving again failed: $error');
+    }
+    if (_current(attempt)) _load();
   }
 
   // ─── Actions ──────────────────────────────────────────────────────────────
@@ -398,6 +444,24 @@ class _ClosingCardScreenState extends ConsumerState<ClosingCardScreen> {
   }
 
   Widget _body(LumenColors colors) {
+    final failure = _leaveFailure;
+    if (failure == null) return _phaseBody(colors);
+    final notice = _StatusMessage(
+      text: 'Your latest changes are still saving.',
+      action: _TextAction(
+        label: 'Try again',
+        onTap: () => unawaited(_leaveAgain(failure)),
+        padding: const EdgeInsets.only(right: 12),
+      ),
+    );
+    if (_phase != _Phase.ready) return notice;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [notice, const SizedBox(height: 14), _phaseBody(colors)],
+    );
+  }
+
+  Widget _phaseBody(LumenColors colors) {
     final card = _card;
     switch (_phase) {
       case _Phase.loading:
