@@ -1,3 +1,4 @@
+import { guardHandler, safeLog } from "./safe-log.mjs";
 import {
   Rejection,
   authorizedUserId,
@@ -15,6 +16,7 @@ import {
   buildBriefMessage,
   writeSessionBriefFunction,
 } from "./brief-prompts.mjs";
+import { redactTurns } from "./redact.mjs";
 import { buildTranscript } from "./validate.mjs";
 
 const defaultDeadlineMs = 27_000;
@@ -46,7 +48,8 @@ async function rateLimitTagged(metrics, label, call) {
     throw error;
   }
 }
-const strings = (value) => (Array.isArray(value) ? value.filter((item) => typeof item === "string") : []);
+const strings = (value) =>
+  Array.isArray(value) ? value.filter((item) => typeof item === "string") : [];
 
 /**
  * POST /v1/notebooks/{id}/brief: writes the opening for the user's next
@@ -65,7 +68,7 @@ export function createSessionBriefHandler({
   now = () => Date.now(),
   sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
   // Ids, counts and latency only: never transcript, brief or line text.
-  log = (fields) => console.log(JSON.stringify({ source: "session-brief", ...fields })),
+  log = (fields) => safeLog("session-brief", fields),
   deadlineMs = defaultDeadlineMs,
 }) {
   async function credential() {
@@ -80,7 +83,7 @@ export function createSessionBriefHandler({
 
   async function write({ db, notebookId, startedAt, metrics }) {
     const notebooks = await db.select("notebooks", {
-      select: "id,revision,conversation_mode,ended_at",
+      select: "id,revision,conversation_mode,ended_at,transcript_forgotten_at",
       id: `eq.${notebookId}`,
       limit: "1",
     });
@@ -89,6 +92,12 @@ export function createSessionBriefHandler({
     metrics.mode = notebook.conversation_mode;
     metrics.revision = Number(notebook.revision);
     if (notebook.conversation_mode !== "just_talk") throw new Rejection(501, "notImplemented");
+    // Auto-forget removed some of this conversation's turns; a brief written
+    // from the rest would be a fragment. Keep the one Lumen already has.
+    if (notebook.transcript_forgotten_at) {
+      metrics.forgotten = true;
+      return "unchanged";
+    }
 
     // One row per user. It is both the "already done" check and the previous
     // brief the model carries forward.
@@ -140,7 +149,7 @@ export function createSessionBriefHandler({
       throw new Rejection(503, "providerUnavailable");
     }
 
-    const turns = [...newestTurns].reverse();
+    const turns = await redactTurns(db, [...newestTurns].reverse());
     const userTurns = turns.filter(
       (turn) => turn?.speaker === "user" && typeof turn.text === "string" && turn.text.trim(),
     );
@@ -149,7 +158,9 @@ export function createSessionBriefHandler({
     // Nothing the user said means nothing to open with that wouldn't be invented.
     if (userTurns.length === 0) throw new Rejection(422, "nothingToSummarize");
 
-    const followUpQuestions = followUps.map((row) => row?.question).filter((q) => typeof q === "string" && q.trim());
+    const followUpQuestions = followUps
+      .map((row) => row?.question)
+      .filter((q) => typeof q === "string" && q.trim());
     const questions = questionEntities
       .map((row) => ({ name: row?.name, questions: strings(row?.questions) }))
       .filter((row) => typeof row.name === "string" && row.questions.length > 0);
@@ -176,58 +187,69 @@ export function createSessionBriefHandler({
       retryDelaysMs: briefRetryDelaysMs,
     };
 
-    const payload = await rateLimitTagged(metrics, "text", () => callGemini({
-      ...gemini,
-      model,
-      body: {
-        system_instruction: { parts: [{ text: briefPrompt }] },
-        contents: [
-          {
-            role: "user",
-            parts: [
-              {
-                text: buildBriefMessage({
-                  conversationDate: conversationDate(Number.isNaN(lastSpoken) ? now() : lastSpoken),
-                  transcript: transcript.text,
-                  trimmed: transcript.trimmed,
-                  previous: stored?.brief && typeof stored.brief === "object" ? stored.brief : null,
-                  followUps: followUpQuestions,
-                  questions,
-                  topEntities: entities,
-                }),
-              },
-            ],
+    const payload = await rateLimitTagged(metrics, "text", () =>
+      callGemini({
+        ...gemini,
+        model,
+        body: {
+          system_instruction: { parts: [{ text: briefPrompt }] },
+          contents: [
+            {
+              role: "user",
+              parts: [
+                {
+                  text: buildBriefMessage({
+                    conversationDate: conversationDate(
+                      Number.isNaN(lastSpoken) ? now() : lastSpoken,
+                    ),
+                    transcript: transcript.text,
+                    trimmed: transcript.trimmed,
+                    previous:
+                      stored?.brief && typeof stored.brief === "object" ? stored.brief : null,
+                    followUps: followUpQuestions,
+                    questions,
+                    topEntities: entities,
+                  }),
+                },
+              ],
+            },
+          ],
+          tools: [{ function_declarations: [writeSessionBriefFunction()] }],
+          tool_config: {
+            function_calling_config: {
+              mode: "ANY",
+              allowed_function_names: ["write_session_brief"],
+            },
           },
-        ],
-        tools: [{ function_declarations: [writeSessionBriefFunction()] }],
-        tool_config: {
-          function_calling_config: { mode: "ANY", allowed_function_names: ["write_session_brief"] },
+          generationConfig: { temperature: 0, thinkingConfig: { thinkingBudget: 0 } },
         },
-        generationConfig: { temperature: 0, thinkingConfig: { thinkingBudget: 0 } },
-      },
-    }));
+      }),
+    );
     const brief = briefFromModel(functionArgs(payload, "write_session_brief"));
     if (!brief) throw new Rejection(502, "invalidProviderResponse");
 
     const callsBeforeSpeech = metrics.modelCalls;
     let speech;
     try {
-      speech = await rateLimitTagged(metrics, "tts", () => callGemini({
-        ...gemini,
-        model: ttsModel,
-        body: {
-          contents: [{ parts: [{ text: `${speakPrefix}${brief.openingLine}` }] }],
-          generationConfig: {
-            responseModalities: ["AUDIO"],
-            speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } },
+      speech = await rateLimitTagged(metrics, "tts", () =>
+        callGemini({
+          ...gemini,
+          model: ttsModel,
+          body: {
+            contents: [{ parts: [{ text: `${speakPrefix}${brief.openingLine}` }] }],
+            generationConfig: {
+              responseModalities: ["AUDIO"],
+              speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } },
+            },
           },
-        },
-      }));
+        }),
+      );
     } finally {
       metrics.ttsCalls = metrics.modelCalls - callsBeforeSpeech;
     }
-    const inline = speech?.candidates?.[0]?.content?.parts?.find((part) => part?.inlineData?.data)
-      ?.inlineData;
+    const inline = speech?.candidates?.[0]?.content?.parts?.find(
+      (part) => part?.inlineData?.data,
+    )?.inlineData;
     if (typeof inline?.data !== "string" || inline.data.length === 0) {
       throw new Rejection(502, "invalidProviderResponse");
     }
@@ -247,7 +269,7 @@ export function createSessionBriefHandler({
     throw new Rejection(503, "providerUnavailable");
   }
 
-  return async function handle(event) {
+  async function handle(event) {
     const startedAt = now();
     const userId = authorizedUserId(event);
     if (!userId) return rejected(401, "unauthorized");
@@ -276,5 +298,7 @@ export function createSessionBriefHandler({
       ...metrics,
     });
     return response;
-  };
+  }
+
+  return guardHandler("session-brief", handle, () => rejected(503, "providerUnavailable"), log);
 }

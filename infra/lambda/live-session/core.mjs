@@ -1,3 +1,5 @@
+import { guardHandler } from "./safe-log.mjs";
+
 function jsonResponse(statusCode, body) {
   return {
     statusCode,
@@ -98,7 +100,7 @@ export function createLiveSessionHandler({
     return null;
   }
 
-  return async function handle(event) {
+  async function handle(event) {
     if (!authorizedUserId(event)) {
       return jsonResponse(401, { error: "unauthorized" });
     }
@@ -120,9 +122,7 @@ export function createLiveSessionHandler({
 
     const issuedAt = now();
     const startWindowSeconds = userScoped ? userStartWindow : NOTEBOOK_START_WINDOW_SECONDS;
-    const expireTime = new Date(
-      issuedAt.getTime() + TOKEN_LIFETIME_SECONDS * 1000,
-    ).toISOString();
+    const expireTime = new Date(issuedAt.getTime() + TOKEN_LIFETIME_SECONDS * 1000).toISOString();
     const newSessionExpireTime = new Date(
       issuedAt.getTime() + startWindowSeconds * 1000,
     ).toISOString();
@@ -175,5 +175,9 @@ export function createLiveSessionHandler({
         code: "providerUnavailable",
       });
     }
-  };
+  }
+
+  return guardHandler("live-session", handle, () =>
+    jsonResponse(503, { status: "rejected", code: "providerUnavailable" }),
+  );
 }

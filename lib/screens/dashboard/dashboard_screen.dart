@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -9,6 +11,9 @@ import '../../providers/notebooks_provider.dart';
 import '../../providers/supabase_provider.dart';
 import '../../theme/lumen_colors.dart';
 import '../../theme/lumen_text.dart';
+import '../../widgets/delete_session.dart';
+import '../../widgets/transcript_retention.dart';
+import 'privacy_sheet.dart';
 
 // Matches the iPhone's display corner radius so the docked button's curvature
 // echoes the screen's rounded corners. Flutter exposes no API for the real
@@ -39,6 +44,25 @@ class DashboardScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    return Stack(
+      children: [
+        _page(context, ref),
+        // The one way into privacy: app lock, quiet mode, transcripts, export.
+        const Positioned(
+          top: 0,
+          right: 8,
+          child: SafeArea(
+            child: Material(
+              type: MaterialType.transparency,
+              child: PrivacyButton(),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _page(BuildContext context, WidgetRef ref) {
     final colors = context.lumenColors;
     final name = ref.watch(displayNameProvider);
     final notebooks = ref.watch(notebooksProvider);
@@ -72,6 +96,10 @@ class DashboardScreen extends ConsumerWidget {
             // Big hero crowns the top; notebooks scroll below it; New is docked.
             return Column(
               children: [
+                RetentionOffer(
+                  completedSessions:
+                      list.where((nb) => nb.endedAt != null).length,
+                ),
                 _AnimatedHero(
                   greeting: greeting,
                   subtitle: subtitle,
@@ -192,6 +220,7 @@ class DashboardScreen extends ConsumerWidget {
                             ?.copyWith(fontSize: 18),
                       ),
                     ),
+                    _NotebookMenu(notebookId: notebook.id, colors: colors),
                   ],
                 ),
                 if (summary != null && summary.isNotEmpty) ...[
@@ -253,6 +282,39 @@ class DashboardScreen extends ConsumerWidget {
   }
 }
 
+/// The notebook's overflow menu: today just "Delete this session" (LM-48).
+class _NotebookMenu extends ConsumerWidget {
+  const _NotebookMenu({required this.notebookId, required this.colors});
+
+  final String notebookId;
+  final LumenColors colors;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return SizedBox.square(
+      dimension: 28,
+      child: PopupMenuButton<String>(
+        tooltip: 'Notebook options',
+        padding: EdgeInsets.zero,
+        iconSize: 20,
+        icon: Icon(Icons.more_horiz, color: colors.mutedForeground),
+        onSelected: (_) => unawaited(
+          confirmAndDeleteSession(context, ref, notebookId),
+        ),
+        itemBuilder: (_) => [
+          PopupMenuItem<String>(
+            value: 'delete',
+            child: Text(
+              'Delete this session',
+              style: TextStyle(color: colors.destructive),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 /// The docked "New notebook" button. Owns its own creating/loading state so a
 /// double-tap can't fire two inserts: while [createNotebook] is in flight the
 /// button ignores taps and swaps its icon+label for a small spinner. On
@@ -270,7 +332,7 @@ class _NewNotebookButton extends ConsumerStatefulWidget {
 class _NewNotebookButtonState extends ConsumerState<_NewNotebookButton> {
   bool _creating = false;
 
-  Future<void> _createAndOpen() async {
+  Future<void> _createAndOpen({bool offTheRecord = false}) async {
     if (_creating) return;
     setState(() => _creating = true);
 
@@ -293,12 +355,36 @@ class _NewNotebookButtonState extends ConsumerState<_NewNotebookButton> {
     }
 
     // Fresh notebook: hand off straight into a live recording session.
-    context.go('/notebook/${notebook.id}?start=true');
+    context.go('/notebook/${notebook.id}?start=true'
+        '${offTheRecord ? '&offrecord=true' : ''}');
   }
 
   @override
   Widget build(BuildContext context) {
     final colors = widget.colors;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _primary(colors),
+        // Chosen before starting (LM-50): nothing in it is saved.
+        TextButton(
+          key: const Key('newOffTheRecordButton'),
+          onPressed:
+              _creating ? null : () => _createAndOpen(offTheRecord: true),
+          child: Text(
+            'Start off the record',
+            style: TextStyle(
+              fontFamily: LumenText.sansFontFamily,
+              fontSize: 13,
+              color: colors.mutedForeground,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _primary(LumenColors colors) {
     return Material(
       color: colors.ink,
       borderRadius: BorderRadius.circular(_displayCornerRadius),

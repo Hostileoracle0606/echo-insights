@@ -16,13 +16,20 @@ import 'package:lumen/models/entity.dart';
 import 'package:lumen/models/journal_state.dart';
 import 'package:lumen/models/session_card.dart';
 import 'package:lumen/providers/export_provider.dart';
+import 'package:lumen/providers/journal_provider.dart';
 import 'package:lumen/providers/leaving_notebooks_provider.dart';
+import 'package:lumen/providers/notebooks_provider.dart';
+import 'package:lumen/providers/opening_prep_provider.dart';
 import 'package:lumen/providers/supabase_provider.dart';
 import 'package:lumen/screens/card/closing_card_screen.dart';
+import 'package:lumen/security/app_lock.dart';
+import 'package:lumen/security/app_lock_provider.dart';
 import 'package:lumen/services/markdown_export.dart';
 import 'package:lumen/services/memory_control_service.dart';
 import 'package:lumen/services/notebook_commit_service.dart';
 import 'package:lumen/services/session_card_service.dart';
+import 'package:lumen/services/session_deletion_service.dart';
+import 'package:lumen/services/turn_journal_service.dart';
 import 'package:lumen/theme/lumen_colors.dart';
 import 'package:lumen/theme/lumen_theme.dart';
 import 'package:lumen/widgets/result_card.dart';
@@ -58,10 +65,9 @@ class _FakeCards implements SessionCardService {
 }
 
 class _FakeCommits implements NotebookCommitService {
-  _FakeCommits({this.revision = 7, this.suppressed = const {}});
+  _FakeCommits({this.revision = 7});
 
   int revision;
-  Set<String> suppressed;
   Object? failWith;
   int snapshots = 0;
 
@@ -72,7 +78,6 @@ class _FakeCommits implements NotebookCommitService {
     return NotebookSnapshot(
       notebookId: notebookId,
       revision: revision,
-      suppressedEntityIds: suppressed,
       state: _exportState(),
     );
   }
@@ -89,6 +94,43 @@ class _FakeMemory implements MemoryControlService {
     removed.add(entityId);
     return 1;
   }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _FakeTurnJournal implements TurnJournalService {
+  final forgotten = <String>[];
+
+  @override
+  Future<void> forgetNotebook(String notebookId) async {
+    forgotten.add(notebookId);
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _FakeDeletion implements SessionDeletionService {
+  final deleted = <String>[];
+  Object? failWith;
+
+  @override
+  Future<bool> deleteSession(String notebookId) async {
+    if (failWith != null) throw failWith!;
+    deleted.add(notebookId);
+    return true;
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _FakePrep implements OpeningPrep {
+  int refreshes = 0;
+
+  @override
+  Future<void> refresh() async => refreshes += 1;
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
@@ -118,7 +160,16 @@ class _Harness {
     required this.memory,
     required this.router,
     required this.shared,
+    required this.deletion,
+    required this.prep,
+    required this.notebookLoads,
   });
+
+  final _FakeDeletion deletion;
+  final _FakePrep prep;
+
+  /// How many times the dashboard's notebook list was (re)built.
+  final List<int> notebookLoads;
 
   final _FakeCards cards;
   final _FakeCommits commits;
@@ -132,12 +183,27 @@ class _Harness {
 
 const _id = 'nb-1';
 
+class _Auth implements LockAuthenticator {
+  _Auth({this.passes = true});
+  bool passes;
+  int prompts = 0;
+  @override
+  Future<bool> isAvailable() async => true;
+  @override
+  Future<bool> authenticate(String reason) async {
+    prompts += 1;
+    return passes;
+  }
+}
+
 Future<_Harness> _pump(
   WidgetTester tester, {
   _FakeCards? cards,
   _FakeCommits? commits,
   LeavingNotebooks? leaving,
   Future<void> Function(MarkdownVault vault)? share,
+  _Auth? auth,
+  _FakeTurnJournal? turnJournal,
 }) async {
   tester.view
     ..physicalSize = const Size(402, 874)
@@ -148,6 +214,9 @@ Future<_Harness> _pump(
   final fakeCommits = commits ?? _FakeCommits();
   final memory = _FakeMemory();
   final shared = <MarkdownVault>[];
+  final deletion = _FakeDeletion();
+  final prep = _FakePrep();
+  final notebookLoads = <int>[];
   final router = GoRouter(
     initialLocation: '/notebook/$_id/card',
     routes: [
@@ -176,7 +245,17 @@ Future<_Harness> _pump(
         sessionCardServiceProvider.overrideWithValue(fakeCards),
         notebookCommitServiceProvider.overrideWithValue(fakeCommits),
         memoryControlServiceProvider.overrideWithValue(memory),
-        leavingNotebooksProvider.overrideWithValue(leaving ?? LeavingNotebooks()),
+        leavingNotebooksProvider
+            .overrideWithValue(leaving ?? LeavingNotebooks()),
+        sessionDeletionServiceProvider.overrideWithValue(deletion),
+        openingPrepProvider.overrideWithValue(prep),
+        lockAuthenticatorProvider.overrideWithValue(auth ?? _Auth()),
+        turnJournalServiceProvider
+            .overrideWithValue(turnJournal ?? _FakeTurnJournal()),
+        notebooksProvider.overrideWith((ref) {
+          notebookLoads.add(notebookLoads.length);
+          return [];
+        }),
         shareVaultProvider.overrideWithValue(
           (vault, {Rect? origin}) async {
             shared.add(vault);
@@ -198,6 +277,9 @@ Future<_Harness> _pump(
     memory: memory,
     router: router,
     shared: shared,
+    deletion: deletion,
+    prep: prep,
+    notebookLoads: notebookLoads,
   );
 }
 
@@ -334,7 +416,8 @@ void main() {
         commits: _FakeCommits(revision: _justTalk.sourceRevision + 1),
         leaving: leaving,
       );
-      expect(find.text('Your latest changes are still saving.'), findsOneWidget);
+      expect(
+          find.text('Your latest changes are still saving.'), findsOneWidget);
       expect(find.textContaining(_justTalk.summary), findsOneWidget);
       expect(find.text('Adding the last few moments…'), findsNothing);
       expect(h.cards.closeCalls, 0);
@@ -354,7 +437,8 @@ void main() {
           Future<void>.error(LeaveIncomplete(retry: () async {})),
         );
       final h = await _pump(tester, cards: _FakeCards(), leaving: leaving);
-      expect(find.text('Your latest changes are still saving.'), findsOneWidget);
+      expect(
+          find.text('Your latest changes are still saving.'), findsOneWidget);
       expect(find.text('Writing your card…'), findsNothing);
       expect(h.cards.closeCalls, 0);
       await _unmount(tester);
@@ -478,14 +562,6 @@ void main() {
         LumenColors.entityColors[EntityType.activity],
         LumenColors.entityColors[EntityType.place],
       ]);
-      await _unmount(tester);
-    });
-
-    testWidgets('items already removed from memory are hidden on load',
-        (tester) async {
-      await _pump(tester, commits: _FakeCommits(suppressed: {'maya'}));
-      expect(find.bySemanticsLabel('Remove Maya'), findsNothing);
-      expect(find.bySemanticsLabel('Remove Project Atlas'), findsOneWidget);
       await _unmount(tester);
     });
 
@@ -629,6 +705,84 @@ void main() {
       await _tapVisible(tester, find.bySemanticsLabel('Export as Markdown'));
       expect(
           find.text("Couldn't build the export. Try again."), findsOneWidget);
+      await _unmount(tester);
+    });
+  });
+
+  group('delete this session', () {
+    Future<void> openDialog(WidgetTester tester) async {
+      await _tapVisible(tester, find.text('Delete this session'));
+    }
+
+    testWidgets('asks first, and Cancel deletes nothing', (tester) async {
+      final h = await _pump(tester);
+
+      await openDialog(tester);
+      expect(find.text('Delete this session?'), findsOneWidget);
+      expect(find.textContaining('short-lived cache for about a week'),
+          findsOneWidget);
+
+      await tester.tap(find.text('Cancel'));
+      await _frames(tester);
+
+      expect(h.deletion.deleted, isEmpty);
+      expect(h.location, '/notebook/$_id/card');
+      await _unmount(tester);
+    });
+
+    testWidgets('confirming deletes it, refreshes and lands on the dashboard',
+        (tester) async {
+      final turnJournal = _FakeTurnJournal();
+      final h = await _pump(tester, turnJournal: turnJournal);
+      // The dashboard list is read once the router lands there.
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(ClosingCardScreen)),
+      );
+      container.listen(notebooksProvider, (_, __) {});
+      final loadsBefore = h.notebookLoads.length;
+
+      await openDialog(tester);
+      await tester.tap(find.text('Delete'));
+      await _frames(tester);
+
+      expect(h.deletion.deleted, [_id]);
+      expect(turnJournal.forgotten, [_id], reason: 'the copy on this phone');
+      expect(h.location, '/dashboard');
+      expect(find.text('Dashboard ready'), findsOneWidget);
+      expect(h.prep.refreshes, 1);
+      expect(h.notebookLoads.length, greaterThan(loadsBefore),
+          reason: 'the notebook list was invalidated');
+      await _unmount(tester);
+    });
+
+    testWidgets('a failed re-auth deletes nothing and stays on the card',
+        (tester) async {
+      final auth = _Auth(passes: false);
+      final h = await _pump(tester, auth: auth);
+
+      await openDialog(tester);
+      await tester.tap(find.text('Delete'));
+      await _frames(tester);
+
+      expect(auth.prompts, 1);
+      expect(h.deletion.deleted, isEmpty);
+      expect(h.location, '/notebook/$_id/card');
+      await _unmount(tester);
+    });
+
+    testWidgets('a failed delete stays on the card and says so',
+        (tester) async {
+      final h = await _pump(tester);
+      h.deletion.failWith = StateError('offline');
+
+      await openDialog(tester);
+      await tester.tap(find.text('Delete'));
+      await _frames(tester);
+
+      expect(h.deletion.deleted, isEmpty);
+      expect(h.location, '/notebook/$_id/card');
+      expect(
+          find.text("Couldn't delete the session. Try again."), findsOneWidget);
       await _unmount(tester);
     });
   });

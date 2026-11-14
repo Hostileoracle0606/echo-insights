@@ -1,3 +1,5 @@
+import { guardHandler } from "./safe-log.mjs";
+
 function bearerToken(headers = {}) {
   const authorization = headers.authorization ?? headers.Authorization;
   if (typeof authorization !== "string") return null;
@@ -6,7 +8,7 @@ function bearerToken(headers = {}) {
 }
 
 export function createSupabaseAuthorizer({ supabaseUrl, publishableKey, fetchImpl }) {
-  return async function authorize(event) {
+  async function authorize(event) {
     const token = bearerToken(event?.headers);
     if (!token) return { isAuthorized: false };
 
@@ -44,5 +46,12 @@ export function createSupabaseAuthorizer({ supabaseUrl, publishableKey, fetchImp
     } catch {
       return { isAuthorized: false };
     }
-  };
+  }
+
+  // A throw is logged by class only, then fails the request with a fixed,
+  // content-free error: a 500 API Gateway doesn't cache, where a deny would
+  // lock a valid token out for the cache's TTL (infra-stack.ts).
+  return guardHandler("supabase-authorizer", authorize, () => {
+    throw new Error("Supabase auth unavailable");
+  });
 }

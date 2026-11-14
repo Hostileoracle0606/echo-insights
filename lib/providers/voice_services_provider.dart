@@ -4,7 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../audio/audio_output.dart';
 import '../services/live_credentials.dart';
 import 'auth_provider.dart';
-import 'journal_provider.dart' show turnJournalServiceProvider;
+import 'journal_provider.dart'
+    show forgottenThisRunProvider, turnJournalServiceProvider;
 import 'opening_prep_provider.dart';
 import 'supabase_provider.dart';
 
@@ -25,6 +26,14 @@ final audioOutputProvider = Provider<AudioOutput>((ref) {
 });
 
 /// Follows sign-in and the app lifecycle for the app-level voice services.
+/// What one account leaves behind in memory, dropped when it signs out.
+final signedOutCleanupProvider = Provider<void Function()>((ref) {
+  return () {
+    ref.read(openingPrepProvider).clear();
+    ref.read(forgottenThisRunProvider).clear();
+  };
+});
+
 class VoiceServicesBinding {
   VoiceServicesBinding({
     required this.credentials,
@@ -116,7 +125,7 @@ class _VoiceServicesScopeState extends ConsumerState<VoiceServicesScope>
         // Coming back also re-asks for a brief that failed earlier.
         onResume: () => Future.wait(
             [openingPrep.refresh(), openingPrep.retryPendingBrief()]),
-        onSignedOut: openingPrep.clear,
+        onSignedOut: ref.read(signedOutCleanupProvider),
       );
     }
     _binding!.signedInChanged(signedIn);

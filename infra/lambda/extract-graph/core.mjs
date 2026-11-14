@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 
+import { guardHandler } from "./safe-log.mjs";
 import { extractGraphFunction, granularPrompt, wikiPrompt } from "./prompts.mjs";
 
 // Model output targets 800 characters (see prompts.mjs). The additional 200
@@ -81,9 +82,11 @@ function extractionInputHash(body) {
 }
 
 function boundedString(value, maxLength, { allowEmpty = false } = {}) {
-  return typeof value === "string" &&
+  return (
+    typeof value === "string" &&
     value.length <= maxLength &&
-    (allowEmpty || value.trim().length > 0);
+    (allowEmpty || value.trim().length > 0)
+  );
 }
 
 function truncateString(value, maxLength) {
@@ -235,12 +238,16 @@ function validPatch(value) {
     ) {
       return false;
     }
-    if (entity.metadata != null && (typeof entity.metadata !== "object" || Array.isArray(entity.metadata))) {
+    if (
+      entity.metadata != null &&
+      (typeof entity.metadata !== "object" || Array.isArray(entity.metadata))
+    ) {
       return false;
     }
     if (
       entity.questions != null &&
-      (!Array.isArray(entity.questions) || entity.questions.some((question) => typeof question !== "string"))
+      (!Array.isArray(entity.questions) ||
+        entity.questions.some((question) => typeof question !== "string"))
     ) {
       return false;
     }
@@ -296,7 +303,7 @@ export function createExtractGraphHandler({
   newOwnerToken = () => randomUUID(),
   sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
 }) {
-  return async function handle(event) {
+  async function handle(event) {
     const userId = authorizedUserId(event);
     if (!userId) return jsonResponse(401, { error: "unauthorized" });
 
@@ -460,5 +467,9 @@ export function createExtractGraphHandler({
     }
 
     return jsonResponse(503, { status: "rejected", code: "providerUnavailable" });
-  };
+  }
+
+  return guardHandler("extract-graph", handle, () =>
+    jsonResponse(503, { status: "rejected", code: "providerUnavailable" }),
+  );
 }

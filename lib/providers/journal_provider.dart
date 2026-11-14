@@ -40,6 +40,7 @@ import '../services/session_card_service.dart';
 import '../services/turn_journal_service.dart';
 import 'leaving_notebooks_provider.dart';
 import 'opening_prep_provider.dart';
+import 'quiet_mode_provider.dart';
 import 'supabase_provider.dart';
 import 'voice_services_provider.dart';
 
@@ -51,15 +52,21 @@ enum SessionStatus { idle, connecting, live, paused, ending, error }
 enum JoiningPhase { none, joining, failed }
 
 class NotebookTransitionResult {
-  const NotebookTransitionResult._(this.succeeded, [this.message]);
+  const NotebookTransitionResult._(this.succeeded,
+      [this.message, this.nothingSaved = false]);
 
-  const NotebookTransitionResult.success() : this._(true);
+  const NotebookTransitionResult.success({bool nothingSaved = false})
+      : this._(true, null, nothingSaved);
 
   const NotebookTransitionResult.failure(String message)
       : this._(false, message);
 
   final bool succeeded;
   final String? message;
+
+  /// Leaving an off-the-record session that saved nothing (LM-50): there is
+  /// no closing card to show.
+  final bool nothingSaved;
 }
 
 /// Milliseconds to wait for an authoritative transcript after turn completion.
@@ -146,6 +153,12 @@ class JournalNotifier extends Notifier<JournalState> {
   final Set<String> _savedTurnIds = {};
   DateTime? _saveRetryAfter;
 
+  // LM-50: the switch went on at some point since this notebook was opened,
+  // and which turns were already saved when it opened (a notebook's earlier
+  // turns stay in the machine when it is re-entered).
+  bool _wentOffRecord = false;
+  Set<String> _savedAtOpen = {};
+
   JoiningPhase _joining = JoiningPhase.none;
   Timer? _joiningTimer;
   JoiningPhase get joining => _joining;
@@ -197,9 +210,14 @@ class JournalNotifier extends Notifier<JournalState> {
   // _enqueueCommit / _commitApplyTurn.
   int _revision = 0;
 
-  // LM-29: ids the user removed from memory (from the snapshot, plus any
-  // removal still inside its undo window). merge() never adds them back.
+  // LM-29: ids the user removed from memory (removed or forgotten since
+  // launch, plus any removal still inside its undo window). merge() never
+  // adds them back. The server keeps only keyed hashes of its suppressions
+  // (LM-49) and drops them on commit, so it sends no list.
   final Set<String> _suppressed = {};
+  // Ids removed or forgotten since launch, or dropped by the server on a
+  // commit, kept across snapshot reloads. Cleared on sign-out.
+  Set<String> get _forgottenThisRun => ref.read(forgottenThisRunProvider);
   final Map<String, _PendingRemoval> _pendingRemovals = {};
   BackgroundFlush? _backgroundFlush;
   Set<String> get suppressedEntityIds => Set.unmodifiable(_suppressed);
@@ -219,6 +237,9 @@ class JournalNotifier extends Notifier<JournalState> {
         if (!current.contains(turn.turnId)) (turn: turn, pending: false),
       for (final turn in _greetingRows) (turn: turn, pending: false),
       for (final turn in conversation) (turn: turn, pending: false),
+      // Off the record: on screen for this session only.
+      for (final turn in _turnMachine.state.offRecord)
+        (turn: turn, pending: false),
       for (final turn in inProgress) (turn: turn, pending: true),
     ];
     // List.sort is not guaranteed stable; break ties by original position.
@@ -233,8 +254,22 @@ class JournalNotifier extends Notifier<JournalState> {
   UpsertActivity? get activity => _activity;
   RecallActivity? get recall => _recall;
   List<ConversationTurn> get conversation => List.unmodifiable(_conversation);
+
+  /// LM-50: nothing said from here on is saved, extracted or drafted.
+  bool get offTheRecord => _turnMachine.offTheRecord;
+
+  /// Something from before the off-the-record switch is saved, and stays.
+  bool get hasSavedTurns =>
+      _history.isNotEmpty ||
+      _conversation.isNotEmpty ||
+      state.entries.isNotEmpty;
   List<ConversationTurn> get inProgress => List.unmodifiable(_inProgress);
   bool get muted => _muted;
+
+  /// Lumen's voice reaches the speaker: not muted, and quiet mode (if on)
+  /// has headphones or Bluetooth to play into. Otherwise the audio still
+  /// runs the playback clock and the words show as text.
+  bool get _audible => !_muted && ref.read(quietPlaybackAllowedProvider);
   bool get agentSpeaking => _agentSpeaking;
 
   /// The user's turn is over and Lumen hasn't started answering: from a
@@ -283,6 +318,11 @@ class JournalNotifier extends Notifier<JournalState> {
 
   @override
   JournalState build() {
+    // Headphones pulled out in quiet mode: what is queued must not play on
+    // the speaker.
+    ref.listen(quietPlaybackAllowedProvider, (_, allowed) {
+      if (!allowed) unawaited(_player?.flush());
+    });
     ref.onDispose(() {
       _liveSessionGuard.invalidate();
       for (final timer in _finalizationTimers.values) {
@@ -313,6 +353,52 @@ class JournalNotifier extends Notifier<JournalState> {
     vlog('session', 'status → ${status.name}');
     _status = status;
     _notifyUi();
+  }
+
+  /// Off the record (LM-50). On: turns that finalize from now on are kept on
+  /// screen only, and card drafting stops. What was saved before stays. Off
+  /// again: saving resumes for later turns; what was said while on stays
+  /// unsaved. May be set before a session starts.
+  void setOffTheRecord(bool value) {
+    if (_turnMachine.offTheRecord == value) return;
+    _turnMachine.offTheRecord = value;
+    final notebookId = _activeNotebookId;
+    if (value) {
+      _wentOffRecord = true;
+      if (notebookId != null) ref.read(cardDrafterProvider).stop(notebookId);
+    } else {
+      if (notebookId != null && _status == SessionStatus.live) {
+        ref.read(cardDrafterProvider).start(notebookId);
+      }
+      final session = _session;
+      if (session != null &&
+          (_status == SessionStatus.live || _status == SessionStatus.paused)) {
+        // Gemini still holds what was said. Until it doesn't, a reply could
+        // repeat it, and a reply would be saved.
+        _turnMachine.holdAssistantOffRecord = true;
+        unawaited(_reopenWithSavedContext(session));
+      }
+    }
+    _notifyUi();
+  }
+
+  /// Replaces the connection with a new conversation on Gemini's side,
+  /// seeded only from what is saved, then lets Lumen's turns be saved again.
+  /// If it can't reconnect the session errors, and they stay unsaved.
+  Future<void> _reopenWithSavedContext(_PreparedLive session) async {
+    if (_reconnecting) {
+      _reopenAfterReconnect = true;
+      return;
+    }
+    session.live
+      ..dropResumption()
+      ..holdInput();
+    await _reconnect(
+      session,
+      'back on the record',
+      whilePaused: true,
+      fresh: true,
+    );
   }
 
   void toggleMute() {
@@ -762,9 +848,18 @@ class JournalNotifier extends Notifier<JournalState> {
 
     if (outcome is commit_service.CommitCommitted) {
       _revision = outcome.revision;
+      // The server dropped these: the device stops showing them, and a
+      // relaunch (which has no list of them) can't add them back for long.
+      for (final id in outcome.suppressedIds) {
+        _suppressed.add(id);
+        _forgottenThisRun.add(id);
+        state = withoutEntity(state, id);
+      }
       // The conversation moved on: keep a draft of its card current, so
       // leaving can show it at once.
-      ref.read(cardDrafterProvider).turnSaved(turn.notebookId);
+      if (!offTheRecord) {
+        ref.read(cardDrafterProvider).turnSaved(turn.notebookId);
+      }
       if (_restoredPreparedCommitIds.remove(turn.turnId)) {
         // A restored envelope has no corresponding optimistic state in this
         // process. Reload the committed server snapshot instead of attempting
@@ -844,8 +939,8 @@ class JournalNotifier extends Notifier<JournalState> {
   JournalState _adoptSnapshot(commit_service.NotebookSnapshot snapshot) {
     _suppressed
       ..clear()
-      ..addAll(snapshot.suppressedEntityIds)
-      ..addAll(_pendingRemovals.keys);
+      ..addAll(_pendingRemovals.keys)
+      ..addAll(_forgottenThisRun);
     var next = snapshot.state;
     for (final id in _pendingRemovals.keys) {
       next = withoutEntity(next, id);
@@ -914,6 +1009,26 @@ class JournalNotifier extends Notifier<JournalState> {
     return true;
   }
 
+  /// Forgets [entityId] on the server (LM-49), then drops it here and
+  /// reloads the active notebook so the graph, the cards' source and the
+  /// suppression all match the server. Throws if the server call fails, with
+  /// nothing changed on the device.
+  Future<void> forgetEntity(String entityId) async {
+    await ref.read(memoryControlServiceProvider).forgetEntity(entityId);
+    // A removal still inside its undo window is superseded by this.
+    _pendingRemovals.remove(entityId)
+      ?..timer.cancel()
+      ..done.complete(RemovalOutcome.removed);
+    _syncBackgroundFlush();
+    _forgottenThisRun.add(entityId);
+    _suppressed.add(entityId);
+    state = withoutEntity(state, entityId);
+    // The server may have deleted the brief; the copy held here must not be
+    // spoken at the next opening.
+    await ref.read(openingPrepProvider).reloadOrDropBrief();
+    await _reloadSnapshot();
+  }
+
   /// Sends every removal still inside its undo window, now.
   Future<void> flushPendingRemovals() => Future.wait([
         for (final id in _pendingRemovals.keys.toList()) _sendRemoval(id),
@@ -926,6 +1041,7 @@ class JournalNotifier extends Notifier<JournalState> {
     _syncBackgroundFlush();
     try {
       await pending.service.removeEntity(entityId);
+      _forgottenThisRun.add(entityId);
       pending.done.complete(RemovalOutcome.removed);
     } catch (error) {
       // Not removed on the server, so not suppressed there either: show the
@@ -1078,6 +1194,8 @@ class JournalNotifier extends Notifier<JournalState> {
     _revision = snapshot?.revision ?? 0;
     state = snapshot == null ? JournalState.empty() : _adoptSnapshot(snapshot);
     await _restoreTurnsForNotebook(notebookId);
+    _savedAtOpen = {for (final turn in _conversation) turn.turnId};
+    _wentOffRecord = offTheRecord;
     vlog('timing', 'open: turn journal +${clock.elapsedMilliseconds}ms');
   }
 
@@ -1106,6 +1224,8 @@ class JournalNotifier extends Notifier<JournalState> {
   Future<NotebookTransitionResult> enterNotebook(
     String notebookId, {
     bool autoStart = false,
+    bool offTheRecord = false,
+    Future<bool> Function()? beforeOpening,
   }) {
     final intent = ++_lifecycleIntent;
     if (_activeNotebookId != notebookId) {
@@ -1147,9 +1267,21 @@ class JournalNotifier extends Notifier<JournalState> {
         }
       }
 
-      // A new notebook opens with Lumen (greeting and all); one with an
-      // earlier conversation opens quietly on its graph and transcript.
+      // Chosen before starting (LM-50): applied before any session can.
+      if (offTheRecord) setOffTheRecord(true);
+
+      // A new notebook opens with Lumen (greeting and all), unless
+      // [beforeOpening] says no; one with an earlier conversation opens
+      // quietly on its graph and transcript.
       if ((opening || autoStart) && !_continuesConversation) {
+        if (beforeOpening != null && !await beforeOpening()) {
+          return const NotebookTransitionResult.success();
+        }
+        if (intent != _lifecycleIntent) {
+          return const NotebookTransitionResult.failure(
+            'Notebook transition was superseded by a newer request.',
+          );
+        }
         return _openWithLumenUnlocked();
       }
       return const NotebookTransitionResult.success();
@@ -1386,6 +1518,9 @@ class JournalNotifier extends Notifier<JournalState> {
   /// The session the user is in (null while idle or connecting).
   _PreparedLive? _session;
 
+  /// Back on the record while another reconnect was running: go again.
+  bool _reopenAfterReconnect = false;
+
   // Typed turns waiting for the connection to come back, in the order sent.
   final List<String> _typedTurnsAwaitingConnection = [];
 
@@ -1405,7 +1540,9 @@ class JournalNotifier extends Notifier<JournalState> {
 
   void _onMicFrame(LiveSessionLease lease, Uint8List frame) {
     if (!_liveSessionGuard.isCurrent(lease)) return;
-    if (_status == SessionStatus.paused) return;
+    if (_status == SessionStatus.paused || _status == SessionStatus.error) {
+      return;
+    }
     // Lumen's greeting has the floor on a new notebook's first session.
     if (!(_opening?.acceptsUserAudio ?? false)) return;
     final pcm = _echoGate.admit(frame, at: DateTime.now());
@@ -1435,6 +1572,13 @@ class JournalNotifier extends Notifier<JournalState> {
       );
     }
     _setStatus(SessionStatus.connecting);
+    // A new session holds nothing off the record.
+    _turnMachine.holdAssistantOffRecord = false;
+    // Whatever a failed session hasn't finished closing yet; replacing it
+    // below would orphan it.
+    if (_capture != null || _live != null || _session != null) {
+      await _closeLiveTransportUnlocked();
+    }
     // A notebook with earlier conversation continues it: no greeting, the
     // earlier turns go to Gemini as context, and the user has the floor
     // from the tap. A new notebook opens with Lumen's greeting.
@@ -1647,7 +1791,9 @@ class JournalNotifier extends Notifier<JournalState> {
       revision: _revision,
     ));
     // A notebook continued after leaving drafts its card again.
-    ref.read(cardDrafterProvider).start(prepared.notebookId);
+    if (!offTheRecord) {
+      ref.read(cardDrafterProvider).start(prepared.notebookId);
+    }
     _setStatus(SessionStatus.live);
     if (!continuing) _startGreeting();
     prepared.gate.activate((signal) {
@@ -1688,10 +1834,12 @@ class JournalNotifier extends Notifier<JournalState> {
     _PreparedLive session,
     String reason, {
     bool whilePaused = false,
+    bool fresh = false,
   }) async {
     bool isCurrent() => _isCurrentLiveSession(session.binding, session.live) &&
         identical(_session, session);
     if (_reconnecting || !isCurrent()) return;
+    if (_status == SessionStatus.error) return;
     final live = session.live;
     if (_status == SessionStatus.paused && !whilePaused) {
       vlog('session', 'connection lapsed while paused ($reason)');
@@ -1699,10 +1847,10 @@ class JournalNotifier extends Notifier<JournalState> {
       await live.close();
       return;
     }
-    if (live.resumptionHandle == null) {
+    if (live.resumptionHandle == null && !fresh) {
       debugPrint('[journal] Gemini Live error without a resumption handle: '
           '$reason');
-      _setStatus(SessionStatus.error);
+      _failLiveSession(isCurrent);
       return;
     }
     _reconnecting = true;
@@ -1720,7 +1868,8 @@ class JournalNotifier extends Notifier<JournalState> {
           final tokenUsable = DateTime.now()
               .add(const Duration(minutes: 1))
               .isBefore(session.tokenExpiresAt);
-          if (attempt > 0 || !tokenUsable) {
+          // A new conversation gets a new token, not the one the old used.
+          if (fresh || attempt > 0 || !tokenUsable) {
             final outcome =
                 await _takeCredential(session.notebookId, (stage) {});
             if (outcome is! LiveSessionReady) {
@@ -1734,6 +1883,28 @@ class JournalNotifier extends Notifier<JournalState> {
           await live.whenSetupComplete.timeout(const Duration(seconds: 8));
           _connectionLapsed = false;
           vlog('session', 'reconnected (attempt ${attempt + 1})');
+          if (fresh) {
+            // Saved turns only: the off-record ones are not in this list.
+            final continuing = _continuesConversation;
+            live
+              ..sendHistory(
+                continuing
+                    ? resumeContext(
+                        conversation: _earlierConversation,
+                        entries: state.entries,
+                      )
+                    : const [],
+                note: continuing ? resumeNote : null,
+                context: openingContext(
+                  openingLine: null,
+                  brief: null,
+                  briefAlreadyRaised: true,
+                  graphSummary: _buildGraphSummary(),
+                ),
+              )
+              ..releaseInput();
+            _turnMachine.holdAssistantOffRecord = false;
+          }
           // A cut-off reply's turn ended with the old connection.
           _droppingCutOffReply = false;
           for (final typed in _typedTurnsAwaitingConnection) {
@@ -1747,12 +1918,34 @@ class JournalNotifier extends Notifier<JournalState> {
       }
       if (isCurrent()) {
         debugPrint('[journal] Gemini Live could not reconnect');
-        _setStatus(SessionStatus.error);
+        _failLiveSession(isCurrent);
       }
     } finally {
       _reconnecting = false;
       _notifyUi();
+      if (_reopenAfterReconnect) {
+        _reopenAfterReconnect = false;
+        unawaited(_reopenWithSavedContext(session));
+      }
     }
+  }
+
+  /// The connection is gone for good. The dock shows idle in error, so the
+  /// mic stops now and the transport closes next: a socket left open would
+  /// keep taking audio and saving turns with no sign of it, and its close
+  /// would start a reconnect with no tap.
+  void _failLiveSession(bool Function() isCurrent) {
+    _setStatus(SessionStatus.error);
+    final capture = _capture;
+    _capture = null;
+    if (capture != null) {
+      unawaited(capture.stop().catchError((Object error) {
+        vlog('session', 'mic shutdown failed: ${error.runtimeType}');
+      }));
+    }
+    unawaited(_serializeLifecycle(() async {
+      if (isCurrent()) await _closeLiveTransportUnlocked();
+    }));
   }
 
   /// Plays the chosen opening clip through this session's player, once.
@@ -1785,7 +1978,7 @@ class JournalNotifier extends Notifier<JournalState> {
         fed = player.feed(
               chunk,
               sampleRate: clip.sampleRate,
-              audible: !_muted,
+              audible: _audible,
             ) ||
             fed;
       }
@@ -1884,6 +2077,8 @@ class JournalNotifier extends Notifier<JournalState> {
 
   /// One Gemini signal, now that the session is the user's.
   void _handleSignal(LiveSignal signal) {
+    // Failed, and the close is on its way: nothing more counts.
+    if (_status == SessionStatus.error) return;
     switch (signal) {
       // Meaningful transcript events, not cumulative sentence callbacks:
       // interim text is replaceable, and only a finalized, immutable
@@ -1916,7 +2111,7 @@ class JournalNotifier extends Notifier<JournalState> {
         final fed = _player?.feed(
               pcm,
               sampleRate: sampleRate,
-              audible: !_muted,
+              audible: _audible,
             ) ??
             false;
         if (!fed) _markAgentSpeaking();
@@ -2154,6 +2349,11 @@ class JournalNotifier extends Notifier<JournalState> {
     if (notebookId == null && _status == SessionStatus.idle) {
       return const NotebookTransitionResult.success();
     }
+    // LM-50: the switch was on and no turn of this visit was saved. Judged
+    // after the drain below, which settles turns finalized before the switch.
+    bool offRecordOnly() =>
+        _wentOffRecord &&
+        _conversation.every((turn) => _savedAtOpen.contains(turn.turnId));
 
     _setStatus(SessionStatus.ending);
     // The final card is written after the drain; no draft may race it.
@@ -2164,6 +2364,7 @@ class JournalNotifier extends Notifier<JournalState> {
 
     // Set only once the notebook is really over (ended_at saved).
     String? closedNotebookId;
+    var nothingSaved = false;
     if (notebookId != null) {
       final outcome = await drain();
       if (!outcome.isCompleted) {
@@ -2181,7 +2382,22 @@ class JournalNotifier extends Notifier<JournalState> {
           'Your latest journal changes are still saving. Try leaving again.',
         );
       }
-      if (shouldEndNotebook) {
+      if (offRecordOnly()) {
+        // Nothing of this visit is kept: no end mark, no card, no brief. A
+        // notebook that looks empty is offered to the server, which alone
+        // decides (this check can be wrong if history failed to load).
+        if (!hasSavedTurns) {
+          try {
+            await ref
+                .read(supabaseServiceProvider)
+                .deleteEmptyNotebook(notebookId);
+          } catch (error) {
+            // An empty "Untitled" row is the worst case; leaving still works.
+            vlog('session', 'empty notebook not removed: ${error.runtimeType}');
+          }
+        }
+        nothingSaved = true;
+      } else if (shouldEndNotebook) {
         try {
           final service = ref.read(supabaseServiceProvider);
           await service.endNotebook(notebookId);
@@ -2209,6 +2425,12 @@ class JournalNotifier extends Notifier<JournalState> {
     _sessionStartedAt = null;
     _activeNotebookId = null;
     _restoredNotebookId = null;
+    _turnMachine.clearOffRecord();
+    _turnMachine.offTheRecord = false;
+    _turnMachine.holdAssistantOffRecord = false;
+    _reopenAfterReconnect = false;
+    _wentOffRecord = false;
+    _savedAtOpen = {};
     _history.clear();
     _savedTurnIds.clear();
     _joiningTimer?.cancel();
@@ -2220,7 +2442,7 @@ class JournalNotifier extends Notifier<JournalState> {
     _setStatus(SessionStatus.idle);
     if (userSpoke) ref.read(openingPrepProvider).markReturning();
     if (closedNotebookId != null) _writeSessionCard(closedNotebookId);
-    return const NotebookTransitionResult.success();
+    return NotebookTransitionResult.success(nothingSaved: nothingSaved);
   }
 
   /// Asks the runtime for the notebook's closing card (LM-15) without
@@ -2335,6 +2557,10 @@ final liveClientFactoryProvider = Provider<
 
 /// One chat-pane row: a conversation turn, and whether it is still unfinished.
 typedef TranscriptRow = ({ConversationTurn turn, bool pending});
+
+/// See [JournalNotifier._forgottenThisRun]. One account's, so sign-out clears
+/// it; it lives outside the notifier so that needs no journal.
+final forgottenThisRunProvider = Provider<Set<String>>((ref) => <String>{});
 
 final turnJournalServiceProvider = Provider<TurnJournalService>((ref) {
   return TurnJournalService();

@@ -9,6 +9,7 @@ import 'package:lumen/models/journal_entry.dart';
 import 'package:lumen/models/journal_state.dart';
 import 'package:lumen/models/relation.dart';
 import 'package:lumen/providers/journal_provider.dart';
+import 'package:lumen/screens/journal/forget_entity_screen.dart';
 import 'package:lumen/screens/journal/wikilink.dart';
 import 'package:lumen/theme/lumen_colors.dart';
 import 'package:lumen/theme/lumen_text.dart';
@@ -236,6 +237,23 @@ class _EntityNoteSheetState extends ConsumerState<EntityNoteSheet> {
             ),
           ),
         ),
+        // LM-49: remove everywhere Lumen kept it, not just the graph.
+        Align(
+          alignment: Alignment.centerLeft,
+          child: Semantics(
+            label: 'Forget ${entity.name}',
+            button: true,
+            excludeSemantics: true,
+            child: TextButton.icon(
+              style: _tapTarget.copyWith(
+                foregroundColor: WidgetStatePropertyAll(colors.destructive),
+              ),
+              onPressed: () => _openForget(entity),
+              icon: const Icon(Icons.person_off_outlined, size: 18),
+              label: Text('Forget ${entity.name}'),
+            ),
+          ),
+        ),
       ],
     );
   }
@@ -332,6 +350,18 @@ class _EntityNoteSheetState extends ConsumerState<EntityNoteSheet> {
         const SnackBar(content: Text("Couldn't save your edit. Try again.")),
       );
     }
+  }
+
+  Future<void> _openForget(Entity entity) async {
+    final name = entity.name;
+    final messenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
+    final forgotten = await navigator.push<bool>(MaterialPageRoute(
+      builder: (_) => ForgetEntityScreen(entityId: entity.id, name: name),
+    ));
+    if (forgotten != true) return;
+    unawaited(navigator.maybePop()); // the sheet: its entity is gone
+    messenger.showSnackBar(SnackBar(content: Text('Forgot $name')));
   }
 
   Future<void> _confirmRemove(Entity entity) async {

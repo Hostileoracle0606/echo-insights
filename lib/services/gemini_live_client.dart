@@ -56,6 +56,9 @@ class GeminiLiveClient {
   int _pendingBytes = 0;
   int _framesDropped = 0;
   String? _resumptionHandle;
+  // Set by [dropResumption] until the next connection: the old one can still
+  // send a handle, and it would resume what was just dropped.
+  bool _resumptionDropped = false;
 
   /// Pre-setup audio kept at most (16 kHz PCM16 mono: 32 000 B/s → 15 s).
   static const maxPendingAudioBytes = 32000 * 15;
@@ -134,6 +137,7 @@ class GeminiLiveClient {
   /// Opens a connection and sends setup. With a [resumptionHandle] the
   /// server restores the earlier conversation, context included.
   Future<void> connect() async {
+    _resumptionDropped = false;
     final uri = connectionUri;
     _setupComplete = false;
     _closing = false;
@@ -194,6 +198,13 @@ class GeminiLiveClient {
     if (sessionToken != null) this.sessionToken = sessionToken;
     await _closeChannel();
     await connect();
+  }
+
+  /// The next connection starts a new conversation on Gemini's side instead
+  /// of resuming this one, so what it holds now is gone from it.
+  void dropResumption() {
+    _resumptionHandle = null;
+    _resumptionDropped = true;
   }
 
   void _sendSetup() {
@@ -422,7 +433,10 @@ class GeminiLiveClient {
     if (msg.containsKey('sessionResumptionUpdate')) {
       final update = msg['sessionResumptionUpdate'] as Map<String, dynamic>;
       final handle = update['newHandle'];
-      if (update['resumable'] == true && handle is String && handle.isNotEmpty) {
+      if (!_resumptionDropped &&
+          update['resumable'] == true &&
+          handle is String &&
+          handle.isNotEmpty) {
         _resumptionHandle = handle;
       }
       return;

@@ -37,17 +37,23 @@ export function saveExtractionMode(mode: ExtractionMode) {
 /** Most-recent N agent questions retained in state for repetition checks. */
 export const ASKED_QUESTIONS_CAP = 30;
 
-// ─── Slug helper — unchanged ─────────────────────────────────────
+// ─── Slug helper ─────────────────────────────────────────────────
+// Letters and digits of other scripts stay, so a name with no Latin letters
+// gets a stable id. Close to _slugify in the database and lib/logic/slugify.dart
+// but not the same (voiced kana differ here; Dart doesn't decompose at all), so
+// two clients can give one person two ids. forget_entity and the commit also
+// compare the name's database slug. Ids of Latin names are what they always were.
+const SLUG_SEPARATORS =
+  /(?:(?![a-z0-9])(?:[^\p{L}\p{M}\p{N}]|\p{Script=Latin}|\p{Script=Inherited}))+/gu;
+
 export function slugify(name: string): string {
-  return (
-    name
-      .toLowerCase()
-      .normalize("NFKD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-|-$/g, "")
-      .slice(0, 60) || `e-${Math.random().toString(36).slice(2, 8)}`
-  );
+  const slug = name
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(SLUG_SEPARATORS, "-")
+    .replace(/^-|-$/g, "");
+  return Array.from(slug).slice(0, 60).join("") || `e-${Math.random().toString(36).slice(2, 8)}`;
 }
 
 // ─── Notebook lifecycle ──────────────────────────────────────────

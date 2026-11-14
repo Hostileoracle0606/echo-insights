@@ -1,0 +1,5 @@
+# Security contact for Lumen (RFC 9116).
+# There is no production domain yet, so no Canonical line.
+Contact: https://github.com/Hostileoracle0606/echo-insights/security/advisories/new
+Expires: 2027-11-05T00:00:00.000Z
+Preferred-Languages: en

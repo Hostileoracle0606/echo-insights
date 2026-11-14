@@ -10,7 +10,9 @@ import '../services/notebook_runtime_service.dart';
 import '../services/session_brief_service.dart';
 import '../logic/card_drafter.dart';
 import '../services/session_card_service.dart';
+import '../services/session_deletion_service.dart';
 import '../services/supabase_service.dart';
+import '../services/transcript_retention_service.dart';
 import '../services/transcript_store.dart';
 
 final supabaseClientProvider = Provider<SupabaseClient>((ref) {
@@ -40,6 +42,15 @@ final notebookCommitServiceProvider = Provider<NotebookCommitService>((ref) {
 
 final memoryControlServiceProvider = Provider<MemoryControlService>((ref) {
   return MemoryControlService(ref.watch(supabaseClientProvider));
+});
+
+final sessionDeletionServiceProvider = Provider<SessionDeletionService>((ref) {
+  return SessionDeletionService(ref.watch(supabaseClientProvider));
+});
+
+final transcriptRetentionServiceProvider =
+    Provider<TranscriptRetentionService>((ref) {
+  return TranscriptRetentionService(ref.watch(supabaseClientProvider));
 });
 
 final notebookRuntimeServiceProvider = Provider<NotebookRuntimeService>((ref) {

@@ -20,6 +20,7 @@ import '../../services/notebook_commit_service.dart';
 import '../../theme/lumen_colors.dart';
 import '../../theme/lumen_text.dart';
 import '../../widgets/context_tile.dart';
+import '../../widgets/delete_session.dart';
 import '../../widgets/eyebrow.dart';
 import '../../widgets/mode_header.dart';
 import '../../widgets/result_card.dart';
@@ -49,7 +50,6 @@ class ClosingCardScreen extends ConsumerStatefulWidget {
 class _ClosingCardScreenState extends ConsumerState<ClosingCardScreen> {
   _Phase _phase = _Phase.loading;
   SessionCard? _card;
-  Set<String> _suppressed = const {};
 
   // A draft written while the conversation went on is showing, and the
   // final card (with the last few moments) is still on its way.
@@ -206,7 +206,6 @@ class _ClosingCardScreenState extends ConsumerState<ClosingCardScreen> {
       // Nothing more is on its way while leaving hasn't finished.
       _updating = updating && _leaveFailure == null;
       _card = card;
-      _suppressed = snapshot?.suppressedEntityIds ?? const {};
       _phase = switch (card.conversationMode) {
         ConversationMode.justTalk ||
         ConversationMode.weeklyDebrief =>
@@ -395,7 +394,26 @@ class _ClosingCardScreenState extends ConsumerState<ClosingCardScreen> {
                 Expanded(
                   child: SingleChildScrollView(
                     padding: EdgeInsets.fromLTRB(20, 18, 20, bottomClearance),
-                    child: _body(colors),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _body(colors),
+                        const SizedBox(height: 28),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: _TextAction(
+                            label: 'Delete this session',
+                            onTap: () => unawaited(confirmAndDeleteSession(
+                              context,
+                              ref,
+                              widget.notebookId,
+                            )),
+                            padding: EdgeInsets.zero,
+                            color: colors.destructive,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ],
@@ -577,9 +595,7 @@ class _ClosingCardScreenState extends ConsumerState<ClosingCardScreen> {
   }) {
     final visible = [
       for (final item in card.remember)
-        if (!_suppressed.contains(item.entityId) &&
-            !_removals.isHidden(item.entityId))
-          item,
+        if (!_removals.isHidden(item.entityId)) item,
     ];
     final items = [
       for (final item in visible)
@@ -782,11 +798,13 @@ class _TextAction extends StatelessWidget {
     required this.label,
     required this.onTap,
     this.padding = const EdgeInsets.symmetric(horizontal: 12),
+    this.color,
   });
 
   final String label;
   final VoidCallback onTap;
   final EdgeInsetsGeometry padding;
+  final Color? color;
 
   @override
   Widget build(BuildContext context) {
@@ -800,7 +818,7 @@ class _TextAction extends StatelessWidget {
         style: TextButton.styleFrom(
           minimumSize: const Size(44, 44),
           padding: padding,
-          foregroundColor: colors.ink,
+          foregroundColor: color ?? colors.ink,
           tapTargetSize: MaterialTapTargetSize.padded,
         ),
         child: Text(

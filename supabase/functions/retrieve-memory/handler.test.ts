@@ -39,13 +39,18 @@ function fakeClient(
 function harness(rpcs: Record<string, RpcImpl>, opts: { embedder?: () => StubEmbedder } = {}) {
   const calls: Call[] = [];
   const logs: Record<string, unknown>[] = [];
-  const all: Record<string, RpcImpl> = { bump_retrieve_rate: () => ({ data: true, error: null }), ...rpcs };
+  const all: Record<string, RpcImpl> = {
+    bump_retrieve_rate: () => ({ data: true, error: null }),
+    ...rpcs,
+  };
   const deps: RetrieveMemoryDeps = {
     userClient: () => fakeClient("user", calls, all),
     adminClient: () => fakeClient("admin", calls, all),
-    embedder: opts.embedder ?? (() => {
-      throw new Error("no Supabase.ai locally");
-    }),
+    embedder:
+      opts.embedder ??
+      (() => {
+        throw new Error("no Supabase.ai locally");
+      }),
     log: (fields) => logs.push(fields),
   };
   const handler = createHandler(deps);
@@ -64,7 +69,14 @@ function harness(rpcs: Record<string, RpcImpl>, opts: { embedder?: () => StubEmb
 
 const NOW = new Date().toISOString();
 const ent = (id: string, name: string, type = "person", description?: string) => ({
-  id, name, type, description: description ?? null, mentions: 2, firstSeen: NOW, lastSeen: NOW, notebookCount: 2,
+  id,
+  name,
+  type,
+  description: description ?? null,
+  mentions: 2,
+  firstSeen: NOW,
+  lastSeen: NOW,
+  notebookCount: 2,
 });
 
 // The user's merged graph (get_user_graph shape).
@@ -121,11 +133,34 @@ Deno.test("a request without scope returns v1 from the client graph, unchanged",
     notebookId: OPEN_NB,
     state: {
       entities: {
-        atlas: { id: "atlas", name: "Atlas", type: "project", metadata: {}, mentions: 4, firstSeen: NOW, lastSeen: NOW },
-        maya: { id: "maya", name: "Maya", type: "person", metadata: {}, mentions: 3, firstSeen: NOW, lastSeen: NOW },
+        atlas: {
+          id: "atlas",
+          name: "Atlas",
+          type: "project",
+          metadata: {},
+          mentions: 4,
+          firstSeen: NOW,
+          lastSeen: NOW,
+        },
+        maya: {
+          id: "maya",
+          name: "Maya",
+          type: "person",
+          metadata: {},
+          mentions: 3,
+          firstSeen: NOW,
+          lastSeen: NOW,
+        },
       },
       relations: {
-        r1: { id: "r1", source: "maya", target: "atlas", label: "works_on", metadata: {}, createdAt: NOW },
+        r1: {
+          id: "r1",
+          source: "maya",
+          target: "atlas",
+          label: "works_on",
+          metadata: {},
+          createdAt: NOW,
+        },
       },
       entries: [],
     },
@@ -137,7 +172,10 @@ Deno.test("a request without scope returns v1 from the client graph, unchanged",
   assertEquals(res.body.entityIds, ["atlas", "maya"]);
   assert(res.body.context.includes("Maya --works_on--> Atlas"));
   // Never touches the user-wide read model.
-  assertEquals(h.calls.map((c) => c.fn), ["bump_retrieve_rate"]);
+  assertEquals(
+    h.calls.map((c) => c.fn),
+    ["bump_retrieve_rate"],
+  );
 });
 
 Deno.test("notebook scope keeps the 413 guard for oversized client graphs", async () => {
@@ -155,61 +193,133 @@ Deno.test("an unknown scope is rejected", async () => {
   assertEquals(res.status, 400);
 });
 
+Deno.test("malformed or oversized request fields are a generic 400", async () => {
+  const bad: unknown[] = [
+    { query: "x".repeat(2001), notebookId: OPEN_NB },
+    { query: 42, notebookId: OPEN_NB },
+    { query: ["a"], notebookId: OPEN_NB },
+    { query: "x", notebookId: 7 },
+    { query: "x", notebookId: "n".repeat(101) },
+    { query: "x", notebookId: OPEN_NB, limit: 0 },
+    { query: "x", notebookId: OPEN_NB, limit: 51 },
+    { query: "x", notebookId: OPEN_NB, limit: 2.5 },
+    { query: "x", notebookId: OPEN_NB, limit: "5" },
+    { query: "x", notebookId: OPEN_NB, state: "nope" },
+    { query: "x", notebookId: OPEN_NB, state: { entities: [] } },
+    { query: "x", notebookId: OPEN_NB, state: { entries: {} } },
+    [1, 2],
+    "just a string",
+  ];
+  for (const body of bad) {
+    const h = harness({});
+    const res = await h.call(body);
+    assertEquals(res.status, 400, JSON.stringify(body).slice(0, 60));
+    assertEquals(res.body, { error: "invalid request" });
+    assertEquals(h.calls.length, 0, "no database call is made for a bad request");
+  }
+});
+
+Deno.test("a body that is not JSON is a 400", async () => {
+  const handler = createHandler({
+    userClient: () => fakeClient("user", [], {}),
+    adminClient: () => fakeClient("admin", [], {}),
+    embedder: () => {
+      throw new Error("none");
+    },
+    log: () => {},
+  });
+  const res = await handler(
+    new Request("http://local/retrieve-memory", {
+      method: "POST",
+      headers: { Authorization: "Bearer j" },
+      body: "{not json",
+    }),
+  );
+  assertEquals(res.status, 400);
+});
+
+Deno.test("fields at their limits are accepted", async () => {
+  const h = harness({});
+  const res = await h.call({ query: "x".repeat(2000), notebookId: "n".repeat(100), limit: 50 });
+  assertEquals(res.status, 200);
+});
+
 // ── user scope ───────────────────────────────────────────────
 
-Deno.test("user scope ignores body.state and reads the user graph with the user's token", async () => {
-  const h = harness(userScopeRpcs);
-  const res = await h.call({
-    query: "Priya and Ghost",
-    notebookId: OPEN_NB,
-    scope: "user",
-    state: {
-      entities: {
-        ghost: { id: "ghost", name: "Ghost", type: "person", metadata: {}, mentions: 9, firstSeen: NOW, lastSeen: NOW },
+Deno.test(
+  "user scope ignores body.state and reads the user graph with the user's token",
+  async () => {
+    const h = harness(userScopeRpcs);
+    const res = await h.call({
+      query: "Priya and Ghost",
+      notebookId: OPEN_NB,
+      scope: "user",
+      state: {
+        entities: {
+          ghost: {
+            id: "ghost",
+            name: "Ghost",
+            type: "person",
+            metadata: {},
+            mentions: 9,
+            firstSeen: NOW,
+            lastSeen: NOW,
+          },
+        },
       },
-    },
-  });
+    });
 
-  assertEquals(res.status, 200);
-  assert(isRetrieveMemoryResponseV2(res.body));
-  assert(res.body.entityIds.includes("priya"));
-  assert(!res.body.entityIds.includes("ghost"));
-  assert(!res.body.context.includes("Ghost"));
+    assertEquals(res.status, 200);
+    assert(isRetrieveMemoryResponseV2(res.body));
+    assert(res.body.entityIds.includes("priya"));
+    assert(!res.body.entityIds.includes("ghost"));
+    assert(!res.body.context.includes("Ghost"));
 
-  const graphCall = h.calls.find((c) => c.fn === "get_user_graph")!;
-  assertEquals(graphCall.client, "user");
-  assertEquals(graphCall.args, { p_types: null, p_limit: 2000 });
-  // Still rate-limited on the open conversation.
-  assertEquals(h.calls[0], { client: "user", fn: "bump_retrieve_rate", args: { p_notebook_id: OPEN_NB } });
-  // Mentions are read as the user, for at most the top 3 entities.
-  const mentionCalls = h.calls.filter((c) => c.fn === "get_entity_mentions");
-  assert(mentionCalls.length >= 1 && mentionCalls.length <= 3);
-  assert(mentionCalls.every((c) => c.client === "user" && c.args.p_limit === 5));
-});
+    const graphCall = h.calls.find((c) => c.fn === "get_user_graph")!;
+    assertEquals(graphCall.client, "user");
+    assertEquals(graphCall.args, { p_types: null, p_limit: 2000 });
+    // Still rate-limited on the open conversation.
+    assertEquals(h.calls[0], {
+      client: "user",
+      fn: "bump_retrieve_rate",
+      args: { p_notebook_id: OPEN_NB },
+    });
+    // Mentions are read as the user, for at most the top 3 entities.
+    const mentionCalls = h.calls.filter((c) => c.fn === "get_entity_mentions");
+    assert(mentionCalls.length >= 1 && mentionCalls.length <= 3);
+    assert(mentionCalls.every((c) => c.client === "user" && c.args.p_limit === 5));
+  },
+);
 
-Deno.test("user scope seeds come from match_user_entity_embeddings as the service role", async () => {
-  const h = harness({
-    ...userScopeRpcs,
-    match_user_entity_embeddings: () => ({
-      data: [
-        { entity_id: "lisbon", notebook_id: "nb-c", score: 0.81 },
-        { entity_id: "ci-fix", notebook_id: "nb-b", score: 0.6 },
-      ],
-      error: null,
-    }),
-  }, { embedder: () => new StubEmbedder() });
+Deno.test(
+  "user scope seeds come from match_user_entity_embeddings as the service role",
+  async () => {
+    const h = harness(
+      {
+        ...userScopeRpcs,
+        match_user_entity_embeddings: () => ({
+          data: [
+            { entity_id: "lisbon", notebook_id: "nb-c", score: 0.81 },
+            { entity_id: "ci-fix", notebook_id: "nb-b", score: 0.6 },
+          ],
+          error: null,
+        }),
+      },
+      { embedder: () => new StubEmbedder() },
+    );
 
-  // No lexical overlap with any entity name or description.
-  const res = await h.call({ query: "that trip abroad", notebookId: OPEN_NB, scope: "user" });
+    // No lexical overlap with any entity name or description.
+    const res = await h.call({ query: "that trip abroad", notebookId: OPEN_NB, scope: "user" });
 
-  assertEquals(res.status, 200);
-  assertEquals(res.body.entityIds, ["lisbon"]);
-  const match = h.calls.find((c) => c.fn === "match_user_entity_embeddings")!;
-  assertEquals(match.client, "admin");
-  assertEquals(match.args.p_user_id, USER_ID);
-  assertEquals(match.args.p_model, "stub@1");
-  assertEquals(match.args.p_limit, 12);
-});
+    assertEquals(res.status, 200);
+    assertEquals(res.body.entityIds, ["lisbon"]);
+    const match = h.calls.find((c) => c.fn === "match_user_entity_embeddings")!;
+    assertEquals(match.client, "admin");
+    assertEquals(match.args.p_user_id, USER_ID);
+    assertEquals(match.args.p_model, "stub@1");
+    assertEquals(match.args.p_limit, 12);
+  },
+);
 
 Deno.test("quotes exclude the open notebook, dedupe by entry, cap at 3, newest first", async () => {
   const h = harness(userScopeRpcs);
@@ -217,7 +327,10 @@ Deno.test("quotes exclude the open notebook, dedupe by entry, cap at 3, newest f
 
   assertEquals(res.status, 200);
   assert(isRetrieveMemoryResponseV2(res.body));
-  assertEquals(res.body.quotes.map((q) => q.entryId), ["e5", "e4", "e3"]);
+  assertEquals(
+    res.body.quotes.map((q) => q.entryId),
+    ["e5", "e4", "e3"],
+  );
   assert(res.body.quotes.every((q) => q.notebookId !== OPEN_NB));
   assertEquals(res.body.quotes[0], {
     entryId: "e5",
@@ -247,7 +360,10 @@ Deno.test("a get_entity_mentions failure still returns context, with no quotes",
 
 Deno.test("a user with no memory gets an empty v2 response", async () => {
   const h = harness({
-    get_user_graph: () => ({ data: { entityCount: 0, relationCount: 0, entities: [], relations: [] }, error: null }),
+    get_user_graph: () => ({
+      data: { entityCount: 0, relationCount: 0, entities: [], relations: [] },
+      error: null,
+    }),
   });
   const res = await h.call({ query: "Priya", notebookId: OPEN_NB, scope: "user" });
   assertEquals(res.body, { version: 2, context: "", entityIds: [], quotes: [] });
@@ -267,26 +383,38 @@ Deno.test("user scope is rate-limited on the open notebook", async () => {
   assert(!h.calls.some((c) => c.fn === "get_user_graph"));
 });
 
-Deno.test("telemetry carries scope and quoteCount, never the query, context or quote text", async () => {
-  const h = harness(userScopeRpcs);
-  const res = await h.call({ query: "Priya", notebookId: OPEN_NB, scope: "user" });
-  const logged = JSON.stringify(h.logs);
+Deno.test(
+  "telemetry carries scope and quoteCount, never the query, context or quote text",
+  async () => {
+    const h = harness(userScopeRpcs);
+    const res = await h.call({ query: "Priya", notebookId: OPEN_NB, scope: "user" });
+    const logged = JSON.stringify(h.logs);
 
-  const ok = h.logs.find((l) => l.ok === true)!;
-  assertEquals(ok.scope, "user");
-  assertEquals(ok.quoteCount, 3);
-  assert(!logged.includes("Priya"), "query / context / quote text must not be logged");
-  for (const q of res.body.quotes) assert(!logged.includes(q.text));
-});
+    const ok = h.logs.find((l) => l.ok === true)!;
+    assertEquals(ok.scope, "user");
+    assertEquals(ok.quoteCount, 3);
+    assert(!logged.includes("Priya"), "query / context / quote text must not be logged");
+    for (const q of res.body.quotes) assert(!logged.includes(q.text));
+  },
+);
 
 // ── quote selection (pure) ───────────────────────────────────
 
 Deno.test("selectQuotes skips malformed mentions and empty excerpts", () => {
   const quotes = selectQuotes(
-    [[{ entryId: 4 }, mention("e1", "nb-b", "2026-10-01T00:00:00Z", "   "), mention("e2", "nb-b", "2026-10-02T00:00:00Z", " ok ")]],
+    [
+      [
+        { entryId: 4 },
+        mention("e1", "nb-b", "2026-10-01T00:00:00Z", "   "),
+        mention("e2", "nb-b", "2026-10-02T00:00:00Z", " ok "),
+      ],
+    ],
     OPEN_NB,
   );
-  assertEquals(quotes.map((q) => [q.entryId, q.text]), [["e2", "ok"]]);
+  assertEquals(
+    quotes.map((q) => [q.entryId, q.text]),
+    [["e2", "ok"]],
+  );
 });
 
 Deno.test("clip caps at 280 UTF-16 units without splitting an emoji", () => {

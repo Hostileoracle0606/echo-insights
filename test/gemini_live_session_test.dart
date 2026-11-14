@@ -107,6 +107,35 @@ void main() {
     expect(client.pendingAudioBytes, GeminiLiveClient.maxPendingAudioBytes);
   });
 
+  test('a handle arriving after dropResumption is not used', () async {
+    final client = makeClient();
+    await client.connect();
+    sockets.single.serverSends({'setupComplete': <String, dynamic>{}});
+    sockets.single.serverSends({
+      'sessionResumptionUpdate': {'newHandle': 'old', 'resumable': true},
+    });
+    await pumpEventQueue();
+
+    client.dropResumption();
+    // The old connection is still open while a token is fetched.
+    sockets.single.serverSends({
+      'sessionResumptionUpdate': {'newHandle': 'late', 'resumable': true},
+    });
+    await pumpEventQueue();
+    expect(client.resumptionHandle, isNull);
+
+    await client.reconnect();
+    expect(sockets.last.setup['session_resumption'], isEmpty);
+
+    // The new conversation's handles count again.
+    sockets.last.serverSends({'setupComplete': <String, dynamic>{}});
+    sockets.last.serverSends({
+      'sessionResumptionUpdate': {'newHandle': 'new', 'resumable': true},
+    });
+    await pumpEventQueue();
+    expect(client.resumptionHandle, 'new');
+  });
+
   test('stores resumption handles and reconnects with the latest', () async {
     final client = makeClient();
     await client.connect();

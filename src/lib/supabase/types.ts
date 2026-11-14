@@ -163,17 +163,17 @@ export type Database = {
       entity_suppressions: {
         Row: {
           created_at: string
-          entity_id: string
+          entity_hash: string
           user_id: string
         }
         Insert: {
           created_at?: string
-          entity_id: string
+          entity_hash: string
           user_id: string
         }
         Update: {
           created_at?: string
-          entity_id?: string
+          entity_hash?: string
           user_id?: string
         }
         Relationships: []

@@ -42,6 +42,8 @@ class _LifecycleJournal extends JournalNotifier {
   Future<NotebookTransitionResult> enterNotebook(
     String notebookId, {
     bool autoStart = false,
+    bool offTheRecord = false,
+    Future<bool> Function()? beforeOpening,
   }) async {
     enteredNotebookId = notebookId;
     enteredWithAutoStart = autoStart;

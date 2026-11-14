@@ -192,6 +192,9 @@ sealed class CommitOutcome {
           revision: (json['revision'] as num).toInt(),
           entryId: ids['entryId'] as String?,
           followUpId: ids['followUpId'] as String?,
+          suppressedIds: [
+            ...?(json['suppressedIds'] as List?)?.whereType<String>(),
+          ],
         );
       case 'conflict':
         return CommitConflict(
@@ -209,11 +212,15 @@ class CommitCommitted extends CommitOutcome {
   final int revision;
   final String? entryId;
   final String? followUpId;
+
+  /// Ids in this commit the server dropped: removed or forgotten by the user.
+  final List<String> suppressedIds;
   const CommitCommitted({
     required this.requestId,
     required this.revision,
     this.entryId,
     this.followUpId,
+    this.suppressedIds = const [],
   });
 }
 
@@ -232,14 +239,10 @@ class NotebookSnapshot {
   final String notebookId;
   final int revision;
   final JournalState state;
-
-  /// Ids the user removed from memory (user-wide, LM-29). merge() skips them.
-  final Set<String> suppressedEntityIds;
   const NotebookSnapshot({
     required this.notebookId,
     required this.revision,
     required this.state,
-    this.suppressedEntityIds = const {},
   });
 
   factory NotebookSnapshot.fromJson(Map<String, dynamic> json) {
@@ -254,10 +257,6 @@ class NotebookSnapshot {
     return NotebookSnapshot(
       notebookId: json['notebookId'] as String,
       revision: (json['revision'] as num).toInt(),
-      suppressedEntityIds: {
-        ...((json['suppressedEntityIds'] as List<dynamic>?) ?? const [])
-            .cast<String>(),
-      },
       state: JournalState(
         entries: entriesJson
             .map((e) => JournalEntry.fromJson(e as Map<String, dynamic>))
