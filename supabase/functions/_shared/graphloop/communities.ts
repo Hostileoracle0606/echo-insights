@@ -1,7 +1,10 @@
 import Graph from "graphology";
-import louvain from "graphology-communities-louvain";
+import louvainModule from "graphology-communities-louvain";
 import type { CommunitySummary, GraphState } from "./types.ts";
 import { activeRelations } from "./graph-ops.ts";
+
+// The npm package is CommonJS; its types describe the module, not the callable.
+const louvain = louvainModule as unknown as (graph: Graph) => Record<string, number>;
 
 export function buildCommunities(state: GraphState): CommunitySummary[] {
   const active = activeRelations(state);
@@ -14,7 +17,7 @@ export function buildCommunities(state: GraphState): CommunitySummary[] {
     if (r.source !== r.target && !g.hasEdge(r.source, r.target)) g.addEdge(r.source, r.target);
   }
 
-  const partition = louvain(g) as Record<string, number>;
+  const partition = louvain(g);
   const groups = new Map<number, string[]>();
   for (const [nodeId, cid] of Object.entries(partition)) {
     if (!groups.has(cid)) groups.set(cid, []);
