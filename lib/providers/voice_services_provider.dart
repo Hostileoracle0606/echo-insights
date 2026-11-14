@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -6,7 +8,11 @@ import '../services/live_credentials.dart';
 import 'auth_provider.dart';
 import 'journal_provider.dart'
     show forgottenThisRunProvider, turnJournalServiceProvider;
+import 'forget_redactor_provider.dart';
+import 'forget_sync_provider.dart';
 import 'opening_prep_provider.dart';
+import 'pseudonym_provider.dart';
+import 'shared_log_provider.dart';
 import 'supabase_provider.dart';
 
 /// App-level voice services: they live for the signed-in user, not for a
@@ -31,6 +37,17 @@ final signedOutCleanupProvider = Provider<void Function()>((ref) {
   return () {
     ref.read(openingPrepProvider).clear();
     ref.read(forgottenThisRunProvider).clear();
+    // The hashes of the people they forgot, in memory and the Keychain.
+    unawaited(ref.read(forgetRedactorProvider).clear());
+    // The on-device name map holds real names: erased with the account.
+    unawaited(ref.read(pseudonymServiceProvider).clear());
+    // What Lumen shared (LM-57) is erased with it.
+    unawaited(
+      ref.read(sharedLogProvider).clearAll().catchError((Object error) {
+        // The type only; the next launch's sweep finishes it.
+        debugPrint('Clearing the shared log failed: ${error.runtimeType}');
+      }),
+    );
   };
 });
 
@@ -42,6 +59,7 @@ class VoiceServicesBinding {
     this.warmUp,
     this.onResume,
     this.onSignedOut,
+    this.onBackground,
   });
 
   final LiveCredentials credentials;
@@ -55,14 +73,31 @@ class VoiceServicesBinding {
   /// session brief.
   final Future<void> Function()? onResume;
 
+  /// Runs when the app leaves the foreground (signed in): a held brief is
+  /// distrusted until the forget check after the next resume succeeds.
+  final void Function()? onBackground;
+
   /// Runs on sign-out: drops per-account state held for the opening.
   final void Function()? onSignedOut;
 
   /// Without a runtime URL there is nothing to fetch tokens from.
   final bool runtimeConfigured;
   bool _signedIn = false;
+  String? _userId;
 
-  void signedInChanged(bool signedIn) {
+  /// [userId] lets a change of account with no signed-out event between (a
+  /// token swap, a second sign-in) clean up like a sign-out: otherwise the
+  /// next account would inherit the last one's names, brief and shared log.
+  void signedInChanged(bool signedIn, {String? userId}) {
+    if (signedIn &&
+        _signedIn &&
+        userId != null &&
+        _userId != null &&
+        userId != _userId) {
+      signedInChanged(false);
+    }
+    if (signedIn) _userId = userId ?? _userId;
+    if (!signedIn) _userId = null;
     if (signedIn == _signedIn) return;
     _signedIn = signedIn;
     if (signedIn) {
@@ -86,6 +121,7 @@ class VoiceServicesBinding {
         onResume?.call();
       case AppLifecycleState.paused:
       case AppLifecycleState.hidden:
+        onBackground?.call();
         credentials.pause();
       case AppLifecycleState.inactive:
       case AppLifecycleState.detached:
@@ -110,32 +146,53 @@ class _VoiceServicesScopeState extends ConsumerState<VoiceServicesScope>
   // client, which a signed-out (or unconfigured) app may not have.
   VoiceServicesBinding? _binding;
 
-  void _signedInChanged(bool signedIn) {
+  void _signedInChanged(bool signedIn, [String? userId]) {
     if (!signedIn && _binding == null) return;
     if (_binding == null) {
       final journal = ref.read(turnJournalServiceProvider);
       final openingPrep = ref.read(openingPrepProvider);
+      final sharedLog = ref.read(sharedLogProvider);
+      final forgotten = ref.read(forgetRedactorProvider);
       _binding = VoiceServicesBinding(
         credentials: ref.read(liveCredentialsProvider),
         audioOutput: ref.read(audioOutputProvider),
-        runtimeConfigured:
-            ref.read(notebookRuntimeServiceProvider).isConfigured,
+        runtimeConfigured: ref
+            .read(notebookRuntimeServiceProvider)
+            .isConfigured,
         // Both are best-effort and independent; neither blocks a session.
-        warmUp: () => Future.wait([journal.warmUp(), openingPrep.refresh()]),
+        warmUp: () {
+          // Signed in again: "What Lumen shared" records once more (LM-57).
+          return Future.wait([
+            sharedLog.resume(),
+            journal.warmUp(),
+            openingPrep.refresh(),
+            // Who this account forgot, before anything is sent (LM-63).
+            forgotten.ensureLoaded(),
+            // A forget made on another phone (I2).
+            runForgetCheck(() => ref.read(forgetSyncProvider)),
+          ]);
+        },
         // Coming back also re-asks for a brief that failed earlier.
-        onResume: () => Future.wait(
-            [openingPrep.refresh(), openingPrep.retryPendingBrief()]),
+        onResume: () => Future.wait([
+            runForgetCheck(() => ref.read(forgetSyncProvider)),
+          openingPrep.refresh(),
+          openingPrep.retryPendingBrief(),
+        ]),
         onSignedOut: ref.read(signedOutCleanupProvider),
+        // Fails closed: until a check after the next resume succeeds, the
+        // held brief (it may name someone forgotten elsewhere) isn't played.
+        onBackground: () => openingPrep.setForgetCheckOk(false),
       );
     }
-    _binding!.signedInChanged(signedIn);
+    _binding!.signedInChanged(signedIn, userId: userId);
   }
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _signedInChanged(ref.read(authProvider).valueOrNull != null);
+    final user = ref.read(authProvider).valueOrNull;
+    _signedInChanged(user != null, user?.id);
   }
 
   @override
@@ -152,7 +209,7 @@ class _VoiceServicesScopeState extends ConsumerState<VoiceServicesScope>
   @override
   Widget build(BuildContext context) {
     ref.listen(authProvider, (_, next) {
-      _signedInChanged(next.valueOrNull != null);
+      _signedInChanged(next.valueOrNull != null, next.valueOrNull?.id);
     });
     // Any touch means someone is here: keep the held token fresh (refreshes
     // stop after a stretch without activity).

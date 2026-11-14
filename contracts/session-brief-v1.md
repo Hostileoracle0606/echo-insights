@@ -8,9 +8,16 @@ retires it. Opening copy rules live in `infra/lambda/close-session/brief-prompts
 ## Write: `POST /v1/notebooks/{notebookId}/brief`
 
 Authenticated like `/close` (the Supabase bearer token; the same authorizer).
-No request body. The app calls it in parallel with `/close` when a notebook is
-left. It is best-effort: if it fails, the previous brief stays and nothing else
-is affected.
+The app calls it in parallel with `/close` when a notebook is left. It is
+best-effort: if it fails, the previous brief stays and nothing else is
+affected.
+
+Two request shapes coexist. A body with no `version` (or no body) is
+**request v1**, described in this section: the runtime reads the transcript
+and the memory lists from the database, writes the brief, speaks it and saves
+both. A body with `"version": 2` is **request v2** (LM-56), described under
+"Request v2" below: the app sends the text, names swapped, and saves the
+result itself. The stored brief and `get_session_brief` are the same for both.
 
 Only `just_talk` notebooks produce a brief.
 
@@ -46,6 +53,127 @@ the most-mentioned entities across all notebooks. One forced
 `write_session_brief` call writes the brief; Gemini TTS then speaks
 `openingLine`.
 
+## Request v2 (LM-56): names swapped on the device
+
+So that no real name reaches the text model, v2 splits the write in two. Old
+apps keep sending v1; the runtime answers both.
+
+### 1. Write the text
+
+```json
+{
+  "version": 2,
+  "turns": [{ "speaker": "user", "text": "Anika is moving to Corvale.", "spokenAt": "2026-10-23T21:00:10Z" }],
+  "previous": { "focus": ["…"], "openingThread": "…" },
+  "followUps": ["…"],
+  "questions": [{ "name": "Anika", "questions": ["…"] }],
+  "topEntities": [{ "name": "Anika", "type": "person" }],
+  "standIns": ["anika", "corvale"],
+  "sourceRevision": 7
+}
+```
+
+Every string has the user's known names replaced by stand-ins on the device
+(the name map, LM-55). `turns` is the conversation, oldest first; `previous`
+is the stored brief (or `null`); `followUps`, `questions` and `topEntities` are
+what v1 reads from `follow_ups`, `entities` and `user_entities`. The runtime
+reads none of those from the database, still runs `redact_forgotten_text` over
+all of it (a forgotten name has left the map), and reads `notebooks` and
+`session_briefs` for ownership and the "Repeated and late calls" rules.
+`sourceRevision` (optional) is the notebook revision the app read before the
+transcript; the brief is for the lower of it and the notebook's.
+
+| Field | Limit |
+|---|---|
+| `turns` | 1 to 1000; `speaker` `user` or `assistant`; `text` 1 to 25 000 characters; 125 000 characters in all; `spokenAt` optional ISO time |
+| `previous.focus` | at most 10 strings of at most 625 characters |
+| `previous.openingThread` | at most 1250 characters |
+| `followUps` | at most 10 strings of at most 1250 characters |
+| `questions` | at most 10; `name` at most 250 characters; 1 to 20 `questions` of at most 625 |
+| `topEntities` | at most 15; `name` at most 250 characters; `type` an entity type |
+| `standIns` | at most 500 strings of at most 250 characters: the stand-ins the app swapped into this request (no real names), so the speak step knows which words of the line are names |
+
+The caps are about 1.25 times the database's (a stand-in can be longer than
+the name it replaced); the app clamps to them. A turn the app could not swap
+safely is sent as `[omitted]`; any other item it could not swap is left out.
+A conversation whose user turns are all `[omitted]` (or empty) is a 422
+`nothingToSummarize`, as one with no user turns.
+
+A body outside these is a 400 `invalidRequest`, before any other call.
+
+| Status | Body | Meaning |
+|---|---|---|
+| 200 | `{"status":"ready","brief":{…},"sourceRevision":7,"speakToken":"…"}` | The brief text, not saved, with stand-ins in it, and the ticket for step 2. No speech call was made. |
+| 200 | `{"status":"unchanged"}` | As v1. |
+
+Other statuses as v1.
+
+### 2. Speak the opening line
+
+The app swaps the real names back into the brief, then sends the opening line
+alone:
+
+```json
+{ "version": 2, "speak": { "openingLine": "Hey, how is Priya's move going?", "speakToken": "…" } }
+```
+
+The app puts the names back with the stand-ins as they were when it swapped
+the request; if the brief uses one since retired, moved or forgotten, it is
+dropped unsaved and written once more.
+
+`openingLine` 1 to 200 characters; `speakToken` the one step 1 returned. The
+token is signed by the runtime and names the user, the notebook, the
+revision, the line it wrote and where the stand-ins sit in it (token spans,
+found from `standIns`, case-insensitively), for 10 minutes. Both lines are
+split into tokens (words, and each punctuation mark on its own). Every token
+outside a stand-in's span must be identical; each span must be replaced by
+the name or an alias of one of the user's own entities, compared
+case-insensitively. The names are read with the user's token from
+`entities`, most recently seen first, at most 1,000 rows (hosted
+PostgREST's default `max_rows`); a row gives its name and at most 20
+aliases, and a name over 8 words or 100 characters is not used. They go
+into one set (lowercase, words joined by single spaces). The check walks the
+two lines once, keeping a set of reachable positions; at a span it looks up
+each position's next 1 to 8 words in that set. Its cost is bounded by the
+spans (at most 16, set at write time and signed), the real line's length
+and 8, whatever the graph holds; it never backtracks. A name beyond the
+1,000 rows is refused (the app then saves the brief without audio). The runtime refuses (403 `forbidden`) a
+missing, forged or expired token, one for another user or notebook, or a
+line that fails that check (free text in a name's place, a name not in the
+user's graph, any other word changed). So the route speaks only lines it
+wrote, with names from that user's graph: it is not a text-to-speech proxy. The token is not single use: once the app saves
+the brief, a repeat for that revision is `unchanged`, so a replay costs at
+most one speech call within its lifetime. The runtime then checks the
+notebook is the caller's, runs the "Repeated and late calls" rules again for
+that revision (a newer brief saved meanwhile is not replaced), clamps the
+line to 160 characters and sends only it to Gemini TTS. This one sentence is
+the only text with real names that goes to Google on this route (ruling R25).
+
+| Status | Body | Meaning |
+|---|---|---|
+| 200 | `{"status":"ready","audioBase64":"…","sampleRate":24000,"openingLine":"…","sourceRevision":7}` | The audio, not saved, and the line exactly as spoken: the app saves that line. |
+| 200 | `{"status":"unchanged"}` | Nothing to speak or save. |
+| 400 | `invalidRequest` | Malformed body, or the token's revision is ahead of the notebook. |
+| 403 | `forbidden` | No valid token for this user, notebook and line. |
+
+### 3. Save
+
+The app saves through `save_session_brief(p_notebook_id, p_source_revision,
+p_brief, p_audio_base64, p_sample_rate)` with the user's token, exactly as the
+runtime does on v1.
+
+If the line can't be spoken (with the real names back it is longer than 200
+characters, or the speak step answers 403), the app skips or drops the audio
+and saves the text with `p_audio_base64` null and the line clamped to 160
+characters (ending "…"). From 20261107000000 the function accepts no audio
+(null or empty) and stores an empty clip; `get_session_brief` then returns
+`audioBase64: ""`, the brief is not usable for playback (see "When a brief is
+usable"), and the opener plays the standard clip while the brief's focus and
+thread still carry forward. Audio that is present must still be valid,
+non-empty base64 within the cap. Every check stays in that function: the caps, a revision
+that is not newer for the same notebook is not saved, and a brief naming a
+forgotten person is not saved (`unchanged`).
+
 ## Stored brief
 
 `brief` is JSON with exactly these fields:
@@ -64,7 +192,9 @@ ask to follow up on), the line is a warm greeting with no specific question and
 the thread is left empty, rather than the model inventing one. `focus` still
 needs at least one line: a 422 already covers a notebook where nothing was
 said, so there is always something to note as context. The save function independently rejects an empty or over-160 line, or
-empty audio, with Postgres `22023`.
+audio that isn't valid base64, with Postgres `22023`. Before 20261107000000 it
+also rejected empty audio; since LM-56, no audio means a text-only brief (see
+"Request v2", step 3).
 
 ## Opening audio
 
@@ -116,3 +246,8 @@ Fields may be added. Removing or renaming one, or changing a limit, needs v2.
 
 - 2026-10-29 (before first deploy): `openingThread` may be empty. Readers
   already treated a missing thread as `""`.
+- 2026-11-07 (LM-56): request v2 (write text, speak, save in the app). The
+  stored brief, the read and request v1 are unchanged. Deploy the runtime
+  before releasing an app that sends v2; an app that meets a runtime from
+  before v2 gets `{"status":"ready"}` with no brief (the runtime did the
+  whole write) and treats it as done.

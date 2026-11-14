@@ -28,6 +28,8 @@ import 'package:lumen/services/turn_journal_service.dart';
 
 import 'support/fake_live_socket.dart';
 
+import 'support/pseudonyms.dart';
+
 const _notebookId = '8e03b8f4-4f20-4df3-8398-d854adc32b14';
 
 Map<String, dynamic> _fixture(String name) => jsonDecode(
@@ -112,6 +114,8 @@ class _Harness {
         baseUrl: '',
         accessTokenProvider: () async => null,
         rpc: (fn, [params]) async => throw StateError('offline'),
+        inputs: FixedInputs(),
+        pseudonyms: testPseudonyms(owner: null),
       )),
       liveCredentialsProvider.overrideWithValue(credentials),
       audioOutputProvider.overrideWithValue(

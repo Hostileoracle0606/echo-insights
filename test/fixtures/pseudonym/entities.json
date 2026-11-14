@@ -1,0 +1,25 @@
+{
+  "_note": "Synthetic user graph. Everything here is invented. `private` entities are swapped; public ones are kept. `aliases` are what the swapper knows; `relational` aliases (my sister) are never swapped. `fake`/`fakeAliases` are used only by the fake-name variant.",
+  "entities": [
+    {"id":"e1","name":"Priya","type":"person","tag":"person","role":"friend","gender":"f","private":true,"aliases":["Priya Raman"],"relational":[],"fake":"Anika","fakeAliases":{"Anika Raman":"Anika Sethi"},"description":"Friend since college. Works at Kestrel Bioworks."},
+    {"id":"e2","name":"Samantha","type":"person","tag":"person","role":"sister","gender":"f","private":true,"aliases":["Sam","Sammy"],"relational":["my sister"],"fake":"Nora","fakeAliases":{"Sam":"Nor","Sammy":"Norrie"},"description":"The user's older sister. Lives in Portland."},
+    {"id":"e3","name":"Will","type":"person","tag":"person","role":"manager","gender":"m","private":true,"isWord":true,"aliases":[],"relational":["my manager"],"fake":"Dennis","fakeAliases":{},"description":"The user's manager at Halvorsen Marine Instruments."},
+    {"id":"e4","name":"June","type":"person","tag":"person","role":"friend","gender":"f","private":true,"isWord":true,"aliases":[],"relational":[],"fake":"Greta","fakeAliases":{},"description":"Close friend who lives in Chicago."},
+    {"id":"e5","name":"Rose","type":"person","tag":"person","role":"aunt","gender":"f","private":true,"isWord":true,"aliases":[],"relational":["my aunt"],"fake":"Vera","fakeAliases":{},"description":"The user's aunt. Lives in Wiscasset."},
+    {"id":"e6","name":"美咲","type":"person","tag":"person","role":"friend","gender":"f","private":true,"aliases":["Misaki"],"relational":[],"fake":"陽菜","fakeAliases":{"Misaki":"Hina"},"description":"Friend in Osaka the user has known since a year abroad."},
+    {"id":"e7","name":"Halvorsen Marine Instruments","type":"organization","tag":"org","role":"employer","private":true,"aliases":["Halvorsen"],"relational":[],"fake":"Brightwater Optics","fakeAliases":{"Halvorsen":"Brightwater"},"description":"Employer. The user is its only chronometer calibrator, based in Gardiner."},
+    {"id":"e8","name":"Gardiner","type":"place","tag":"place","role":"town","private":true,"aliases":[],"relational":[],"fake":"Millbrook","fakeAliases":{},"description":"Small town in Maine where the user lives."},
+    {"id":"e9","name":"Kestrel Bioworks","type":"organization","tag":"org","role":"employer","private":true,"aliases":["Kestrel"],"relational":[],"fake":"Larkspur Labs","fakeAliases":{"Kestrel":"Larkspur"},"description":"Small biotech where Priya works."},
+    {"id":"e10","name":"Wiscasset","type":"place","tag":"place","role":"town","private":true,"aliases":[],"relational":[],"fake":"Fairhaven","fakeAliases":{},"description":"Small town where Rose lives."},
+    {"id":"e11","name":"Boston Marathon","type":"event","tag":"event","private":false,"aliases":[],"relational":[],"description":"Race the user is training for."},
+    {"id":"e12","name":"Python","type":"concept","tag":"concept","private":false,"aliases":[],"relational":[],"description":"Programming language the user uses to automate calibration logs."},
+    {"id":"e13","name":"running","type":"activity","tag":"activity","private":false,"aliases":[],"relational":[],"description":"Recurring training habit."}
+  ],
+  "relations": [
+    {"id":"r1","source":"e3","target":"e7","label":"manages_at"},
+    {"id":"r2","source":"e1","target":"e9","label":"works_at"},
+    {"id":"r3","source":"e5","target":"e10","label":"lives_in"},
+    {"id":"r4","source":"e2","target":"e13","label":"mentioned_with"},
+    {"id":"r5","source":"e7","target":"e8","label":"situated_at"}
+  ]
+}

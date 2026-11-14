@@ -52,11 +52,30 @@ void main() {
     expect(page, contains(reachClaim));
     expect(page, contains(phoneClaim));
     expect(page, contains(exportClaim));
+    expect(page, contains(sharedLogClaim));
     expect(page, contains(supabaseClaim));
     expect(page, contains(usClaim));
-    for (final line in gatedClaims.values) {
-      expect(page, contains(line));
+    // Only the controls that are shipped; the rest stay off the page.
+    for (final entry in gatedClaims.entries) {
+      if (shipped.contains(entry.key)) {
+        expect(page, contains(entry.value));
+      } else {
+        expect(page, isNot(contains(entry.value)),
+            reason: '${entry.key} is not shipped');
+      }
     }
+  });
+
+  // LM-56 (R24): names are swapped for the text model only, on the iPhone;
+  // the live voice path and the spoken opening line carry real names.
+  test('the Google detail says where names are swapped and where not', () {
+    expect(googleDetail, contains('In the iPhone app'));
+    expect(googleDetail, contains('made-up names'));
+    expect(googleDetail, contains('your voice goes to Google live'));
+    expect(googleDetail, contains('with names as you said them'));
+    expect(googleDetail, contains("Google's voice with real names"));
+    expect(googleDetail, contains('can still go through'));
+    expect(googleDetail.toLowerCase(), isNot(contains('every name')));
   });
 
   test('the cache line does not promise an exact expiry', () {
@@ -64,13 +83,15 @@ void main() {
     expect(awsClaim, isNot(contains('7 days')));
   });
 
-  // What the controls really do: transcripts keep the name, off the record
-  // still reaches Google, and auto-forget leaves cards and memory.
+  // What the controls really do: transcripts keep the name for the user and
+  // Lumen reads them redacted (LM-63), off the record still reaches Google,
+  // and auto-forget leaves cards and memory.
   test('the shipped controls claim only what they do', () {
     final forget = gatedClaims[PrivacyFeature.forgetPerson]!;
-    expect(forget, contains('transcripts keep what you said'));
-    expect(forget, contains('Lumen can still read your past conversations'));
-    expect(forget, contains('it may bring the name up'));
+    expect(forget, contains("Lumen won't bring them up again"));
+    expect(forget, contains("they're gone from your maps"));
+    expect(forget, contains('transcripts keep your words for you to read'));
+    expect(forget, isNot(contains('may bring the name up')));
     expect(forget, contains('a nickname or a first name alone'));
     expect(forget, isNot(contains('leave your journal')));
     expect(gatedClaims[PrivacyFeature.offTheRecord]!, contains('Google'));
@@ -98,10 +119,18 @@ void main() {
     expect(page, contains(exportClaim));
   });
 
-  test('unverified claims stay off; the three controls are shipped', () {
+  // R30: the device-list claim rests on hosted facts nobody has checked yet
+  // (DELETE on auth.sessions, JWT expiry of an hour or less). It ships with
+  // the checklist's staging check, not before.
+  test('unverified claims stay off; the verified controls are shipped', () {
     expect(paidTierVerified, isFalse);
     expect(supabaseEncryptionVerified, isFalse);
-    expect(shipped, PrivacyFeature.values.toSet());
+    expect(shipped, {
+      PrivacyFeature.forgetPerson,
+      PrivacyFeature.offTheRecord,
+      PrivacyFeature.autoForget,
+    });
+    expect(shipped, isNot(contains(PrivacyFeature.deviceList)));
   });
 
   test('the page has no wording the security review ruled out', () {

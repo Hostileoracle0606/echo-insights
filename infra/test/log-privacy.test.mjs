@@ -2,6 +2,7 @@
 // any failure. Every content field below carries MARKER; the test captures
 // everything the handler prints and fails if MARKER appears.
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFile, readdir } from "node:fs/promises";
 import test from "node:test";
 
@@ -112,6 +113,9 @@ function leakyFetch(provider) {
         return ok(entities);
       case "/rest/v1/rpc/get_notebook_snapshot":
         return ok(withMarker(fixture.snapshot));
+      case "/rest/v1/rpc/redact_forgotten_text":
+        // Echo the text back, so the v2 paths go on to the model.
+        return ok(JSON.parse(init.body).p_text);
       case "/rest/v1/follow_ups":
         return ok([{ id: "f1", question: `Ask about ${MARKER}?`, entity_id: "maya" }]);
       case "/auth/v1/user":
@@ -193,21 +197,71 @@ const extractEvent = () =>
     }),
   });
 
+// LM-56: v2 bodies carry the app's text. Every content field carries MARKER.
+const appTurns = [
+  { speaker: "assistant", text: `Hi ${MARKER}` },
+  { speaker: "user", text: `I talked to ${MARKER} about ${MARKER}`, spokenAt: "2026-10-23T21:00:10.000Z" },
+];
+const closeV2Event = () =>
+  userEvent({
+    body: JSON.stringify({
+      version: 2,
+      turns: appTurns,
+      entities: [
+        { key: createHash("sha256").update(`${notebookId}:maya`).digest("hex"), name: `${MARKER} Anika` },
+      ],
+    }),
+  });
+const draftV2Event = () =>
+  userEvent({
+    body: JSON.stringify({ version: 2, draft: true, turns: appTurns, entities: [] }),
+  });
+const briefWriteEvent = () =>
+  userEvent({
+    body: JSON.stringify({
+      version: 2,
+      turns: appTurns,
+      previous: { focus: [`${MARKER} focus`], openingThread: MARKER },
+      followUps: [`Ask about ${MARKER}?`],
+      questions: [{ name: MARKER, questions: [`${MARKER}?`] }],
+      topEntities: [{ name: MARKER, type: "person" }],
+    }),
+  });
+const briefSpeakEvent = () =>
+  userEvent({
+    body: JSON.stringify({
+      version: 2,
+      speak: { openingLine: `Hey ${MARKER}`, speakToken: `${MARKER}.${MARKER}` },
+    }),
+  });
+// A malformed v2 body: the rejection must not echo it either.
+const badV2Event = () =>
+  userEvent({ body: JSON.stringify({ version: 2, turns: [{ speaker: MARKER, text: MARKER }] }) });
+
 const handlers = {
   "close-session": { make: closeSession, event: userEvent },
+  // A v2 close hands the unsaved card back to the app: on a 200 the card
+  // text is the payload. Its logs, and every error response, stay clean.
+  "close-session v2": { make: closeSession, event: closeV2Event, payloadOn200: true },
+  "close-session v2 draft": { make: closeSession, event: draftV2Event, payloadOn200: true },
+  "close-session v2 malformed": { make: closeSession, event: badV2Event },
   "session-brief": { make: sessionBrief, event: userEvent },
+  "session-brief v2 write": { make: sessionBrief, event: briefWriteEvent },
+  "session-brief v2 speak": { make: sessionBrief, event: briefSpeakEvent },
+  "session-brief v2 malformed": { make: sessionBrief, event: badV2Event },
   "extract-graph": { make: extractGraph, event: extractEvent },
   "live-session": { make: liveSession, event: userEvent },
   "supabase-authorizer": { make: authorizer, event: userEvent },
 };
 
-for (const [name, { make, event }] of Object.entries(handlers)) {
+for (const [name, { make, event, payloadOn200 }] of Object.entries(handlers)) {
   for (const [scenario, provider] of Object.entries(providers)) {
     test(`${name} logs no journal content: ${scenario}`, async () => {
       const handle = make(leakyFetch(provider));
       const run = await captureOutput(() => handle(event()));
       assert.equal(run.error, undefined, "handler must answer, not throw");
       assert.equal(run.lines.join("\n").includes(MARKER), false, run.lines.join("\n"));
+      if (payloadOn200 && run.value.statusCode === 200) return;
       assert.equal(
         JSON.stringify(run.value).includes(MARKER),
         false,

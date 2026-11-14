@@ -21,6 +21,8 @@ dependencies:
   # Networking
   web_socket_channel: ^3.0.1
   http: ^1.2.2
+  # LM-56: entity ids (slugs of real names) travel only as salted hashes.
+  crypto: ^3.0.8
 
   # Audio
   # 6.x: record 5.1.2's darwin implementation predates iOS 26 — hasPermission
@@ -31,7 +33,7 @@ dependencies:
   # default, and just_audio alone configures playback-only, silencing the mic.
 
   # Supabase
-  supabase_flutter: ^2.5.3
+  supabase_flutter: ^2.15.0
 
   # Serialization
   json_annotation: ^4.9.0
@@ -46,6 +48,8 @@ dependencies:
   share_plus: ^13.3.1
   local_auth: ^3.0.2
   flutter_secure_storage: ^11.2.0
+  sign_in_with_apple: ^8.1.0
+  passkeys: ^2.24.1
 
 dev_dependencies:
   flutter_test:

@@ -1,11 +1,23 @@
+import 'dart:async';
 import 'dart:convert';
 
+import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
 
 import '../models/session_card.dart';
+import '../logic/pseudonym/pseudonym_map.dart' show StandInSnapshot;
+import 'model_inputs.dart';
+import 'pseudonym_service.dart';
+import 'shared_log.dart';
 
 /// Reads the stored card JSON for a notebook (`session_cards.card`), or null.
 typedef SessionCardReader = Future<Object?> Function(String notebookId);
+
+/// Calls a Supabase RPC with the user's token and returns its JSON result.
+typedef CardRpc = Future<Object?> Function(
+  String fn, [
+  Map<String, dynamic>? params,
+]);
 
 class SessionCardException implements Exception {
   final String message;
@@ -29,12 +41,23 @@ class SessionCardException implements Exception {
 /// The runtime returns the stored card without a model call when the
 /// notebook hasn't changed since it was written, so [close] is cheap to
 /// repeat.
+///
+/// LM-56 (request v2, contracts/close-session-v2.md): the transcript is read
+/// here, its names swapped on the device (each turn once, from the swap
+/// cache), and sent with the request. The card comes back unsaved with
+/// stand-ins in its text; they are swapped back here and the card is saved
+/// through `save_session_card`, where the revision, draft, cap and
+/// forgotten-name rules run as they do for the runtime.
 class SessionCardService {
   final String _baseUrl;
   final Future<String?> Function() _accessTokenProvider;
   final http.Client _client;
   final SessionCardReader? _readCard;
   final Duration _retryBaseDelay;
+  final ModelInputSource _inputs;
+  final PseudonymService _pseudonyms;
+  final SharedLog? _log;
+  final CardRpc _rpc;
 
   /// Calls still running, by notebook: leaving a notebook fires one in the
   /// background and the closing card screen (LM-16) asks again on arrival,
@@ -45,9 +68,17 @@ class SessionCardService {
     required String baseUrl,
     required Future<String?> Function() accessTokenProvider,
     http.Client? client,
+    required ModelInputSource inputs,
+    required PseudonymService pseudonyms,
+    SharedLog? log,
+    required CardRpc rpc,
     SessionCardReader? readCard,
     Duration retryBaseDelay = const Duration(milliseconds: 500),
-  })  : _baseUrl = baseUrl.replaceFirst(RegExp(r'/$'), ''),
+  })  : _inputs = inputs,
+        _pseudonyms = pseudonyms,
+        _log = log,
+        _rpc = rpc,
+        _baseUrl = baseUrl.replaceFirst(RegExp(r'/$'), ''),
         _accessTokenProvider = accessTokenProvider,
         _client = client ?? http.Client(),
         _readCard = readCard,
@@ -85,6 +116,37 @@ class SessionCardService {
     int maxRetries, {
     bool draft = false,
   }) async {
+    // A final card that went stale while it was written (a turn landed in
+    // between) is asked for once more, as the runtime did before LM-56. So
+    // is a card whose text uses a stand-in that no longer stands for the
+    // same person (retired, or forgotten meanwhile): it is dropped unsaved.
+    var staleNames = false;
+    for (var pass = 0;; pass++) {
+      final _Outcome outcome;
+      try {
+        outcome = await _closeOnce(notebookId, maxRetries, draft: draft);
+      } on PseudonymResultStale {
+        if (staleNames) rethrow;
+        staleNames = true;
+        pass--;
+        continue;
+      }
+      if (outcome is! _Stale) return (outcome as _Done).card;
+      if (draft || pass == 1) {
+        throw const SessionCardException(
+          'The conversation moved on while its card was written',
+          statusCode: 409,
+          code: 'stale',
+        );
+      }
+    }
+  }
+
+  Future<_Outcome> _closeOnce(
+    String notebookId,
+    int maxRetries, {
+    required bool draft,
+  }) async {
     if (_baseUrl.isEmpty) {
       throw StateError('The secure notebook runtime is not configured');
     }
@@ -96,6 +158,51 @@ class SessionCardService {
       '$_baseUrl/v1/notebooks/${Uri.encodeComponent(notebookId)}/close',
     );
 
+    final input = await _inputs.card(notebookId);
+    // Nothing the user said is left (none was said, or auto-forget took the
+    // turns): nothing to write from. A card written earlier is kept, as the
+    // runtime keeps it.
+    if (!input.turns.any(
+      (t) => t.speaker == 'user' && t.text.trim().isNotEmpty,
+    )) {
+      return _Done(_readCard == null ? null : await load(notebookId));
+    }
+    await _pseudonyms.syncGraph(input.candidates);
+    final swapped = await _pseudonyms.swapTurns(
+      [for (final t in input.turns) t.text],
+      extras: [for (final e in input.candidates) e.name],
+    );
+    // Nobody signed in: the map can't swap, so nothing is sent.
+    if (swapped == null) throw StateError('A signed-in session is required');
+    // A turn that couldn't be swapped safely goes as "[omitted]"; a
+    // candidate whose name couldn't is left out (the runtime remembers it
+    // without a note). Clamped to the runtime's limits: a stand-in can be
+    // longer than the name it replaced.
+    final request = {
+      'version': 2,
+      if (draft) 'draft': true,
+      'turns': clampTurns([
+        for (var i = 0; i < input.turns.length; i++)
+          (speaker: input.turns[i].speaker, text: swapped.turns[i]),
+      ]),
+      'entities': [
+        for (var i = 0; i < input.candidates.length; i++)
+          if (swapped.extras[i] != omittedText)
+            {
+              'key': entityKey(notebookId, input.candidates[i].id),
+              'name': clampText(swapped.extras[i], appInputLimits.entityName),
+            },
+      ],
+      'sourceRevision': input.revision,
+    };
+    // What is logged is the map that is encoded and sent (LM-57).
+    unawaited(_log?.record(
+      notebookId,
+      draft ? SharedKind.draft : SharedKind.card,
+      request,
+    ));
+    final body = jsonEncode(request);
+
     for (var attempt = 0; attempt <= maxRetries; attempt++) {
       final http.Response response;
       try {
@@ -106,7 +213,7 @@ class SessionCardService {
             'authorization': 'Bearer $accessToken',
             'content-type': 'application/json',
           },
-          body: draft ? '{"draft":true}' : '{}',
+          body: body,
         );
       } on http.ClientException {
         if (attempt == maxRetries) rethrow;
@@ -118,7 +225,7 @@ class SessionCardService {
       if (status == 401 || status == 403) {
         throw StateError('The signed-in session is no longer valid');
       }
-      if (status == 501 || status == 422) return null;
+      if (status == 501 || status == 422) return const _Done(null);
       if ((status == 429 || status >= 500) && attempt < maxRetries) {
         await Future<void>.delayed(_retryBaseDelay * (1 << attempt));
         continue;
@@ -131,13 +238,102 @@ class SessionCardService {
         );
       }
       final decoded = jsonDecode(response.body);
-      if (decoded is! Map || decoded['status'] != 'ready') {
+      if (decoded is! Map ||
+          decoded['status'] != 'ready' ||
+          decoded['card'] is! Map) {
         throw const FormatException('Invalid session-card response');
       }
-      return SessionCard.fromJson(decoded['card']);
+      final card = (decoded['card'] as Map).cast<String, dynamic>();
+      if (decoded['saved'] != false) return _Done(SessionCard.fromJson(card));
+      // Through JSON once more: the swap returns loosely typed maps.
+      final real =
+          jsonDecode(jsonEncode(await _swapBack(card, swapped.snapshot)))
+              as Map<String, dynamic>;
+      return _save(notebookId, real, draft: draft);
     }
     // Unreachable: the last attempt either returns or throws.
     throw const SessionCardException('The session card was not written');
+  }
+
+  /// Model-written text swapped back to real names, with the stand-ins as
+  /// they were when the request was swapped ([PseudonymService.restore]).
+  /// What identifies the card and the remember list's ids, names and types
+  /// come from the database and stay as they are; only the notes in it are
+  /// the model's.
+  Future<Map<String, dynamic>> _swapBack(
+    Map<String, dynamic> card,
+    StandInSnapshot snapshot,
+  ) async {
+    const fixed = {
+      'version',
+      'notebookId',
+      'conversationMode',
+      'sourceRevision',
+      'generatedAt',
+      'remember',
+    };
+    final remember = card['remember'];
+    final notes = [
+      if (remember is List)
+        for (final item in remember) item is Map ? item['note'] : null,
+    ];
+    // One call, so the whole card is checked against one state of the map.
+    final back = await _pseudonyms.restore(snapshot, {
+      'fields': {
+        for (final e in card.entries)
+          if (!fixed.contains(e.key)) e.key: e.value,
+      },
+      'notes': notes,
+    }) as Map;
+    final out = <String, dynamic>{
+      for (final e in card.entries)
+        e.key: fixed.contains(e.key) ? e.value : (back['fields'] as Map)[e.key],
+    };
+    if (remember is List) {
+      final backNotes = back['notes'] as List;
+      out['remember'] = [
+        for (var i = 0; i < remember.length; i++)
+          if (remember[i] is Map && backNotes[i] is String)
+            {
+              ...(remember[i] as Map).cast<String, dynamic>(),
+              'note': backNotes[i]
+            }
+          else
+            remember[i],
+      ];
+    }
+    return out;
+  }
+
+  /// Saves the card with the user's token. The function applies every rule
+  /// the runtime's save did: a final card must match the notebook's
+  /// revision, a draft may not be ahead of it, the caps, and forgotten names
+  /// are redacted. Returns the stored card (redacted), or stale.
+  Future<_Outcome> _save(
+    String notebookId,
+    Map<String, dynamic> card, {
+    required bool draft,
+  }) async {
+    final result = await _rpc('save_session_card', {
+      'p_notebook_id': notebookId,
+      'p_source_revision': card['sourceRevision'],
+      'p_card': card,
+      'p_title': card['title'],
+      'p_summary': card['summary'],
+      if (draft) 'p_draft': true,
+    });
+    if (result is Map && result['status'] == 'saved' && result['card'] is Map) {
+      return _Done(SessionCard.fromJson(result['card']));
+    }
+    if (result is Map && result['status'] == 'stale') return const _Stale();
+    if (result is Map && result['code'] == 'notFound') {
+      throw const SessionCardException(
+        'The notebook was not found',
+        statusCode: 404,
+        code: 'notFound',
+      );
+    }
+    throw const FormatException('Invalid save_session_card response');
   }
 
   /// The stored card for [notebookId], or null when none was written yet.
@@ -161,3 +357,22 @@ class SessionCardService {
     }
   }
 }
+
+sealed class _Outcome {
+  const _Outcome();
+}
+
+class _Done extends _Outcome {
+  const _Done(this.card);
+  final SessionCard? card;
+}
+
+class _Stale extends _Outcome {
+  const _Stale();
+}
+
+/// How a v2 close names an entity (contracts/close-session-v2.md): an id is
+/// the real name's slug, so it never goes in the body; this namespaced hash
+/// does, and the runtime hashes the notebook's ids the same way.
+String entityKey(String notebookId, String entityId) =>
+    sha256.convert(utf8.encode('$notebookId:$entityId')).toString();

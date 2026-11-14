@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../providers/opening_prep_provider.dart';
 import '../../providers/supabase_provider.dart';
+import 'social_sign_in.dart';
 
 class SignupScreen extends ConsumerStatefulWidget {
   const SignupScreen({super.key});
@@ -74,6 +75,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                         ),
                   ),
                   const SizedBox(height: 28),
+                  const SocialSignInButtons(signup: true),
                   TextField(
                     controller: _email,
                     keyboardType: TextInputType.emailAddress,

@@ -1,0 +1,264 @@
+{
+ "tag": "t2-lm56",
+ "requestHash": "e4d93474946ee4b2",
+ "request": {
+  "system_instruction": {
+   "parts": [
+    {
+     "text": "You are a silent graph extractor for a voice journal.\nYour job is to keep the user's knowledge graph CONNECTED. A fragmented graph (islands of nodes with no edges) is a failure mode — actively prevent it.\n\nENTITIES — extract from the NEW UTTERANCE:\n- Proper nouns: people, places, projects, events, organizations (Maya, Brooklyn, Project Atlas).\n- Concrete concepts the user names and reasons about (e.g. \"AI\", \"technology\", \"behavioral patterns\", \"intelligence\"). These are valid nodes when the user treats them as discrete things, not when they're filler.\n- entity.type: one of person, place, organization, project, event, activity, concept, emotion, other.\n  - activity: recurring behaviors (\"running\", \"meditation\", \"journaling\").\n  - concept: abstract topics treated as named things (\"AI\", \"behavioral_patterns\").\n  - emotion: named recurring emotional patterns (\"anxiety\", \"burnout\") — NOT one-off mood words.\n  - \"other\" is a true fallback; use it only when nothing else fits.\n- entity.description: only if the utterance gives a concrete fact about the entity; otherwise omit. Limit it to at most 800 characters.\n- Skip pronouns, generic time words (\"today\", \"yesterday\"), one-off mood words (\"happy\", \"stressed\" used to describe a single moment), and verbs.\n- Dedup against EXISTING ENTITIES — reuse the existing spelling when the user is clearly referring to the same thing.\n\nCONTINUATIONS — preserve subjects across turns:\nWhen RECENT CONVERSATION shows the agent just asked about an entity from EXISTING ENTITIES, and the user's reply continues that subject — pronouns (\"she/he/it/they\"), partial answer (\"since freshman year\"), or implicit reference (\"the project\", \"that class\") — INCLUDE that entity in `entities` using its existing spelling. The user's reply IS information about that entity even when they don't name it; without re-listing it, the journal loses the link to the entity's page.\n\nApply this whenever the user's turn:\n  - directly answers the agent's last question about a known entity\n  - elaborates on the prior subject without naming it\n  - references the prior subject via pronoun or definite article\n\nDo NOT apply when the user pivots to a new subject. The trigger is a Q-A pair about the same entity.\n\nRELATIONS — this is the most important part. Connect aggressively. Islands of nodes are a hard failure:\n- Format: source --label--> target. label = snake_case phrase (e.g. simulates, contrasts_with, example_of, used_for, depends_on, part_of, related_to, mentioned_with, situated_at, occurred_during, involves, exhibits, enables).\n- Endpoints must be entities — either ones you're returning now OR ones in EXISTING ENTITIES.\n- FOR EVERY ENTITY in this turn, scan exhaustively for edges to:\n  (a) every other entity in this turn (co-occurrence in the same thought is a relation),\n  (b) every entity in EXISTING ENTITIES the user is still talking about (resolved via RECENT CONVERSATION),\n  (c) parent/sibling/instance entities in EXISTING ENTITIES that the new one fits under.\n- TARGET DENSITY: aim for at least one edge per new entity, ideally more. If you return N new entities and zero edges, you have failed unless every entity is a true orphan topic.\n- WEAK-BUT-TRUE RELATIONS COUNT. When two entities show up in the same utterance and you can't think of a stronger label, emit `mentioned_with` or `related_to`. The graph being WIRED is worth more than every edge being maximally precise.\n- Examples:\n  · \"AI can simulate intelligence\" with `AI`, `intelligence`, `technology` already known → AI--simulates-->intelligence, AI--is_a-->technology.\n  · \"people exhibit behavioral patterns\" → people--exhibits-->behavioral_patterns.\n  · \"I went running with Maya in Brooklyn\" → running--with-->Maya, running--at-->Brooklyn, Maya--in-->Brooklyn.\n  · \"I'm anxious about the Atlas demo\" → anxiety--about-->Project_Atlas, Project_Atlas--has_event-->demo.\n  · \"CS246 reminds me of CS241\" → CS246--related_to-->CS241.\n  · user reasons about a concept that subsumes an existing one → existing--example_of-->new_concept.\n- \"Never invent facts the user didn't imply\" means don't fabricate specifics they didn't say (don't guess Maya's age, don't make up an address). It does NOT mean refusing to record relations they clearly implied by mentioning two things in the same breath.\n\nSUPERSEDES — when the user contradicts the existing graph:\nThe user's utterance sometimes corrects, replaces, or denies a relation already shown in EXISTING RELATIONS. When that happens, return the contradicted relation's [bracketed] id in `supersedes`.\n\nTrigger ONLY when the user explicitly:\n  - negates a fact (\"Maya isn't on Atlas\")\n  - replaces a fact (\"It's not Maya, it's Sam\")\n  - says something that makes the prior fact mutually exclusive with the new one — and the entity referenced is the SAME entity.\n\nDo NOT trigger when:\n  - the user adds new info that coexists with the old (\"Maya also helps Sam\" — both can be true)\n  - the user is vague or non-committal\n  - the relation has the same endpoints but a slightly different label (those are fine alongside each other)\n\nReference relations by their [bracketed] id from the EXISTING RELATIONS list above. If you can't find an exact id match, do not invent one — omit the supersede.\n\nReturn empty arrays only when the utterance has no extractable entities — small talk, hesitations, yes/no answers, filler tokens.\nNever speak to the user. You are not the conversational agent."
+    }
+   ]
+  },
+  "contents": [
+   {
+    "role": "user",
+    "parts": [
+     {
+      "text": "EXISTING ENTITIES (reuse these spellings for the same thing):\n- Giselle (person) - Friend since college. Works at Larkspur Labs.\n- Rupert (person) - The user's manager at Redwater Logistics.\n- Janika (person) - Close friend who lives in Chicago.\n- Cordelia (person) - The user's aunt. Lives in Inglewood.\n- Brackenridge (place) - Small town in Maine where the user lives.\n- Larkspur Labs (organization) - Small biotech where Giselle works.\n- Inglewood (place) - Small town where Cordelia lives.\n- Python (concept) - Programming language the user uses to automate calibration logs.\n- Henrietta (person) - The user's older sister. Lives in Portland.\n- Anneliese (person) - Friend in Osaka the user has known since a year abroad.\n- Redwater Logistics (organization) - Employer. The user is its only chronometer calibrator, based in Brackenridge.\n- Boston Marathon (event) - Race the user is training for.\n- running (activity) - Recurring training habit.\n\nEXISTING RELATIONS (each prefixed with its [id] — use these IDs verbatim in supersedes when contradicted):\n- [rupert__manages-at__redwater-logistics] Rupert --manages_at--> Redwater Logistics\n- [giselle__works-at__larkspur-labs] Giselle --works_at--> Larkspur Labs\n- [cordelia__lives-in__inglewood] Cordelia --lives_in--> Inglewood\n- [henrietta__mentioned-with__running] Henrietta --mentioned_with--> running\n- [redwater-logistics__situated-at__brackenridge] Redwater Logistics --situated_at--> Brackenridge\n\nRECENT CONVERSATION (for pronoun resolution only — do NOT extract from these):\n- assistant: Who have you been in touch with lately?\n- user: mostly people from far away, it's been a quiet month.\n\nNEW UTTERANCE:\n\"\"\"so Anneliese called me this morning from Osaka. we haven't really talked since spring. she's learning Python for her new analyst job and she asked if I could help, which made me laugh because Giselle, she works at Larkspur Labs, asked me the same thing last week. anyway my aunt Cordelia in Inglewood says the heat rose to ninety on her porch yesterday, and I'm driving up to see her in June. Teodor, my neighbor here in Brackenridge, lent me his ladder so I could fix the gutter. Honestly I feel lucky to have all these people. Will you remind me to call Anneliese back on Sunday?\"\"\""
+     }
+    ]
+   }
+  ],
+  "tools": [
+   {
+    "function_declarations": [
+     {
+      "name": "extract_graph",
+      "description": "Extract named entities and relations from the utterance.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "entities": {
+         "type": "array",
+         "items": {
+          "type": "object",
+          "properties": {
+           "name": {
+            "type": "string"
+           },
+           "type": {
+            "type": "string",
+            "enum": [
+             "person",
+             "place",
+             "organization",
+             "project",
+             "event",
+             "activity",
+             "concept",
+             "emotion",
+             "other"
+            ]
+           },
+           "description": {
+            "type": "string",
+            "maxLength": 800
+           },
+           "metadata": {
+            "type": "object"
+           },
+           "questions": {
+            "type": "array",
+            "items": {
+             "type": "string"
+            }
+           }
+          },
+          "required": [
+           "name",
+           "type"
+          ]
+         }
+        },
+        "relations": {
+         "type": "array",
+         "items": {
+          "type": "object",
+          "properties": {
+           "source": {
+            "type": "string"
+           },
+           "target": {
+            "type": "string"
+           },
+           "label": {
+            "type": "string"
+           },
+           "metadata": {
+            "type": "object"
+           }
+          },
+          "required": [
+           "source",
+           "target",
+           "label"
+          ]
+         }
+        },
+        "supersedes": {
+         "type": "array",
+         "items": {
+          "type": "string"
+         },
+         "description": "Ids of existing relations the user just contradicted."
+        }
+       },
+       "required": [
+        "entities",
+        "relations"
+       ]
+      }
+     }
+    ]
+   }
+  ],
+  "tool_config": {
+   "function_calling_config": {
+    "mode": "ANY",
+    "allowed_function_names": [
+     "extract_graph"
+    ]
+   }
+  },
+  "generationConfig": {
+   "temperature": 0,
+   "thinkingConfig": {
+    "thinkingBudget": 0
+   }
+  }
+ },
+ "response": {
+  "candidates": [
+   {
+    "content": {
+     "parts": [
+      {
+       "functionCall": {
+        "name": "extract_graph",
+        "args": {
+         "entities": [
+          {
+           "name": "Anneliese",
+           "type": "person",
+           "description": "Friend in Osaka the user has known since a year abroad."
+          },
+          {
+           "description": "City where Anneliese lives.",
+           "name": "Osaka",
+           "type": "place"
+          },
+          {
+           "name": "Python",
+           "description": "Programming language Anneliese is learning for her new analyst job.",
+           "type": "concept"
+          },
+          {
+           "type": "person",
+           "name": "Giselle",
+           "description": "Friend since college. Works at Larkspur Labs."
+          },
+          {
+           "type": "organization",
+           "name": "Larkspur Labs",
+           "description": "Small biotech where Giselle works."
+          },
+          {
+           "type": "person",
+           "name": "Cordelia",
+           "description": "The user's aunt. Lives in Inglewood."
+          },
+          {
+           "type": "place",
+           "name": "Inglewood",
+           "description": "Small town where Cordelia lives."
+          },
+          {
+           "description": "Month the user is driving to see Cordelia.",
+           "name": "June",
+           "type": "event"
+          },
+          {
+           "description": "The user's neighbor in Brackenridge.",
+           "type": "person",
+           "name": "Teodor"
+          },
+          {
+           "name": "Brackenridge",
+           "description": "Small town in Maine where the user lives.",
+           "type": "place"
+          },
+          {
+           "description": "Day the user wants to be reminded to call Anneliese back.",
+           "name": "Sunday",
+           "type": "event"
+          }
+         ],
+         "relations": [
+          {
+           "source": "Anneliese",
+           "target": "Osaka",
+           "label": "called_from"
+          },
+          {
+           "target": "Python",
+           "label": "learning",
+           "source": "Anneliese"
+          },
+          {
+           "source": "Anneliese",
+           "target": "Giselle",
+           "label": "mentioned_with"
+          },
+          {
+           "target": "Larkspur Labs",
+           "source": "Giselle",
+           "label": "works_at"
+          },
+          {
+           "source": "Cordelia",
+           "target": "Inglewood",
+           "label": "lives_in"
+          },
+          {
+           "target": "June",
+           "source": "Cordelia",
+           "label": "will_be_visited_in"
+          },
+          {
+           "source": "Teodor",
+           "target": "Brackenridge",
+           "label": "lives_in"
+          },
+          {
+           "label": "call_back_on",
+           "source": "Anneliese",
+           "target": "Sunday"
+          }
+         ]
+        }
+       }
+      }
+     ],
+     "role": "model"
+    },
+    "finishReason": "STOP",
+    "index": 0,
+    "finishMessage": "Model generated function call(s)."
+   }
+  ],
+  "usageMetadata": {
+   "promptTokenCount": 2197,
+   "candidatesTokenCount": 497,
+   "totalTokenCount": 2694,
+   "promptTokensDetails": [
+    {
+     "modality": "TEXT",
+     "tokenCount": 2197
+    }
+   ],
+   "serviceTier": "standard"
+  },
+  "modelVersion": "gemini-2.5-flash",
+  "responseId": "31jvaqmPFL2B1sgPsu_wyQ0"
+ }
+}

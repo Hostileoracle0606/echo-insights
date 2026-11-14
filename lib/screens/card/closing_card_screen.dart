@@ -24,6 +24,7 @@ import '../../widgets/eyebrow.dart';
 import '../../widgets/mode_header.dart';
 import '../../widgets/result_card.dart';
 import '../journal/voice_dock.dart';
+import '../privacy/shared_log_screen.dart';
 
 enum _Phase { loading, ready, noCard, failed }
 
@@ -353,6 +354,17 @@ class _ClosingCardScreenState extends ConsumerState<ClosingCardScreen> {
                       children: [
                         _body(colors),
                         const SizedBox(height: 28),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: _TextAction(
+                            label: 'What Lumen shared',
+                            onTap: () => unawaited(showSharedLog(
+                              context,
+                              notebookId: widget.notebookId,
+                            )),
+                            padding: EdgeInsets.zero,
+                          ),
+                        ),
                         Align(
                           alignment: Alignment.centerLeft,
                           child: _TextAction(

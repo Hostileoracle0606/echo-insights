@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import '../providers/journal_provider.dart';
 import '../providers/notebooks_provider.dart';
 import '../providers/opening_prep_provider.dart';
+import '../providers/shared_log_provider.dart';
 import '../providers/supabase_provider.dart';
 import '../security/app_lock_provider.dart';
 import '../theme/lumen_colors.dart';
@@ -86,6 +87,14 @@ Future<void> confirmAndDeleteSession(
         .catchError((Object error) {
       debugPrint('Clearing the turn journal failed: ${error.runtimeType}');
     }),
+  );
+  // What Lumen shared about it (LM-57) goes with the session.
+  unawaited(
+    ref.read(sharedLogProvider).forgetNotebook(notebookId).catchError(
+      (Object error) {
+        debugPrint('Clearing the shared log failed: ${error.runtimeType}');
+      },
+    ),
   );
   ref.read(cardDrafterProvider).stop(notebookId);
   ref.invalidate(notebooksProvider);
