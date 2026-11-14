@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../services/journal_export_service.dart';
 import '../services/markdown_export.dart';
 import 'supabase_provider.dart';
 
@@ -16,5 +17,17 @@ final allMemoryExportProvider = Provider<AllMemoryExport>((ref) {
     listNotebooks: supabase.listNotebooks,
     loadNotebookState: (id) async =>
         (await commits.getNotebookSnapshot(id))?.state,
+  );
+});
+
+/// "Export my journal" (LM-52): the RPC plus the zip's contents.
+final journalExportServiceProvider = Provider<JournalExportService>((ref) {
+  final client = ref.watch(supabaseClientProvider);
+  final supabase = ref.watch(supabaseServiceProvider);
+  return JournalExportService(
+    rpc: (fn, params) => client.rpc(fn, params: params),
+    listNotebookIds: () async => [
+      for (final n in await supabase.listNotebooks()) n.id,
+    ],
   );
 });

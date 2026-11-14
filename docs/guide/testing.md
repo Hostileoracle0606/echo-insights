@@ -100,7 +100,20 @@ deno test --allow-net --allow-env --allow-read --config supabase/functions/retri
 ```
 
 `retrieve-memory` has handler, context and contract tests. `_shared/` has the
-embedder and the retrieve-memory contract.
+embedder, the retrieve-memory contract and `safe-log`. `log-privacy.test.ts`
+runs every edge function on marker text (`ZZ-SECRET-MARKER`), including failure
+paths, and fails if the marker reaches the log or a response.
+
+With `--config` pointing at `retrieve-memory/deno.json`, the directory argument
+only discovers that folder's tests, so name the others explicitly:
+
+```bash
+deno test --allow-net --allow-env --allow-read --config supabase/functions/retrieve-memory/deno.json \
+  supabase/functions/log-privacy.test.ts supabase/functions/_shared/
+```
+
+The Lambda equivalent is `infra/test/log-privacy.test.mjs` (part of `cd infra && npm test`).
+Log only through `safeLog`: ids, counts, timings, status codes and error class names.
 
 ## AWS runtime
 

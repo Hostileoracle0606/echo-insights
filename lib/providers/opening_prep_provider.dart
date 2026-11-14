@@ -139,6 +139,25 @@ class OpeningPrep {
     }
   }
 
+  /// As [refresh], for when the brief held here may no longer be allowed to
+  /// play (a forget just deleted it): if the reload fails, the copy goes too.
+  Future<void> reloadOrDropBrief() async {
+    final generation = ++_generation;
+    try {
+      final loaded = await _service.load();
+      if (generation != _generation) return;
+      _current = _keepLocalPlayed(loaded);
+    } catch (error) {
+      debugPrint('OpeningPrep.reloadOrDropBrief failed: ${error.runtimeType}');
+      if (generation != _generation) return;
+      final current = _current;
+      if (current != null) {
+        _current =
+            SessionOpeningState(returning: current.returning, brief: null);
+      }
+    }
+  }
+
   SessionOpeningState _keepLocalPlayed(SessionOpeningState loaded) {
     final brief = loaded.brief;
     final played = _locallyPlayed;

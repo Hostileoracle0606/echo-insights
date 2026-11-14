@@ -86,3 +86,15 @@ final joiningPhaseProvider = Provider<JoiningPhase>((ref) {
   ref.watch(journalProvider);
   return ref.watch(journalProvider.notifier).joining;
 });
+
+/// Off the record (LM-50): nothing said from here on is saved.
+final offTheRecordProvider = Provider<bool>((ref) {
+  ref.watch(journalProvider);
+  return ref.watch(journalProvider.notifier).offTheRecord;
+});
+
+/// Something from before the off-the-record switch is saved, and stays.
+final hasSavedTurnsProvider = Provider<bool>((ref) {
+  ref.watch(journalProvider);
+  return ref.watch(journalProvider.notifier).hasSavedTurns;
+});

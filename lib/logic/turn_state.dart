@@ -78,12 +78,17 @@ class ActiveTurn {
     this.heardChars,
     this.interrupted = false,
     this.input = TurnInput.voice,
+    this.offTheRecord = false,
   });
 
   final String turnId;
   final Speaker speaker;
   final String startedAt;
   final TurnInput input;
+
+  /// Started while the session was off the record (LM-50). Stays off the
+  /// record even if the switch is turned back off before it finalizes.
+  final bool offTheRecord;
 
   /// Replaceable display text. Superseded wholesale by each interim update.
   String text;
@@ -470,6 +475,12 @@ class TurnMachineState {
   /// Canonical conversation history. Finalized, actually-heard text only.
   final List<ConversationTurn> conversation = [];
 
+  /// Turns spoken off the record (LM-50). Display only, this session only:
+  /// never pending, never persisted, never part of [conversation], so nothing
+  /// that reads the conversation (extraction context, resume context, saves)
+  /// can see them.
+  final List<ConversationTurn> offRecord = [];
+
   /// Display-only provisional preview.
   List<String>? previewEntityNames;
   String? previewTurnId;
@@ -525,6 +536,19 @@ class TurnMachine {
 
   final TurnMachineState state = TurnMachineState();
 
+  /// While true, turns that finalize are kept on screen only: no durable
+  /// checkpoint, extraction or commit. The one gate for LM-50.
+  bool offTheRecord = false;
+
+  /// While true, Lumen's turns stay off the record though the user's are
+  /// saved: back on the record, until Gemini has been reconnected without the
+  /// off-record context, a reply could repeat what was said.
+  bool holdAssistantOffRecord = false;
+
+  bool _keptOffRecord(Speaker speaker) =>
+      offTheRecord ||
+      (holdAssistantOffRecord && speaker == Speaker.assistant);
+
   /// In-memory only: prevents starting the same durable step twice.
   String? _inFlight;
 
@@ -560,6 +584,7 @@ class TurnMachine {
         speaker: speaker,
         startedAt: _now(),
         heardChars: speaker == Speaker.assistant ? 0 : null,
+        offTheRecord: _keptOffRecord(speaker),
       );
 
   List<TurnEffect> _rejectStale() {
@@ -622,6 +647,25 @@ class TurnMachine {
     }
     if (text.isEmpty) return const [];
 
+    final offRecord = turn.offTheRecord || _keptOffRecord(turn.speaker);
+    final spoken = ConversationTurn(
+      turnId: turn.turnId,
+      role: turn.speaker,
+      text: text,
+      createdAt: _now(),
+      startedAt: turn.startedAt,
+      input: turn.input,
+    );
+    if (offRecord) {
+      // Shown during the session, then dropped. Nothing durable is asked for.
+      _insertByStart(state.offRecord, spoken);
+      if (state.offRecord.length > _maxConversation) {
+        state.offRecord
+            .removeRange(0, state.offRecord.length - _maxConversation);
+      }
+      return const [];
+    }
+
     final finalized = FinalizedTurn(
       turnId: turn.turnId,
       sessionId: state.sessionId!,
@@ -635,7 +679,7 @@ class TurnMachine {
       generation: turn.generation + 1,
       commitRequestId: _newRequestId(),
       stage: DurableStage.finalRecorded,
-      finalizedAt: _now(),
+      finalizedAt: spoken.createdAt,
       truncatedFromInterruption: truncated,
       input: turn.input,
     );
@@ -649,21 +693,7 @@ class TurnMachine {
       state.previewTurnId = null;
       state.previewEntityNames = null;
     }
-    final spoken = ConversationTurn(
-      turnId: turn.turnId,
-      role: turn.speaker,
-      text: text,
-      createdAt: finalized.finalizedAt,
-      startedAt: turn.startedAt,
-      input: turn.input,
-    );
-    // Insert by utterance start; ties keep finalization order.
-    var at = state.conversation.length;
-    while (at > 0 &&
-        compareInstants(state.conversation[at - 1].startedAt, spoken.startedAt) > 0) {
-      at -= 1;
-    }
-    state.conversation.insert(at, spoken);
+    _insertByStart(state.conversation, spoken);
     if (state.conversation.length > _maxConversation) {
       state.conversation.removeRange(0, state.conversation.length - _maxConversation);
     }
@@ -672,6 +702,19 @@ class TurnMachine {
     effects.add(PersistTurn(turn: finalized));
     return [...effects, ..._driveQueue()];
   }
+
+  /// Insert by utterance start; ties keep finalization order.
+  void _insertByStart(List<ConversationTurn> turns, ConversationTurn spoken) {
+    var at = turns.length;
+    while (at > 0 &&
+        compareInstants(turns[at - 1].startedAt, spoken.startedAt) > 0) {
+      at -= 1;
+    }
+    turns.insert(at, spoken);
+  }
+
+  /// Forgets what was said off the record (leaving the notebook).
+  void clearOffRecord() => state.offRecord.clear();
 
   /// Utterances still being transcribed or awaiting their authoritative final,
   /// oldest first — display-only, never canonical. A consumer merging these
@@ -724,6 +767,7 @@ class TurnMachine {
         state.awaitingAssistant = null;
         state.pending.clear();
         state.conversation.clear();
+        state.offRecord.clear();
         state.previewEntityNames = null;
         state.previewTurnId = null;
         state.staleRejections = 0;
@@ -758,6 +802,8 @@ class TurnMachine {
         if (base.text == event.text) return const [];
 
         final startProvisional = provisionalExtraction &&
+            !offTheRecord &&
+            !base.offTheRecord &&
             event.speaker == Speaker.user &&
             event.text.trim().length >= _provisionalMinChars;
         final priorGeneration = base.generation;
@@ -869,6 +915,7 @@ class TurnMachine {
           finalText: text,
           turnCompleted: true,
           input: TurnInput.typed,
+          offTheRecord: offTheRecord,
         );
         effects.addAll(_finalize(typed, text, false));
         return effects;

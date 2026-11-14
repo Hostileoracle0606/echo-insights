@@ -36,6 +36,38 @@ SessionOpeningState _state(
     );
 
 void main() {
+  group('reloadOrDropBrief', () {
+    test('takes the new state', () async {
+      final service = _FakeService();
+      final prep = OpeningPrep(service);
+      final first = prep.refresh();
+      service.loads.last.complete(_state());
+      await first;
+      expect(prep.current?.brief, isNotNull);
+
+      final reload = prep.reloadOrDropBrief();
+      service.loads.last.complete(
+        const SessionOpeningState(returning: true, brief: null),
+      );
+      await reload;
+      expect(prep.current?.brief, isNull);
+    });
+
+    test('a failed reload drops the held brief, and keeps returning', () async {
+      final service = _FakeService();
+      final prep = OpeningPrep(service);
+      final first = prep.refresh();
+      service.loads.last.complete(_state());
+      await first;
+
+      final reload = prep.reloadOrDropBrief();
+      service.loads.last.completeError(StateError('offline'));
+      await reload;
+      expect(prep.current?.brief, isNull);
+      expect(prep.current?.returning, isTrue);
+    });
+  });
+
   late _FakeService service;
   late OpeningPrep prep;
 

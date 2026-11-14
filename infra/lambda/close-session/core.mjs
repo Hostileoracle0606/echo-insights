@@ -1,3 +1,5 @@
+import { guardHandler, safeLog } from "./safe-log.mjs";
+import { redactTurns } from "./redact.mjs";
 import { buildJustTalkMessage, justTalkPrompt, writeSessionCardFunction } from "./prompts.mjs";
 import {
   buildTranscript,
@@ -23,7 +25,8 @@ export function jsonResponse(statusCode, body) {
   };
 }
 
-export const rejected = (statusCode, code) => jsonResponse(statusCode, { status: "rejected", code });
+export const rejected = (statusCode, code) =>
+  jsonResponse(statusCode, { status: "rejected", code });
 
 export class Rejection extends Error {
   constructor(statusCode, code) {
@@ -199,7 +202,7 @@ export function createCloseSessionHandler({
   now = () => Date.now(),
   sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
   // Ids, counts and latency only: never transcript, title, summary or notes.
-  log = (fields) => console.log(JSON.stringify({ source: "close-session", ...fields })),
+  log = (fields) => safeLog("close-session", fields),
   deadlineMs = defaultDeadlineMs,
 }) {
   async function callModel({ startedAt, providerBody, metrics }) {
@@ -236,7 +239,7 @@ export function createCloseSessionHandler({
     if (!snapshot || typeof snapshot !== "object") throw new Rejection(404, "notFound");
     if (!Array.isArray(newestTurns)) throw new Rejection(503, "providerUnavailable");
 
-    const turns = [...newestTurns].reverse();
+    const turns = await redactTurns(db, [...newestTurns].reverse());
     const userTurns = turns.filter(
       (turn) => turn?.speaker === "user" && typeof turn.text === "string" && turn.text.trim(),
     );
@@ -318,7 +321,7 @@ export function createCloseSessionHandler({
   // conversation changed while the card was being written.
   async function closeOnce({ db, notebookId, startedAt, metrics, draft }) {
     const notebooks = await db.select("notebooks", {
-      select: "id,revision,conversation_mode",
+      select: "id,revision,conversation_mode,transcript_forgotten_at",
       id: `eq.${notebookId}`,
       limit: "1",
     });
@@ -334,6 +337,15 @@ export function createCloseSessionHandler({
       notebook_id: `eq.${notebookId}`,
       limit: "1",
     });
+    // Auto-forget removed some of this conversation's turns. What is left is a
+    // fragment, so never write a card from it: keep the card Lumen already has.
+    if (notebook.transcript_forgotten_at) {
+      metrics.forgotten = true;
+      if (Array.isArray(stored) && stored.length > 0 && stored[0].card) {
+        return jsonResponse(200, { status: "ready", card: stored[0].card });
+      }
+      throw new Rejection(422, "nothingToSummarize");
+    }
     if (
       Array.isArray(stored) &&
       stored.length > 0 &&
@@ -366,7 +378,7 @@ export function createCloseSessionHandler({
     throw new Rejection(503, "providerUnavailable");
   }
 
-  return async function handle(event) {
+  async function handle(event) {
     const startedAt = now();
     const userId = authorizedUserId(event);
     if (!userId) return rejected(401, "unauthorized");
@@ -402,5 +414,7 @@ export function createCloseSessionHandler({
       ...metrics,
     });
     return response;
-  };
+  }
+
+  return guardHandler("close-session", handle, () => rejected(503, "providerUnavailable"), log);
 }

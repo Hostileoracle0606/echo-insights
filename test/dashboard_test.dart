@@ -2,16 +2,24 @@
 // their start date, the hero totals sum correctly, and each card shows its
 // title, summary, and meta (with a "live now" badge for an open session).
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lumen/models/conversation_mode.dart';
 import 'package:lumen/models/notebook.dart';
+import 'package:go_router/go_router.dart';
+import 'package:lumen/providers/journal_provider.dart';
 import 'package:lumen/providers/notebooks_provider.dart';
+import 'package:lumen/providers/opening_prep_provider.dart';
 import 'package:lumen/providers/supabase_provider.dart';
 import 'package:lumen/screens/dashboard/dashboard_screen.dart';
+import 'package:lumen/security/app_lock.dart';
+import 'package:lumen/security/app_lock_provider.dart';
+import 'package:lumen/services/session_deletion_service.dart';
 import 'package:lumen/services/supabase_service.dart';
+import 'package:lumen/services/turn_journal_service.dart';
 import 'package:lumen/theme/lumen_theme.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -70,6 +78,18 @@ Notebook _nb(
     createdAt: started,
     updatedAt: started,
   );
+}
+
+class _Auth implements LockAuthenticator {
+  bool passes = true;
+  int prompts = 0;
+  @override
+  Future<bool> isAvailable() async => true;
+  @override
+  Future<bool> authenticate(String reason) async {
+    prompts += 1;
+    return passes;
+  }
 }
 
 void main() {
@@ -212,4 +232,132 @@ void main() {
 
     await tester.pumpWidget(const SizedBox());
   });
+
+  testWidgets('the notebook menu deletes a session after a confirmation',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(402, 874));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final stored = [
+      _nb('1', 'Lisbon trip', const Duration(days: 2), 11),
+      _nb('2', 'Old brain-dump', const Duration(days: 40), 16),
+    ];
+    final deleted = <String>[];
+    var refreshes = 0;
+    final auth = _Auth();
+    final router = GoRouter(
+      initialLocation: '/dashboard',
+      routes: [
+        GoRoute(
+          path: '/dashboard',
+          builder: (_, __) => const DashboardScreen(),
+        ),
+      ],
+    );
+    addTearDown(router.dispose);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          // Reads what is "stored", so a refetch after the delete is real.
+          notebooksProvider.overrideWith((ref) => [...stored]),
+          sessionDeletionServiceProvider.overrideWithValue(
+            SessionDeletionService.withRpc((fn, params) async {
+              expect(fn, 'delete_notebook');
+              final id = params['p_notebook_id'] as String;
+              deleted.add(id);
+              stored.removeWhere((n) => n.id == id);
+              return {'deleted': true};
+            }),
+          ),
+          openingPrepProvider
+              .overrideWithValue(_CountingPrep(() => refreshes++)),
+          lockAuthenticatorProvider.overrideWithValue(auth),
+          turnJournalServiceProvider.overrideWithValue(
+            TurnJournalService(
+              directoryProvider: () async => Directory.systemTemp,
+            ),
+          ),
+        ],
+        child: MaterialApp.router(
+          debugShowCheckedModeBanner: false,
+          theme: LumenTheme.light(),
+          routerConfig: router,
+        ),
+      ),
+    );
+    for (var i = 0; i < 90; i++) {
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    expect(find.text('Lisbon trip'), findsOneWidget);
+
+    Future<void> openMenu() async {
+      final button = find.byTooltip('Notebook options').first;
+      await tester.ensureVisible(button);
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.tap(button);
+      for (var i = 0; i < 30; i++) {
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+    }
+
+    // Cancel keeps it.
+    await openMenu();
+    await tester.tap(find.text('Delete this session'));
+    for (var i = 0; i < 30; i++) {
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    expect(find.text('Delete this session?'), findsOneWidget);
+    await tester.tap(find.text('Cancel'));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(deleted, isEmpty);
+    expect(auth.prompts, 0, reason: 'Cancel asks for nothing');
+    expect(find.text('Lisbon trip'), findsOneWidget);
+
+    // A failed Face ID deletes nothing.
+    auth.passes = false;
+    await openMenu();
+    await tester.tap(find.text('Delete this session'));
+    for (var i = 0; i < 30; i++) {
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    await tester.tap(find.text('Delete'));
+    for (var i = 0; i < 30; i++) {
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    expect(auth.prompts, 1);
+    expect(deleted, isEmpty);
+    expect(find.text('Lisbon trip'), findsOneWidget);
+    auth.passes = true;
+
+    // Confirm removes it from the dashboard.
+    await openMenu();
+    await tester.tap(find.text('Delete this session'));
+    for (var i = 0; i < 30; i++) {
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    await tester.tap(find.text('Delete'));
+    for (var i = 0; i < 30; i++) {
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+
+    expect(deleted, ['1']);
+    expect(refreshes, 1);
+    expect(find.text('Lisbon trip'), findsNothing);
+    expect(find.text('Old brain-dump'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+}
+
+class _CountingPrep implements OpeningPrep {
+  _CountingPrep(this._onRefresh);
+
+  final void Function() _onRefresh;
+
+  @override
+  Future<void> refresh() async => _onRefresh();
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }

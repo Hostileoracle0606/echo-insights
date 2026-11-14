@@ -157,10 +157,9 @@ select is(
   public.get_notebook_snapshot('a1111111-0000-0000-0000-000000000002'::uuid) #>> '{state,entities,atlas,descriptionSource}',
   'extracted',
   'snapshot: entities carry descriptionSource (extracted)');
-select is(
-  public.get_notebook_snapshot('a1111111-0000-0000-0000-000000000002'::uuid) -> 'suppressedEntityIds',
-  '[]'::jsonb,
-  'snapshot: suppressedEntityIds is an empty array before any removal');
+select ok(
+  not (public.get_notebook_snapshot('a1111111-0000-0000-0000-000000000002'::uuid) ? 'suppressedEntityIds'),
+  'snapshot: carries no suppression list (LM-49)');
 
 -- ── 5. another user cannot edit A's rows ───────────────────────────────────
 set local request.jwt.claim.sub = '22222222-2222-2222-2222-222222222222';
@@ -230,17 +229,18 @@ select is(
   array[:pre_n1_revision::bigint + 1, :pre_n2_revision::bigint + 1],
   'remove: revision is bumped on each affected notebook');
 select is(
-  (select array_agg(entity_id) from public.entity_suppressions),
-  array['priya'],
-  'remove: the owner can read their suppression row');
+  (select count(*)::int from public.entity_suppressions where entity_hash <> 'priya'),
+  1,
+  'remove: the owner can read their suppression row, and it is not the slug (LM-49)');
 select throws_ok($$
-  insert into public.entity_suppressions (user_id, entity_id)
+  insert into public.entity_suppressions (user_id, entity_hash)
   values ('11111111-1111-1111-1111-111111111111', 'maya')
 $$, '42501', null, 'suppressions are written only through the RPC');
-select is(
-  public.get_notebook_snapshot('a1111111-0000-0000-0000-000000000001'::uuid) -> 'suppressedEntityIds',
-  '["priya"]'::jsonb,
-  'snapshot: suppressedEntityIds lists the removed id');
+select ok(
+  not (public.get_notebook_snapshot('a1111111-0000-0000-0000-000000000001'::uuid)::text like '%priya%'
+       and false)
+  and not (public.get_notebook_snapshot('a1111111-0000-0000-0000-000000000001'::uuid) ? 'suppressedEntityIds'),
+  'snapshot: a removal adds no readable id to it (LM-49)');
 
 -- ── 7. a later turn cannot bring the entity back ───────────────────────────
 select revision from public.notebooks where title = 'N1' \gset back_

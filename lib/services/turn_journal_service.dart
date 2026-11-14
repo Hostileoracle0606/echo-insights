@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 
 import '../logic/turn_state.dart';
+import '../security/file_protection.dart';
 import 'notebook_commit_service.dart' as commit_service;
 
 typedef TurnJournalDirectoryProvider = Future<Directory> Function();
@@ -66,13 +67,17 @@ class TurnJournalCheckpoint {
 /// leave either the previous complete checkpoint or the next complete
 /// checkpoint, never a partially written JSON document.
 class TurnJournalService {
-  TurnJournalService({TurnJournalDirectoryProvider? directoryProvider})
-      : _directoryProvider =
-            directoryProvider ?? getApplicationSupportDirectory;
+  TurnJournalService({
+    TurnJournalDirectoryProvider? directoryProvider,
+    FileProtector? protect,
+  })  : _directoryProvider =
+            directoryProvider ?? getApplicationSupportDirectory,
+        _protect = protect ?? protectFile;
 
   static const int _version = 1;
 
   final TurnJournalDirectoryProvider _directoryProvider;
+  final FileProtector _protect;
   Future<void> _tail = Future<void>.value();
 
   Future<List<TurnJournalCheckpoint>> loadCheckpoints(String notebookId) {
@@ -144,6 +149,14 @@ class TurnJournalService {
     });
   }
 
+  /// Everything held for [notebookId]: the session was deleted.
+  Future<void> forgetNotebook(String notebookId) {
+    return _serialized(() async {
+      final file = await _journalFile(notebookId);
+      if (await file.exists()) await file.delete();
+    });
+  }
+
   Future<T> _serialized<T>(Future<T> Function() operation) {
     final result = _tail.then((_) => operation());
     _tail = result.then<void>(
@@ -172,6 +185,9 @@ class TurnJournalService {
       final root = await _directoryProvider();
       final directory = Directory('${root.path}/turn-journal-v$_version');
       await directory.create(recursive: true);
+      // New files here start in the same class, so a checkpoint created
+      // just after the phone locks can still be written.
+      await _protect(directory.path, FileProtectionLevel.completeUnlessOpen);
       return directory;
     }()
         .catchError((Object error) {
@@ -235,6 +251,8 @@ class TurnJournalService {
     };
 
     await temporary.writeAsString(jsonEncode(document), flush: true);
+    // The class travels with the file through the rename.
+    await _protect(temporary.path, FileProtectionLevel.completeUnlessOpen);
     await temporary.rename(file.path);
   }
 }

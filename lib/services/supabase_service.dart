@@ -109,4 +109,15 @@ class SupabaseService {
       'ended_at': DateTime.now().toUtc().toIso8601String(),
     }).eq('id', notebookId);
   }
+
+  /// Asks the server to remove a notebook that holds nothing (an
+  /// off-the-record session in a fresh notebook, LM-50). The server decides:
+  /// under a row lock it deletes only the caller's own notebook with no
+  /// content of any kind, so a client that wrongly thinks it is empty (say,
+  /// its history failed to load) cannot lose anything. True if deleted.
+  Future<bool> deleteEmptyNotebook(String notebookId) async {
+    final result = await _client
+        .rpc('delete_empty_notebook', params: {'p_notebook_id': notebookId});
+    return result is Map && result['deleted'] == true;
+  }
 }

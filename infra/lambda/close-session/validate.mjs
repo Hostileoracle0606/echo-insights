@@ -39,19 +39,19 @@ export function cleanText(value, maxLength) {
   const text = value.replace(/\s+/g, " ").trim().replace(wrappingQuotes, "").trim();
   const characters = [...text];
   if (characters.length <= maxLength) return text;
-  return `${characters.slice(0, maxLength - 1).join("").trimEnd()}…`;
+  return `${characters
+    .slice(0, maxLength - 1)
+    .join("")
+    .trimEnd()}…`;
 }
 
 /**
  * The "Lumen will remember" candidates, decided in code: this notebook's
- * entities, most mentioned first, never a suppressed id, at most
+ * entities, most mentioned first, at most
  * [limits.remember]. [notebookCounts] maps an entity id to
  * user_entities.notebook_count; 1 means only this conversation mentions it.
  */
 export function rememberCandidates(snapshot, notebookCounts = new Map(), max = limits.remember) {
-  const suppressed = new Set(
-    Array.isArray(snapshot?.suppressedEntityIds) ? snapshot.suppressedEntityIds : [],
-  );
   const entities = snapshot?.state?.entities;
   const values = entities && typeof entities === "object" ? Object.values(entities) : [];
   return values
@@ -61,8 +61,7 @@ export function rememberCandidates(snapshot, notebookCounts = new Map(), max = l
         typeof entity.id === "string" &&
         entity.id.length > 0 &&
         typeof entity.name === "string" &&
-        entity.name.trim().length > 0 &&
-        !suppressed.has(entity.id),
+        entity.name.trim().length > 0,
     )
     .sort(
       (a, b) =>
@@ -86,7 +85,9 @@ export function rememberCandidates(snapshot, notebookCounts = new Map(), max = l
  */
 export function justTalkFromModel(args, candidates) {
   if (!args || typeof args !== "object" || Array.isArray(args)) return null;
-  const title = cleanText(args.title, limits.title).replace(/[.。]+$/, "").trim();
+  const title = cleanText(args.title, limits.title)
+    .replace(/[.。]+$/, "")
+    .trim();
   const summary = cleanText(args.summary, limits.summary);
   const notes = (Array.isArray(args.notes) ? args.notes : [])
     .map((note) => cleanText(note, limits.noteText))
@@ -131,9 +132,7 @@ export function validateQuotes(card, userTurns) {
     return text.length > 0 && texts.some((turn) => turn.includes(text));
   };
   const keep = (quotes) =>
-    quotes
-      .filter(verbatim)
-      .map((quote) => ({ ...quote, text: quote.text.trim() }));
+    quotes.filter(verbatim).map((quote) => ({ ...quote, text: quote.text.trim() }));
 
   const next = { ...card };
   if (Array.isArray(card?.quotes)) next.quotes = keep(card.quotes);

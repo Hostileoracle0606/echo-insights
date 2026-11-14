@@ -28,6 +28,8 @@
 	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>Not used.</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Lumen uses Face ID to keep your journal private.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Lumen uses your microphone to capture your voice journal entries.</string>
 	<key>UIApplicationSceneManifest</key>

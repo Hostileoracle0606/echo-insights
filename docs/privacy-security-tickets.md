@@ -3,7 +3,7 @@
 People say raw, personal things to Lumen out loud. These tickets make three claims true and checkable:
 
 - **Nobody nearby can open your journal.**
-- **The AI never keeps or learns from your words, and never sees the names of the people you talk about.**
+- **The AI doesn't train on your words, what it may keep is stated plainly, and it never sees the names of the people you talk about.**
 - **We can't read your stored journal.**
 
 They're grouped into three phases. Phase 1 must be finished before any public launch or privacy claim.
@@ -11,7 +11,7 @@ They're grouped into three phases. Phase 1 must be finished before any public la
 | Ticket | Title | Area | Size | Depends on |
 |---|---|---|---|---|
 | **Phase 1: launch blockers** |||||
-| LM-43 | Paid AI tier with zero data retention | Infra + config | S | — |
+| LM-43 | Paid AI tier, with retention documented | Infra + config | S | — |
 | LM-44 | Logs never contain journal content | Lambda + CDK | S | — |
 | LM-45 | No standing admin access | Process + config | S | — |
 | LM-46 | Size caps and validation on every RPC | Supabase | S | — |
@@ -44,22 +44,22 @@ They're grouped into three phases. Phase 1 must be finished before any public la
 - No journal content in logs, analytics, crash reports or error messages. That includes transcripts, card text, entity names and audio.
 - Writes go only through SECURITY DEFINER RPCs called with the user's token, never with a service key.
 - Every new user-owned table joins the deletion test in LM-48.
-- Privacy copy says only what is true today. Say "keeps nothing" only after LM-43 is verified, and "we can't read it" only after LM-61 ships.
+- Privacy copy says only what is true today. Don't say "keeps nothing": per ruling R13 the paid Gemini API has no documented zero-retention mode, so it needs Vertex zero data retention with a written abuse-monitoring exemption, or Google's written confirmation (`docs/security/ai-processing.md` section 6). Say "we can't read it" only after LM-61 ships.
 - **Never commit** `pubspec.lock`, `ios/Podfile.lock` or `docs/assets`.
 
 ---
 
 ## Phase 1: launch blockers
 
-### LM-43: Paid AI tier with zero data retention
+### LM-43: Paid AI tier, with retention documented
 **Area:** Infra + config · **Size:** S · **Depends on:** —
 
-Journal audio and text must never be used to train models or be kept by the AI provider. This also ends the free-tier 429s.
+Journal audio and text must never be used to train models, and what the AI provider keeps must be known and stated. The paid Gemini API has no documented zero-retention mode: Google may keep prompts and responses for a limited period for abuse detection and legal reasons (ruling R13). This also ends the free-tier 429s.
 
 **Scope**
 - Move the Gemini key behind `echo-insights/gemini-api-key` to a billed project. This covers Live, 2.5 Flash and TTS.
 - Check Google's current terms for the paid Gemini API and for Vertex AI. Vertex offers zero data retention: prompt caching off, plus an exemption from abuse-monitoring logs on request.
-- If Vertex is needed for zero retention, check that the Live API and ephemeral tokens work there before switching. Otherwise, record the gap.
+- Zero retention needs Vertex. Record whether the Live API and ephemeral tokens work there. Result: they are not drop-in, so Lumen stays on the paid Gemini API and the gap is recorded in `ai-processing.md` section 5.
 - Write the result to `docs/security/ai-processing.md`: each provider, what it receives, how long it keeps it, and a link to its terms.
 
 **Done when**

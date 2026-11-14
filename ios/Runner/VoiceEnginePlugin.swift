@@ -10,7 +10,9 @@ import Flutter
 /// Channels (Dart side: lib/audio/voice_engine.dart):
 ///   lumen/voice_engine      prepare · hasMicPermission · requestMicPermission
 ///                           · schedule {pcm, sampleRate} · stopPlayback
+///                           · outputRoute (builtIn | headphones | bluetooth | other)
 ///   lumen/voice_engine/mic  16 kHz PCM16 mono chunks while listened to
+///   lumen/voice_engine/route  the output route now, then on each change
 final class VoiceEnginePlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
   static func register(with registrar: FlutterPluginRegistrar) {
     let instance = VoiceEnginePlugin()
@@ -19,6 +21,8 @@ final class VoiceEnginePlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
     registrar.addMethodCallDelegate(instance, channel: methods)
     FlutterEventChannel(name: "lumen/voice_engine/mic", binaryMessenger: registrar.messenger())
       .setStreamHandler(instance)
+    FlutterEventChannel(name: "lumen/voice_engine/route", binaryMessenger: registrar.messenger())
+      .setStreamHandler(RouteStreamHandler())
   }
 
   private let engine = AVAudioEngine()
@@ -69,6 +73,8 @@ final class VoiceEnginePlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
         #else
           result(voiceProcessing || Self.micPermissionGranted)
         #endif
+      case "outputRoute":
+        result(Self.outputRoute())
       case "stopPlayback":
         player.stop()
         if engine.isRunning { player.play() }
@@ -79,6 +85,24 @@ final class VoiceEnginePlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
     } catch {
       result(FlutterError(code: "voice_engine", message: "\(error)", details: nil))
     }
+  }
+
+  /// Where sound goes now, from the session's current route. Reading it
+  /// needs no active session.
+  static func outputRoute() -> String {
+    let outputs = AVAudioSession.sharedInstance().currentRoute.outputs
+    if outputs.contains(where: {
+      $0.portType == .bluetoothA2DP || $0.portType == .bluetoothHFP || $0.portType == .bluetoothLE
+    }) { return "bluetooth" }
+    if outputs.contains(where: { $0.portType == .headphones || $0.portType == .usbAudio }) {
+      return "headphones"
+    }
+    if !outputs.isEmpty
+      && outputs.allSatisfy({ $0.portType == .builtInSpeaker || $0.portType == .builtInReceiver })
+    {
+      return "builtIn"
+    }
+    return "other"
   }
 
   /// Audio session + running engine with the player attached. Idempotent and
@@ -170,6 +194,27 @@ final class VoiceEnginePlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
   func onCancel(withArguments arguments: Any?) -> FlutterError? {
     if voiceProcessing { engine.inputNode.removeTap(onBus: 0) }
     micSink = nil
+    return nil
+  }
+}
+
+/// Sends the output route when listened to and on every route change.
+final class RouteStreamHandler: NSObject, FlutterStreamHandler {
+  private var observer: NSObjectProtocol?
+
+  func onListen(withArguments arguments: Any?, eventSink events: @escaping FlutterEventSink)
+    -> FlutterError?
+  {
+    events(VoiceEnginePlugin.outputRoute())
+    observer = NotificationCenter.default.addObserver(
+      forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main
+    ) { _ in events(VoiceEnginePlugin.outputRoute()) }
+    return nil
+  }
+
+  func onCancel(withArguments arguments: Any?) -> FlutterError? {
+    if let observer { NotificationCenter.default.removeObserver(observer) }
+    observer = nil
     return nil
   }
 }

@@ -30,6 +30,29 @@ void main() {
       expect(calls.single.$2, {'p_entity_id': 'maya', 'p_text': 'My friend.'});
     });
 
+    test('previewForget and forgetEntity call their RPCs', () async {
+      response = {
+        'notebooks': 2,
+        'relations': 3,
+        'followUps': 1,
+        'askedQuestions': 0,
+        'cards': 1,
+        'briefDeleted': true,
+      };
+
+      final preview = await service.previewForget('priya');
+      expect(calls.last.$1, 'forget_entity_preview');
+      expect(calls.last.$2, {'p_entity_id': 'priya'});
+      expect(preview.notebooks, 2);
+      expect(preview.relations, 3);
+      expect(preview.cards, 1);
+      expect(preview.briefDeleted, isTrue);
+
+      final done = await service.forgetEntity('priya');
+      expect(calls.last.$1, 'forget_entity');
+      expect(done.followUps, 1);
+    });
+
     test('removeEntity calls remove_entity', () async {
       response = {'removedFrom': 3};
 
@@ -42,10 +65,9 @@ void main() {
   });
 
   group('NotebookSnapshot', () {
-    Map<String, dynamic> snapshotJson({List<String>? suppressed}) => {
+    Map<String, dynamic> snapshotJson() => {
           'notebookId': 'nb',
           'revision': 4,
-          if (suppressed != null) 'suppressedEntityIds': suppressed,
           'state': {
             'entries': <dynamic>[],
             'entities': {
@@ -68,17 +90,10 @@ void main() {
           },
         };
 
-    test('reads suppressedEntityIds and descriptionSource', () {
-      final snapshot =
-          NotebookSnapshot.fromJson(snapshotJson(suppressed: ['priya']));
+    test('reads descriptionSource', () {
+      final snapshot = NotebookSnapshot.fromJson(snapshotJson());
 
-      expect(snapshot.suppressedEntityIds, {'priya'});
       expect(snapshot.state.entities['maya']!.descriptionSource, 'user');
-    });
-
-    test('has no suppressed ids when the server sends none', () {
-      expect(NotebookSnapshot.fromJson(snapshotJson()).suppressedEntityIds,
-          isEmpty);
     });
   });
 }

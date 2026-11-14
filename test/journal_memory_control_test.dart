@@ -2,6 +2,8 @@
 // once, Undo restores it within the window, the RPC fires only after the
 // window (or as soon as the app goes to the background), and an edit applies
 // locally before the server call. Only the services are fakes.
+import 'dart:typed_data';
+
 import 'package:fake_async/fake_async.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -11,10 +13,13 @@ import 'package:lumen/models/entity.dart';
 import 'package:lumen/models/journal_entry.dart';
 import 'package:lumen/models/journal_state.dart';
 import 'package:lumen/models/relation.dart';
+import 'package:lumen/models/session_brief.dart';
 import 'package:lumen/providers/journal_provider.dart';
+import 'package:lumen/providers/opening_prep_provider.dart';
 import 'package:lumen/providers/supabase_provider.dart';
 import 'package:lumen/services/memory_control_service.dart';
 import 'package:lumen/services/notebook_commit_service.dart';
+import 'package:lumen/services/session_brief_service.dart';
 import 'package:lumen/services/transcript_store.dart';
 import 'package:lumen/services/turn_journal_service.dart';
 
@@ -69,7 +74,6 @@ class _FakeCommits implements NotebookCommitService {
       notebookId: notebookId,
       revision: 3,
       state: _serverState(),
-      suppressedEntityIds: const {'ravi'},
     );
   }
 
@@ -90,10 +94,48 @@ class _FakeMemory implements MemoryControlService {
   }
 
   @override
+  Future<ForgetPreview> forgetEntity(String entityId) async {
+    removed.add(entityId);
+    return ForgetPreview.fromJson(const {
+      'notebooks': 1,
+      'relations': 0,
+      'followUps': 0,
+      'askedQuestions': 0,
+      'cards': 0,
+      'briefDeleted': true,
+    });
+  }
+
+  @override
   Future<int> editDescription(String entityId, String text) async {
     if (fail) throw Exception('offline');
     edits.add((entityId, text));
     return 1;
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _FakeBriefs implements SessionBriefService {
+  SessionOpeningState state = SessionOpeningState(
+    returning: true,
+    brief: SessionBrief(
+      focus: const [],
+      openingThread: 't',
+      openingLine: 'How is Priya?',
+      pcm: Uint8List(2),
+      sampleRate: 24000,
+      createdAt: DateTime.utc(2026, 10, 21),
+      playedAt: null,
+    ),
+  );
+  bool fail = false;
+
+  @override
+  Future<SessionOpeningState> load() async {
+    if (fail) throw StateError('offline');
+    return state;
   }
 
   @override
@@ -133,8 +175,12 @@ class _Harness {
       memoryControlServiceProvider.overrideWithValue(memory),
       turnJournalServiceProvider.overrideWithValue(_FakeTurnJournal()),
       transcriptStoreProvider.overrideWithValue(_FakeTranscripts()),
+      openingPrepProvider.overrideWithValue(prep),
     ]);
   }
+
+  final briefs = _FakeBriefs();
+  late final OpeningPrep prep = OpeningPrep(briefs);
 
   final commits = _FakeCommits();
   final memory = _FakeMemory();
@@ -152,14 +198,25 @@ void main() {
     binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
   }
 
-  test('the snapshot loads the suppressed ids', () {
-    fakeAsync((async) {
+  group('forgetting and the brief held on the device', () {
+    test('a brief the server deleted is not kept', () async {
       final h = _Harness();
-      h.journal.enterNotebook(_notebookId);
-      async.flushMicrotasks();
+      await h.prep.refresh();
+      expect(h.prep.current?.brief, isNotNull);
+      h.briefs.state =
+          const SessionOpeningState(returning: true, brief: null);
 
-      expect(h.journal.suppressedEntityIds, {'ravi'});
-      h.container.dispose();
+      await h.journal.forgetEntity('priya');
+      expect(h.prep.current?.brief, isNull);
+    });
+
+    test('if the reload fails the copy goes anyway', () async {
+      final h = _Harness();
+      await h.prep.refresh();
+      h.briefs.fail = true;
+
+      await h.journal.forgetEntity('priya');
+      expect(h.prep.current?.brief, isNull);
     });
   });
 
@@ -177,7 +234,7 @@ void main() {
       expect(h.state.relations, isEmpty);
       expect(h.state.entries.single.entityIds, ['maya']);
       expect(h.state.entries.single.relationIds, isEmpty);
-      expect(h.journal.suppressedEntityIds, containsAll(['priya', 'ravi']));
+      expect(h.journal.suppressedEntityIds, contains('priya'));
 
       async.elapse(const Duration(seconds: 4));
       expect(h.memory.removed, isEmpty, reason: 'still inside the undo window');

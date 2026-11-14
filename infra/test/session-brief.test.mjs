@@ -19,7 +19,16 @@ const endedAt = "2026-10-23T21:02:00.000Z";
 
 const clone = (value) => structuredClone(value);
 const ok = (body) => ({ ok: true, status: 200, json: async () => clone(body) });
-const status = (code, body = {}) => ({ ok: code >= 200 && code < 300, status: code, json: async () => body });
+const status = (code, body = {}) => ({
+  ok: code >= 200 && code < 300,
+  status: code,
+  json: async () => body,
+});
+
+/** Stand-in for redact_forgotten_text: replaces each forgotten name. */
+function redactWith(forgotten, text) {
+  return forgotten.reduce((out, name) => out.replaceAll(name, "someone"), text);
+}
 
 const goodArgs = {
   focus: ["The Atlas demo on Thursday", "Getting Sunday runs back"],
@@ -72,7 +81,11 @@ function world(overrides = {}) {
       }
       return ok({
         candidates: [
-          { content: { parts: [{ functionCall: { name: "write_session_brief", args: state.modelArgs } }] } },
+          {
+            content: {
+              parts: [{ functionCall: { name: "write_session_brief", args: state.modelArgs } }],
+            },
+          },
         ],
       });
     }
@@ -82,6 +95,11 @@ function world(overrides = {}) {
     if (path === "/rest/v1/session_briefs") return ok(state.storedBrief ? [state.storedBrief] : []);
     if (path === "/rest/v1/conversation_turns") {
       return ok([...state.turns].sort((a, b) => b.spoken_at.localeCompare(a.spoken_at)));
+    }
+    if (path === "/rest/v1/rpc/redact_forgotten_text") {
+      state.redactions ??= [];
+      state.redactions.push(call);
+      return ok(redactWith(state.forgotten ?? [], call.body.p_text));
     }
     if (path === "/rest/v1/follow_ups") return ok(state.followUps);
     if (path === "/rest/v1/entities") return ok(state.questionEntities);
@@ -108,7 +126,8 @@ function world(overrides = {}) {
 }
 
 const parse = (response) => JSON.parse(response.body);
-const textCalls = (state) => state.providerCalls.filter((call) => !call.url.pathname.includes("tts"));
+const textCalls = (state) =>
+  state.providerCalls.filter((call) => !call.url.pathname.includes("tts"));
 const ttsCalls = (state) => state.providerCalls.filter((call) => call.url.pathname.includes("tts"));
 
 test("happy path: one model call, one TTS call, then a save", async () => {
@@ -143,7 +162,10 @@ test("401 without the authorizer's user, 400 for a bad notebook id, 404 when hid
   const { state, handle } = world();
   assert.equal((await handle(requestEvent({ requestContext: {} }))).statusCode, 401);
   assert.equal((await handle(requestEvent({ headers: {} }))).statusCode, 401);
-  assert.equal((await handle(requestEvent({ pathParameters: { notebookId: "nope" } }))).statusCode, 400);
+  assert.equal(
+    (await handle(requestEvent({ pathParameters: { notebookId: "nope" } }))).statusCode,
+    400,
+  );
   assert.equal(state.calls.length, 0);
   const hidden = world({ state: { notebook: null } });
   const response = await hidden.handle(requestEvent());
@@ -159,6 +181,23 @@ test("a stored brief at the notebook's revision returns without a model call", a
         source_revision: 7,
         brief: goodArgs,
         created_at: "2026-10-23T21:03:00.000Z",
+      },
+    },
+  });
+  const response = await handle(requestEvent());
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(parse(response), { status: "unchanged" });
+  assert.equal(state.providerCalls.length, 0);
+  assert.equal(state.saves.length, 0);
+});
+
+test("a notebook auto-forget has trimmed leaves the brief alone: no model call, no save", async () => {
+  const { state, handle } = world({
+    state: {
+      notebook: {
+        ...clone(fixture.notebook),
+        ended_at: endedAt,
+        transcript_forgotten_at: "2026-11-01T03:15:00.000Z",
       },
     },
   });
@@ -245,7 +284,9 @@ test("no user turns gives 422 and no model call", async () => {
 
 test("weekly_debrief gives 501", async () => {
   const { state, handle } = world({
-    state: { notebook: { ...fixture.notebook, conversation_mode: "weekly_debrief", ended_at: endedAt } },
+    state: {
+      notebook: { ...fixture.notebook, conversation_mode: "weekly_debrief", ended_at: endedAt },
+    },
   });
   const response = await handle(requestEvent());
   assert.equal(response.statusCode, 501);
@@ -263,7 +304,11 @@ test("an empty openingLine is an invalid provider response, nothing saved", asyn
 });
 
 test("no safe thread: a greeting with an empty openingThread is saved", async () => {
-  const greeting = { ...goodArgs, openingThread: "", openingLine: "Hey, good to see you. How are you doing?" };
+  const greeting = {
+    ...goodArgs,
+    openingThread: "",
+    openingLine: "Hey, good to see you. How are you doing?",
+  };
   const { state, handle } = world({ state: { modelArgs: greeting } });
   const response = await handle(requestEvent());
   assert.equal(response.statusCode, 200);
@@ -344,7 +389,11 @@ test("the model sees the previous brief, follow-ups, entity questions and top en
       storedBrief: {
         source_notebook_id: otherNotebookId,
         source_revision: 3,
-        brief: { focus: ["Moving boxes"], openingThread: "PREVIOUS-THREAD-MARKER", openingLine: "x" },
+        brief: {
+          focus: ["Moving boxes"],
+          openingThread: "PREVIOUS-THREAD-MARKER",
+          openingLine: "x",
+        },
         created_at: "2026-10-20T10:00:00.000Z",
       },
     },
@@ -370,7 +419,10 @@ test("the model call is forced, deterministic, and uses briefPrompt", async () =
     mode: "ANY",
     allowed_function_names: ["write_session_brief"],
   });
-  assert.deepEqual(call.body.generationConfig, { temperature: 0, thinkingConfig: { thinkingBudget: 0 } });
+  assert.deepEqual(call.body.generationConfig, {
+    temperature: 0,
+    thinkingConfig: { thinkingBudget: 0 },
+  });
 });
 
 test("briefPrompt carries the opener copy rules", () => {
@@ -395,7 +447,11 @@ test("example opening lines: one or two questions, no day names, nothing that as
   for (const example of examples) {
     const questions = example.split("?").length - 1;
     assert.ok(questions >= 1 && questions <= 2, `expected 1–2 questions: ${example}`);
-    assert.doesNotMatch(example, /(Mon|Tues|Wednes|Thurs|Fri|Satur|Sun)day|tomorrow|tonight/i, example);
+    assert.doesNotMatch(
+      example,
+      /(Mon|Tues|Wednes|Thurs|Fri|Satur|Sun)day|tomorrow|tonight/i,
+      example,
+    );
     assert.doesNotMatch(example, /\bhow did\b|\bdid (the|your)\b.*\bgo\b/i, example);
   }
 });
@@ -404,7 +460,10 @@ test("the model is told the conversation's date", async () => {
   const { state, handle } = world();
   await handle(requestEvent());
   const message = textCalls(state)[0].body.contents[0].parts[0].text;
-  assert.match(message, /^CONVERSATION DATE: \d{4}-\d{2}-\d{2} \((Mon|Tues|Wednes|Thurs|Fri|Satur|Sun)day\)$/m);
+  assert.match(
+    message,
+    /^CONVERSATION DATE: \d{4}-\d{2}-\d{2} \((Mon|Tues|Wednes|Thurs|Fri|Satur|Sun)day\)$/m,
+  );
 });
 
 test("a rate-limited TTS call backs off for seconds, then saves", async () => {
@@ -489,4 +548,28 @@ test("log lines carry ids and counts, never text", async () => {
   ]) {
     assert.ok(!line.includes(secret), `log leaked "${secret}"`);
   }
+});
+
+// ── LM-49: a forgotten name never reaches the model ──────────────────────
+
+test("the transcript is redacted by one user-token call before the model sees it", async () => {
+  const { state, handle } = world({ state: { forgotten: ["Atlas"] } });
+  await handle(requestEvent());
+  assert.equal(state.redactions.length, 1);
+  assert.equal(state.redactions[0].init.headers.authorization, "Bearer signed-user-token");
+  const text = JSON.stringify(
+    state.providerCalls.find((call) => !call.url.pathname.includes("tts")).body,
+  );
+  assert.ok(text.includes("someone"));
+  assert.ok(!text.includes("Atlas demo is"));
+});
+
+test("if redaction fails the model is never called", async () => {
+  const { state, handle } = world({
+    "/rest/v1/rpc/redact_forgotten_text": () => status(500),
+  });
+  const response = await handle(requestEvent());
+  assert.equal(response.statusCode, 503);
+  assert.equal(state.providerCalls.length, 0);
+  assert.equal(state.saves.length, 0);
 });
