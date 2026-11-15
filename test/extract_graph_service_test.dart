@@ -8,6 +8,8 @@ import 'package:lumen/logic/turn_state.dart' show Speaker;
 import 'package:lumen/models/journal_state.dart';
 import 'package:lumen/services/extract_graph_service.dart';
 
+import 'support/pseudonyms.dart';
+
 void main() {
   const notebookId = '8e03b8f4-4f20-4df3-8398-d854adc32b14';
   final conversationFixture = jsonDecode(
@@ -30,6 +32,7 @@ void main() {
     final service = ExtractGraphService(
       baseUrl: 'https://runtime.example.com/',
       accessTokenProvider: () async => 'signed-user-token',
+      pseudonyms: testPseudonyms(),
       client: MockClient((request) async {
         captured = request;
         return http.Response(
@@ -69,7 +72,9 @@ void main() {
     expect(captured.headers, isNot(contains('x-goog-api-key')));
     final body = jsonDecode(captured.body) as Map<String, dynamic>;
     expect(body['turnId'], 'turn-123');
-    expect(body['extractorVersion'], 'gemini/extract_graph/v2');
+    // The version carries the swapped text's hash (LM-56).
+    expect(body['extractorVersion'],
+        startsWith('gemini/extract_graph/v2#ps-'));
     expect(body['text'], 'I met Maya for coffee.');
     expect(body['mode'], 'granular');
     final context = body['context'] as Map<String, dynamic>;
@@ -83,6 +88,7 @@ void main() {
     final service = ExtractGraphService(
       baseUrl: 'https://runtime.example.com',
       accessTokenProvider: () async => 'signed-user-token',
+      pseudonyms: testPseudonyms(),
       client: MockClient(
         (request) async => http.Response(
           jsonEncode({'error': 'invalidRequest'}),
@@ -116,6 +122,7 @@ void main() {
     final service = ExtractGraphService(
       baseUrl: 'https://runtime.example.com',
       accessTokenProvider: () async => 'signed-user-token',
+      pseudonyms: testPseudonyms(),
       client: MockClient((request) async {
         calls += 1;
         if (calls == 1) {
@@ -162,6 +169,7 @@ void main() {
     final service = ExtractGraphService(
       baseUrl: 'https://runtime.example.com',
       accessTokenProvider: () async => null,
+      pseudonyms: testPseudonyms(),
       client: MockClient((request) async {
         called = true;
         return http.Response('{}', 200);
@@ -192,6 +200,7 @@ void main() {
     final service = ExtractGraphService(
       baseUrl: 'https://runtime.example.com',
       accessTokenProvider: () async => 'signed-user-token',
+      pseudonyms: testPseudonyms(),
       client: MockClient((request) async => http.Response('{}', 200)),
     );
 

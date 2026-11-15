@@ -94,7 +94,8 @@ class _FakeMemory implements MemoryControlService {
   }
 
   @override
-  Future<ForgetPreview> forgetEntity(String entityId) async {
+  Future<ForgetPreview> forgetEntity(String entityId,
+      {bool eraseTranscripts = false}) async {
     removed.add(entityId);
     return ForgetPreview.fromJson(const {
       'notebooks': 1,

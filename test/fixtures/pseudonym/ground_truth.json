@@ -1,0 +1,42 @@
+{
+ "_note": "Hand-written expected extraction per transcript. Entities match by normalised name against `match` (canonical + aliases + ASR variants seen in the fixtures). Relations match on the unordered endpoint pair; labels are ignored. `known` = in the swapper's entity list. `wordTraps` are non-name uses of Will/June/Rose that must not be swapped and are ignored by the leak scan.",
+ "universe": {
+  "e1":{"name":"Priya","match":["Priya","Priya Raman","Pria"],"known":true},
+  "e2":{"name":"Samantha","match":["Samantha","Sam","Sammy","Samatha","my sister"],"known":true},
+  "e3":{"name":"Will","match":["Will","Wil"],"known":true},
+  "e4":{"name":"June","match":["June"],"known":true},
+  "e5":{"name":"Rose","match":["Rose"],"known":true},
+  "e6":{"name":"美咲","match":["美咲","Misaki","Mizaki"],"known":true},
+  "e7":{"name":"Halvorsen Marine Instruments","match":["Halvorsen Marine Instruments","Halvorsen","Halverson"],"known":true},
+  "e8":{"name":"Gardiner","match":["Gardiner","Gardner"],"known":true},
+  "e9":{"name":"Kestrel Bioworks","match":["Kestrel Bioworks","Kestrel","Kestral Bioworks","Kestral"],"known":true},
+  "e10":{"name":"Wiscasset","match":["Wiscasset"],"known":true},
+  "e11":{"name":"Boston Marathon","match":["Boston Marathon","the Boston Marathon","marathon"],"known":true},
+  "e12":{"name":"Python","match":["Python"],"known":true},
+  "e13":{"name":"running","match":["running","long runs","training runs"],"known":true},
+  "x1":{"name":"Chicago","match":["Chicago"],"known":false,"public":true},
+  "x2":{"name":"Osaka","match":["Osaka"],"known":false,"public":true},
+  "x3":{"name":"Teodor","match":["Teodor"],"known":false},
+  "x4":{"name":"Ingrid","match":["Ingrid"],"known":false},
+  "x5":{"name":"burnout","match":["burnout"],"known":false,"public":true},
+  "x6":{"name":"anxiety","match":["anxiety","anxious"],"known":false,"public":true}
+ },
+ "transcripts": {
+  "t1":{
+   "entities":["e2","e11","e8","e3","e7","e4","x1","x5","e13"],
+   "relations":[["e2","e11"],["e2","e13"],["e3","e7"],["x1","e4"],["e4","e11"],["e8","e13"],["e11","e13"],["x5","e13"]],
+   "wordTraps":[]},
+  "t2":{
+   "entities":["e6","x2","e12","e1","e9","e5","e10","x3","e8"],
+   "relations":[["e6","x2"],["e6","e12"],["e1","e9"],["e1","e12"],["e5","e10"],["x3","e8"]],
+   "wordTraps":["heat rose","in June","Will you remind"]},
+  "t3":{
+   "entities":["e1","e7","e2","e11","e9","e3","e8","x6","e6"],
+   "relations":[["e1","e9"],["e1","e7"],["e2","e11"],["e3","e7"],["e8","x6"]],
+   "wordTraps":[]},
+  "t4":{
+   "entities":["e4","e8","e10","e5","e7","x4","e3","e12"],
+   "relations":[["e4","e8"],["e4","e10"],["e5","e10"],["e4","e5"],["x4","e7"],["e12","e7"]],
+   "wordTraps":[]}
+ }
+}

@@ -1,0 +1,275 @@
+{
+ "tag": "t3-lm56",
+ "requestHash": "b23411d9b074b307",
+ "request": {
+  "system_instruction": {
+   "parts": [
+    {
+     "text": "You are a silent graph extractor for a voice journal.\nYour job is to keep the user's knowledge graph CONNECTED. A fragmented graph (islands of nodes with no edges) is a failure mode — actively prevent it.\n\nENTITIES — extract from the NEW UTTERANCE:\n- Proper nouns: people, places, projects, events, organizations (Maya, Brooklyn, Project Atlas).\n- Concrete concepts the user names and reasons about (e.g. \"AI\", \"technology\", \"behavioral patterns\", \"intelligence\"). These are valid nodes when the user treats them as discrete things, not when they're filler.\n- entity.type: one of person, place, organization, project, event, activity, concept, emotion, other.\n  - activity: recurring behaviors (\"running\", \"meditation\", \"journaling\").\n  - concept: abstract topics treated as named things (\"AI\", \"behavioral_patterns\").\n  - emotion: named recurring emotional patterns (\"anxiety\", \"burnout\") — NOT one-off mood words.\n  - \"other\" is a true fallback; use it only when nothing else fits.\n- entity.description: only if the utterance gives a concrete fact about the entity; otherwise omit. Limit it to at most 800 characters.\n- Skip pronouns, generic time words (\"today\", \"yesterday\"), one-off mood words (\"happy\", \"stressed\" used to describe a single moment), and verbs.\n- Dedup against EXISTING ENTITIES — reuse the existing spelling when the user is clearly referring to the same thing.\n\nCONTINUATIONS — preserve subjects across turns:\nWhen RECENT CONVERSATION shows the agent just asked about an entity from EXISTING ENTITIES, and the user's reply continues that subject — pronouns (\"she/he/it/they\"), partial answer (\"since freshman year\"), or implicit reference (\"the project\", \"that class\") — INCLUDE that entity in `entities` using its existing spelling. The user's reply IS information about that entity even when they don't name it; without re-listing it, the journal loses the link to the entity's page.\n\nApply this whenever the user's turn:\n  - directly answers the agent's last question about a known entity\n  - elaborates on the prior subject without naming it\n  - references the prior subject via pronoun or definite article\n\nDo NOT apply when the user pivots to a new subject. The trigger is a Q-A pair about the same entity.\n\nRELATIONS — this is the most important part. Connect aggressively. Islands of nodes are a hard failure:\n- Format: source --label--> target. label = snake_case phrase (e.g. simulates, contrasts_with, example_of, used_for, depends_on, part_of, related_to, mentioned_with, situated_at, occurred_during, involves, exhibits, enables).\n- Endpoints must be entities — either ones you're returning now OR ones in EXISTING ENTITIES.\n- FOR EVERY ENTITY in this turn, scan exhaustively for edges to:\n  (a) every other entity in this turn (co-occurrence in the same thought is a relation),\n  (b) every entity in EXISTING ENTITIES the user is still talking about (resolved via RECENT CONVERSATION),\n  (c) parent/sibling/instance entities in EXISTING ENTITIES that the new one fits under.\n- TARGET DENSITY: aim for at least one edge per new entity, ideally more. If you return N new entities and zero edges, you have failed unless every entity is a true orphan topic.\n- WEAK-BUT-TRUE RELATIONS COUNT. When two entities show up in the same utterance and you can't think of a stronger label, emit `mentioned_with` or `related_to`. The graph being WIRED is worth more than every edge being maximally precise.\n- Examples:\n  · \"AI can simulate intelligence\" with `AI`, `intelligence`, `technology` already known → AI--simulates-->intelligence, AI--is_a-->technology.\n  · \"people exhibit behavioral patterns\" → people--exhibits-->behavioral_patterns.\n  · \"I went running with Maya in Brooklyn\" → running--with-->Maya, running--at-->Brooklyn, Maya--in-->Brooklyn.\n  · \"I'm anxious about the Atlas demo\" → anxiety--about-->Project_Atlas, Project_Atlas--has_event-->demo.\n  · \"CS246 reminds me of CS241\" → CS246--related_to-->CS241.\n  · user reasons about a concept that subsumes an existing one → existing--example_of-->new_concept.\n- \"Never invent facts the user didn't imply\" means don't fabricate specifics they didn't say (don't guess Maya's age, don't make up an address). It does NOT mean refusing to record relations they clearly implied by mentioning two things in the same breath.\n\nSUPERSEDES — when the user contradicts the existing graph:\nThe user's utterance sometimes corrects, replaces, or denies a relation already shown in EXISTING RELATIONS. When that happens, return the contradicted relation's [bracketed] id in `supersedes`.\n\nTrigger ONLY when the user explicitly:\n  - negates a fact (\"Maya isn't on Atlas\")\n  - replaces a fact (\"It's not Maya, it's Sam\")\n  - says something that makes the prior fact mutually exclusive with the new one — and the entity referenced is the SAME entity.\n\nDo NOT trigger when:\n  - the user adds new info that coexists with the old (\"Maya also helps Sam\" — both can be true)\n  - the user is vague or non-committal\n  - the relation has the same endpoints but a slightly different label (those are fine alongside each other)\n\nReference relations by their [bracketed] id from the EXISTING RELATIONS list above. If you can't find an exact id match, do not invent one — omit the supersede.\n\nReturn empty arrays only when the utterance has no extractable entities — small talk, hesitations, yes/no answers, filler tokens.\nNever speak to the user. You are not the conversational agent."
+    }
+   ]
+  },
+  "contents": [
+   {
+    "role": "user",
+    "parts": [
+     {
+      "text": "EXISTING ENTITIES (reuse these spellings for the same thing):\n- Boston Marathon (event) - Race the user is training for.\n- Giselle (person) - Friend since college. Works at Larkspur Labs.\n- Henrietta (person) - The user's older sister. Lives in Portland.\n- Rupert (person) - The user's manager at Redwater Logistics.\n- Janika (person) - Close friend who lives in Chicago.\n- Cordelia (person) - The user's aunt. Lives in Inglewood.\n- Anneliese (person) - Friend in Osaka the user has known since a year abroad.\n- Redwater Logistics (organization) - Employer. The user is its only chronometer calibrator, based in Brackenridge.\n- Brackenridge (place) - Small town in Maine where the user lives.\n- Larkspur Labs (organization) - Small biotech where Giselle works.\n- Inglewood (place) - Small town where Cordelia lives.\n- Python (concept) - Programming language the user uses to automate calibration logs.\n- running (activity) - Recurring training habit.\n\nEXISTING RELATIONS (each prefixed with its [id] — use these IDs verbatim in supersedes when contradicted):\n- [rupert__manages-at__redwater-logistics] Rupert --manages_at--> Redwater Logistics\n- [giselle__works-at__larkspur-labs] Giselle --works_at--> Larkspur Labs\n- [cordelia__lives-in__inglewood] Cordelia --lives_in--> Inglewood\n- [henrietta__mentioned-with__running] Henrietta --mentioned_with--> running\n- [redwater-logistics__situated-at__brackenridge] Redwater Logistics --situated_at--> Brackenridge\n\nRECENT CONVERSATION (for pronoun resolution only — do NOT extract from these):\n- assistant: You sounded unsure yesterday. What's weighing on you?\n- user: work, mostly. it's hard to explain.\n\nNEW UTTERANCE:\n\"\"\"ok so Giselle came over last night and we talked for like two hours about Redwater, because she thinks I should leave the marine instruments job. Henrietta, my sister, thinks I'm crazy to even consider it, she said stay put at least until after the Boston Marathon. Giselle says Larkspur Labs needs a calibration person and that Rupert would write me a reference. I honestly don't know. Driving around Brackenridge this morning I just felt stuck, kind of anxious about the whole thing. Anneliese texted that I should just apply.\"\"\""
+     }
+    ]
+   }
+  ],
+  "tools": [
+   {
+    "function_declarations": [
+     {
+      "name": "extract_graph",
+      "description": "Extract named entities and relations from the utterance.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "entities": {
+         "type": "array",
+         "items": {
+          "type": "object",
+          "properties": {
+           "name": {
+            "type": "string"
+           },
+           "type": {
+            "type": "string",
+            "enum": [
+             "person",
+             "place",
+             "organization",
+             "project",
+             "event",
+             "activity",
+             "concept",
+             "emotion",
+             "other"
+            ]
+           },
+           "description": {
+            "type": "string",
+            "maxLength": 800
+           },
+           "metadata": {
+            "type": "object"
+           },
+           "questions": {
+            "type": "array",
+            "items": {
+             "type": "string"
+            }
+           }
+          },
+          "required": [
+           "name",
+           "type"
+          ]
+         }
+        },
+        "relations": {
+         "type": "array",
+         "items": {
+          "type": "object",
+          "properties": {
+           "source": {
+            "type": "string"
+           },
+           "target": {
+            "type": "string"
+           },
+           "label": {
+            "type": "string"
+           },
+           "metadata": {
+            "type": "object"
+           }
+          },
+          "required": [
+           "source",
+           "target",
+           "label"
+          ]
+         }
+        },
+        "supersedes": {
+         "type": "array",
+         "items": {
+          "type": "string"
+         },
+         "description": "Ids of existing relations the user just contradicted."
+        }
+       },
+       "required": [
+        "entities",
+        "relations"
+       ]
+      }
+     }
+    ]
+   }
+  ],
+  "tool_config": {
+   "function_calling_config": {
+    "mode": "ANY",
+    "allowed_function_names": [
+     "extract_graph"
+    ]
+   }
+  },
+  "generationConfig": {
+   "temperature": 0,
+   "thinkingConfig": {
+    "thinkingBudget": 0
+   }
+  }
+ },
+ "response": {
+  "candidates": [
+   {
+    "content": {
+     "parts": [
+      {
+       "functionCall": {
+        "name": "extract_graph",
+        "args": {
+         "relations": [
+          {
+           "source": "Giselle",
+           "target": "Redwater Logistics",
+           "label": "discussed"
+          },
+          {
+           "source": "Giselle",
+           "target": "marine instruments job",
+           "label": "thinks_user_should_leave"
+          },
+          {
+           "label": "thinks_user_should_stay_in",
+           "source": "Henrietta",
+           "target": "marine instruments job"
+          },
+          {
+           "source": "Henrietta",
+           "target": "Boston Marathon",
+           "label": "until_after"
+          },
+          {
+           "label": "needs",
+           "source": "Larkspur Labs",
+           "target": "calibration person"
+          },
+          {
+           "source": "Giselle",
+           "target": "Larkspur Labs",
+           "label": "mentioned"
+          },
+          {
+           "label": "mentioned",
+           "source": "Giselle",
+           "target": "calibration person"
+          },
+          {
+           "label": "would_write",
+           "source": "Rupert",
+           "target": "reference"
+          },
+          {
+           "label": "mentioned",
+           "source": "Giselle",
+           "target": "Rupert"
+          },
+          {
+           "source": "Brackenridge",
+           "target": "anxious",
+           "label": "felt_stuck_in"
+          },
+          {
+           "label": "about",
+           "source": "anxious",
+           "target": "marine instruments job"
+          },
+          {
+           "label": "advised_to_apply_for_new",
+           "source": "Anneliese",
+           "target": "marine instruments job"
+          }
+         ],
+         "entities": [
+          {
+           "type": "person",
+           "name": "Giselle"
+          },
+          {
+           "type": "organization",
+           "name": "Redwater Logistics"
+          },
+          {
+           "type": "other",
+           "description": "Job at Redwater Logistics that Giselle thinks the user should leave.",
+           "name": "marine instruments job"
+          },
+          {
+           "type": "person",
+           "name": "Henrietta"
+          },
+          {
+           "type": "event",
+           "name": "Boston Marathon"
+          },
+          {
+           "type": "organization",
+           "name": "Larkspur Labs"
+          },
+          {
+           "type": "other",
+           "description": "Role that Larkspur Labs needs to fill.",
+           "name": "calibration person"
+          },
+          {
+           "type": "person",
+           "name": "Rupert"
+          },
+          {
+           "type": "place",
+           "name": "Brackenridge"
+          },
+          {
+           "type": "emotion",
+           "name": "anxious"
+          },
+          {
+           "type": "person",
+           "name": "Anneliese"
+          }
+         ]
+        }
+       }
+      }
+     ],
+     "role": "model"
+    },
+    "finishReason": "STOP",
+    "index": 0,
+    "finishMessage": "Model generated function call(s)."
+   }
+  ],
+  "usageMetadata": {
+   "promptTokenCount": 2172,
+   "candidatesTokenCount": 479,
+   "totalTokenCount": 2651,
+   "promptTokensDetails": [
+    {
+     "modality": "TEXT",
+     "tokenCount": 2172
+    }
+   ],
+   "serviceTier": "standard"
+  },
+  "modelVersion": "gemini-2.5-flash",
+  "responseId": "8Vjvap_iK-q2xdIP3vLiyQI"
+ }
+}

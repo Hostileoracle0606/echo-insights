@@ -123,7 +123,7 @@ class WhoHearsYouScreen extends StatelessWidget {
             _Party(
               keyName: 'controls',
               name: 'What you can do',
-              lines: [claims.exportClaim, ...gated],
+              lines: [claims.exportClaim, claims.sharedLogClaim, ...gated],
               style: body,
             ),
           ],

@@ -7,7 +7,9 @@ import '../../security/app_lock_provider.dart';
 import '../../theme/lumen_colors.dart';
 import '../../theme/lumen_text.dart';
 import '../../widgets/transcript_retention.dart';
+import '../privacy/shared_log_screen.dart';
 import '../privacy/who_hears_you_screen.dart';
+import 'sign_in_security.dart';
 
 /// The dashboard's shield button: opens [PrivacySheet].
 class PrivacyButton extends StatelessWidget {
@@ -171,6 +173,7 @@ class _PrivacySheetState extends ConsumerState<PrivacySheet> {
               ),
               children: const [TranscriptRetentionChoices()],
             ),
+            const SignInSecurity(),
             ListTile(
               key: const Key('exportJournalTile'),
               contentPadding: EdgeInsets.zero,
@@ -181,7 +184,8 @@ class _PrivacySheetState extends ConsumerState<PrivacySheet> {
                           'try again.'
                     : _exportStatus ??
                           'A zip with your whole journal as data and as '
-                              'Markdown notes. Asks for Face ID first.',
+                              'Markdown notes. Asks for Face ID or your '
+                              'passcode first.',
                 style: _exportFailed
                     ? small.copyWith(color: colors.destructive)
                     : small,
@@ -194,6 +198,18 @@ class _PrivacySheetState extends ConsumerState<PrivacySheet> {
                     )
                   : Icon(Icons.ios_share, color: colors.ink),
               onTap: _exporting ? null : _export,
+            ),
+            ListTile(
+              key: const Key('sharedLogTile'),
+              contentPadding: EdgeInsets.zero,
+              title: const Text('What Lumen shared'),
+              subtitle: Text(
+                'The exact text Lumen sent for each session, kept on this '
+                'phone for 7 days.',
+                style: small,
+              ),
+              trailing: Icon(Icons.chevron_right, color: colors.ink),
+              onTap: () => showSharedLog(context),
             ),
             ListTile(
               key: const Key('whoHearsYouTile'),

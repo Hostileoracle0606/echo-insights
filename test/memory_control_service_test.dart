@@ -50,7 +50,75 @@ void main() {
 
       final done = await service.forgetEntity('priya');
       expect(calls.last.$1, 'forget_entity');
+      // Off: the one-argument RPC, as every older build calls it.
+      expect(calls.last.$2, {'p_entity_id': 'priya'});
       expect(done.followUps, 1);
+    });
+
+    test('forgetEntity with eraseTranscripts queues an erase job', () async {
+      response = {
+        'notebooks': 1,
+        'transcriptPassages': 500,
+        'transcriptPassagesCapped': true,
+        'eraseAvailable': true,
+      };
+      final preview = await service.previewForget('maya-chen');
+      expect(preview.transcriptPassages, 500);
+      expect(preview.transcriptPassagesCapped, isTrue);
+      expect(preview.eraseAvailable, isTrue);
+
+      response = {'notebooks': 1, 'eraseJobId': 'job-1'};
+      final done =
+          await service.forgetEntity('maya-chen', eraseTranscripts: true);
+      expect(calls.last.$1, 'forget_entity');
+      expect(calls.last.$2,
+          {'p_entity_id': 'maya-chen', 'p_erase_transcripts': true});
+      expect(done.eraseJobId, 'job-1');
+    });
+
+    test('an older server: no erase offered, no job', () async {
+      response = {'notebooks': 1};
+      final preview = await service.previewForget('maya-chen');
+      expect(preview.eraseAvailable, isFalse);
+      expect(preview.transcriptPassagesCapped, isFalse);
+      expect(preview.eraseJobId, isNull);
+    });
+
+    test('eraseSample reads before and after passages', () async {
+      response = {
+        'available': true,
+        'passages': [
+          {'before': 'Maya Chen called.', 'after': 'someone called.'},
+        ],
+      };
+      final sample = await service.eraseSample('maya-chen');
+      expect(calls.last.$1, 'forget_erase_sample');
+      expect(calls.last.$2, {'p_entity_id': 'maya-chen', 'p_limit': 3});
+      expect(sample.single.before, 'Maya Chen called.');
+      expect(sample.single.after, 'someone called.');
+    });
+
+    test('eraseStep runs one bounded batch of a job', () async {
+      response = {
+        'rewritten': 4,
+        'total': 10,
+        'remaining': 1200,
+        'finished': false,
+      };
+      final step = await service.eraseStep('job-1');
+      expect(calls.last.$1, 'forget_erase_step');
+      expect(calls.last.$2, {'p_job_id': 'job-1', 'p_batch': 300});
+      expect(step.total, 10);
+      expect(step.remaining, 1200);
+      expect(step.finished, isFalse);
+    });
+
+    test('pendingErases lists job ids', () async {
+      response = [
+        {'id': 'job-1', 'rewritten': 3},
+      ];
+      expect(await service.pendingErases(), ['job-1']);
+      expect(calls.last.$1, 'forget_erase_pending');
     });
 
     test('removeEntity calls remove_entity', () async {

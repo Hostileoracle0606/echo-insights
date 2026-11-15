@@ -34,9 +34,11 @@ insert into public.relations (id, user_id, notebook_id, source_id, target_id, la
 insert into public.entity_embeddings (notebook_id, entity_id, user_id, embedding, embedding_model, content_hash)
   select notebook_id, id, user_id, array_fill(0.0::real, array[384])::vector, 'm', 'h'
   from public.entities where id = 'ravi';
+-- The first card is already behind its notebook, so the save below replaces
+-- it: a Remove alone no longer makes a current card stale (LM-63, BUG-3).
 insert into public.session_cards (notebook_id, user_id, conversation_mode, source_revision, card) values
-  ('a1111111-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', 'just_talk', 3,
-   '{"version":1,"notebookId":"a1111111-0000-0000-0000-000000000001","conversationMode":"just_talk","sourceRevision":3,
+  ('a1111111-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', 'just_talk', 2,
+   '{"version":1,"notebookId":"a1111111-0000-0000-0000-000000000001","conversationMode":"just_talk","sourceRevision":2,
      "title":"Work","summary":"Work was fine, then back to work.","remember":[{"entityId":"work-project","name":"Work project"}],
      "notes":["We may mark it. Will said so."]}'),
   ('b2222222-0000-0000-0000-000000000002', '22222222-2222-2222-2222-222222222222', 'just_talk', 3,

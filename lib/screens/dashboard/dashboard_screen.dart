@@ -13,6 +13,7 @@ import '../../theme/lumen_colors.dart';
 import '../../theme/lumen_text.dart';
 import '../../widgets/delete_session.dart';
 import '../../widgets/transcript_retention.dart';
+import '../privacy/shared_log_screen.dart';
 import 'privacy_sheet.dart';
 
 // Matches the iPhone's display corner radius so the docked button's curvature
@@ -282,7 +283,8 @@ class DashboardScreen extends ConsumerWidget {
   }
 }
 
-/// The notebook's overflow menu: today just "Delete this session" (LM-48).
+/// The notebook's overflow menu: "What Lumen shared" (LM-57) and "Delete
+/// this session" (LM-48).
 class _NotebookMenu extends ConsumerWidget {
   const _NotebookMenu({required this.notebookId, required this.colors});
 
@@ -298,10 +300,14 @@ class _NotebookMenu extends ConsumerWidget {
         padding: EdgeInsets.zero,
         iconSize: 20,
         icon: Icon(Icons.more_horiz, color: colors.mutedForeground),
-        onSelected: (_) => unawaited(
-          confirmAndDeleteSession(context, ref, notebookId),
-        ),
+        onSelected: (choice) => choice == 'shared'
+            ? unawaited(showSharedLog(context, notebookId: notebookId))
+            : unawaited(confirmAndDeleteSession(context, ref, notebookId)),
         itemBuilder: (_) => [
+          const PopupMenuItem<String>(
+            value: 'shared',
+            child: Text('What Lumen shared'),
+          ),
           PopupMenuItem<String>(
             value: 'delete',
             child: Text(
