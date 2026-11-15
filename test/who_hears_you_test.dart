@@ -79,7 +79,7 @@ Future<void> _frames(WidgetTester tester, {int count = 30}) async {
 
 Future<void> _pumpScreen(WidgetTester tester, WhoHearsYouScreen screen) async {
   tester.view
-    ..physicalSize = const Size(402, 2400)
+    ..physicalSize = const Size(402, 3200)
     ..devicePixelRatio = 1;
   addTearDown(tester.view.reset);
   await tester.pumpWidget(
@@ -179,8 +179,12 @@ void main() {
 
     testWidgets('the app shows every shipped control', (t) async {
       await _pumpScreen(t, const WhoHearsYouScreen());
-      for (final line in gatedClaims.values) {
-        expect(find.text(line), findsOneWidget);
+      for (final entry in gatedClaims.entries) {
+        expect(
+          find.text(entry.value),
+          shipped.contains(entry.key) ? findsOneWidget : findsNothing,
+          reason: '${entry.key}',
+        );
       }
     });
 

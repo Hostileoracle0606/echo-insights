@@ -125,8 +125,8 @@ select throws_ok(
   '22023', null, 'over-long openingLine is refused');
 select throws_ok(
   $$ select public.save_session_brief('a1111111-0000-0000-0000-000000000001', 5,
-       '{"focus":[],"openingThread":"y","openingLine":"Hi"}'::jsonb, '', 24000) $$,
-  '22023', null, 'empty audio is refused');
+       '{"focus":[],"openingThread":"y","openingLine":"Hi"}'::jsonb, '@@@@', 24000) $$,
+  '22023', null, 'audio that is not base64 is refused (no audio at all is LM-56, brief_without_audio_test)');
 
 -- ── 8. B cannot see or use A's data ────────────────────────────────────────
 set local request.jwt.claim.sub = '22222222-2222-2222-2222-222222222222';

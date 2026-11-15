@@ -21,7 +21,7 @@ const PARTIES: { name: string; lines: string[] }[] = [
     name: "Google",
     lines: [
       "Lumen sends your voice and text to Google's Gemini service to talk with you.",
-      "While you talk, your voice goes to Google live. What Lumen tells Google can also carry things you said in earlier conversations and your opening brief, so earlier journal content goes to Google during a conversation. The text of each turn is sent as you go, to pick out people and places. When a conversation ends, its text goes again to write your cards and briefs and to speak the line Lumen opens with.",
+      "While you talk, your voice goes to Google live. What Lumen tells Google during a conversation can also carry things you said in earlier conversations and your opening brief, with names as you said them. In the iPhone app, Lumen's text model gets made-up names instead: the text of each turn, sent as you go to pick out people and places, and the text sent when a conversation ends to write your cards and brief. Your phone swaps the names of people, private places and organizations it recognizes before sending and swaps them back when the answer returns. A name it doesn't recognize, such as a nickname it hasn't learned, can still go through as you said it. The one line Lumen opens your next conversation with goes to Google's voice with real names, so it is read aloud right.",
     ],
   },
   {
@@ -68,7 +68,8 @@ const CONTROLS: string[] = [
 ];
 
 const IPHONE_CONTROLS: string[] = [
-  "You can forget a person from their page. They leave your map and the questions Lumen would ask, and their name is replaced in your cards and in what Lumen remembers about others. Mentioning that name later doesn't bring them back. Lumen matches the name they were saved under, so a nickname or a first name alone can slip through. Your saved transcripts keep what you said, and Lumen can still read your past conversations, so it may bring the name up.",
+  "In the iPhone app you can see exactly what Lumen sent for each session, kept on your phone for 7 days. The live voice conversation is not part of it, and neither is anything sent while the phone is locked. Removing or forgetting a person clears it.",
+  "You can forget a person from their page. Lumen won't bring them up again, and they're gone from your maps. Their name is replaced with “someone” in everything Lumen reads: your past conversations, your cards and what it remembers about others. Mentioning that name later doesn't bring them back. Lumen matches the name they were saved under, so a nickname or a first name alone can slip through. Your saved transcripts keep your words for you to read.",
   "Off the record: Lumen doesn't save what you say while it is on, and writes no card from it. Your voice still goes to Google so Lumen can answer.",
   "You can have old transcripts deleted automatically after 7, 30 or 90 days. Cards and what Lumen remembers stay.",
 ];

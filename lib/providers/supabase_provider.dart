@@ -2,9 +2,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../env.dart';
+import '../services/account_auth_service.dart';
 import '../services/extract_graph_service.dart';
 import '../services/fresh_access_token.dart';
 import '../services/memory_control_service.dart';
+import '../services/model_inputs.dart';
 import '../services/notebook_commit_service.dart';
 import '../services/notebook_runtime_service.dart';
 import '../services/session_brief_service.dart';
@@ -14,6 +16,9 @@ import '../services/session_deletion_service.dart';
 import '../services/supabase_service.dart';
 import '../services/transcript_retention_service.dart';
 import '../services/transcript_store.dart';
+import 'forget_redactor_provider.dart';
+import 'pseudonym_provider.dart';
+import 'shared_log_provider.dart';
 
 final supabaseClientProvider = Provider<SupabaseClient>((ref) {
   return Supabase.instance.client;
@@ -34,6 +39,13 @@ Future<String?> _accessToken(SupabaseClient client) => freshAccessToken(
 
 final supabaseServiceProvider = Provider<SupabaseService>((ref) {
   return SupabaseService(ref.watch(supabaseClientProvider));
+});
+
+/// Sign in with Apple, passkeys and the device list (LM-58).
+final accountAuthServiceProvider = Provider<AccountAuthService>((ref) {
+  return AccountAuthService(
+    SupabaseAuthGateway(ref.watch(supabaseClientProvider)),
+  );
 });
 
 final notebookCommitServiceProvider = Provider<NotebookCommitService>((ref) {
@@ -66,7 +78,16 @@ final extractGraphServiceProvider = Provider<ExtractGraphService>((ref) {
   return ExtractGraphService(
     baseUrl: Env.notebookRuntimeUrl,
     accessTokenProvider: () => _accessToken(client),
+    pseudonyms: ref.watch(pseudonymServiceProvider),
+    log: ref.watch(sharedLogProvider),
+    forgotten: ref.watch(forgetRedactorProvider),
   );
+});
+
+/// What the closing card and the brief are written from, read as the user
+/// so the names can be swapped on the device first (LM-56).
+final modelInputSourceProvider = Provider<ModelInputSource>((ref) {
+  return SupabaseModelInputs(ref.watch(supabaseClientProvider));
 });
 
 /// The closing card for a conversation (LM-15): written by the notebook
@@ -76,6 +97,10 @@ final sessionCardServiceProvider = Provider<SessionCardService>((ref) {
   return SessionCardService(
     baseUrl: Env.notebookRuntimeUrl,
     accessTokenProvider: () => _accessToken(client),
+    inputs: ref.watch(modelInputSourceProvider),
+    pseudonyms: ref.watch(pseudonymServiceProvider),
+    log: ref.watch(sharedLogProvider),
+    rpc: (fn, [params]) => client.rpc(fn, params: params),
     readCard: (notebookId) async {
       final row = await client
           .from('session_cards')
@@ -110,5 +135,8 @@ final sessionBriefServiceProvider = Provider<SessionBriefService>((ref) {
     baseUrl: Env.notebookRuntimeUrl,
     accessTokenProvider: () => _accessToken(client),
     rpc: (fn, [params]) => client.rpc(fn, params: params),
+    inputs: ref.watch(modelInputSourceProvider),
+    pseudonyms: ref.watch(pseudonymServiceProvider),
+    log: ref.watch(sharedLogProvider),
   );
 });

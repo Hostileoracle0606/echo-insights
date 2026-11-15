@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../providers/supabase_provider.dart';
+import 'social_sign_in.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -60,6 +61,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         ),
                   ),
                   const SizedBox(height: 28),
+                  const SocialSignInButtons(signup: false),
                   TextField(
                     controller: _email,
                     keyboardType: TextInputType.emailAddress,

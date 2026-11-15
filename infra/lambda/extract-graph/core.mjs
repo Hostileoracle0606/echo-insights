@@ -291,6 +291,54 @@ function patchFromProviderResponse(payload) {
   return null;
 }
 
+// Joins the texts for one call: a control character is a gap to the
+// database's matcher, so no name spans two of them. Taken out of each first.
+const redactionSeparator = "\u0001";
+
+/**
+ * [body] with every forgotten name in the turn, the recent conversation and
+ * the question being answered replaced by "someone", through one
+ * redact_forgotten_text call as the user. Throws on any failure.
+ */
+async function redactRequest({ supabaseUrl, publishableKey, authorization, fetchImpl, body }) {
+  const followUp = body.context.answeringFollowUp;
+  const texts = [
+    body.text,
+    ...body.context.recentConversation.map((turn) => turn.text),
+    ...(followUp ? [followUp.question ?? "", followUp.reason ?? ""] : []),
+  ].map((text) => String(text).replaceAll(redactionSeparator, ""));
+  const response = await fetchImpl(new URL("/rest/v1/rpc/redact_forgotten_text", supabaseUrl), {
+    method: "POST",
+    headers: {
+      accept: "application/json",
+      "content-type": "application/json",
+      apikey: publishableKey,
+      authorization,
+    },
+    body: JSON.stringify({ p_text: texts.join(redactionSeparator) }),
+    signal: AbortSignal.timeout(5000),
+  });
+  if (!response.ok) throw new Error("redaction unavailable");
+  const out = await response.json();
+  if (typeof out !== "string") throw new Error("redaction malformed");
+  const parts = out.split(redactionSeparator);
+  if (parts.length !== texts.length) throw new Error("redaction misaligned");
+  const turns = body.context.recentConversation.length;
+  return {
+    text: parts[0],
+    context: {
+      ...body.context,
+      recentConversation: body.context.recentConversation.map((turn, index) => ({
+        ...turn,
+        text: parts[1 + index],
+      })),
+      answeringFollowUp: followUp
+        ? { ...followUp, question: parts[1 + turns], reason: parts[2 + turns] }
+        : followUp,
+    },
+  };
+}
+
 export function createExtractGraphHandler({
   supabaseUrl,
   publishableKey,
@@ -334,6 +382,19 @@ export function createExtractGraphHandler({
       if (!Array.isArray(notebooks) || notebooks.length === 0) {
         return jsonResponse(404, { status: "rejected", code: "notFound" });
       }
+    } catch {
+      return jsonResponse(503, { status: "rejected", code: "providerUnavailable" });
+    }
+
+    // LM-63: a forgotten name never reaches the model, whatever the app knew.
+    // A reinstalled app or a second device has no list of the people the user
+    // forgot, so the turn, the recent conversation and the question being
+    // answered go through the database's redaction, with the user's own
+    // token. Fails closed: no answer, no model call. The cache key and hash
+    // stay those of the request, so a retry finds its result.
+    let redacted;
+    try {
+      redacted = await redactRequest({ supabaseUrl, publishableKey, authorization, fetchImpl, body });
     } catch {
       return jsonResponse(503, { status: "rejected", code: "providerUnavailable" });
     }
@@ -387,7 +448,9 @@ export function createExtractGraphHandler({
       system_instruction: {
         parts: [{ text: body.mode === "wiki" ? wikiPrompt : granularPrompt }],
       },
-      contents: [{ role: "user", parts: [{ text: buildUserMessage(body.text, body.context) }] }],
+      contents: [
+        { role: "user", parts: [{ text: buildUserMessage(redacted.text, redacted.context) }] },
+      ],
       tools: [{ function_declarations: [extractGraphFunction] }],
       tool_config: {
         function_calling_config: { mode: "ANY", allowed_function_names: ["extract_graph"] },

@@ -54,7 +54,18 @@ class OpeningPrep {
   /// it look new again. Cleared only by [clear].
   bool _knownReturning = false;
 
-  SessionOpeningState? get current => _current;
+  /// False while the check for a forget made on another device is failing:
+  /// the held brief (it may name someone forgotten there, with audio) is not
+  /// played until a check succeeds.
+  bool _forgetCheckOk = true;
+
+  void setForgetCheckOk(bool ok) => _forgetCheckOk = ok;
+
+  SessionOpeningState? get current {
+    final state = _current;
+    if (_forgetCheckOk || state == null || state.brief == null) return state;
+    return SessionOpeningState(returning: state.returning, brief: null);
+  }
   bool get knownNewAccount => _knownNewAccount;
   String? get pendingBrief => _pendingBrief;
 
@@ -213,6 +224,7 @@ class OpeningPrep {
     _locallyPlayed = null;
     _knownNewAccount = false;
     _knownReturning = false;
+    _forgetCheckOk = true;
   }
 }
 

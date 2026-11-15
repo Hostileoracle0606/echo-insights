@@ -32,14 +32,16 @@ class _Journal extends JournalNotifier {
   final JournalState _seed;
   final bool fail;
   final forgotten = <String>[];
+  final names = <String?>[];
 
   @override
   JournalState build() => _seed;
 
   @override
-  Future<void> forgetEntity(String entityId) async {
+  Future<void> forgetEntity(String entityId, {String? name}) async {
     if (fail) throw Exception('boom');
     forgotten.add(entityId);
+    names.add(name);
     state = state.copyWith(entities: {...state.entities}..remove(entityId));
   }
 }
@@ -141,15 +143,18 @@ void main() {
     expect(opened.journal.forgotten, isEmpty);
   });
 
-  testWidgets('it says what stays, and that Lumen can still read it',
+  testWidgets('it says Lumen won\'t bring them up, and what stays for the user',
       (tester) async {
     await _open(tester);
     await _toConfirmation(tester);
     expect(find.textContaining('Priya on your map'), findsOneWidget);
     expect(find.textContaining("Lumen's memory of"), findsNothing);
-    expect(find.textContaining('a first name alone can slip through'),
+    expect(find.textContaining("Lumen won't bring Priya up again"),
         findsOneWidget);
-    expect(find.textContaining('Lumen can still read those'), findsOneWidget);
+    expect(find.textContaining('a first name alone can slip'), findsOneWidget);
+    expect(find.textContaining('keep your words for you to read'),
+        findsOneWidget);
+    expect(find.textContaining('may bring the name up'), findsNothing);
   });
 
   testWidgets('the brief line is left out when nothing will be deleted',
@@ -179,6 +184,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(opened.journal.forgotten, ['priya']);
+    expect(opened.journal.names, ['Priya'], reason: 'the name goes with it, for the redaction');
     expect(find.byType(ForgetEntityScreen), findsNothing);
     expect(find.byType(EntityNoteSheet), findsNothing);
     expect(find.text('Forgot Priya'), findsOneWidget);

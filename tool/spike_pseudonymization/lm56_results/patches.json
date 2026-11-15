@@ -1,0 +1,532 @@
+[
+ {
+  "transcript": "t1",
+  "patch": {
+   "entities": [
+    {
+     "name": "Boston Marathon",
+     "type": "event",
+     "description": "The user finally signed up for the Boston Marathon."
+    },
+    {
+     "name": "Samantha",
+     "type": "person",
+     "description": "The user's sister, who said she'd run the first ten miles of the Boston Marathon with the user, despite hating running. She will do long runs with the user around Gardiner on Saturdays."
+    },
+    {
+     "name": "running",
+     "type": "activity",
+     "description": "Samantha hates running but will run the first ten miles of the Boston Marathon with the user and do long runs around Gardiner on Saturdays. Running with Samantha helps the user with their nervousness and burnout."
+    },
+    {
+     "name": "Gardiner",
+     "type": "place",
+     "description": "The location for long runs on Saturdays."
+    },
+    {
+     "name": "Will",
+     "type": "person",
+     "description": "The user's manager at Halvorsen Marine Instruments, who will cover the user's Friday shifts so the user can travel for the Boston Marathon."
+    },
+    {
+     "name": "Halvorsen Marine Instruments",
+     "type": "organization",
+     "description": "The user's employer, where the user is the only chronometer calibrator and needs to sign off the March fourteenth shipment."
+    },
+    {
+     "name": "March fourteenth shipment",
+     "type": "event",
+     "description": "A shipment that only the user can sign off on."
+    },
+    {
+     "name": "June",
+     "type": "person",
+     "description": "A friend flying in from Chicago to cheer for the user at mile twenty of the Boston Marathon."
+    },
+    {
+     "name": "Chicago",
+     "type": "place",
+     "description": "Where June is flying in from."
+    },
+    {
+     "name": "nervousness",
+     "type": "emotion",
+     "description": "The user has been feeling nervous about the Boston Marathon."
+    },
+    {
+     "name": "burnout",
+     "type": "emotion",
+     "description": "The user has been experiencing burnout."
+    }
+   ],
+   "relations": [
+    {
+     "source": "Boston Marathon",
+     "target": "Samantha",
+     "label": "involves"
+    },
+    {
+     "source": "Samantha",
+     "target": "running",
+     "label": "will_do"
+    },
+    {
+     "source": "running",
+     "target": "Gardiner",
+     "label": "situated_at"
+    },
+    {
+     "source": "Boston Marathon",
+     "target": "Will",
+     "label": "enables_participation_by"
+    },
+    {
+     "source": "Will",
+     "target": "Halvorsen Marine Instruments",
+     "label": "manages_at"
+    },
+    {
+     "source": "Halvorsen Marine Instruments",
+     "target": "March fourteenth shipment",
+     "label": "has_event"
+    },
+    {
+     "source": "Boston Marathon",
+     "target": "June",
+     "label": "involves"
+    },
+    {
+     "source": "June",
+     "target": "Chicago",
+     "label": "flying_from"
+    },
+    {
+     "source": "nervousness",
+     "target": "Boston Marathon",
+     "label": "about"
+    },
+    {
+     "source": "burnout",
+     "target": "Boston Marathon",
+     "label": "related_to"
+    },
+    {
+     "source": "running",
+     "target": "Samantha",
+     "label": "with"
+    },
+    {
+     "source": "running",
+     "target": "nervousness",
+     "label": "helps_with"
+    },
+    {
+     "source": "running",
+     "target": "burnout",
+     "label": "helps_with"
+    },
+    {
+     "source": "Samantha",
+     "target": "Boston Marathon",
+     "label": "will_run_part_of"
+    },
+    {
+     "source": "Samantha",
+     "target": "running",
+     "label": "hates"
+    },
+    {
+     "source": "Will",
+     "target": "Boston Marathon",
+     "label": "enables_travel_for"
+    },
+    {
+     "source": "Halvorsen Marine Instruments",
+     "target": "chronometer calibrator",
+     "label": "employs"
+    },
+    {
+     "source": "June",
+     "target": "Boston Marathon",
+     "label": "will_cheer_at"
+    }
+   ],
+   "supersedes": []
+  },
+  "standIns": [
+   "Giselle",
+   "Giselle Lockhart",
+   "Henrietta",
+   "Rupert",
+   "Janika",
+   "Cordelia",
+   "Anneliese",
+   "Redwater Logistics",
+   "Redwater",
+   "Brackenridge",
+   "Larkspur Labs",
+   "Larkspur",
+   "Inglewood"
+  ],
+  "rawResponses": [
+   "{\"patch\":{\"entities\":[{\"type\":\"event\",\"name\":\"Boston Marathon\",\"description\":\"The user finally signed up for the Boston Marathon.\"},{\"name\":\"Henrietta\",\"description\":\"The user's sister, who said she'd run the first ten miles of the Boston Marathon with the user, despite hating running. She will do long runs with the user around Brackenridge on Saturdays.\",\"type\":\"person\"},{\"type\":\"activity\",\"description\":\"Henrietta hates running but will run the first ten miles of the Boston Marathon with the user and do long runs around Brackenridge on Saturdays. Running with Henrietta helps the user with their nervousness and burnout.\",\"name\":\"running\"},{\"name\":\"Brackenridge\",\"type\":\"place\",\"description\":\"The location for long runs on Saturdays.\"},{\"type\":\"person\",\"name\":\"Rupert\",\"description\":\"The user's manager at Redwater Logistics, who will cover the user's Friday shifts so the user can travel for the Boston Marathon.\"},{\"type\":\"organization\",\"description\":\"The user's employer, where the user is the only chronometer calibrator and needs to sign off the March fourteenth shipment.\",\"name\":\"Redwater Logistics\"},{\"description\":\"A shipment that only the user can sign off on.\",\"name\":\"March fourteenth shipment\",\"type\":\"event\"},{\"type\":\"person\",\"name\":\"Janika\",\"description\":\"A friend flying in from Chicago to cheer for the user at mile twenty of the Boston Marathon.\"},{\"description\":\"Where Janika is flying in from.\",\"name\":\"Chicago\",\"type\":\"place\"},{\"type\":\"emotion\",\"description\":\"The user has been feeling nervous about the Boston Marathon.\",\"name\":\"nervousness\"},{\"type\":\"emotion\",\"description\":\"The user has been experiencing burnout.\",\"name\":\"burnout\"}],\"relations\":[{\"target\":\"Henrietta\",\"source\":\"Boston Marathon\",\"label\":\"involves\"},{\"source\":\"Henrietta\",\"target\":\"running\",\"label\":\"will_do\"},{\"source\":\"running\",\"target\":\"Brackenridge\",\"label\":\"situated_at\"},{\"target\":\"Rupert\",\"source\":\"Boston Marathon\",\"label\":\"enables_participation_by\"},{\"source\":\"Rupert\",\"label\":\"manages_at\",\"target\":\"Redwater Logistics\"},{\"target\":\"March fourteenth shipment\",\"source\":\"Redwater Logistics\",\"label\":\"has_event\"},{\"label\":\"involves\",\"target\":\"Janika\",\"source\":\"Boston Marathon\"},{\"target\":\"Chicago\",\"label\":\"flying_from\",\"source\":\"Janika\"},{\"label\":\"about\",\"source\":\"nervousness\",\"target\":\"Boston Marathon\"},{\"label\":\"related_to\",\"source\":\"burnout\",\"target\":\"Boston Marathon\"},{\"label\":\"with\",\"target\":\"Henrietta\",\"source\":\"running\"},{\"target\":\"nervousness\",\"label\":\"helps_with\",\"source\":\"running\"},{\"label\":\"helps_with\",\"source\":\"running\",\"target\":\"burnout\"},{\"label\":\"will_run_part_of\",\"source\":\"Henrietta\",\"target\":\"Boston Marathon\"},{\"target\":\"running\",\"label\":\"hates\",\"source\":\"Henrietta\"},{\"label\":\"enables_travel_for\",\"target\":\"Boston Marathon\",\"source\":\"Rupert\"},{\"target\":\"chronometer calibrator\",\"source\":\"Redwater Logistics\",\"label\":\"employs\"},{\"source\":\"Janika\",\"label\":\"will_cheer_at\",\"target\":\"Boston Marathon\"}],\"supersedes\":[]}}"
+  ]
+ },
+ {
+  "transcript": "t2",
+  "patch": {
+   "entities": [
+    {
+     "name": "Osaka",
+     "type": "place",
+     "description": "City where 美咲 lives."
+    },
+    {
+     "name": "Python",
+     "type": "concept",
+     "description": "Programming language 美咲 is learning for her new analyst job."
+    },
+    {
+     "name": "Priya",
+     "type": "person",
+     "description": "Friend since college. Works at Kestrel Bioworks."
+    },
+    {
+     "name": "Kestrel Bioworks",
+     "type": "organization",
+     "description": "Small biotech where Priya works."
+    },
+    {
+     "name": "Rose",
+     "type": "person",
+     "description": "The user's aunt. Lives in Wiscasset."
+    },
+    {
+     "name": "Wiscasset",
+     "type": "place",
+     "description": "Small town where Rose lives."
+    },
+    {
+     "name": "June",
+     "type": "event",
+     "description": "Month the user is driving to see Rose."
+    },
+    {
+     "name": "Teodor",
+     "type": "person",
+     "description": "The user's neighbor in Gardiner."
+    },
+    {
+     "name": "Gardiner",
+     "type": "place",
+     "description": "Small town in Maine where the user lives."
+    },
+    {
+     "name": "Sunday",
+     "type": "event",
+     "description": "Day the user wants to be reminded to call 美咲 back."
+    }
+   ],
+   "relations": [
+    {
+     "source": "Priya",
+     "target": "Kestrel Bioworks",
+     "label": "works_at"
+    },
+    {
+     "source": "Rose",
+     "target": "Wiscasset",
+     "label": "lives_in"
+    },
+    {
+     "source": "Rose",
+     "target": "June",
+     "label": "will_be_visited_in"
+    },
+    {
+     "source": "Teodor",
+     "target": "Gardiner",
+     "label": "lives_in"
+    }
+   ],
+   "supersedes": []
+  },
+  "standIns": [
+   "Giselle",
+   "Giselle Lockhart",
+   "Henrietta",
+   "Rupert",
+   "Janika",
+   "Cordelia",
+   "Anneliese",
+   "Redwater Logistics",
+   "Redwater",
+   "Brackenridge",
+   "Larkspur Labs",
+   "Larkspur",
+   "Inglewood"
+  ],
+  "rawResponses": [
+   "{\"patch\":{\"entities\":[{\"name\":\"Anneliese\",\"type\":\"person\",\"description\":\"Friend in Osaka the user has known since a year abroad.\"},{\"description\":\"City where Anneliese lives.\",\"name\":\"Osaka\",\"type\":\"place\"},{\"name\":\"Python\",\"description\":\"Programming language Anneliese is learning for her new analyst job.\",\"type\":\"concept\"},{\"type\":\"person\",\"name\":\"Giselle\",\"description\":\"Friend since college. Works at Larkspur Labs.\"},{\"type\":\"organization\",\"name\":\"Larkspur Labs\",\"description\":\"Small biotech where Giselle works.\"},{\"type\":\"person\",\"name\":\"Cordelia\",\"description\":\"The user's aunt. Lives in Inglewood.\"},{\"type\":\"place\",\"name\":\"Inglewood\",\"description\":\"Small town where Cordelia lives.\"},{\"description\":\"Month the user is driving to see Cordelia.\",\"name\":\"June\",\"type\":\"event\"},{\"description\":\"The user's neighbor in Brackenridge.\",\"type\":\"person\",\"name\":\"Teodor\"},{\"name\":\"Brackenridge\",\"description\":\"Small town in Maine where the user lives.\",\"type\":\"place\"},{\"description\":\"Day the user wants to be reminded to call Anneliese back.\",\"name\":\"Sunday\",\"type\":\"event\"}],\"relations\":[{\"source\":\"Anneliese\",\"target\":\"Osaka\",\"label\":\"called_from\"},{\"target\":\"Python\",\"label\":\"learning\",\"source\":\"Anneliese\"},{\"source\":\"Anneliese\",\"target\":\"Giselle\",\"label\":\"mentioned_with\"},{\"target\":\"Larkspur Labs\",\"source\":\"Giselle\",\"label\":\"works_at\"},{\"source\":\"Cordelia\",\"target\":\"Inglewood\",\"label\":\"lives_in\"},{\"target\":\"June\",\"source\":\"Cordelia\",\"label\":\"will_be_visited_in\"},{\"source\":\"Teodor\",\"target\":\"Brackenridge\",\"label\":\"lives_in\"},{\"label\":\"call_back_on\",\"source\":\"Anneliese\",\"target\":\"Sunday\"}],\"supersedes\":[]}}"
+  ]
+ },
+ {
+  "transcript": "t3",
+  "patch": {
+   "entities": [
+    {
+     "name": "Priya",
+     "type": "person"
+    },
+    {
+     "name": "Halvorsen Marine Instruments",
+     "type": "organization"
+    },
+    {
+     "name": "marine instruments job",
+     "type": "other",
+     "description": "Job at Halvorsen Marine Instruments that Priya thinks the user should leave."
+    },
+    {
+     "name": "Samantha",
+     "type": "person"
+    },
+    {
+     "name": "Boston Marathon",
+     "type": "event"
+    },
+    {
+     "name": "Kestrel Bioworks",
+     "type": "organization"
+    },
+    {
+     "name": "calibration person",
+     "type": "other",
+     "description": "Role that Kestrel Bioworks needs to fill."
+    },
+    {
+     "name": "Will",
+     "type": "person"
+    },
+    {
+     "name": "Gardiner",
+     "type": "place"
+    },
+    {
+     "name": "anxious",
+     "type": "emotion"
+    }
+   ],
+   "relations": [
+    {
+     "source": "Priya",
+     "target": "Halvorsen Marine Instruments",
+     "label": "discussed"
+    },
+    {
+     "source": "Priya",
+     "target": "marine instruments job",
+     "label": "thinks_user_should_leave"
+    },
+    {
+     "source": "Samantha",
+     "target": "marine instruments job",
+     "label": "thinks_user_should_stay_in"
+    },
+    {
+     "source": "Samantha",
+     "target": "Boston Marathon",
+     "label": "until_after"
+    },
+    {
+     "source": "Kestrel Bioworks",
+     "target": "calibration person",
+     "label": "needs"
+    },
+    {
+     "source": "Priya",
+     "target": "Kestrel Bioworks",
+     "label": "mentioned"
+    },
+    {
+     "source": "Priya",
+     "target": "calibration person",
+     "label": "mentioned"
+    },
+    {
+     "source": "Will",
+     "target": "reference",
+     "label": "would_write"
+    },
+    {
+     "source": "Priya",
+     "target": "Will",
+     "label": "mentioned"
+    },
+    {
+     "source": "Gardiner",
+     "target": "anxious",
+     "label": "felt_stuck_in"
+    },
+    {
+     "source": "anxious",
+     "target": "marine instruments job",
+     "label": "about"
+    }
+   ],
+   "supersedes": []
+  },
+  "standIns": [
+   "Giselle",
+   "Giselle Lockhart",
+   "Henrietta",
+   "Rupert",
+   "Janika",
+   "Cordelia",
+   "Anneliese",
+   "Redwater Logistics",
+   "Redwater",
+   "Brackenridge",
+   "Larkspur Labs",
+   "Larkspur",
+   "Inglewood"
+  ],
+  "rawResponses": [
+   "{\"patch\":{\"entities\":[{\"type\":\"person\",\"name\":\"Giselle\"},{\"type\":\"organization\",\"name\":\"Redwater Logistics\"},{\"type\":\"other\",\"description\":\"Job at Redwater Logistics that Giselle thinks the user should leave.\",\"name\":\"marine instruments job\"},{\"type\":\"person\",\"name\":\"Henrietta\"},{\"type\":\"event\",\"name\":\"Boston Marathon\"},{\"type\":\"organization\",\"name\":\"Larkspur Labs\"},{\"type\":\"other\",\"description\":\"Role that Larkspur Labs needs to fill.\",\"name\":\"calibration person\"},{\"type\":\"person\",\"name\":\"Rupert\"},{\"type\":\"place\",\"name\":\"Brackenridge\"},{\"type\":\"emotion\",\"name\":\"anxious\"},{\"type\":\"person\",\"name\":\"Anneliese\"}],\"relations\":[{\"source\":\"Giselle\",\"target\":\"Redwater Logistics\",\"label\":\"discussed\"},{\"source\":\"Giselle\",\"target\":\"marine instruments job\",\"label\":\"thinks_user_should_leave\"},{\"label\":\"thinks_user_should_stay_in\",\"source\":\"Henrietta\",\"target\":\"marine instruments job\"},{\"source\":\"Henrietta\",\"target\":\"Boston Marathon\",\"label\":\"until_after\"},{\"label\":\"needs\",\"source\":\"Larkspur Labs\",\"target\":\"calibration person\"},{\"source\":\"Giselle\",\"target\":\"Larkspur Labs\",\"label\":\"mentioned\"},{\"label\":\"mentioned\",\"source\":\"Giselle\",\"target\":\"calibration person\"},{\"label\":\"would_write\",\"source\":\"Rupert\",\"target\":\"reference\"},{\"label\":\"mentioned\",\"source\":\"Giselle\",\"target\":\"Rupert\"},{\"source\":\"Brackenridge\",\"target\":\"anxious\",\"label\":\"felt_stuck_in\"},{\"label\":\"about\",\"source\":\"anxious\",\"target\":\"marine instruments job\"},{\"label\":\"advised_to_apply_for_new\",\"source\":\"Anneliese\",\"target\":\"marine instruments job\"}],\"supersedes\":[]}}"
+  ]
+ },
+ {
+  "transcript": "t4",
+  "patch": {
+   "entities": [
+    {
+     "name": "June",
+     "type": "person"
+    },
+    {
+     "name": "Gardiner",
+     "type": "place"
+    },
+    {
+     "name": "Wiscasset",
+     "type": "place"
+    },
+    {
+     "name": "Rose",
+     "type": "person"
+    },
+    {
+     "name": "March fourteenth",
+     "type": "event",
+     "description": "The day of the big audit at Halvorsen Marine Instruments."
+    },
+    {
+     "name": "audit",
+     "type": "event",
+     "description": "Big audit at Halvorsen Marine Instruments on March fourteenth."
+    },
+    {
+     "name": "Halvorsen Marine Instruments",
+     "type": "organization"
+    },
+    {
+     "name": "supply closet",
+     "type": "place"
+    },
+    {
+     "name": "Ingrid",
+     "type": "person",
+     "description": "The new auditor."
+    },
+    {
+     "name": "Will",
+     "type": "person"
+    },
+    {
+     "name": "Python",
+     "type": "concept"
+    },
+    {
+     "name": "calibration logs",
+     "type": "other"
+    }
+   ],
+   "relations": [
+    {
+     "source": "June",
+     "target": "Gardiner",
+     "label": "had_coffee_at"
+    },
+    {
+     "source": "June",
+     "target": "Wiscasset",
+     "label": "thinking_of_moving_to"
+    },
+    {
+     "source": "Wiscasset",
+     "target": "Rose",
+     "label": "where_lives"
+    },
+    {
+     "source": "June",
+     "target": "Rose",
+     "label": "wants_to_meet"
+    },
+    {
+     "source": "audit",
+     "target": "Halvorsen Marine Instruments",
+     "label": "at"
+    },
+    {
+     "source": "audit",
+     "target": "March fourteenth",
+     "label": "occurred_on"
+    },
+    {
+     "source": "supply closet",
+     "target": "Halvorsen Marine Instruments",
+     "label": "at"
+    },
+    {
+     "source": "Ingrid",
+     "target": "audit",
+     "label": "auditor_for"
+    },
+    {
+     "source": "Ingrid",
+     "target": "supply closet",
+     "label": "found_person_in"
+    },
+    {
+     "source": "Will",
+     "target": "supply closet",
+     "label": "mentioned_hiding_in"
+    },
+    {
+     "source": "Python",
+     "target": "calibration logs",
+     "label": "automates"
+    }
+   ],
+   "supersedes": []
+  },
+  "standIns": [
+   "Giselle",
+   "Giselle Lockhart",
+   "Henrietta",
+   "Rupert",
+   "Janika",
+   "Cordelia",
+   "Anneliese",
+   "Redwater Logistics",
+   "Redwater",
+   "Brackenridge",
+   "Larkspur Labs",
+   "Larkspur",
+   "Inglewood"
+  ],
+  "rawResponses": [
+   "{\"patch\":{\"entities\":[{\"type\":\"person\",\"name\":\"Janika\"},{\"type\":\"place\",\"name\":\"Brackenridge\"},{\"type\":\"place\",\"name\":\"Inglewood\"},{\"type\":\"person\",\"name\":\"Cordelia\"},{\"type\":\"event\",\"description\":\"The day of the big audit at Redwater Logistics.\",\"name\":\"March fourteenth\"},{\"name\":\"audit\",\"type\":\"event\",\"description\":\"Big audit at Redwater Logistics on March fourteenth.\"},{\"name\":\"Redwater Logistics\",\"type\":\"organization\"},{\"name\":\"supply closet\",\"type\":\"place\"},{\"name\":\"Ingrid\",\"description\":\"The new auditor.\",\"type\":\"person\"},{\"name\":\"Rupert\",\"type\":\"person\"},{\"name\":\"Python\",\"type\":\"concept\"},{\"name\":\"calibration logs\",\"type\":\"other\"}],\"relations\":[{\"label\":\"had_coffee_at\",\"source\":\"Janika\",\"target\":\"Brackenridge\"},{\"label\":\"thinking_of_moving_to\",\"source\":\"Janika\",\"target\":\"Inglewood\"},{\"label\":\"where_lives\",\"source\":\"Inglewood\",\"target\":\"Cordelia\"},{\"label\":\"wants_to_meet\",\"source\":\"Janika\",\"target\":\"Cordelia\"},{\"label\":\"at\",\"source\":\"audit\",\"target\":\"Redwater Logistics\"},{\"label\":\"occurred_on\",\"source\":\"audit\",\"target\":\"March fourteenth\"},{\"label\":\"at\",\"source\":\"supply closet\",\"target\":\"Redwater Logistics\"},{\"label\":\"auditor_for\",\"source\":\"Ingrid\",\"target\":\"audit\"},{\"label\":\"found_person_in\",\"source\":\"Ingrid\",\"target\":\"supply closet\"},{\"source\":\"Rupert\",\"target\":\"supply closet\",\"label\":\"mentioned_hiding_in\"},{\"label\":\"automates\",\"source\":\"Python\",\"target\":\"calibration logs\"}],\"supersedes\":[]}}"
+  ]
+ }
+]

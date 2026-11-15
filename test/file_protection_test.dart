@@ -42,6 +42,19 @@ void main() {
     expect(await fileProtectionOf('/a/b'), 'NSFileProtectionComplete');
   });
 
+  test('excludeFromBackup names the path; the strict calls throw on failure',
+      () async {
+    await excludeFromBackup('/a/dir');
+    expect(calls.single.method, 'excludeFromBackup');
+    expect(calls.single.arguments, {'path': '/a/dir'});
+    await protectFileStrict('/a/b');
+    expect(calls.last.arguments, {'path': '/a/b', 'level': 'complete'});
+
+    messenger.setMockMethodCallHandler(channel, null);
+    await expectLater(excludeFromBackup('/a/dir'), throwsA(anything));
+    await expectLater(protectFileStrict('/a/b'), throwsA(anything));
+  });
+
   test('a missing native side never fails a save', () async {
     messenger.setMockMethodCallHandler(channel, null);
     await protectFile('/a/b');

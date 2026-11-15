@@ -22,6 +22,36 @@ import UIKit
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "FileProtection") {
       FileProtection.register(messenger: registrar.messenger())
     }
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "InstallState") {
+      InstallState.register(messenger: registrar.messenger())
+    }
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "NameRecognizer") {
+      NameRecognizer.register(messenger: registrar.messenger())
+    }
+  }
+}
+
+/// Whether this is the first launch since the app was installed (Dart side:
+/// lib/security/fresh_install.dart). The flag lives in UserDefaults, which iOS
+/// deletes with the app, unlike the Keychain.
+///
+/// Channel `lumen/install`: isFirstLaunch · markLaunched
+enum InstallState {
+  private static let key = "lumen.install.launched"
+
+  static func register(messenger: FlutterBinaryMessenger) {
+    let channel = FlutterMethodChannel(name: "lumen/install", binaryMessenger: messenger)
+    channel.setMethodCallHandler { call, result in
+      switch call.method {
+      case "isFirstLaunch":
+        result(!UserDefaults.standard.bool(forKey: key))
+      case "markLaunched":
+        UserDefaults.standard.set(true, forKey: key)
+        result(nil)
+      default:
+        result(FlutterMethodNotImplemented)
+      }
+    }
   }
 }
 
@@ -30,7 +60,8 @@ import UIKit
 /// entitlement covers files created by default; this sets a class on a file
 /// explicitly and reads one back for verification.
 ///
-/// Channel `lumen/file_protection`: set {path, level} · get {path}
+/// Channel `lumen/file_protection`: set {path, level} · get {path} ·
+/// excludeFromBackup {path}
 enum FileProtection {
   static func register(messenger: FlutterBinaryMessenger) {
     let channel = FlutterMethodChannel(name: "lumen/file_protection", binaryMessenger: messenger)
@@ -45,6 +76,12 @@ enum FileProtection {
           let level: FileProtectionType =
             (args["level"] as? String) == "completeUnlessOpen" ? .completeUnlessOpen : .complete
           try FileManager.default.setAttributes([.protectionKey: level], ofItemAtPath: path)
+          result(nil)
+        case "excludeFromBackup":
+          var url = URL(fileURLWithPath: path)
+          var values = URLResourceValues()
+          values.isExcludedFromBackup = true
+          try url.setResourceValues(values)
           result(nil)
         case "get":
           let attributes = try FileManager.default.attributesOfItem(atPath: path)

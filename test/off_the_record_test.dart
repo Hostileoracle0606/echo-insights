@@ -21,6 +21,8 @@ import 'package:lumen/models/session_card.dart';
 import 'package:lumen/providers/journal_provider.dart';
 import 'package:lumen/providers/opening_prep_provider.dart';
 import 'package:lumen/providers/session_provider.dart';
+import 'package:lumen/providers/shared_log_provider.dart';
+import 'package:lumen/services/shared_log.dart';
 import 'package:lumen/providers/supabase_provider.dart';
 import 'package:lumen/providers/voice_services_provider.dart';
 import 'package:lumen/services/extract_graph_service.dart';
@@ -131,6 +133,24 @@ class _FakeTurnJournal implements TurnJournalService {
   Future<List<TurnJournalCheckpoint>> loadCheckpoints(
           String notebookId) async =>
       const [];
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+/// LM-57: counts what would be logged. Nothing is sent off the record, so
+/// nothing may be recorded.
+class _CountingLog implements SharedLog {
+  final List<SharedKind> recorded = [];
+
+  @override
+  Future<void> record(
+    String notebookId,
+    SharedKind kind,
+    Map<String, dynamic> body,
+  ) async {
+    recorded.add(kind);
+  }
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
@@ -303,6 +323,7 @@ class _Harness {
     container = ProviderContainer(overrides: [
       notebookCommitServiceProvider.overrideWithValue(commits),
       extractGraphServiceProvider.overrideWithValue(extractor),
+      sharedLogProvider.overrideWithValue(sharedLog),
       retrieveMemoryServiceProvider.overrideWithValue(_NoMemory()),
       turnJournalServiceProvider.overrideWithValue(journal_),
       transcriptStoreProvider.overrideWithValue(transcripts),
@@ -339,6 +360,7 @@ class _Harness {
   final _FakeTranscripts transcripts;
   final _FakeCommits commits;
   final extractor = _FakeExtractor();
+  final sharedLog = _CountingLog();
   final cards = _FakeCards();
   final briefs = _FakeBriefs();
   late final ProviderContainer container;
@@ -404,6 +426,8 @@ void _expectNoWrites(_Harness h) {
   expect(h.journal_.writes, 0, reason: 'turn journal');
   expect(h.transcripts.saved, isEmpty, reason: 'transcript store');
   expect(h.extractor.texts, isEmpty, reason: 'extraction');
+  expect(h.sharedLog.recorded, isEmpty,
+      reason: 'What Lumen shared log (LM-57)');
 }
 
 Future<void> _waitForCommits(_Harness h, int count) async {
@@ -681,7 +705,10 @@ void main() {
         })
         ..serverSends({
           'serverContent': {
-            'inputTranscription': {'text': 'After the error.', 'finished': true},
+            'inputTranscription': {
+              'text': 'After the error.',
+              'finished': true
+            },
           },
         })
         ..serverSends({

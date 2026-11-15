@@ -39,6 +39,20 @@ Future<void> protectFile(
   }
 }
 
+/// Like [protectFile], but a failure is thrown. For a file that must never be
+/// left unprotected (the "What Lumen shared" log): the caller then skips the
+/// write.
+Future<void> protectFileStrict(
+  String path, [
+  FileProtectionLevel level = FileProtectionLevel.complete,
+]) =>
+    _channel.invokeMethod<void>('set', {'path': path, 'level': level.wire});
+
+/// Leaves [path] (a file or a folder, and so what is in it) out of iCloud and
+/// iTunes backups (`NSURLIsExcludedFromBackupKey`). Throws on failure.
+Future<void> excludeFromBackup(String path) =>
+    _channel.invokeMethod<void>('excludeFromBackup', {'path': path});
+
 /// The class iOS reports for [path] (`NSFileProtectionComplete`, ...), or
 /// null where unknown. For verification.
 Future<String?> fileProtectionOf(String path) async {

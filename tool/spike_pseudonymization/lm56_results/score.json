@@ -1,0 +1,158 @@
+{
+ "verdict": "PASS",
+ "criteria": {
+  "entRecall": true,
+  "entPrecision": true,
+  "relRecall": true,
+  "swapBack100": true,
+  "noLeak": true,
+  "dupsNoWorse": true
+ },
+ "summary": {
+  "transcriptsRun": 4,
+  "entTP": 33,
+  "entPred": 43,
+  "entTruth": 35,
+  "relTP": 18,
+  "relPred": 39,
+  "relTruth": 25,
+  "duplicates": 0,
+  "leaks": 0,
+  "standInsInOutput": 115,
+  "standInsLeft": 0,
+  "entPrecision": 76.74418604651163,
+  "entRecall": 94.28571428571429,
+  "relPrecision": 46.15384615384615,
+  "relRecall": 72
+ },
+ "raw": {
+  "entTP": 22,
+  "entPred": 33,
+  "entTruth": 35,
+  "relTP": 18,
+  "relPred": 50,
+  "relTruth": 25,
+  "duplicates": 0,
+  "entPrecision": 66.66666666666667,
+  "entRecall": 62.857142857142854,
+  "relRecall": 72
+ },
+ "rows": [
+  {
+   "transcript": "t1",
+   "ran": true,
+   "error": null,
+   "leaks": [],
+   "leakCount": 0,
+   "tpE": 9,
+   "predE": 11,
+   "truthE": 9,
+   "tpR": 7,
+   "predR": 13,
+   "truthR": 8,
+   "dups": 0,
+   "failures": [
+    "unmatched entity \"March fourteenth shipment\"",
+    "unmatched entity \"nervousness\"",
+    "unmatched relation endpoint \"Halvorsen Marine Instruments\" -> \"March fourteenth shipment\"",
+    "unmatched relation endpoint \"nervousness\" -> \"Boston Marathon\"",
+    "unmatched relation endpoint \"running\" -> \"nervousness\"",
+    "unmatched relation endpoint \"Halvorsen Marine Instruments\" -> \"chronometer calibrator\"",
+    "missed relation Boston Marathon -- running"
+   ],
+   "swapBack": {
+    "inModelOutput": 31,
+    "leftAfterSwapBack": 0
+   }
+  },
+  {
+   "transcript": "t2",
+   "ran": true,
+   "error": null,
+   "leaks": [],
+   "leakCount": 0,
+   "tpE": 8,
+   "predE": 10,
+   "truthE": 9,
+   "tpR": 3,
+   "predR": 4,
+   "truthR": 6,
+   "dups": 0,
+   "failures": [
+    "missed entity 美咲",
+    "unmatched entity \"Sunday\"",
+    "extra entity June",
+    "missed relation 美咲 -- Osaka",
+    "missed relation Python -- 美咲",
+    "missed relation Priya -- Python"
+   ],
+   "swapBack": {
+    "inModelOutput": 29,
+    "leftAfterSwapBack": 0
+   }
+  },
+  {
+   "transcript": "t3",
+   "ran": true,
+   "error": null,
+   "leaks": [],
+   "leakCount": 0,
+   "tpE": 8,
+   "predE": 10,
+   "truthE": 9,
+   "tpR": 4,
+   "predR": 11,
+   "truthR": 5,
+   "dups": 0,
+   "failures": [
+    "missed entity 美咲",
+    "unmatched entity \"marine instruments job\"",
+    "unmatched entity \"calibration person\"",
+    "unmatched relation endpoint \"Priya\" -> \"marine instruments job\"",
+    "unmatched relation endpoint \"Samantha\" -> \"marine instruments job\"",
+    "unmatched relation endpoint \"Kestrel Bioworks\" -> \"calibration person\"",
+    "unmatched relation endpoint \"Priya\" -> \"calibration person\"",
+    "unmatched relation endpoint \"Will\" -> \"reference\"",
+    "unmatched relation endpoint \"anxious\" -> \"marine instruments job\"",
+    "missed relation Will -- Halvorsen Marine Instruments"
+   ],
+   "swapBack": {
+    "inModelOutput": 31,
+    "leftAfterSwapBack": 0
+   }
+  },
+  {
+   "transcript": "t4",
+   "ran": true,
+   "error": null,
+   "leaks": [],
+   "leakCount": 0,
+   "tpE": 8,
+   "predE": 12,
+   "truthE": 8,
+   "tpR": 4,
+   "predR": 11,
+   "truthR": 6,
+   "dups": 0,
+   "failures": [
+    "unmatched entity \"March fourteenth\"",
+    "unmatched entity \"audit\"",
+    "unmatched entity \"supply closet\"",
+    "unmatched entity \"calibration logs\"",
+    "unmatched relation endpoint \"audit\" -> \"Halvorsen Marine Instruments\"",
+    "unmatched relation endpoint \"audit\" -> \"March fourteenth\"",
+    "unmatched relation endpoint \"supply closet\" -> \"Halvorsen Marine Instruments\"",
+    "unmatched relation endpoint \"Ingrid\" -> \"audit\"",
+    "unmatched relation endpoint \"Ingrid\" -> \"supply closet\"",
+    "unmatched relation endpoint \"Will\" -> \"supply closet\"",
+    "unmatched relation endpoint \"Python\" -> \"calibration logs\"",
+    "missed relation Halvorsen Marine Instruments -- Ingrid",
+    "missed relation Python -- Halvorsen Marine Instruments"
+   ],
+   "swapBack": {
+    "inModelOutput": 24,
+    "leftAfterSwapBack": 0
+   }
+  }
+ ]
+}
