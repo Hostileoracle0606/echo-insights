@@ -84,14 +84,20 @@ void main() {
   });
 
   // What the controls really do: transcripts keep the name for the user and
-  // Lumen reads them redacted (LM-63), off the record still reaches Google,
-  // and auto-forget leaves cards and memory.
+  // Lumen reads them redacted (LM-63) unless the user also erases it from
+  // them, off the record still reaches Google, and auto-forget leaves cards
+  // and memory.
   test('the shipped controls claim only what they do', () {
     final forget = gatedClaims[PrivacyFeature.forgetPerson]!;
     expect(forget, contains("Lumen won't bring them up again"));
     expect(forget, contains("they're gone from your maps"));
     expect(forget, contains('transcripts keep your words for you to read'));
+    expect(forget, contains('For a name of two or more words'));
+    expect(forget, contains('as it was saved'));
+    expect(forget, contains('what you and Lumen said'));
+    expect(forget, contains('replaces it with “someone” for good'));
     expect(forget, isNot(contains('may bring the name up')));
+    expect(forget, isNot(contains('Lumen can still read')));
     expect(forget, contains('a nickname or a first name alone'));
     expect(forget, isNot(contains('leave your journal')));
     expect(gatedClaims[PrivacyFeature.offTheRecord]!, contains('Google'));

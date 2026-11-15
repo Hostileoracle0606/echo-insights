@@ -10,6 +10,7 @@ import 'journal_provider.dart'
     show forgottenThisRunProvider, turnJournalServiceProvider;
 import 'forget_redactor_provider.dart';
 import 'forget_sync_provider.dart';
+import 'transcript_erase_provider.dart';
 import 'opening_prep_provider.dart';
 import 'pseudonym_provider.dart';
 import 'shared_log_provider.dart';
@@ -156,9 +157,8 @@ class _VoiceServicesScopeState extends ConsumerState<VoiceServicesScope>
       _binding = VoiceServicesBinding(
         credentials: ref.read(liveCredentialsProvider),
         audioOutput: ref.read(audioOutputProvider),
-        runtimeConfigured: ref
-            .read(notebookRuntimeServiceProvider)
-            .isConfigured,
+        runtimeConfigured:
+            ref.read(notebookRuntimeServiceProvider).isConfigured,
         // Both are best-effort and independent; neither blocks a session.
         warmUp: () {
           // Signed in again: "What Lumen shared" records once more (LM-57).
@@ -170,11 +170,19 @@ class _VoiceServicesScopeState extends ConsumerState<VoiceServicesScope>
             forgotten.ensureLoaded(),
             // A forget made on another phone (I2).
             runForgetCheck(() => ref.read(forgetSyncProvider)),
-          ]);
+          ]).whenComplete(() {
+            // An erase cut short last time carries on (R35), in the
+            // background: it never holds up a session.
+            unawaited(runEraseResume(
+                () => ref.read(transcriptEraseProvider.notifier)));
+          });
         },
         // Coming back also re-asks for a brief that failed earlier.
         onResume: () => Future.wait([
-            runForgetCheck(() => ref.read(forgetSyncProvider)),
+          runForgetCheck(() => ref.read(forgetSyncProvider)),
+          // Unawaited inside: an erase may take a while.
+          Future.sync(() => unawaited(runEraseResume(
+              () => ref.read(transcriptEraseProvider.notifier)))),
           openingPrep.refresh(),
           openingPrep.retryPendingBrief(),
         ]),

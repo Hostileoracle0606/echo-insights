@@ -1,3 +1,4 @@
+import { forgottenNote } from "./prompts.mjs";
 import { cleanText } from "./validate.mjs";
 
 export const briefLimits = Object.freeze({
@@ -22,7 +23,9 @@ WHAT TO WRITE (call write_session_brief exactly once)
 - openingThread: at most ${briefLimits.openingThread} characters. The one thread the opening line asks about and why it is worth asking, so Lumen can follow up naturally after the person answers. If no thread is safe and the opening line is a warm greeting with no specific question, leave openingThread empty (""). Never invent a thread to fill it.
 - openingLine: as above.
 
-Never invent. Every fact comes from what the person said, the previous brief, or the memory lists. Lumen's own lines are context only; never turn Lumen's suggestions into the person's plans. If little was said, write less.`;
+Never invent. Every fact comes from what the person said, the previous brief, or the memory lists. Lumen's own lines are context only; never turn Lumen's suggestions into the person's plans. If little was said, write less.
+
+${forgottenNote}`;
 
 export function writeSessionBriefFunction() {
   return {
