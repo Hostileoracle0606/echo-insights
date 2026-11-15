@@ -33,7 +33,8 @@ test("exposes authenticated live-session, graph-extraction and close-session rou
     AuthorizerType: "REQUEST",
     EnableSimpleResponses: true,
     IdentitySource: ["$request.header.Authorization"],
-    AuthorizerResultTtlInSeconds: 0,
+    // Cached per token for 5 minutes (see infra-stack.ts).
+    AuthorizerResultTtlInSeconds: 300,
   });
   template.hasResourceProperties("AWS::ApiGatewayV2::Route", {
     AuthorizationType: "CUSTOM",
