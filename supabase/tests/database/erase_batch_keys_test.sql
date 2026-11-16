@@ -7,7 +7,7 @@
 create extension if not exists pgtap;
 
 begin;
-select plan(23);
+select plan(28);
 
 insert into auth.users (id) values
   ('11111111-1111-1111-1111-111111111111'),
@@ -94,6 +94,28 @@ set local role authenticated;
 set local request.jwt.claim.sub = '11111111-1111-1111-1111-111111111111';
 select is(public.forget_erase_batch(gen_random_uuid(), 1, 100) -> 'finished', 'true'::jsonb,
   'an unknown job comes back finished');
+
+-- Forgetting the same person again restarts the job: batch numbers restart.
+reset role;
+insert into public.entities (id, user_id, notebook_id, name, type, description, metadata, questions, mentions, first_seen, last_seen) values
+  ('maya-chen', '11111111-1111-1111-1111-111111111111', 'a1111111-0000-0000-0000-000000000001', 'Maya Chen', 'person', null, '{}', null, 1, now(), now());
+set local role authenticated;
+set local request.jwt.claim.sub = '11111111-1111-1111-1111-111111111111';
+delete from job;
+insert into job select (public.forget_entity('maya-chen', true) ->> 'eraseJobId')::uuid;
+select is(public.forget_erase_batch((select id from job), 1, 100) ->> 'finished', 'false', 'a second job: batch 1 ran');
+reset role;
+select is((select count(*)::int from public.forget_erase_batches), 1, 'its batch is in the ledger');
+insert into public.entities (id, user_id, notebook_id, name, type, description, metadata, questions, mentions, first_seen, last_seen) values
+  ('maya-chen', '11111111-1111-1111-1111-111111111111', 'a1111111-0000-0000-0000-000000000001', 'Maya Chen', 'person', null, '{}', null, 1, now(), now());
+set local role authenticated;
+set local request.jwt.claim.sub = '11111111-1111-1111-1111-111111111111';
+select is(public.forget_entity('maya-chen', true) ->> 'eraseJobId', (select id::text from job),
+  're-forgetting reuses the job');
+select is((select p ->> 'nextBatch' from jsonb_array_elements(public.forget_erase_pending()) p), '1',
+  'after the restart the job expects batch 1 again');
+reset role;
+select is((select count(*)::int from public.forget_erase_batches), 0, 'and its ledger rows are gone');
 
 select * from finish();
 rollback;

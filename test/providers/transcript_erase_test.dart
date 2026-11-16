@@ -192,6 +192,86 @@ void main() {
     expect(await erase.run('job-1'), isTrue);
     expect(server.sent, [2]);
   });
+
+  test('a keyReused answer re-reads pending and continues', () async {
+    var calls = 0;
+    final s = _Scripted((n) => ++calls == 1
+        ? {'status': 'rejected', 'code': 'keyReused'}
+        : {'rewritten': 0, 'total': 0, 'remaining': 0, 'finished': true});
+    final c = _scripted(s);
+
+    expect(await c.container.read(transcriptEraseProvider.notifier).run('job-1'),
+        isTrue);
+
+    expect(s.sent, [1, 1], reason: 'sent again after re-reading pending');
+    expect(s.pendingReads, 2, reason: 'once at the start, once after the refusal');
+  });
+
+  test('three refusals in a row pause the run; no fourth send',
+      () async {
+    final s = _Scripted((n) => {'status': 'rejected', 'code': 'keyReused'});
+    final c = _scripted(s);
+
+    expect(await c.container.read(transcriptEraseProvider.notifier).run('job-1'),
+        isFalse);
+
+    expect(s.sent, [1, 1, 1], reason: 'no fourth send');
+    expect(c.container.read(transcriptEraseProvider)!.status, EraseStatus.paused);
+    expect(c.reloads, isEmpty);
+  });
+
+  test('a server without nextBatch gets the plain step', () async {
+    final s = _Scripted(
+        (n) => throw StateError('no batch call expected'),
+        nextBatch: null);
+    final c = _scripted(s);
+
+    expect(await c.container.read(transcriptEraseProvider.notifier).run('job-1'),
+        isTrue);
+
+    expect(s.sent, isEmpty);
+    expect(s.plainSteps, ['job-1']);
+  });
+}
+
+/// Answers every forget_erase_batch with [answer]; records what it was sent.
+class _Scripted {
+  _Scripted(this.answer, {this.nextBatch = 1});
+  final Map<String, Object?> Function(int sentNo) answer;
+  int? nextBatch;
+  int pendingReads = 0;
+  final sent = <int>[];
+  final plainSteps = <String>[];
+
+  Future<Object?> rpc(String fn, Map<String, dynamic> params) async {
+    if (fn == 'forget_erase_pending') {
+      pendingReads += 1;
+      return [
+        {'id': 'job-1', 'rewritten': 0, if (nextBatch != null) 'nextBatch': nextBatch}
+      ];
+    }
+    if (fn == 'forget_erase_batch') {
+      final n = params['p_batch_no'] as int;
+      sent.add(n);
+      return answer(n);
+    }
+    if (fn == 'forget_erase_step') {
+      plainSteps.add(params['p_job_id'] as String);
+      return {'rewritten': 0, 'total': 0, 'remaining': 0, 'finished': true};
+    }
+    throw StateError(fn);
+  }
+}
+
+({ProviderContainer container, List<int> reloads}) _scripted(_Scripted s) {
+  final reloads = <int>[];
+  final container = ProviderContainer(overrides: [
+    memoryControlServiceProvider
+        .overrideWithValue(MemoryControlService.withRpc(s.rpc)),
+    eraseFinishedHookProvider.overrideWithValue(() async => reloads.add(1)),
+  ]);
+  addTearDown(container.dispose);
+  return (container: container, reloads: reloads);
 }
 
 ({ProviderContainer container, List<int> reloads}) _keyed(_KeyedServer server) {

@@ -79,7 +79,7 @@ class TranscriptEraseNotifier extends Notifier<EraseRun?> {
           step = await service.eraseBatch(jobId, next, batch: batch);
           if (step.rejected) {
             // Nothing was rewritten: read where the server is and go on.
-            if (++refused > 3) throw StateError('erase batch refused');
+            if (++refused >= 3) throw StateError('erase batch refused');
             next = step.nextBatch ?? await _nextBatch(service, jobId);
             continue;
           }

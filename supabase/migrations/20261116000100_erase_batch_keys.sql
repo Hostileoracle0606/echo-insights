@@ -180,7 +180,7 @@ create function public.forget_erase_batch(p_job_id uuid, p_batch_no int, p_batch
 returns jsonb
 language plpgsql
 security definer
-set search_path = public, extensions, pg_temp
+set search_path = public, pg_temp
 as $$
 declare
   v_uid uuid := auth.uid();
@@ -197,7 +197,7 @@ begin
   if not found then
     return jsonb_build_object('rewritten', 0, 'total', 0, 'remaining', 0, 'finished', true);
   end if;
-  v_hash := encode(digest(convert_to('batch=' || coalesce(p_batch, 300)::text, 'UTF8'), 'sha256'), 'hex');
+  v_hash := encode(extensions.digest(convert_to('batch=' || coalesce(p_batch, 300)::text, 'UTF8'), 'sha256'), 'hex');
 
   select * into v_seen from public.forget_erase_batches
    where job_id = p_job_id and batch_no = p_batch_no;
@@ -243,11 +243,12 @@ begin
 end;
 $$;
 
--- Forgetting the same person again restarts the job (new cutoff): its batch
--- numbers restart with it.
+-- Forgetting the same person again restarts the job (its cutoff is set
+-- again): its batch numbers restart with it.
 create function public._forget_erase_restart()
 returns trigger
 language plpgsql
+security definer
 set search_path = public, pg_temp
 as $$
 begin
@@ -258,7 +259,7 @@ end;
 $$;
 create trigger forget_erase_jobs_restart
   before update of cutoff on public.forget_erase_jobs
-  for each row when (new.cutoff is distinct from old.cutoff)
+  for each row
   execute function public._forget_erase_restart();
 
 revoke all on function public._forget_erase_restart() from public, anon, authenticated;
