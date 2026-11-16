@@ -317,6 +317,8 @@ class CatchUpReport {
 /// answers 422 for a notebook with nothing to summarize, e.g. entities
 /// added by hand and no words). Keys are `card:<notebookId>` and
 /// `brief:<notebookId>`, values the revision. Ids and numbers only.
+/// `briefTried:<notebookId>` holds the revision a brief request last
+/// completed at: listed again at that revision, the brief is terminal.
 abstract interface class CatchUpSkipStore {
   Future<Map<String, int>> read();
   Future<void> write(Map<String, int> skips);
@@ -696,8 +698,27 @@ class CatchUpRunner {
         });
       case BriefStep():
         if (_isSkipped(skips, step)) return CatchUpOutcome.alreadyTerminal;
+        final tried = 'briefTried:${step.notebookId}';
+        if (skips[tried] == step.revision) {
+          // A request at this revision completed last time, yet the server
+          // still lists no brief (it saved nothing, e.g. `unchanged`): asking
+          // again would pay for the model once more for the same answer.
+          skips.remove(tried);
+          return _settle(
+              step, const _Value(null), skips, (_) => CatchUpOutcome.terminal);
+        }
         final raced = await _race(_requestBrief(step.notebookId), left, token);
-        return _settle(step, raced, skips, (_) => CatchUpOutcome.done);
+        final outcome =
+            await _settle(step, raced, skips, (_) => CatchUpOutcome.done);
+        if (outcome == CatchUpOutcome.done) {
+          try {
+            skips[tried] = step.revision;
+            await _skips.write(skips);
+          } catch (error) {
+            debugPrint('catch-up: skips not saved (${error.runtimeType})');
+          }
+        }
+        return outcome;
       case VectorsStep():
         final build = _buildVectors;
         if (build == null) {

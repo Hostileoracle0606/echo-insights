@@ -318,8 +318,29 @@ void main() {
       final last = await build().finishNotebook(_notebook);
 
       expect(last.rejectedTurnIds, ['turn-1']);
+      expect(server.commitCalls, HeadlessTurnFinisher.maxAttempts + 1,
+          reason: 'one last try without the graph, refused too');
       expect(await journal.loadCheckpoints(_notebook), isEmpty);
       expect(server.applied, isEmpty);
+    });
+
+    test('at the commitFailed bound the words still commit without the graph',
+        () async {
+      // Refused while it carries the graph; the words alone go through.
+      server.beforeCommit = () => server.failCommits =
+          server.commitCalls <= HeadlessTurnFinisher.maxAttempts;
+
+      for (var run = 1; run < HeadlessTurnFinisher.maxAttempts; run++) {
+        expect(
+            (await build().finishNotebook(_notebook)).deferredTurnId, 'turn-1');
+      }
+      final last = await build().finishNotebook(_notebook);
+
+      expect(last.committedTurnIds, ['turn-1']);
+      final entry = server.applied.single['entry'] as Map;
+      expect(entry['text'], pending.transcript);
+      expect(entry['entityIds'], isEmpty);
+      expect(await journal.loadCheckpoints(_notebook), isEmpty);
     });
   });
 
@@ -459,12 +480,48 @@ void main() {
       expect(await journal.loadCheckpoints(_notebook), isEmpty);
     });
 
-    test('refused extractions wait, counted across relaunches, up to a bound',
+    for (final (status, code) in const [
+      (503, 'providerUnavailable'),
+      (429, null),
+      (408, null),
+      (409, 'inProgress'),
+    ]) {
+      test('an outage ($status ${code ?? ''}) is delay: never counted',
+          () async {
+        extractor.failWith = GraphExtractionException(
+          'unavailable',
+          statusCode: status,
+          code: code,
+        );
+
+        for (var run = 0; run < HeadlessTurnFinisher.maxAttempts + 2; run++) {
+          final result = await build().finishNotebook(_notebook);
+          expect(result.deferredTurnId, 'turn-1');
+        }
+
+        final kept = (await journal.loadCheckpoints(_notebook)).single;
+        expect(kept.extractAttempts, 0);
+        expect(kept.turn.extraction, isNull,
+            reason: 'the graph is not given up');
+        expect(server.commitCalls, 0);
+      });
+    }
+
+    test('a malformed answer is not counted either', () async {
+      extractor.failWith = const FormatException('bad patch');
+
+      await build().finishNotebook(_notebook);
+
+      expect(
+          (await journal.loadCheckpoints(_notebook)).single.extractAttempts, 0);
+    });
+
+    test('definite refusals wait, counted across relaunches, up to a bound',
         () async {
       extractor.failWith = const GraphExtractionException(
         'rejected',
-        statusCode: 503,
-        code: 'providerUnavailable',
+        statusCode: 400,
+        code: 'invalidRequest',
       );
 
       for (var run = 1; run < HeadlessTurnFinisher.maxAttempts; run++) {

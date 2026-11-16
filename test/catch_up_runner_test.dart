@@ -297,6 +297,34 @@ void main() {
       expect(outcomes(report), ['BriefStep(a, r2) alreadyTerminal']);
     });
 
+    test(
+        'a brief request that completes but leaves no brief is not paid for '
+        'again at that revision', () async {
+      final rig = Rig(work: [
+        work(briefs: [const UnfinishedBrief(notebookId: 'a', revision: 2)]),
+      ]);
+      var report = await rig.runner().run();
+      expect(outcomes(report), ['BriefStep(a, r2) done']);
+      expect(rig.calls, ['brief:a']);
+
+      // Still listed absent at r2 (the server answered `unchanged`).
+      rig.calls.clear();
+      report = await rig.runner().run();
+      expect(rig.calls, isEmpty);
+      expect(outcomes(report), ['BriefStep(a, r2) terminal']);
+      report = await rig.runner().run();
+      expect(outcomes(report), ['BriefStep(a, r2) alreadyTerminal']);
+      expect(rig.calls, isEmpty);
+
+      // A new revision asks again.
+      rig.work = [
+        work(briefs: [const UnfinishedBrief(notebookId: 'a', revision: 3)]),
+      ];
+      report = await rig.runner().run();
+      expect(rig.calls, ['brief:a']);
+      expect(outcomes(report), ['BriefStep(a, r3) done']);
+    });
+
     test('a failing step is left for next time and the rest still run',
         () async {
       final rig = Rig(work: [

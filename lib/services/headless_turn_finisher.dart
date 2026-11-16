@@ -134,10 +134,16 @@ enum _NotPrepared { deferred, notFound }
 /// good, refusals are counted on the checkpoint and bounded by
 /// [maxAttempts]:
 /// - extraction refused as `requestIdReused` (the runtime holds a different
-///   input under this turn id), or refused [maxAttempts] times: the turn is
+///   input under this turn id), or definitely refused [maxAttempts] times
+///   (a 4xx other than 408, 429 and 409 `inProgress`): the turn is
 ///   committed with an empty patch, so its words are kept as an entry and
-///   later turns go on. Network failures are delay, not refusals: uncounted.
-/// - commit refused as `commitFailed` [maxAttempts] times: dropped.
+///   later turns go on. An outage (5xx, 429, 408, 409 `inProgress`), a
+///   network failure or a malformed answer is delay, not a refusal: it is
+///   not counted, so graph data is never given up for it.
+/// - commit refused as `commitFailed` [maxAttempts] times: one last try
+///   with an empty patch (the words kept as an entry; `commitFailed` writes
+///   no ledger row, so the request id is still free). Dropped only if the
+///   envelope is already empty, or that try is refused for good too.
 /// - a notebook the server does not find (null snapshot, or `notFound`):
 ///   never dropped (it may be another account's on a shared phone, and
 ///   design for delay, not loss). The turn is deferred and the notebook
@@ -280,6 +286,19 @@ class HeadlessTurnFinisher {
                 kind: TurnStepKind.commit,
               );
               if (count < maxAttempts) return (_Finish.deferred, null);
+              if (!_isEmptyPatch(checkpointedPatch(turn))) {
+                // Last try: the words alone, nothing for the graph.
+                vlog('catchup', 'turn ${turn.turnId} retried without graph');
+                turn = turn.copyWith(extraction: GraphPatch.empty().toJson());
+                await _journal.persistTurn(turn);
+                switch (await _prepare(turn, earlier)) {
+                  case (_NotPrepared reason, _):
+                    return (_settle(reason), null);
+                  case (_, (FinalizedTurn, PreparedTurnCommit) made):
+                    (turn, prepared) = made;
+                }
+                continue;
+              }
               vlog('catchup',
                   'turn ${turn.turnId} dropped after $count refusals');
             }
@@ -372,10 +391,23 @@ class HeadlessTurnFinisher {
     return (null, (turn, result.prepared));
   }
 
-  /// The runtime answered and refused (or answered nonsense). A network
-  /// failure or a signed-out session is delay, and is not counted.
-  static bool _isRefusal(Exception error) =>
-      error is GraphExtractionException || error is FormatException;
+  /// A definite refusal by the runtime: a 4xx other than 408 (timeout),
+  /// 429 (rate limit) and 409 `inProgress` (another call owns the turn).
+  /// An outage, a network failure, a signed-out session or a malformed
+  /// answer is delay, and is not counted.
+  static bool _isRefusal(Exception error) {
+    if (error is! GraphExtractionException) return false;
+    final status = error.statusCode;
+    if (status == null || status < 400 || status >= 500) return false;
+    if (status == 408 || status == 429) return false;
+    return !(status == 409 && error.code == 'inProgress');
+  }
+
+  static bool _isEmptyPatch(GraphPatch? patch) =>
+      patch != null &&
+      patch.entities.isEmpty &&
+      patch.relations.isEmpty &&
+      patch.supersedes.isEmpty;
 
   Future<GraphPatch> _extractFor(
     FinalizedTurn turn,
