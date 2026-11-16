@@ -31,7 +31,7 @@ class BriefStatus {
 
   static BriefStatus? fromJson(Object? json) {
     if (json is! Map || json['status'] is! String) return null;
-    final brief = json['briefRevision'] ?? json['cardRevision'];
+    final brief = json['briefRevision'];
     final current = json['currentRevision'];
     return BriefStatus(
       status: json['status'] as String,

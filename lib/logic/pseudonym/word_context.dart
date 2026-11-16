@@ -29,8 +29,9 @@ final _roseVerbBefore = RegExp(
   r'\b(price|prices|sun|moon|heat|temperature|tide|he|she|it|they|who|smoke|dough|then|that)\s+$',
   caseSensitive: false,
 );
-final _roseVerbAfter =
-    RegExp(r'^\s+(to|from|by|above|slowly|quickly|again|up|early|and then)\b', caseSensitive: false);
+final _roseVerbAfter = RegExp(
+    r'^\s+(to|from|by|above|slowly|quickly|again|up|early|and then)\b',
+    caseSensitive: false);
 final _nameAfter = RegExp(
   r"""^(['’]s\b|,|\s+(said|says|called|calls|texted|texts|told|tells|asked|asks|is|was|has|had|wants|wanted|thinks|thought|laughed|came|went|and|who|from|at|in|lives|works|just|really|also|always|never|did|does|got|gets|knew|knows|likes|liked|loves|loved|hates|hated|moved|met|saw|sees|wrote|writes|replied|replies)\b)""",
   caseSensitive: false,
@@ -73,7 +74,8 @@ bool wordNameLooksLikeName(String name, String text, int start, int end) {
   switch (lower) {
     case 'will':
       if (atSentenceStart && _auxNext.hasMatch(after)) return false;
-      if (allCaps && !atSentenceStart && _subjectBefore.hasMatch(before)) return false;
+      if (allCaps && !atSentenceStart && _subjectBefore.hasMatch(before))
+        return false;
       return true;
     case 'rose':
       if (!ambiguous) return true;
@@ -84,7 +86,8 @@ bool wordNameLooksLikeName(String name, String text, int start, int end) {
       if (!ambiguous) return true;
       if (atSentenceStart && _auxNext.hasMatch(after)) return false;
       if (!atSentenceStart &&
-          (_determinerBefore.hasMatch(before) || _subjectBefore.hasMatch(before))) {
+          (_determinerBefore.hasMatch(before) ||
+              _subjectBefore.hasMatch(before))) {
         return false;
       }
       return true;

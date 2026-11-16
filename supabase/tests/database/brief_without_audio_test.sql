@@ -4,7 +4,7 @@
 create extension if not exists pgtap;
 
 begin;
-select plan(9);
+select plan(10);
 
 insert into auth.users (id) values
   ('71111111-1111-1111-1111-111111111111'),
@@ -30,6 +30,8 @@ select is(
     '{"focus":[],"openingThread":"","openingLine":"Hi"}'::jsonb, '', 24000),
   '{"status": "rejected", "code": "keyReused"}'::jsonb,
   'empty audio at the same revision with another brief: refused, the stored brief stays');
+select is(public.get_session_brief()->'brief'->>'openingLine', 'Hey, how is the move going?',
+  'after the refusal the stored brief is intact');
 
 select throws_ok(
   $$ select public.save_session_brief('c7111111-0000-0000-0000-000000000001', 5,

@@ -31,8 +31,9 @@ List<HistoryTurn> resumeContext({
             (fromUser: turn.role == Speaker.user, text: turn.text.trim()),
         ]
       : [
-          for (final entry in [...entries]
-            ..sort((a, b) => a.createdAt.compareTo(b.createdAt)))
+          for (final entry in [
+            ...entries
+          ]..sort((a, b) => a.createdAt.compareTo(b.createdAt)))
             (fromUser: true, text: entry.text.trim()),
         ];
   final picked = <HistoryTurn>[];

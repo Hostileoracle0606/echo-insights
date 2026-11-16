@@ -117,8 +117,8 @@ class PcmPlayer {
     final now = _now();
     final start = _tail > now ? _tail : now;
     // PCM16 mono: two bytes per sample.
-    _tail = start +
-        Duration(microseconds: (bytes / 2 / sampleRate * 1e6).round());
+    _tail =
+        start + Duration(microseconds: (bytes / 2 / sampleRate * 1e6).round());
     _speaking.value = true;
     _silenceTimer?.cancel();
     _silenceTimer = Timer(_tail - now, _onSilenceDue);

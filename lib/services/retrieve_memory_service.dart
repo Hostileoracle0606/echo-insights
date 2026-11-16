@@ -95,7 +95,8 @@ class MemoryRetrieval {
     final version = data['version'];
     if (version != retrieveMemoryContractVersion &&
         version != retrieveMemoryContractVersionV2) {
-      throw const FormatException('Unsupported retrieve-memory contract version');
+      throw const FormatException(
+          'Unsupported retrieve-memory contract version');
     }
     final context = data['context'];
     final ids = data['entityIds'];

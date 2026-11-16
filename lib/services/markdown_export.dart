@@ -240,9 +240,8 @@ String _readme(
     '',
   ];
 
-  final recentDays = (byDay.keys.toList()..sort((a, b) => b.compareTo(a)))
-      .take(14)
-      .toList();
+  final recentDays =
+      (byDay.keys.toList()..sort((a, b) => b.compareTo(a))).take(14).toList();
   if (recentDays.isNotEmpty) {
     lines.addAll(['## Recent days', '']);
     for (final date in recentDays) {
@@ -290,9 +289,8 @@ class _NoteNames {
     // "maya.md" would land on one file once unzipped.
     final taken = <String>{'readme'};
     for (final e in entities) {
-      final base = _safeFilename(e.name).isEmpty
-          ? 'Untitled'
-          : _safeFilename(e.name);
+      final base =
+          _safeFilename(e.name).isEmpty ? 'Untitled' : _safeFilename(e.name);
       var stem = base;
       for (var n = 2; taken.contains(stem.toLowerCase()); n++) {
         stem = '$base ($n)';
@@ -506,7 +504,8 @@ JournalState mergeJournalStates(Iterable<JournalState> states) {
   }
 
   return JournalState(
-    entries: _stableSorted(entries, (a, b) => b.createdAt.compareTo(a.createdAt)),
+    entries:
+        _stableSorted(entries, (a, b) => b.createdAt.compareTo(a.createdAt)),
     entities: entities,
     relations: {
       for (final MapEntry(key: id, value: r) in relations.entries)
@@ -564,7 +563,8 @@ class AllMemoryExport {
       if (state != null) states.add(state);
       onProgress?.call(i + 1, notebooks.length);
     }
-    return _buildInBackground(mergeJournalStates(states), now ?? DateTime.now());
+    return _buildInBackground(
+        mergeJournalStates(states), now ?? DateTime.now());
   }
 }
 
@@ -598,8 +598,7 @@ Future<File> writeVaultZip(
 }) async {
   final dir = directory ?? await getTemporaryDirectory();
   final bytes = await _encodeInBackground(vault);
-  final file =
-      await File('${dir.path}/$name').writeAsBytes(bytes, flush: true);
+  final file = await File('${dir.path}/$name').writeAsBytes(bytes, flush: true);
   // Journal text: unreadable while the phone is locked.
   await protectFile(file.path);
   return file;
@@ -785,8 +784,7 @@ MarkdownVault buildJournalExportBundle(
   final taken = <String>{};
   for (final notebook in export.notebooks) {
     final title = _safeFilename(notebook.title);
-    final base =
-        '${_dayKey(local(notebook.startedAt))} '
+    final base = '${_dayKey(local(notebook.startedAt))} '
         '${title.isEmpty ? 'Untitled' : title}';
     var stem = base;
     for (var n = 2; taken.contains(stem.toLowerCase()); n++) {

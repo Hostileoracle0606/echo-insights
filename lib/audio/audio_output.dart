@@ -62,8 +62,10 @@ class AudioOutput {
       vlog('playback', 'app-level player ready');
       return player;
     } catch (error) {
-      vlog('playback', 'player unavailable, sessions continue without it: '
-          '$error');
+      vlog(
+          'playback',
+          'player unavailable, sessions continue without it: '
+              '$error');
       unawaited(player.dispose().catchError((_) {}));
       return null;
     } finally {

@@ -18,7 +18,8 @@ import 'turn_state.dart' show ConversationTurn;
 const forgottenStandIn = 'someone';
 
 /// Words and the gaps between them, in order.
-final _token = RegExp(r'([\p{L}\p{M}\p{N}]+)|([^\p{L}\p{M}\p{N}]+)', unicode: true);
+final _token =
+    RegExp(r'([\p{L}\p{M}\p{N}]+)|([^\p{L}\p{M}\p{N}]+)', unicode: true);
 
 /// What may join the words of one name: spaces, hyphens, apostrophes and
 /// periods (O'Brien, St. John). Anything else ends it.
@@ -26,7 +27,8 @@ final _joiner = RegExp(r"^[ \t'’.\-]+$");
 
 /// Scripts written without spaces, and Korean: a name is looked for inside
 /// a word (the database's _no_word_gaps).
-final _noWordGaps = RegExp(r'[\u0E00-\u0E7F\u1100-\u11FF\u3040-\u30FF\u3400-\u9FFF\uAC00-\uD7A3\uF900-\uFAFF]');
+final _noWordGaps = RegExp(
+    r'[\u0E00-\u0E7F\u1100-\u11FF\u3040-\u30FF\u3400-\u9FFF\uAC00-\uD7A3\uF900-\uFAFF]');
 
 /// The people the user forgot (LM-63), so nothing the app sends a model or
 /// shows in a graph names them, across restarts. Lumen's reads from the
@@ -103,8 +105,10 @@ class ForgetRedactor {
         final json = jsonDecode(saved) as Map<String, dynamic>;
         if (json['owner'] == owner) {
           _key = base64Decode(json['key'] as String);
-          for (final e in (json['hashes'] as List).cast<Map<String, dynamic>>()) {
-            _remember(e['h'] as String, (e['w'] as num).toInt(), e['i'] == true);
+          for (final e
+              in (json['hashes'] as List).cast<Map<String, dynamic>>()) {
+            _remember(
+                e['h'] as String, (e['w'] as num).toInt(), e['i'] == true);
           }
           kept = true;
         }
@@ -183,7 +187,6 @@ class ForgetRedactor {
             {'h': e.key, 'w': e.value, 'i': _insideHashes.contains(e.key)},
         ],
       });
-
 
   String _hash(String slug) =>
       Hmac(sha256, _key!).convert(utf8.encode(slug)).toString();

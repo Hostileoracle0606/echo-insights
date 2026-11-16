@@ -8,7 +8,8 @@ import '../theme/lumen_colors.dart';
 /// graph canvas, the legend, and the sheet all resolve through here, so the
 /// neon-vs-terracotta split is gone.
 Color colorForEntityType(EntityType type) =>
-    LumenColors.entityColors[type] ?? LumenColors.entityColors[EntityType.other]!;
+    LumenColors.entityColors[type] ??
+    LumenColors.entityColors[EntityType.other]!;
 
 class NodeGlyph extends StatelessWidget {
   final EntityType type;

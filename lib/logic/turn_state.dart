@@ -22,8 +22,7 @@ enum TurnInput {
 
   /// Unknown or missing values read as [voice]: every turn stored before
   /// typed turns existed was spoken.
-  static TurnInput parse(Object? name) =>
-      name == typed.name ? typed : voice;
+  static TurnInput parse(Object? name) => name == typed.name ? typed : voice;
 }
 
 /// Durable checkpoint stages. Persisted, so a restart resumes rather than repeats.
@@ -56,7 +55,8 @@ class TurnIdentity {
   final int transcriptVersion;
   final int generation;
 
-  TurnIdentity copyWith({int? transcriptVersion, int? generation}) => TurnIdentity(
+  TurnIdentity copyWith({int? transcriptVersion, int? generation}) =>
+      TurnIdentity(
         sessionId: sessionId,
         notebookId: notebookId,
         turnId: turnId,
@@ -227,7 +227,8 @@ class FinalizedTurn {
         baseRevision: json['baseRevision'] as int?,
         revision: json['revision'] as int?,
         finalizedAt: json['finalizedAt'] as String,
-        truncatedFromInterruption: json['truncatedFromInterruption'] as bool? ?? false,
+        truncatedFromInterruption:
+            json['truncatedFromInterruption'] as bool? ?? false,
         input: TurnInput.parse(json['input']),
       );
 }
@@ -349,7 +350,8 @@ class AssistantInterrupted extends TurnEvent {
 }
 
 class ProvisionalExtractionSettled extends TurnEvent {
-  const ProvisionalExtractionSettled({required this.key, required this.entityNames});
+  const ProvisionalExtractionSettled(
+      {required this.key, required this.entityNames});
   final TurnIdentity key;
   final List<String> entityNames;
 }
@@ -554,8 +556,7 @@ class TurnMachine {
   bool holdAssistantOffRecord = false;
 
   bool _keptOffRecord(Speaker speaker) =>
-      offTheRecord ||
-      (holdAssistantOffRecord && speaker == Speaker.assistant);
+      offTheRecord || (holdAssistantOffRecord && speaker == Speaker.assistant);
 
   /// In-memory only: prevents starting the same durable step twice.
   String? _inFlight;
@@ -565,7 +566,8 @@ class TurnMachine {
   /// ordering guarantee — text can still arrive for speech never played.
   _AssistantTranscriptGate _assistantGate = _AssistantTranscriptGate.accepting;
 
-  ActiveTurn? _active(Speaker s) => s == Speaker.user ? state.activeUser : state.activeAssistant;
+  ActiveTurn? _active(Speaker s) =>
+      s == Speaker.user ? state.activeUser : state.activeAssistant;
   ActiveTurn? _awaiting(Speaker s) =>
       s == Speaker.user ? state.awaitingUser : state.awaitingAssistant;
 
@@ -612,7 +614,9 @@ class TurnMachine {
       _inFlight = head.turnId;
       // The key carries the turn's OWN session, not whichever socket is open
       // now: a reconnect must not invalidate work already finalized.
-      return [StartDurableExtraction(key: head.identity, transcript: head.transcript)];
+      return [
+        StartDurableExtraction(key: head.identity, transcript: head.transcript)
+      ];
     }
     if (head.stage == DurableStage.extracted) {
       _inFlight = head.turnId;
@@ -626,12 +630,15 @@ class TurnMachine {
       state.pending[0] = updated;
       return [
         PersistTurn(turn: updated),
-        StartCommit(turnId: updated.turnId, commitRequestId: updated.commitRequestId),
+        StartCommit(
+            turnId: updated.turnId, commitRequestId: updated.commitRequestId),
       ];
     }
     if (head.stage == DurableStage.commitPending) {
       _inFlight = head.turnId;
-      return [StartCommit(turnId: head.turnId, commitRequestId: head.commitRequestId)];
+      return [
+        StartCommit(turnId: head.turnId, commitRequestId: head.commitRequestId)
+      ];
     }
     return const [];
   }
@@ -645,7 +652,8 @@ class TurnMachine {
 
   /// Turns a completed active turn into an immutable finalized turn. The only
   /// path by which spoken text becomes eligible to change the canonical graph.
-  List<TurnEffect> _finalize(ActiveTurn turn, String transcript, bool truncated) {
+  List<TurnEffect> _finalize(
+      ActiveTurn turn, String transcript, bool truncated) {
     final text = transcript.trim();
     if (_active(turn.speaker)?.turnId == turn.turnId) {
       _setActive(turn.speaker, null);
@@ -694,7 +702,8 @@ class TurnMachine {
 
     final effects = <TurnEffect>[];
     if (turn.generation > 0) {
-      effects.add(CancelExtraction(turnId: turn.turnId, generation: turn.generation));
+      effects.add(
+          CancelExtraction(turnId: turn.turnId, generation: turn.generation));
     }
     state.pending.add(finalized);
     if (state.previewTurnId == turn.turnId) {
@@ -703,7 +712,8 @@ class TurnMachine {
     }
     _insertByStart(state.conversation, spoken);
     if (state.conversation.length > _maxConversation) {
-      state.conversation.removeRange(0, state.conversation.length - _maxConversation);
+      state.conversation
+          .removeRange(0, state.conversation.length - _maxConversation);
     }
     // The checkpoint is written BEFORE the expensive model call, so a restart
     // between here and extraction resumes instead of losing the turn.
@@ -796,7 +806,8 @@ class TurnMachine {
       case InterimTranscript():
         if (state.sessionId == null) return const [];
         if (event.speaker == Speaker.assistant) {
-          if (_assistantGate == _AssistantTranscriptGate.discardingInterruptedTurn) {
+          if (_assistantGate ==
+              _AssistantTranscriptGate.discardingInterruptedTurn) {
             return const [];
           }
           if (_assistantGate == _AssistantTranscriptGate.awaitingNextTurn) {
@@ -823,11 +834,13 @@ class TurnMachine {
 
         final effects = <TurnEffect>[];
         if (priorGeneration > 0) {
-          effects.add(CancelExtraction(turnId: base.turnId, generation: priorGeneration));
+          effects.add(CancelExtraction(
+              turnId: base.turnId, generation: priorGeneration));
         }
         // Provisional extraction is display-only. Nothing it returns may reach
         // the canonical graph, persistence, mention counts, or follow-ups.
-        effects.add(StartProvisionalExtraction(key: _keyOf(base), text: event.text));
+        effects.add(
+            StartProvisionalExtraction(key: _keyOf(base), text: event.text));
         return effects;
 
       case FinalTranscript():
@@ -855,7 +868,8 @@ class TurnMachine {
       case TurnCompleted():
         final active = _active(event.speaker);
         if (event.speaker == Speaker.assistant &&
-            _assistantGate == _AssistantTranscriptGate.discardingInterruptedTurn) {
+            _assistantGate ==
+                _AssistantTranscriptGate.discardingInterruptedTurn) {
           _assistantGate = _AssistantTranscriptGate.awaitingNextTurn;
         }
         if (active == null) return const [];
@@ -886,7 +900,8 @@ class TurnMachine {
         final waiting = _awaiting(event.speaker);
         // Already finalized by a late final transcript — no phantom turn.
         if (waiting == null || waiting.turnId != event.turnId) return const [];
-        return _finalize(waiting, waiting.finalText ?? waiting.text, waiting.interrupted);
+        return _finalize(
+            waiting, waiting.finalText ?? waiting.text, waiting.interrupted);
 
       case PlaybackAdvanced():
         final active = state.activeAssistant;
@@ -968,20 +983,23 @@ class TurnMachine {
       case DurableExtractionFailed():
         if (state.pending.isEmpty) return _rejectStale();
         final head = state.pending.first;
-        if (head.turnId != event.key.turnId || head.notebookId != event.key.notebookId) {
+        if (head.turnId != event.key.turnId ||
+            head.notebookId != event.key.notebookId) {
           return _rejectStale();
         }
         return _dropHead();
 
       case CommitCommitted():
-        if (state.pending.isEmpty || state.pending.first.turnId != event.turnId) {
+        if (state.pending.isEmpty ||
+            state.pending.first.turnId != event.turnId) {
           return _rejectStale();
         }
         state.revision = event.revision;
         return _dropHead();
 
       case CommitConflict():
-        if (state.pending.isEmpty || state.pending.first.turnId != event.turnId) {
+        if (state.pending.isEmpty ||
+            state.pending.first.turnId != event.turnId) {
           return _rejectStale();
         }
         // A conflict performed no write, so no ledger row exists and the same
@@ -994,12 +1012,14 @@ class TurnMachine {
         state.revision = event.revision;
         _inFlight = null;
         if (state.pending.isNotEmpty) {
-          state.pending[0] = state.pending.first.copyWith(baseRevision: event.revision);
+          state.pending[0] =
+              state.pending.first.copyWith(baseRevision: event.revision);
         }
         return _driveQueue();
 
       case CommitUnknown():
-        if (state.pending.isEmpty || state.pending.first.turnId != event.turnId) {
+        if (state.pending.isEmpty ||
+            state.pending.first.turnId != event.turnId) {
           return _rejectStale();
         }
         // Outcome genuinely unknown. Retry the identical commit with the same
@@ -1009,13 +1029,16 @@ class TurnMachine {
         return _driveQueue();
 
       case CommitRejected():
-        if (state.pending.isEmpty || state.pending.first.turnId != event.turnId) {
+        if (state.pending.isEmpty ||
+            state.pending.first.turnId != event.turnId) {
           return _rejectStale();
         }
         return _dropHead();
 
       case Restored():
-        final usable = event.turns.where((t) => t.stage != DurableStage.committed).toList();
+        final usable = event.turns
+            .where((t) => t.stage != DurableStage.committed)
+            .toList();
         state.pending.insertAll(0, usable);
         return _driveQueue();
     }

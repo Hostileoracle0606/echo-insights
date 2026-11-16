@@ -72,7 +72,8 @@ class GraphLayout {
     final base = near ?? visibleCenter;
     return nodes[id] = LayoutNode(
       position: base +
-          Offset(_random.nextDouble() * 24 - 12, _random.nextDouble() * 24 - 12),
+          Offset(
+              _random.nextDouble() * 24 - 12, _random.nextDouble() * 24 - 12),
       radius: radius,
     );
   }

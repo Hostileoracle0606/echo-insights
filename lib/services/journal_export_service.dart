@@ -12,7 +12,7 @@ import 'markdown_export.dart';
 /// notebooks) and stitches the answers together.
 class JournalExportService {
   final Future<dynamic> Function(String function, Map<String, dynamic> params)
-  _rpc;
+      _rpc;
 
   /// The caller's notebook ids, newest first.
   final Future<List<String>> Function() _listNotebookIds;
@@ -21,8 +21,8 @@ class JournalExportService {
     required Future<dynamic> Function(String, Map<String, dynamic>) rpc,
     required Future<List<String>> Function() listNotebookIds,
     this.chunkSize = 10,
-  }) : _rpc = rpc,
-       _listNotebookIds = listNotebookIds;
+  })  : _rpc = rpc,
+        _listNotebookIds = listNotebookIds;
 
   final int chunkSize;
 

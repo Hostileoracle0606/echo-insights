@@ -66,16 +66,14 @@ class _PrivacySheetState extends ConsumerState<PrivacySheet> {
     final service = ref.read(journalExportServiceProvider);
     final share = ref.read(shareVaultProvider);
     final box = context.findRenderObject() as RenderBox?;
-    final origin = box == null
-        ? null
-        : box.localToGlobal(Offset.zero) & box.size;
+    final origin =
+        box == null ? null : box.localToGlobal(Offset.zero) & box.size;
     try {
       final export = await service.fetch(
         onProgress: (done, total) {
           if (mounted && total > 0) {
             setState(
-              () => _exportStatus =
-                  'Collecting your journal: '
+              () => _exportStatus = 'Collecting your journal: '
                   '$done of $total notebooks…',
             );
           }
@@ -104,9 +102,8 @@ class _PrivacySheetState extends ConsumerState<PrivacySheet> {
     final done = on ? await lock.enable() : await lock.disable();
     if (!mounted || done) return;
     setState(
-      () => _problem = on
-          ? 'Set a passcode on this phone to use app lock.'
-          : null,
+      () => _problem =
+          on ? 'Set a passcode on this phone to use app lock.' : null,
     );
   }
 
@@ -181,11 +178,11 @@ class _PrivacySheetState extends ConsumerState<PrivacySheet> {
               subtitle: Text(
                 _exportFailed
                     ? 'The export did not finish. Check your connection and '
-                          'try again.'
+                        'try again.'
                     : _exportStatus ??
-                          'A zip with your whole journal as data and as '
-                              'Markdown notes. Asks for Face ID or your '
-                              'passcode first.',
+                        'A zip with your whole journal as data and as '
+                            'Markdown notes. Asks for Face ID or your '
+                            'passcode first.',
                 style: _exportFailed
                     ? small.copyWith(color: colors.destructive)
                     : small,
