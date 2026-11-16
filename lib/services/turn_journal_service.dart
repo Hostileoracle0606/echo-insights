@@ -37,15 +37,50 @@ class PreparedTurnCommit {
       );
 }
 
+/// A step of a journalled turn whose refusals are counted.
+enum TurnStepKind { extract, commit }
+
 class TurnJournalCheckpoint {
-  const TurnJournalCheckpoint({required this.turn, this.preparedCommit});
+  const TurnJournalCheckpoint({
+    required this.turn,
+    this.preparedCommit,
+    this.extractAttempts = 0,
+    this.commitAttempts = 0,
+  });
 
   final FinalizedTurn turn;
   final PreparedTurnCommit? preparedCommit;
 
+  /// Refused extraction attempts so far (counts only), so catch-up can stop
+  /// asking after a bound instead of blocking the notebook forever.
+  final int extractAttempts;
+
+  /// Refused (`commitFailed`) commit attempts so far.
+  final int commitAttempts;
+
+  int attempts(TurnStepKind kind) => switch (kind) {
+        TurnStepKind.extract => extractAttempts,
+        TurnStepKind.commit => commitAttempts,
+      };
+
+  TurnJournalCheckpoint _with({
+    FinalizedTurn? turn,
+    PreparedTurnCommit? preparedCommit,
+    int? extractAttempts,
+    int? commitAttempts,
+  }) =>
+      TurnJournalCheckpoint(
+        turn: turn ?? this.turn,
+        preparedCommit: preparedCommit ?? this.preparedCommit,
+        extractAttempts: extractAttempts ?? this.extractAttempts,
+        commitAttempts: commitAttempts ?? this.commitAttempts,
+      );
+
   Map<String, dynamic> toJson() => {
         'turn': turn.toJson(),
         if (preparedCommit != null) 'preparedCommit': preparedCommit!.toJson(),
+        if (extractAttempts > 0) 'extractAttempts': extractAttempts,
+        if (commitAttempts > 0) 'commitAttempts': commitAttempts,
       };
 
   factory TurnJournalCheckpoint.fromJson(Map<String, dynamic> json) =>
@@ -58,6 +93,8 @@ class TurnJournalCheckpoint {
                 (json['preparedCommit'] as Map).cast<String, dynamic>(),
               )
             : null,
+        extractAttempts: (json['extractAttempts'] as num?)?.toInt() ?? 0,
+        commitAttempts: (json['commitAttempts'] as num?)?.toInt() ?? 0,
       );
 }
 
@@ -100,10 +137,7 @@ class TurnJournalService {
       if (index == -1) {
         checkpoints.add(TurnJournalCheckpoint(turn: turn));
       } else {
-        checkpoints[index] = TurnJournalCheckpoint(
-          turn: turn,
-          preparedCommit: checkpoints[index].preparedCommit,
-        );
+        checkpoints[index] = checkpoints[index]._with(turn: turn);
       }
       await _writeCheckpoints(turn.notebookId, checkpoints);
     });
@@ -118,16 +152,42 @@ class TurnJournalService {
       final index = checkpoints.indexWhere(
         (checkpoint) => checkpoint.turn.turnId == turn.turnId,
       );
-      final checkpoint = TurnJournalCheckpoint(
-        turn: turn,
-        preparedCommit: preparedCommit,
-      );
       if (index == -1) {
-        checkpoints.add(checkpoint);
+        checkpoints.add(TurnJournalCheckpoint(
+          turn: turn,
+          preparedCommit: preparedCommit,
+        ));
       } else {
-        checkpoints[index] = checkpoint;
+        checkpoints[index] = checkpoints[index]._with(
+          turn: turn,
+          preparedCommit: preparedCommit,
+        );
       }
       await _writeCheckpoints(turn.notebookId, checkpoints);
+    });
+  }
+
+  /// Adds one refused [kind] attempt to the turn's checkpoint and returns
+  /// the new count; 0 when the turn is no longer journalled.
+  Future<int> countAttempt({
+    required String notebookId,
+    required String turnId,
+    required TurnStepKind kind,
+  }) {
+    return _serialized(() async {
+      final checkpoints = await _readCheckpoints(notebookId);
+      final index = checkpoints.indexWhere(
+        (checkpoint) => checkpoint.turn.turnId == turnId,
+      );
+      if (index == -1) return 0;
+      final current = checkpoints[index];
+      final count = current.attempts(kind) + 1;
+      checkpoints[index] = switch (kind) {
+        TurnStepKind.extract => current._with(extractAttempts: count),
+        TurnStepKind.commit => current._with(commitAttempts: count),
+      };
+      await _writeCheckpoints(notebookId, checkpoints);
+      return count;
     });
   }
 

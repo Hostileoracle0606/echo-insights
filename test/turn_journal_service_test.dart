@@ -161,6 +161,58 @@ void main() {
     expect(await journal.loadTurns('notebook-1'), isEmpty);
   });
 
+  test('refused attempts are counted per step, kept, and survive a restart',
+      () async {
+    await journal.persistTurn(turn());
+
+    expect(
+        await journal.countAttempt(
+            notebookId: 'notebook-1',
+            turnId: 'turn-1',
+            kind: TurnStepKind.extract),
+        1);
+    expect(
+        await journal.countAttempt(
+            notebookId: 'notebook-1',
+            turnId: 'turn-1',
+            kind: TurnStepKind.extract),
+        2);
+    expect(
+        await journal.countAttempt(
+            notebookId: 'notebook-1',
+            turnId: 'turn-1',
+            kind: TurnStepKind.commit),
+        1);
+    // Later stage writes keep the counts.
+    await journal.persistTurn(turn(stage: DurableStage.extracted));
+    await journal.persistPreparedCommit(
+      turn: turn(stage: DurableStage.commitPending),
+      preparedCommit: const PreparedTurnCommit(
+        expectedRevision: 1,
+        change: ApplyTurnChange(
+          entryText: 'I work at Acme.',
+          entryEntityIds: <String>[],
+          entryRelationIds: <String>[],
+          entities: [],
+          relations: [],
+        ),
+        entryId: 'local-entry-1',
+      ),
+    );
+
+    final restarted =
+        TurnJournalService(directoryProvider: () async => directory);
+    final restored = (await restarted.loadCheckpoints('notebook-1')).single;
+    expect(restored.extractAttempts, 2);
+    expect(restored.commitAttempts, 1);
+    expect(
+        await restarted.countAttempt(
+            notebookId: 'notebook-1',
+            turnId: 'gone',
+            kind: TurnStepKind.commit),
+        0);
+  });
+
   group('listNotebookIdsWithTurns', () {
     FinalizedTurn turnIn(
       String notebookId,

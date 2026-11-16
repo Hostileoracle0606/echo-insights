@@ -7,6 +7,7 @@ import 'package:lumen/logic/turn_state.dart'
 import 'package:lumen/models/entity.dart';
 import 'package:lumen/models/graph_patch.dart';
 import 'package:lumen/models/journal_state.dart';
+import 'package:lumen/services/extract_graph_service.dart';
 import 'package:lumen/services/headless_turn_finisher.dart';
 import 'package:lumen/services/notebook_commit_service.dart';
 import 'package:lumen/services/turn_journal_service.dart';
@@ -58,6 +59,12 @@ class _FakeServer {
   bool loseNextResponse = false;
   bool missing = false;
 
+  /// commit_notebook answers notFound although the snapshot still reads.
+  bool commitNotFound = false;
+
+  /// commit_notebook answers commitFailed.
+  bool failCommits = false;
+
   /// Runs before each commit is judged: another device writing meanwhile.
   void Function()? beforeCommit;
 
@@ -69,7 +76,10 @@ class _FakeServer {
   }) async {
     commitCalls += 1;
     beforeCommit?.call();
-    if (missing) return const CommitRejected(code: 'notFound');
+    if (missing || commitNotFound) {
+      return const CommitRejected(code: 'notFound');
+    }
+    if (failCommits) return const CommitRejected(code: 'commitFailed');
     final hash = jsonEncode(change.toJson());
     final seen = _ledger[requestId];
     if (seen != null) {
@@ -124,6 +134,7 @@ void main() {
   late _FakeExtractor extractor;
   late HeadlessTurnFinisher finisher;
 
+  // A fresh instance is what a relaunch gets: nothing but the journal.
   HeadlessTurnFinisher build({TurnRedaction redaction = TurnRedaction.none}) =>
       HeadlessTurnFinisher(
         journal: journal,
@@ -260,14 +271,41 @@ void main() {
       expect(await journal.loadCheckpoints(_notebook), isEmpty);
     });
 
-    test('a notebook this account cannot see is left alone', () async {
+    test('a notebook the server no longer has drops its turn', () async {
       server.missing = true;
 
       final result = await finisher.finishNotebook(_notebook);
 
+      expect(result.rejectedTurnIds, ['turn-1']);
+      expect(result.done, isTrue);
+      expect(server.snapshotLoads, 1, reason: 'notFound is confirmed first');
+      expect(await journal.loadCheckpoints(_notebook), isEmpty);
+    });
+
+    test('notFound with a readable snapshot waits', () async {
+      server.commitNotFound = true;
+
+      final result = await finisher.finishNotebook(_notebook);
+
       expect(result.deferredTurnId, 'turn-1');
-      expect(await journal.loadCheckpoints(_notebook), hasLength(1),
-          reason: 'it may belong to another account on this phone');
+      expect(await journal.loadCheckpoints(_notebook), hasLength(1));
+    });
+
+    test('commitFailed waits, counted across relaunches, then drops', () async {
+      server.failCommits = true;
+
+      for (var run = 1; run < HeadlessTurnFinisher.maxAttempts; run++) {
+        final result = await build().finishNotebook(_notebook);
+        expect(result.deferredTurnId, 'turn-1');
+        final kept = (await journal.loadCheckpoints(_notebook)).single;
+        expect(kept.commitAttempts, run);
+      }
+
+      final last = await build().finishNotebook(_notebook);
+
+      expect(last.rejectedTurnIds, ['turn-1']);
+      expect(await journal.loadCheckpoints(_notebook), isEmpty);
+      expect(server.applied, isEmpty);
     });
   });
 
@@ -369,22 +407,98 @@ void main() {
       expect(server.commitCalls, 0);
       final kept = (await journal.loadCheckpoints(_notebook)).single;
       expect(kept.turn.stage, DurableStage.finalRecorded);
+      expect(kept.extractAttempts, 0, reason: 'no network is delay');
+    });
+
+    test('a reused turn id commits the words with an empty patch, once',
+        () async {
+      extractor.failWith = const GraphExtractionException(
+        'rejected',
+        statusCode: 409,
+        code: 'requestIdReused',
+      );
+      server.loseNextResponse = true;
+
+      final first = await finisher.finishNotebook(_notebook);
+      expect(first.deferredTurnId, 'turn-1');
+      final second = await build().finishNotebook(_notebook);
+
+      expect(second.committedTurnIds, ['turn-1']);
+      expect(extractor.calls, hasLength(1));
+      expect(server.applied, hasLength(1), reason: 'same request id');
+      final entry = server.applied.single['entry'] as Map;
+      expect(entry['text'], 'I work at Acme with Maya.');
+      expect(entry['entityIds'], isEmpty);
+      expect(await journal.loadCheckpoints(_notebook), isEmpty);
+    });
+
+    test('refused extractions wait, counted across relaunches, up to a bound',
+        () async {
+      extractor.failWith = const GraphExtractionException(
+        'rejected',
+        statusCode: 503,
+        code: 'providerUnavailable',
+      );
+
+      for (var run = 1; run < HeadlessTurnFinisher.maxAttempts; run++) {
+        final result = await build().finishNotebook(_notebook);
+        expect(result.deferredTurnId, 'turn-1');
+        final kept = (await journal.loadCheckpoints(_notebook)).single;
+        expect(kept.extractAttempts, run);
+        expect(server.commitCalls, 0);
+      }
+
+      final last = await build().finishNotebook(_notebook);
+
+      expect(last.committedTurnIds, ['turn-1']);
+      expect(extractor.calls, hasLength(HeadlessTurnFinisher.maxAttempts));
+      expect((server.applied.single['entry'] as Map)['entityIds'], isEmpty);
+      expect(await journal.loadCheckpoints(_notebook), isEmpty);
     });
 
     test('what the extractor is sent goes through forget redaction', () async {
+      await journal.persistTurn(_turn(
+        turnId: 'turn-2',
+        requestId: 'request-2',
+        transcript: 'Maya moved to Lisbon.',
+      ));
+      final redacted = <String>[];
+      var loads = 0;
+      final statesIn = <JournalState>[];
+      final statesOut = <JournalState>[];
       finisher = build(
         redaction: TurnRedaction(
-          redact: (text) => text.replaceAll('Maya', 'someone'),
-          redactState: (state) => state,
+          ensureLoaded: () async => loads += 1,
+          redact: (text) {
+            redacted.add(text);
+            return text.replaceAll('Maya', 'someone');
+          },
+          redactState: (state) {
+            statesIn.add(state);
+            final out = state.copyWith(entries: const []);
+            statesOut.add(out);
+            return out;
+          },
         ),
       );
 
-      await finisher.finishNotebook(_notebook);
+      final result = await finisher.finishNotebook(_notebook);
 
-      expect(extractor.calls.single.text, 'I work at Acme with someone.');
-      // The entry keeps the words as said, as the open notebook does.
-      expect((server.applied.single['entry'] as Map)['text'],
-          'I work at Acme with Maya.');
+      expect(result.committedTurnIds, ['turn-1', 'turn-2']);
+      expect(loads, greaterThan(0));
+      expect(extractor.calls.map((c) => c.text),
+          ['I work at Acme with someone.', 'someone moved to Lisbon.']);
+      // The earlier turn reaches the extractor redacted too.
+      expect(extractor.calls.last.recentConversation,
+          [(role: Speaker.user, text: 'I work at Acme with someone.')]);
+      // The snapshot is redacted before the extractor sees it.
+      expect(statesIn, hasLength(2));
+      for (var i = 0; i < 2; i++) {
+        expect(identical(extractor.calls[i].state, statesOut[i]), isTrue);
+      }
+      // The entries keep the words as said, as the open notebook does.
+      expect(server.applied.map((c) => (c['entry'] as Map)['text']),
+          ['I work at Acme with Maya.', 'Maya moved to Lisbon.']);
     });
 
     test("Lumen's own turn commits without a model call", () async {
@@ -418,6 +532,7 @@ void main() {
         if (request.turnId == 't2') throw const SocketException('offline');
         return _acme;
       },
+      redaction: TurnRedaction.none,
     );
 
     final result = await finisher.finishNotebook(_notebook);

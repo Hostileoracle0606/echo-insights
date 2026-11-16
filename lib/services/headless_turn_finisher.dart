@@ -5,6 +5,7 @@ import '../logic/turn_state.dart' show DurableStage, FinalizedTurn, Speaker;
 import '../logic/voice_log.dart';
 import '../models/graph_patch.dart';
 import '../models/journal_state.dart';
+import 'extract_graph_service.dart' show GraphExtractionException;
 import 'notebook_commit_service.dart';
 import 'turn_journal_service.dart';
 
@@ -106,6 +107,9 @@ class NotebookFinishResult {
 
 enum _Finish { committed, rejected, deferred }
 
+/// Why [HeadlessTurnFinisher._prepare] could not make an envelope.
+enum _NotPrepared { deferred, gone }
+
 /// Commits a notebook's journalled turns without opening it (LM-103).
 ///
 /// Per turn, from what the journal kept:
@@ -119,6 +123,19 @@ enum _Finish { committed, rejected, deferred }
 /// ledger. Turns go strictly in journal order, as the open notebook's queue
 /// does; the first that cannot finish stops the notebook.
 ///
+/// Unlike the open notebook, which drops a turn on the first failed
+/// extraction or refused commit, this defers: the turn stays journalled for
+/// the next catch-up. To keep one stuck turn from blocking the notebook for
+/// good, refusals are counted on the checkpoint and bounded by
+/// [maxAttempts]:
+/// - extraction refused as `requestIdReused` (the runtime holds a different
+///   input under this turn id), or refused [maxAttempts] times: the turn is
+///   committed with an empty patch, so its words are kept as an entry and
+///   later turns go on. Network failures are delay, not refusals: uncounted.
+/// - commit refused as `commitFailed` [maxAttempts] times: dropped.
+/// - a notebook the server no longer has (null snapshot, or `notFound`
+///   confirmed by a snapshot load): its turns are dropped.
+///
 /// The caller must not run this for a notebook a live session has open:
 /// that notebook's own queue is finishing the same turns.
 class HeadlessTurnFinisher {
@@ -127,7 +144,7 @@ class HeadlessTurnFinisher {
     required CommitNotebookFn commit,
     required LoadNotebookSnapshotFn loadSnapshot,
     required ExtractJournalTurnFn extract,
-    TurnRedaction redaction = TurnRedaction.none,
+    required TurnRedaction redaction,
   })  : _journal = journal,
         _commit = commit,
         _loadSnapshot = loadSnapshot,
@@ -135,7 +152,17 @@ class HeadlessTurnFinisher {
         _redaction = redaction;
 
   /// How many earlier turns go to the extractor as recent conversation.
+  ///
+  /// Only turns still in the journal can be sent: turns already committed
+  /// are not re-read from the server, and nothing Lumen said that the
+  /// journal did not keep is included. So a headless extraction sees less
+  /// context than the live one did (no retrieved entities, no follow-up
+  /// being answered). This matters only when the runtime has no cached
+  /// result for the turn id.
   static const int recentTurns = 16;
+
+  /// Refusals of one step of a turn before catch-up stops asking.
+  static const int maxAttempts = 3;
 
   final TurnJournalService _journal;
   final CommitNotebookFn _commit;
@@ -188,9 +215,12 @@ class HeadlessTurnFinisher {
 
     try {
       if (prepared == null) {
-        final made = await _prepare(turn, earlier);
-        if (made == null) return (_Finish.deferred, null);
-        (turn, prepared) = made;
+        switch (await _prepare(turn, earlier)) {
+          case (_NotPrepared reason, _):
+            return (await _settle(turn, reason), null);
+          case (_, (FinalizedTurn, PreparedTurnCommit) made):
+            (turn, prepared) = made;
+        }
       }
 
       while (true) {
@@ -202,31 +232,45 @@ class HeadlessTurnFinisher {
         );
         switch (outcome) {
           case CommitCommitted(:final revision):
-            await _journal.forgetTurn(
-              notebookId: turn.notebookId,
-              turnId: turn.turnId,
-            );
+            await _forget(turn);
             return (_Finish.committed, revision);
           case CommitConflict():
             // No write and no ledger row: the same request id stays valid
             // for a fresh merge on the current snapshot. Once.
             if (rebased) return (_Finish.deferred, null);
             rebased = true;
-            final made = await _prepare(turn, earlier);
-            if (made == null) return (_Finish.deferred, null);
-            (turn, prepared) = made;
+            switch (await _prepare(turn, earlier)) {
+              case (_NotPrepared reason, _):
+                return (await _settle(turn, reason), null);
+              case (_, (FinalizedTurn, PreparedTurnCommit) made):
+                (turn, prepared) = made;
+            }
           case CommitRejected(:final code):
             vlog('catchup', 'commit rejected for turn ${turn.turnId}: $code');
-            // notFound may be another account's notebook on this phone, and
-            // commitFailed is the server's own trouble: both wait. Anything
-            // else is refused for good, and dropped as the open notebook does.
-            if (code == 'notFound' || code == 'commitFailed') {
-              return (_Finish.deferred, null);
+            if (code == 'notFound') {
+              // Gone only if the server says so on a fresh read too.
+              final snapshot = await _loadSnapshot(turn.notebookId);
+              return (
+                await _settle(
+                    turn,
+                    snapshot == null
+                        ? _NotPrepared.gone
+                        : _NotPrepared.deferred),
+                null,
+              );
             }
-            await _journal.forgetTurn(
-              notebookId: turn.notebookId,
-              turnId: turn.turnId,
-            );
+            if (code == 'commitFailed') {
+              final count = await _journal.countAttempt(
+                notebookId: turn.notebookId,
+                turnId: turn.turnId,
+                kind: TurnStepKind.commit,
+              );
+              if (count < maxAttempts) return (_Finish.deferred, null);
+              vlog('catchup',
+                  'turn ${turn.turnId} dropped after $count refusals');
+            }
+            // Refused for good: dropped, as the open notebook does.
+            await _forget(turn);
             return (_Finish.rejected, null);
         }
       }
@@ -241,15 +285,33 @@ class HeadlessTurnFinisher {
     }
   }
 
+  Future<void> _forget(FinalizedTurn turn) => _journal.forgetTurn(
+        notebookId: turn.notebookId,
+        turnId: turn.turnId,
+      );
+
+  /// A turn that could not be prepared: kept for later, or dropped with its
+  /// notebook.
+  Future<_Finish> _settle(FinalizedTurn turn, _NotPrepared reason) async {
+    if (reason == _NotPrepared.deferred) return _Finish.deferred;
+    vlog(
+        'catchup',
+        'notebook ${turn.notebookId} is gone: '
+            'turn ${turn.turnId} dropped');
+    await _forget(turn);
+    return _Finish.rejected;
+  }
+
   /// Loads the server snapshot, extracts if the turn has no result yet,
-  /// merges, and persists the envelope before it is sent. Null when the
-  /// notebook cannot be read now.
-  Future<(FinalizedTurn, PreparedTurnCommit)?> _prepare(
+  /// merges, and persists the envelope before it is sent.
+  Future<(_NotPrepared?, (FinalizedTurn, PreparedTurnCommit)?)> _prepare(
     FinalizedTurn turn,
     List<FinalizedTurn> earlier,
   ) async {
     final snapshot = await _loadSnapshot(turn.notebookId);
-    if (snapshot == null) return null;
+    // Null is the server's answer (not found), not a network failure,
+    // which throws.
+    if (snapshot == null) return (_NotPrepared.gone, null);
     await _redaction.ensureLoaded();
     // As the open notebook adopts a snapshot: a forgotten person is gone
     // from what is merged onto, and from what the extractor is shown.
@@ -257,7 +319,25 @@ class HeadlessTurnFinisher {
 
     var patch = checkpointedPatch(turn);
     if (patch == null) {
-      patch = await _extractFor(turn, state, earlier);
+      try {
+        patch = await _extractFor(turn, state, earlier);
+      } on Exception catch (error) {
+        if (!_isRefusal(error)) rethrow;
+        final reused = error is GraphExtractionException &&
+            error.code == 'requestIdReused';
+        if (!reused) {
+          final count = await _journal.countAttempt(
+            notebookId: turn.notebookId,
+            turnId: turn.turnId,
+            kind: TurnStepKind.extract,
+          );
+          if (count < maxAttempts) return (_NotPrepared.deferred, null);
+        }
+        // Kept as an entry with nothing added to the graph, so the words
+        // are not lost and later turns are not held behind this one.
+        vlog('catchup', 'turn ${turn.turnId} committed without extraction');
+        patch = GraphPatch.empty();
+      }
       turn = turn.copyWith(
         stage: DurableStage.extracted,
         extraction: patch.toJson(),
@@ -281,8 +361,13 @@ class HeadlessTurnFinisher {
       turn: turn,
       preparedCommit: result.prepared,
     );
-    return (turn, result.prepared);
+    return (null, (turn, result.prepared));
   }
+
+  /// The runtime answered and refused (or answered nonsense). A network
+  /// failure or a signed-out session is delay, and is not counted.
+  static bool _isRefusal(Exception error) =>
+      error is GraphExtractionException || error is FormatException;
 
   Future<GraphPatch> _extractFor(
     FinalizedTurn turn,

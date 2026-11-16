@@ -24,12 +24,28 @@ class GraphExtractionException implements Exception {
   final String message;
   final int? statusCode;
 
-  const GraphExtractionException(this.message, {this.statusCode});
+  /// The runtime's refusal code from the response body, when it gave one
+  /// (`requestIdReused`, `inProgress`, `providerUnavailable`, ...).
+  final String? code;
+
+  const GraphExtractionException(this.message, {this.statusCode, this.code});
 
   @override
   String toString() => statusCode == null
       ? 'GraphExtractionException: $message'
       : 'GraphExtractionException ($statusCode): $message';
+}
+
+String? _refusalCode(String body) {
+  try {
+    final decoded = jsonDecode(body);
+    if (decoded is Map && decoded['code'] is String) {
+      return decoded['code'] as String;
+    }
+  } on FormatException {
+    // Not JSON: no code.
+  }
+  return null;
 }
 
 /// Sends one finalized turn to the graph-extraction runtime and returns the
@@ -238,6 +254,7 @@ class ExtractGraphService {
           throw GraphExtractionException(
             'The graph-extraction runtime rejected the request',
             statusCode: response.statusCode,
+            code: _refusalCode(response.body),
           );
         }
 
