@@ -320,6 +320,56 @@ void main() {
       expect(first!.title, second!.title);
     });
 
+    test('only a draft is stored: close still runs the final close', () async {
+      var posts = 0;
+      final card = await service(
+        (_) async {
+          posts += 1;
+          return json(200, {'status': 'ready', 'card': cardJson});
+        },
+        readCard: (_) async => cardJson,
+        rpc: (fn, [_]) async => {
+          'status': 'present',
+          'cardRevision': 7,
+          'currentRevision': 7,
+          'draft': true,
+        },
+      ).close(notebookId);
+      expect(posts, 1);
+      expect(card, isNotNull);
+    });
+
+    test('a draft request is skipped when a draft is already stored', () async {
+      var posts = 0;
+      await service(
+        (_) async {
+          posts += 1;
+          return json(200, {'status': 'ready', 'card': cardJson});
+        },
+        readCard: (_) async => cardJson,
+        rpc: (fn, [_]) async => {
+          'status': 'present',
+          'cardRevision': 7,
+          'currentRevision': 7,
+          'draft': true,
+        },
+      ).draft(notebookId);
+      expect(posts, 0);
+    });
+
+    test('cardStatus reads the draft flag', () async {
+      final status = await service(
+        (_) async => fail('no runtime call'),
+        rpc: (fn, [_]) async => {
+          'status': 'present',
+          'cardRevision': 7,
+          'currentRevision': 7,
+          'draft': true,
+        },
+      ).cardStatus(notebookId, 7);
+      expect(status.draft, isTrue);
+    });
+
     test('a failed status question does not stop the close', () async {
       var posts = 0;
       final card = await service(

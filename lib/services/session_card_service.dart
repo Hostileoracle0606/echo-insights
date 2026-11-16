@@ -27,11 +27,16 @@ class CardStatus {
     required this.status,
     this.cardRevision,
     this.currentRevision,
+    this.draft = false,
   });
 
   final String status;
   final int? cardRevision;
   final int? currentRevision;
+
+  /// The stored card is a draft (written while the conversation went on),
+  /// not the final one: a final close still has work to do.
+  final bool draft;
 
   bool get isPresent => status == 'present';
 
@@ -43,6 +48,7 @@ class CardStatus {
       status: json['status'] as String,
       cardRevision: card is int ? card : null,
       currentRevision: current is int ? current : null,
+      draft: json['draft'] == true,
     );
   }
 }
@@ -211,7 +217,8 @@ class SessionCardService {
       return _Done(_readCard == null ? null : await load(notebookId));
     }
     // LM-102: ask first. A card already stored for this revision is the
-    // answer; nothing is sent to the model again. If the question itself
+    // answer (a final, or for a draft request any card); nothing is sent to
+    // the model again. If the question itself
     // fails, carry on: the save is keyed, so a repeat is safe.
     if (_readCard != null) {
       CardStatus? known;
@@ -220,7 +227,9 @@ class SessionCardService {
       } on Exception {
         known = null;
       }
-      if (known != null && known.isPresent) {
+      // A draft is not "done" for a final close; for a draft request any
+      // card at this revision is enough.
+      if (known != null && known.isPresent && (draft || !known.draft)) {
         final stored = await load(notebookId);
         if (stored != null) return _Done(stored);
       }

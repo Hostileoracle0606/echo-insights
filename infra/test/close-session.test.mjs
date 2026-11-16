@@ -230,6 +230,30 @@ test("a save refused as keyReused is already done: the stored card is returned",
   assert.equal(state.providerBodies.length, 1);
 });
 
+test("a stored draft at the current revision does not satisfy a final close", async () => {
+  const draft = { version: 1, notebookId, sourceRevision: 7, title: "Draft" };
+  const { state, handle } = world({
+    state: { storedCard: { source_revision: 7, card: draft, is_draft: true } },
+  });
+  const response = await handle(requestEvent());
+  assert.equal(response.statusCode, 200);
+  assert.equal(state.providerBodies.length, 1);
+  assert.equal(state.saves.length, 1);
+  assert.equal(state.saves[0].p_draft, undefined);
+});
+
+test("a stored draft does satisfy a draft request", async () => {
+  const draft = { version: 1, notebookId, sourceRevision: 7, title: "Draft" };
+  const { state, handle } = world({
+    state: { storedCard: { source_revision: 7, card: draft, is_draft: true } },
+  });
+  const response = await handle(
+    requestEvent({ body: JSON.stringify({ draft: true }) }),
+  );
+  assert.equal(response.statusCode, 200);
+  assert.equal(state.providerBodies.length, 0);
+});
+
 // ── dispatch ─────────────────────────────────────────────────────────────
 
 for (const mode of ["weekly_debrief", "session_prep", "first_session", "what_landed"]) {

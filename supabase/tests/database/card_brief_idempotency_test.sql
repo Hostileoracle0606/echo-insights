@@ -43,7 +43,7 @@ set local request.jwt.claim.sub = '11111111-1111-1111-1111-111111111111';
 
 -- ── 2. card status: absent, then present ───────────────────────────────────
 select is(public.get_card_status('a1111111-0000-0000-0000-000000000001', 3),
-  '{"status":"absent","cardRevision":null,"currentRevision":3}'::jsonb,
+  '{"status":"absent","cardRevision":null,"currentRevision":3,"draft":false}'::jsonb,
   'card status: absent before any save');
 
 select is(
@@ -52,7 +52,7 @@ select is(
   'saved', 'card: first save');
 
 select is(public.get_card_status('a1111111-0000-0000-0000-000000000001', 3),
-  '{"status":"present","cardRevision":3,"currentRevision":3}'::jsonb,
+  '{"status":"present","cardRevision":3,"currentRevision":3,"draft":false}'::jsonb,
   'card status: present after the save');
 
 -- ── 3. card saved twice with the same payload: one card, same answer ───────
@@ -104,10 +104,10 @@ select is(
 
 -- ── 6. stale and notFound statuses (card) ──────────────────────────────────
 select is(public.get_card_status('a1111111-0000-0000-0000-000000000001', 2),
-  '{"status":"stale","cardRevision":3,"currentRevision":3}'::jsonb,
+  '{"status":"stale","cardRevision":3,"currentRevision":3,"draft":false}'::jsonb,
   'card status: stale when asked about a revision that is not current');
 select is(public.get_card_status('a1111111-0000-0000-0000-000000000002', 1),
-  '{"status":"absent","cardRevision":null,"currentRevision":1}'::jsonb,
+  '{"status":"absent","cardRevision":null,"currentRevision":1,"draft":false}'::jsonb,
   'card status: absent for a notebook with no card');
 select is(public.get_card_status('b2222222-0000-0000-0000-000000000003', 2)->>'status',
   'notFound', 'card status: notFound for someone else''s notebook');

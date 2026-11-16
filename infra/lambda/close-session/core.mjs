@@ -382,7 +382,7 @@ export function createCloseSessionHandler({
     metrics.revision = Number(notebook.revision);
 
     const stored = await db.select("session_cards", {
-      select: "source_revision,card",
+      select: "source_revision,card,is_draft",
       notebook_id: `eq.${notebookId}`,
       limit: "1",
     });
@@ -399,7 +399,10 @@ export function createCloseSessionHandler({
       Array.isArray(stored) &&
       stored.length > 0 &&
       Number(stored[0].source_revision) === Number(notebook.revision) &&
-      stored[0].card
+      stored[0].card &&
+      // A stored draft is not the final card: only a draft request is
+      // satisfied by it.
+      (!stored[0].is_draft || draft)
     ) {
       metrics.cached = true;
       return ready(stored[0].card, true);
