@@ -46,11 +46,11 @@ class JournalExport {
   }
 
   Map<String, dynamic> toJson() => {
-        'version': version,
-        'exportedAt': exportedAt,
-        'notebooks': [for (final n in notebooks) n.toJson()],
-        ...extra,
-      };
+    'version': version,
+    'exportedAt': exportedAt,
+    'notebooks': [for (final n in notebooks) n.toJson()],
+    ...extra,
+  };
 }
 
 /// One notebook and everything under it. The item lists keep the server's
@@ -90,9 +90,8 @@ class ExportedNotebook {
 
   factory ExportedNotebook.fromJson(Map<String, dynamic> json) {
     List<Map<String, dynamic>> items(String key) => [
-          for (final item in _field<List<dynamic>>(json, key))
-            _asMap(item, key),
-        ];
+      for (final item in _field<List<dynamic>>(json, key)) _asMap(item, key),
+    ];
     final card = json['card'];
     if (card != null && card is! Map<String, dynamic>) {
       throw const FormatException('Export field "card" has the wrong type');
@@ -116,15 +115,15 @@ class ExportedNotebook {
   }
 
   Map<String, dynamic> toJson() => {
-        ...fields,
-        'turns': turns,
-        'journalEntries': journalEntries,
-        'card': card,
-        'entities': entities,
-        'relations': relations,
-        'followUps': followUps,
-        'askedQuestions': askedQuestions,
-      };
+    ...fields,
+    'turns': turns,
+    'journalEntries': journalEntries,
+    'card': card,
+    'entities': entities,
+    'relations': relations,
+    'followUps': followUps,
+    'askedQuestions': askedQuestions,
+  };
 
   String get id => fields['id'] as String;
   String get title => fields['title'] as String;
@@ -134,16 +133,16 @@ class ExportedNotebook {
   /// The notebook as the app's own state type, which the Markdown renderer
   /// takes. Entries run newest first, as in a snapshot.
   JournalState get state => JournalState(
-        entries: [for (final e in journalEntries) JournalEntry.fromJson(e)]
-          ..sort((a, b) => b.createdAt.compareTo(a.createdAt)),
-        entities: {
-          for (final e in entities) (e['id'] as String): Entity.fromJson(e),
-        },
-        relations: {
-          for (final r in relations) (r['id'] as String): Relation.fromJson(r),
-        },
-        followUps: [for (final f in followUps) FollowUp.fromJson(f)],
-      );
+    entries: [for (final e in journalEntries) JournalEntry.fromJson(e)]
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt)),
+    entities: {
+      for (final e in entities) (e['id'] as String): Entity.fromJson(e),
+    },
+    relations: {
+      for (final r in relations) (r['id'] as String): Relation.fromJson(r),
+    },
+    followUps: [for (final f in followUps) FollowUp.fromJson(f)],
+  );
 }
 
 T _field<T>(Map<String, dynamic> json, String key) {

@@ -9,7 +9,6 @@ import '../logic/reply_timer.dart';
 import '../logic/voice_log.dart';
 
 typedef OnTranscript = void Function(String text, bool isFinal);
-
 /// One chunk of agent PCM16 plus the rate it was produced at (from the
 /// chunk's `audio/pcm;rate=N` mime type; Gemini's 24kHz when absent).
 typedef OnAudio = void Function(Uint8List pcm16, int sampleRate);

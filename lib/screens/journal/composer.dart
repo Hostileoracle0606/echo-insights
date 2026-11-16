@@ -142,8 +142,7 @@ class _ComposerState extends State<Composer> {
               _RoundButton(
                 label: 'Send',
                 icon: Icons.arrow_upward_rounded,
-                fill:
-                    _canSend ? colors.ink : colors.ink.withValues(alpha: 0.18),
+                fill: _canSend ? colors.ink : colors.ink.withValues(alpha: 0.18),
                 iconColor: colors.card,
                 onTap: _canSend ? _send : null,
               ),

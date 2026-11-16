@@ -20,7 +20,8 @@ final forgetSyncProvider = Provider<ForgetSync>((ref) {
     reloadBrief: () => ref.read(openingPrepProvider).reloadOrDropBrief(),
     accountEntityIds: () => _accountEntityIds(ref.read(supabaseClientProvider)),
     pruneNames: (ids) => ref.read(pseudonymServiceProvider).pruneTo(ids),
-    setBriefTrusted: (ok) => ref.read(openingPrepProvider).setForgetCheckOk(ok),
+    setBriefTrusted: (ok) =>
+        ref.read(openingPrepProvider).setForgetCheckOk(ok),
   );
 });
 

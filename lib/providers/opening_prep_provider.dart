@@ -66,7 +66,6 @@ class OpeningPrep {
     if (_forgetCheckOk || state == null || state.brief == null) return state;
     return SessionOpeningState(returning: state.returning, brief: null);
   }
-
   bool get knownNewAccount => _knownNewAccount;
   String? get pendingBrief => _pendingBrief;
 

@@ -100,23 +100,23 @@ const sharedLogClaim =
 const Map<PrivacyFeature, String> gatedClaims = {
   PrivacyFeature.forgetPerson:
       "You can forget a person from their page. Lumen won't bring them up "
-          "again, and they're gone from your maps. Their name is replaced with "
-          '“someone” in everything Lumen reads: your past conversations, your '
-          'cards and what it remembers about others. Mentioning that name later '
-          "doesn't bring them back. Lumen matches the name they were saved under, "
-          'so a nickname or a first name alone can slip through. Your saved '
-          'transcripts keep your words for you to read. For a name of two or more '
-          'words you can also erase it, as it was saved, from what you and Lumen '
-          'said there, which replaces it with “someone” for good.',
+      "again, and they're gone from your maps. Their name is replaced with "
+      '“someone” in everything Lumen reads: your past conversations, your '
+      'cards and what it remembers about others. Mentioning that name later '
+      "doesn't bring them back. Lumen matches the name they were saved under, "
+      'so a nickname or a first name alone can slip through. Your saved '
+      'transcripts keep your words for you to read. For a name of two or more '
+      'words you can also erase it, as it was saved, from what you and Lumen '
+      'said there, which replaces it with “someone” for good.',
   PrivacyFeature.offTheRecord:
       "Off the record: Lumen doesn't save what you say while it is on, and "
-          'writes no card from it. Your voice still goes to Google so Lumen can '
-          'answer.',
+      'writes no card from it. Your voice still goes to Google so Lumen can '
+      'answer.',
   PrivacyFeature.autoForget:
       'You can have old transcripts deleted automatically after 7, 30 or 90 '
-          'days. Cards and what Lumen remembers stay.',
+      'days. Cards and what Lumen remembers stay.',
   PrivacyFeature.deviceList:
       'Privacy lists the devices signed in to your account, and you can sign '
-          'one out. It can no longer renew its sign-in, but it may keep working '
-          'for up to an hour.',
+      'one out. It can no longer renew its sign-in, but it may keep working '
+      'for up to an hour.',
 };

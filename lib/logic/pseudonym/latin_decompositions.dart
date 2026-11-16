@@ -392,9 +392,7 @@ String composeLatin(String s) {
   final runes = s.runes.toList();
   final out = StringBuffer();
   for (var i = 0; i < runes.length; i++) {
-    if (i + 1 < runes.length &&
-        runes[i + 1] >= 0x300 &&
-        runes[i + 1] <= 0x36F) {
+    if (i + 1 < runes.length && runes[i + 1] >= 0x300 && runes[i + 1] <= 0x36F) {
       final pair = String.fromCharCodes([runes[i], runes[i + 1]]);
       final composed = _compositions[pair];
       if (composed != null) {

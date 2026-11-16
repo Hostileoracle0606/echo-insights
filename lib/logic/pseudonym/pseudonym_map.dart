@@ -270,8 +270,7 @@ class PseudonymMap {
       map._entries[entry.id] = entry;
     }
     map._retired.addAll((json['retired'] as List).cast<String>());
-    map._reserved
-        .addAll(((json['reserved'] as List?) ?? const []).cast<String>());
+    map._reserved.addAll(((json['reserved'] as List?) ?? const []).cast<String>());
     return map;
   }
 
@@ -507,61 +506,15 @@ class PseudonymMap {
   }
 
   static const _stopWords = {
-    'the',
-    'a',
-    'an',
-    'of',
-    'and',
-    'for',
-    'in',
-    'on',
-    'at',
-    'to',
-    'by',
-    'with',
-    'my',
-    'our',
-    'your',
-    'his',
-    'her',
-    'their',
-    'this',
-    'that',
-    'is',
-    'it',
-    'inc',
-    'llc',
-    'ltd',
-    'co',
-    'corp',
+    'the', 'a', 'an', 'of', 'and', 'for', 'in', 'on', 'at', 'to', 'by', 'with',
+    'my', 'our', 'your', 'his', 'her', 'their', 'this', 'that', 'is', 'it',
+    'inc', 'llc', 'ltd', 'co', 'corp',
   };
 
   static const _particles = {
-    'de',
-    'da',
-    'di',
-    'do',
-    'du',
-    'del',
-    'der',
-    'den',
-    'van',
-    'von',
-    'bin',
-    'ibn',
-    'al',
-    'el',
-    'la',
-    'le',
-    'st',
-    'jr',
-    'sr',
-    'ii',
-    'iii',
-    'mr',
-    'mrs',
-    'ms',
-    'dr',
+    'de', 'da', 'di', 'do', 'du', 'del', 'der', 'den', 'van', 'von', 'bin',
+    'ibn', 'al', 'el', 'la', 'le', 'st', 'jr', 'sr', 'ii', 'iii', 'mr', 'mrs',
+    'ms', 'dr',
   };
 
   /// A real name in the graph (or the user's text) that equals a stand-in
@@ -658,9 +611,7 @@ class PseudonymMap {
     if (al.length < name.length) {
       if (eq(al, name)) return fake.take(al.length).join(' ');
       if (eq(al, name.sublist(name.length - al.length))) {
-        return fake
-            .sublist((fake.length - al.length).clamp(0, fake.length))
-            .join(' ');
+        return fake.sublist((fake.length - al.length).clamp(0, fake.length)).join(' ');
       }
     } else if (al.length > name.length && eq(name, al)) {
       if (entry.kind == PseudonymKind.person) {
@@ -814,15 +765,11 @@ class PseudonymMap {
         if (tk.word[0].toLowerCase() != s.form[0].toLowerCase()) continue;
         final d = editDistance(composeLatin(tk.word), composeLatin(s.form));
         if (d == 0) continue;
-        final len =
-            tk.word.length < s.form.length ? tk.word.length : s.form.length;
+        final len = tk.word.length < s.form.length ? tk.word.length : s.form.length;
         final ok = s.word
             ? len >= 3 && d == 1
             : len >= 4 &&
-                (d <= 1 ||
-                    (d <= 2 &&
-                        len >= 5 &&
-                        soundex(tk.word) == soundex(s.form)));
+                (d <= 1 || (d <= 2 && len >= 5 && soundex(tk.word) == soundex(s.form)));
         if (!ok) continue;
         if (d < bestD) {
           best = s;
@@ -935,12 +882,10 @@ class PseudonymMap {
       if (slugs && _slugRe.hasMatch(value)) return _rehydrateSlug(value);
       return rehydrateModelOutput(value);
     }
-    if (value is List)
-      return [for (final v in value) rehydrateJson(v, slugs: slugs)];
+    if (value is List) return [for (final v in value) rehydrateJson(v, slugs: slugs)];
     if (value is Map) {
       return {
-        for (final e in value.entries)
-          e.key: rehydrateJson(e.value, slugs: slugs),
+        for (final e in value.entries) e.key: rehydrateJson(e.value, slugs: slugs),
       };
     }
     return value;
@@ -982,8 +927,7 @@ class PseudonymMap {
         if (form.trim().isEmpty) continue;
         final latin = _isLatin(form);
         final word = latin && !form.contains(' ') && isWordName(form);
-        final pattern =
-            latin ? '$_before${_pattern(form)}$_after' : _pattern(form);
+        final pattern = latin ? '$_before${_pattern(form)}$_after' : _pattern(form);
         out.add(_Surface(
           form,
           e,
@@ -1013,8 +957,7 @@ class PseudonymMap {
       _backRegex = null;
       return;
     }
-    final forms = back.keys.toList()
-      ..sort((a, b) => b.length.compareTo(a.length));
+    final forms = back.keys.toList()..sort((a, b) => b.length.compareTo(a.length));
     _backRegex = RegExp(
       '$_backBefore(?:${forms.map(_pattern).join('|')})$_backAfter',
       unicode: true,
@@ -1061,9 +1004,7 @@ class PseudonymMap {
 
   static String _matchCase(String original, String replacement) {
     final letters = original.replaceAll(RegExp(r'[^\p{L}]', unicode: true), '');
-    if (letters.length >= 2 &&
-        letters == letters.toUpperCase() &&
-        letters != letters.toLowerCase()) {
+    if (letters.length >= 2 && letters == letters.toUpperCase() && letters != letters.toLowerCase()) {
       return replacement.toUpperCase();
     }
     return replacement;

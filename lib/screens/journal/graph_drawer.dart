@@ -66,7 +66,9 @@ class GraphDrawer extends ConsumerWidget {
             ),
             Divider(height: 1, color: colors.border),
             Expanded(
-              child: count == 0 ? _empty(colors) : _list(state, colors),
+              child: count == 0
+                  ? _empty(colors)
+                  : _list(state, colors),
             ),
             Divider(height: 1, color: colors.border),
             const _ExportFooter(),
@@ -199,8 +201,9 @@ class _ExportFooterState extends ConsumerState<_ExportFooter> {
     final state = ref.read(journalProvider);
     final share = ref.read(shareVaultProvider);
     final box = context.findRenderObject() as RenderBox?;
-    final origin =
-        box == null ? null : box.localToGlobal(Offset.zero) & box.size;
+    final origin = box == null
+        ? null
+        : box.localToGlobal(Offset.zero) & box.size;
     try {
       // Let the spinner paint before the synchronous build runs.
       await WidgetsBinding.instance.endOfFrame;

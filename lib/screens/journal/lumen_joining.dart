@@ -35,8 +35,8 @@ class LumenJoinFailedBanner extends StatelessWidget {
             Text(
               'Check your connection and try again, or open the notebook '
               'and start talking later.',
-              style:
-                  textTheme.bodySmall?.copyWith(color: colors.mutedForeground),
+              style: textTheme.bodySmall
+                  ?.copyWith(color: colors.mutedForeground),
             ),
             // Wraps the buttons onto two lines when a narrow phone (or a
             // large text size) can't fit them side by side.

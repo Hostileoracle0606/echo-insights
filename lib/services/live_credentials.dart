@@ -167,20 +167,17 @@ class LiveCredentials {
       final received = _now();
       _held = _Held(outcome, _startBy(outcome, received), received);
       _backoff = null;
-      vlog('credentials',
-          'token held until ${_held!.startBy.toIso8601String()}');
+      vlog('credentials', 'token held until ${_held!.startBy.toIso8601String()}');
       if (!_paused) _scheduleRefresh(_held!);
       return true;
     }
     if (outcome is LiveSessionRejected &&
         outcome.code == NotebookRuntimeService.routeUnavailableCode) {
-      vlog(
-          'credentials', 'user-scoped route not deployed; notebook route only');
+      vlog('credentials', 'user-scoped route not deployed; notebook route only');
       _unsupported = true;
       return false;
     }
-    vlog('credentials',
-        'fetch failed: ${error ?? (outcome as LiveSessionRejected).code}');
+    vlog('credentials', 'fetch failed: ${error ?? (outcome as LiveSessionRejected).code}');
     _scheduleRetry();
     return false;
   }
