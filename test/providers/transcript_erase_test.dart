@@ -38,6 +38,54 @@ class _Server {
   }
 }
 
+/// A server that numbers batches (LM-102): a batch number it has seen
+/// returns its stored result and does no work; one out of turn is refused.
+class _KeyedServer {
+  _KeyedServer({this.rows = 1000, this.lose = 0});
+  int rows;
+
+  /// Replies to drop (after the server did the work): the phone never sees
+  /// them and sends the same batch again.
+  int lose;
+  int done = 0; // batches the server has run
+  int work = 0; // batches that did work
+  final sent = <int>[];
+  final results = <int, Map<String, Object?>>{};
+  var pending = true;
+
+  Future<Object?> rpc(String fn, Map<String, dynamic> params) async {
+    if (fn == 'forget_erase_pending') {
+      return [
+        if (pending) {'id': 'job-1', 'rewritten': 0, 'nextBatch': done + 1}
+      ];
+    }
+    if (fn != 'forget_erase_batch') throw StateError(fn);
+    final n = params['p_batch_no'] as int;
+    sent.add(n);
+    if (!results.containsKey(n)) {
+      if (n != done + 1) {
+        return {'status': 'rejected', 'code': 'outOfOrder', 'nextBatch': done + 1};
+      }
+      work += 1;
+      done = n;
+      rows = rows > 300 ? rows - 300 : 0;
+      if (rows == 0) pending = false;
+      results[n] = {
+        'rewritten': 1,
+        'total': n,
+        'remaining': rows,
+        'finished': rows == 0,
+        'batchNo': n,
+      };
+    }
+    if (lose > 0) {
+      lose -= 1;
+      throw Exception('reply lost');
+    }
+    return results[n];
+  }
+}
+
 ({ProviderContainer container, List<int> reloads}) _container(_Server server) {
   final reloads = <int>[];
   final container = ProviderContainer(overrides: [
@@ -116,4 +164,43 @@ void main() {
     await container.read(transcriptEraseProvider.notifier).resumePending();
     expect(c.reloads, isEmpty);
   });
+
+  test('batches are numbered from what the server expects; a lost reply is '
+      'not rewritten twice', () async {
+    final server = _KeyedServer(rows: 600, lose: 1);
+    final c = _keyed(server);
+    final erase = c.container.read(transcriptEraseProvider.notifier);
+
+    // The first reply is lost: the run pauses; the next one reads pending
+    // (the server already did batch 1) and goes on with batch 2.
+    expect(await erase.run('job-1'), isFalse);
+    expect(server.sent, [1]);
+    expect(await erase.run('job-1'), isTrue);
+
+    expect(server.sent, [1, 2]);
+    expect(server.work, 2, reason: 'batch 1 was rewritten once, not twice');
+    expect(c.reloads, [1]);
+  });
+
+  test('an outOfOrder refusal re-reads pending and carries on', () async {
+    final server = _KeyedServer(rows: 600)..done = 1;
+    server.results[1] = {'rewritten': 1, 'total': 1, 'remaining': 300, 'finished': false};
+    server.rows = 300;
+    // The phone starts from stale knowledge: pending said batch 1 earlier.
+    final c = _keyed(server);
+    final erase = c.container.read(transcriptEraseProvider.notifier);
+    expect(await erase.run('job-1'), isTrue);
+    expect(server.sent, [2]);
+  });
+}
+
+({ProviderContainer container, List<int> reloads}) _keyed(_KeyedServer server) {
+  final reloads = <int>[];
+  final container = ProviderContainer(overrides: [
+    memoryControlServiceProvider
+        .overrideWithValue(MemoryControlService.withRpc(server.rpc)),
+    eraseFinishedHookProvider.overrideWithValue(() async => reloads.add(1)),
+  ]);
+  addTearDown(container.dispose);
+  return (container: container, reloads: reloads);
 }
