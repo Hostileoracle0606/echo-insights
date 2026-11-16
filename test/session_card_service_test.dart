@@ -26,6 +26,7 @@ void main() {
   SessionCardService service(
     MockClientHandler handler, {
     SessionCardReader? readCard,
+    CardRpc? rpc,
   }) =>
       SessionCardService(
         baseUrl: 'https://runtime.example.com/',
@@ -34,7 +35,14 @@ void main() {
         readCard: readCard,
         inputs: FixedInputs(),
         pseudonyms: testPseudonyms(),
-        rpc: (_, [__]) async => fail('no save expected'),
+        rpc: rpc ??
+            (fn, [__]) async => fn == 'get_card_status'
+                ? {
+                    'status': 'absent',
+                    'cardRevision': null,
+                    'currentRevision': 7
+                  }
+                : fail('no save expected'),
         retryBaseDelay: Duration.zero,
       );
 
@@ -253,5 +261,95 @@ void main() {
             json(422, {'status': 'rejected', 'code': 'nothingToSummarize'}))
         .draft(notebookId);
     expect(card, isNull);
+  });
+
+  group('LM-102: ask before spending a model call', () {
+    test('cardStatus reads get_card_status for the notebook and revision',
+        () async {
+      String? fn;
+      Map<String, dynamic>? sent;
+      final status = await service(
+        (_) async => fail('no runtime call'),
+        rpc: (name, [params]) async {
+          fn = name;
+          sent = params;
+          return {'status': 'present', 'cardRevision': 7, 'currentRevision': 7};
+        },
+      ).cardStatus(notebookId, 7);
+      expect(fn, 'get_card_status');
+      expect(sent, {'p_notebook_id': notebookId, 'p_revision': 7});
+      expect(status.isPresent, isTrue);
+      expect(status.cardRevision, 7);
+    });
+
+    test('a card already stored at the current revision: no model call',
+        () async {
+      var posts = 0;
+      final card = await service(
+        (_) async {
+          posts += 1;
+          return json(200, {'status': 'ready', 'card': cardJson});
+        },
+        readCard: (_) async => cardJson,
+        rpc: (fn, [_]) async =>
+            {'status': 'present', 'cardRevision': 7, 'currentRevision': 7},
+      ).close(notebookId);
+      expect(posts, 0);
+      expect(card!.title, cardJson['title']);
+    });
+
+    test('closing twice for the same revision makes one model call', () async {
+      var posts = 0;
+      var stored = false;
+      final cards = service(
+        (_) async {
+          posts += 1;
+          stored = true;
+          return json(200, {'status': 'ready', 'card': cardJson});
+        },
+        readCard: (_) async => stored ? cardJson : null,
+        rpc: (fn, [_]) async => {
+          'status': stored ? 'present' : 'absent',
+          'cardRevision': stored ? 7 : null,
+          'currentRevision': 7,
+        },
+      );
+      final first = await cards.close(notebookId);
+      final second = await cards.close(notebookId);
+      expect(posts, 1);
+      expect(first!.title, second!.title);
+    });
+
+    test('a failed status question does not stop the close', () async {
+      var posts = 0;
+      final card = await service(
+        (_) async {
+          posts += 1;
+          return json(200, {'status': 'ready', 'card': cardJson});
+        },
+        readCard: (_) async => cardJson,
+        rpc: (fn, [_]) async => throw const SessionCardException('offline'),
+      ).close(notebookId);
+      expect(posts, 1);
+      expect(card, isNotNull);
+    });
+
+    test('keyReused on the save is already done: the stored card is returned',
+        () async {
+      final saves = <String>[];
+      final card = await service(
+        (_) async =>
+            json(200, {'status': 'ready', 'card': cardJson, 'saved': false}),
+        readCard: (_) async => cardJson,
+        rpc: (fn, [_]) async {
+          saves.add(fn);
+          return fn == 'get_card_status'
+              ? {'status': 'absent', 'cardRevision': null, 'currentRevision': 7}
+              : {'status': 'rejected', 'code': 'keyReused'};
+        },
+      ).close(notebookId);
+      expect(saves, ['get_card_status', 'save_session_card']);
+      expect(card!.title, cardJson['title']);
+    });
   });
 }

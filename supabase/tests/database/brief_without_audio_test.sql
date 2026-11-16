@@ -28,7 +28,8 @@ select is(public.get_session_brief()->'brief'->'focus', '["The move"]'::jsonb,
 select is(
   public.save_session_brief('c7111111-0000-0000-0000-000000000001', 4,
     '{"focus":[],"openingThread":"","openingLine":"Hi"}'::jsonb, '', 24000),
-  '{"status": "unchanged"}'::jsonb, 'empty audio at the same revision: the stored brief stays');
+  '{"status": "rejected", "code": "keyReused"}'::jsonb,
+  'empty audio at the same revision with another brief: refused, the stored brief stays');
 
 select throws_ok(
   $$ select public.save_session_brief('c7111111-0000-0000-0000-000000000001', 5,

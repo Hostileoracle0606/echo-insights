@@ -14,6 +14,33 @@ typedef BriefRpc = Future<Object?> Function(
   Map<String, dynamic>? params,
 ]);
 
+/// What the server holds for a notebook at a revision (LM-102): the answer of
+/// `get_brief_status`. [status] is `present`, `absent`, `stale` or `notFound`.
+class BriefStatus {
+  const BriefStatus({
+    required this.status,
+    this.briefRevision,
+    this.currentRevision,
+  });
+
+  final String status;
+  final int? briefRevision;
+  final int? currentRevision;
+
+  bool get isPresent => status == 'present';
+
+  static BriefStatus? fromJson(Object? json) {
+    if (json is! Map || json['status'] is! String) return null;
+    final brief = json['briefRevision'] ?? json['cardRevision'];
+    final current = json['currentRevision'];
+    return BriefStatus(
+      status: json['status'] as String,
+      briefRevision: brief is int ? brief : null,
+      currentRevision: current is int ? current : null,
+    );
+  }
+}
+
 class SessionBriefException implements Exception {
   const SessionBriefException(this.message, {this.statusCode});
 
@@ -81,6 +108,21 @@ class SessionBriefService {
     }
   }
 
+  /// Asks the server whether the brief for [notebookId] at [revision] is
+  /// already stored (`get_brief_status`). Throws on a failed call or an
+  /// unreadable answer.
+  Future<BriefStatus> briefStatus(String notebookId, int revision) async {
+    final result = await _rpc('get_brief_status', {
+      'p_notebook_id': notebookId,
+      'p_revision': revision,
+    });
+    final status = BriefStatus.fromJson(result);
+    if (status == null) {
+      throw const FormatException('Invalid get_brief_status response');
+    }
+    return status;
+  }
+
   Future<void> _requestOnce(String notebookId) async {
     if (_baseUrl.isEmpty) {
       throw StateError('The secure notebook runtime is not configured');
@@ -102,6 +144,14 @@ class SessionBriefService {
         'Nothing was said to write a brief from',
         statusCode: 422,
       );
+    }
+    // LM-102: ask first. A brief already stored for this revision means
+    // there is nothing to do; no model call is made. If the question itself
+    // fails, carry on: the save is keyed, so a repeat is safe.
+    try {
+      if ((await briefStatus(notebookId, input.revision)).isPresent) return;
+    } on Exception {
+      // Unknown: go on and write it.
     }
     final questions = [
       for (final q in input.questions)
@@ -282,6 +332,9 @@ class SessionBriefService {
         (saved['status'] == 'saved' || saved['status'] == 'unchanged')) {
       return;
     }
+    // LM-102: a brief for this revision is already stored and this one
+    // differs: already done, not a failure.
+    if (saved is Map && saved['code'] == 'keyReused') return;
     if (saved is Map && saved['code'] == 'notFound') {
       throw const SessionBriefException(
         'The notebook was not found',

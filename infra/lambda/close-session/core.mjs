@@ -422,6 +422,20 @@ export function createCloseSessionHandler({
     });
     if (saved?.status === "saved" && saved.card) return ready(saved.card, true);
     if (saved?.status === "stale") return "stale";
+    // LM-102: a card for this revision was stored first and this one differs
+    // (a model is not deterministic). That is "already done": hand back the
+    // stored card.
+    if (saved?.code === "keyReused") {
+      const winner = await db.select("session_cards", {
+        select: "source_revision,card",
+        notebook_id: `eq.${notebookId}`,
+        limit: "1",
+      });
+      if (Array.isArray(winner) && winner.length > 0 && winner[0].card) {
+        return ready(winner[0].card, true);
+      }
+      throw new Rejection(503, "providerUnavailable");
+    }
     if (saved?.code === "notFound") throw new Rejection(404, "notFound");
     throw new Rejection(503, "providerUnavailable");
   }

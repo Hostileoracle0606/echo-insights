@@ -200,6 +200,36 @@ test("a stored card from an older revision is regenerated", async () => {
   assert.equal(state.providerBodies.length, 1);
 });
 
+test("a second close of the same revision makes no model call (the stored card is read first)", async () => {
+  const { state, handle } = world();
+  await handle(requestEvent());
+  assert.equal(state.providerBodies.length, 1);
+  const before = state.providerBodies.length;
+  const again = await handle(requestEvent());
+  assert.equal(again.statusCode, 200);
+  assert.equal(state.providerBodies.length, before);
+  assert.equal(state.saves.length, 1);
+  // Asked as the user, through the stored-card read; never a service key.
+  assert.equal(state.credentialReads, 1);
+});
+
+test("a save refused as keyReused is already done: the stored card is returned", async () => {
+  const stored = { version: 1, notebookId, sourceRevision: 7, title: "Stored first" };
+  let reads = 0;
+  const { state, handle } = world({
+    // Nothing stored at the first read; another close lands before our save.
+    "/rest/v1/session_cards": () => {
+      reads += 1;
+      return ok(reads === 1 ? [] : [{ source_revision: 7, card: stored }]);
+    },
+    "/rest/v1/rpc/save_session_card": () => ok({ status: "rejected", code: "keyReused" }),
+  });
+  const response = await handle(requestEvent());
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(parse(response), { status: "ready", card: stored });
+  assert.equal(state.providerBodies.length, 1);
+});
+
 // ── dispatch ─────────────────────────────────────────────────────────────
 
 for (const mode of ["weekly_debrief", "session_prep", "first_session", "what_landed"]) {
