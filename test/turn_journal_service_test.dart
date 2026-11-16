@@ -161,6 +161,74 @@ void main() {
     expect(await journal.loadTurns('notebook-1'), isEmpty);
   });
 
+  group('listNotebookIdsWithTurns', () {
+    FinalizedTurn turnIn(
+      String notebookId,
+      String turnId,
+      String finalizedAt, {
+      DurableStage stage = DurableStage.finalRecorded,
+    }) =>
+        FinalizedTurn(
+          turnId: turnId,
+          sessionId: 'session-1',
+          notebookId: notebookId,
+          speaker: Speaker.user,
+          transcript: 'words',
+          transcriptVersion: 1,
+          transcriptHash: 'hash',
+          extractorVersion: 'extractor-1',
+          generation: 1,
+          commitRequestId: 'request-$turnId',
+          stage: stage,
+          finalizedAt: finalizedAt,
+        );
+
+    test('is empty when nothing is journalled', () async {
+      expect(await journal.listNotebookIdsWithTurns(), isEmpty);
+    });
+
+    test('names each notebook holding a turn, newest turn first', () async {
+      await journal
+          .persistTurn(turnIn('older', 'a', '2026-11-10T09:00:00.000Z'));
+      await journal
+          .persistTurn(turnIn('newer', 'b', '2026-11-15T09:00:00.000Z'));
+      await journal
+          .persistTurn(turnIn('older', 'c', '2026-11-11T09:00:00.000Z'));
+      // An id that needs escaping in a file name comes back as it was.
+      await journal.persistTurn(
+          turnIn('odd/id with space', 'd', '2026-11-12T09:00:00.000Z'));
+
+      expect(await journal.listNotebookIdsWithTurns(),
+          ['newer', 'odd/id with space', 'older']);
+    });
+
+    test('leaves out notebooks whose turns were all forgotten', () async {
+      await journal.persistTurn(turnIn('gone', 'a', '2026-11-10T09:00:00Z'));
+      await journal.persistTurn(turnIn('kept', 'b', '2026-11-10T09:00:00Z'));
+      await journal.forgetTurn(notebookId: 'gone', turnId: 'a');
+
+      expect(await journal.listNotebookIdsWithTurns(), ['kept']);
+    });
+
+    test('a committed or failed checkpoint does not count', () async {
+      await journal.persistTurn(turnIn('done', 'a', '2026-11-10T09:00:00Z',
+          stage: DurableStage.committed));
+      await journal.persistTurn(turnIn('failed', 'b', '2026-11-10T09:00:00Z',
+          stage: DurableStage.failed));
+
+      expect(await journal.listNotebookIdsWithTurns(), isEmpty);
+    });
+
+    test('an unreadable file is skipped, not fatal', () async {
+      await journal.persistTurn(turnIn('kept', 'a', '2026-11-10T09:00:00Z'));
+      final folder = Directory('${directory.path}/turn-journal-v1');
+      File('${folder.path}/broken.json').writeAsStringSync('{not json');
+      File('${folder.path}/kept.json.tmp').writeAsStringSync('{}');
+
+      expect(await journal.listNotebookIdsWithTurns(), ['kept']);
+    });
+  });
+
   test('serializes overlapping stage writes in call order', () async {
     final first = journal.persistTurn(turn());
     final second = journal.persistTurn(turn(

@@ -149,6 +149,51 @@ class TurnJournalService {
     });
   }
 
+  /// Notebook ids holding at least one journalled turn, newest turn first.
+  ///
+  /// The journal only ever holds turns not yet committed: a confirmed commit
+  /// or a refused one removes its checkpoint ([forgetTurn]), and a
+  /// checkpoint left at [DurableStage.committed] or [DurableStage.failed] is
+  /// ignored on read. So every id here has work to finish. A file that
+  /// cannot be read is skipped: it must not stop the others being found.
+  Future<List<String>> listNotebookIdsWithTurns() {
+    return _serialized(() async {
+      final directory = await _journalDirectory();
+      final newest = <String, DateTime>{};
+      await for (final entity in directory.list(followLinks: false)) {
+        if (entity is! File) continue;
+        final name = entity.uri.pathSegments.last;
+        if (!name.endsWith('.json')) continue;
+        final String notebookId;
+        try {
+          notebookId = Uri.decodeComponent(
+            name.substring(0, name.length - '.json'.length),
+          );
+        } on ArgumentError {
+          continue;
+        }
+        final List<TurnJournalCheckpoint> checkpoints;
+        try {
+          checkpoints = await _readCheckpoints(notebookId);
+        } on Object {
+          continue;
+        }
+        for (final checkpoint in checkpoints) {
+          final at = DateTime.tryParse(checkpoint.turn.finalizedAt) ??
+              DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
+          final seen = newest[notebookId];
+          if (seen == null || at.isAfter(seen)) newest[notebookId] = at;
+        }
+      }
+      final ids = newest.keys.toList()
+        ..sort((a, b) {
+          final byTime = newest[b]!.compareTo(newest[a]!);
+          return byTime != 0 ? byTime : a.compareTo(b);
+        });
+      return ids;
+    });
+  }
+
   /// Everything held for [notebookId]: the session was deleted.
   Future<void> forgetNotebook(String notebookId) {
     return _serialized(() async {

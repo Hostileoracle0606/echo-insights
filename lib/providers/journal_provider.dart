@@ -19,11 +19,11 @@ import '../logic/live_signal_gate.dart';
 import '../logic/opening_choice.dart';
 import '../logic/resume_context.dart';
 import '../logic/memory_removal.dart';
-import '../logic/merge.dart' as merge_logic;
 import '../logic/session_opening_coordinator.dart';
 import '../logic/slugify.dart';
 import '../logic/transcript_assembler.dart';
 import '../logic/turn_effect_queue.dart';
+import '../logic/turn_commit.dart';
 import '../logic/turn_state.dart';
 import '../logic/voice_log.dart';
 import '../models/graph_patch.dart';
@@ -840,9 +840,7 @@ class JournalNotifier extends Notifier<JournalState> {
       try {
         // Prefer the in-memory typed patch; fall back to the durable checkpoint
         // so a restored turn commits without re-extracting.
-        final stored = turn.extraction;
-        final patch = _lastPatches[turn.turnId] ??
-            (stored == null ? null : GraphPatch.fromJson(stored));
+        final patch = _lastPatches[turn.turnId] ?? checkpointedPatch(turn);
         if (patch == null) {
           _dispatchTurn(
               CommitRejected(turnId: turn.turnId, code: 'invalidRequest'));
@@ -852,13 +850,14 @@ class JournalNotifier extends Notifier<JournalState> {
         // Prepare once. An unknown-outcome retry must reuse this exact envelope
         // instead of merging again against the already-optimistic local state.
         final before = state;
-        final result = merge_logic.merge(state, turn.transcript, patch,
-            suppressed: _suppressed);
-        prepared = PreparedTurnCommit(
+        final result = prepareTurnCommit(
+          state: state,
+          turn: turn,
+          patch: patch,
           expectedRevision: turn.baseRevision ?? _revision,
-          change: result.change,
-          entryId: result.entryId,
+          suppressed: _suppressed,
         );
+        prepared = result.prepared;
         // Persist the exact network envelope before sending it. If the process
         // dies after the request leaves, recovery must retry identical input
         // with the same request id so the server ledger can replay it safely.
@@ -872,7 +871,7 @@ class JournalNotifier extends Notifier<JournalState> {
           id: ++_activitySeq,
           prev: before,
           next: result.next,
-          entryId: result.entryId,
+          entryId: result.prepared.entryId,
         ));
         vlog(
             'session',
