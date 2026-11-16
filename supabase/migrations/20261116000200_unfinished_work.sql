@@ -3,7 +3,7 @@
 -- entity text is ever returned.
 --
 --   cards   notebooks the close-session Lambda would write a card for (only
---           just_talk, revision > 0, content present as an entity or a turn,
+--           just_talk, revision > 0, a user-speaker turn or an entity,
 --           transcript not auto-forgotten) whose card is absent or older than
 --           revision, or is a draft at the current revision (a draft is not a
 --           finished card). cardRevision is null when no card exists; `draft`
@@ -17,8 +17,8 @@
 --           15 minute sweep), which does the precise check.
 --   erase   forget_erase_jobs, as forget_erase_pending() reports them.
 --
--- Each notebook list holds at most 50 rows, newest first; `truncated` is true
--- when any list had more.
+-- The cards and vectors lists hold at most 50 rows, newest first; `truncated`
+-- is true when either had more. briefs is at most one row; erase is not capped.
 
 create or replace function public.get_unfinished_work()
 returns jsonb
@@ -41,6 +41,10 @@ begin
     raise exception 'not authenticated' using errcode = '42501';
   end if;
 
+  -- One eligibility rule for cards and the brief: just_talk (the only mode
+  -- the close-session Lambda writes), revision > 0, transcript not
+  -- auto-forgotten, and something to write from: a user-speaker turn or an
+  -- entity (the v2 path takes its turns from the app, so entity-only counts).
   with eligible as (
     select n.id, n.revision, n.started_at
     from public.notebooks n
@@ -49,7 +53,8 @@ begin
       and n.revision > 0
       and n.transcript_forgotten_at is null
       and (exists (select 1 from public.entities e where e.notebook_id = n.id)
-           or exists (select 1 from public.conversation_turns t where t.notebook_id = n.id))
+           or exists (select 1 from public.conversation_turns t
+                      where t.notebook_id = n.id and t.speaker = 'user'))
   ), todo as (
     select e.id, e.revision, e.started_at, sc.source_revision as card_revision,
            coalesce(sc.is_draft, false) as is_draft
@@ -60,6 +65,11 @@ begin
        or (sc.source_revision = e.revision and sc.is_draft)
   ), page as (
     select * from todo order by started_at desc, id limit c_limit
+  ), latest as (
+    select l.id, l.revision
+    from eligible l
+    order by l.started_at desc, l.id
+    limit 1
   )
   select
     coalesce((select jsonb_agg(
@@ -67,27 +77,14 @@ begin
                            'cardRevision', p.card_revision)
         || case when p.is_draft then jsonb_build_object('draft', true) else '{}'::jsonb end
         order by p.started_at desc, p.id) from page p), '[]'::jsonb),
-    (select count(*)::int from todo)
-  into v_cards, v_cards_total;
-
-  select jsonb_build_object('notebookId', l.id, 'revision', l.revision)
-    into v_brief
-    from (
-      select n.id, n.revision
-      from public.notebooks n
-      where n.user_id = v_uid
-        and n.conversation_mode = 'just_talk'
-        and n.revision > 0
-        and n.transcript_forgotten_at is null
-        and (exists (select 1 from public.entities e where e.notebook_id = n.id)
-             or exists (select 1 from public.conversation_turns t where t.notebook_id = n.id))
-      order by n.started_at desc, n.id
-      limit 1
-    ) l
-    where not exists (
-      select 1 from public.session_briefs sb
-      where sb.user_id = v_uid and sb.source_notebook_id = l.id
-        and sb.source_revision = l.revision);
+    (select count(*)::int from todo),
+    (select jsonb_build_object('notebookId', l.id, 'revision', l.revision)
+       from latest l
+       where not exists (
+         select 1 from public.session_briefs sb
+         where sb.user_id = v_uid and sb.source_notebook_id = l.id
+           and sb.source_revision = l.revision))
+  into v_cards, v_cards_total, v_brief;
 
   with missing as (
     select n.id, n.started_at, count(*)::int as entity_count,

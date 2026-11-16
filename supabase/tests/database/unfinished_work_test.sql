@@ -5,7 +5,7 @@
 create extension if not exists pgtap;
 
 begin;
-select plan(23);
+select plan(30);
 
 insert into auth.users (id) values
   ('11111111-1111-1111-1111-111111111111'),
@@ -15,18 +15,18 @@ insert into auth.users (id) values
 
 -- User 1, newest first: A, B, C, D (eligible shapes) then the excluded ones.
 insert into public.notebooks (id, user_id, title, started_at, revision, conversation_mode, transcript_forgotten_at) values
-  ('a1111111-0000-0000-0000-00000000000a', '11111111-1111-1111-1111-111111111111', 'A', now() - interval '1 hour',  3, 'just_talk', null),
-  ('a1111111-0000-0000-0000-00000000000b', '11111111-1111-1111-1111-111111111111', 'B', now() - interval '2 hours', 2, 'just_talk', null),
-  ('a1111111-0000-0000-0000-00000000000c', '11111111-1111-1111-1111-111111111111', 'C', now() - interval '3 hours', 2, 'just_talk', null),
-  ('a1111111-0000-0000-0000-00000000000d', '11111111-1111-1111-1111-111111111111', 'D', now() - interval '4 hours', 1, 'just_talk', null),
-  ('a1111111-0000-0000-0000-00000000000e', '11111111-1111-1111-1111-111111111111', 'E', now() - interval '5 hours', 0, 'just_talk', null),
-  ('a1111111-0000-0000-0000-00000000000f', '11111111-1111-1111-1111-111111111111', 'F', now() - interval '6 hours', 2, 'just_talk', null),
-  ('a1111111-0000-0000-0000-000000000010', '11111111-1111-1111-1111-111111111111', 'G', now() - interval '7 hours', 2, 'weekly_debrief', null),
-  ('a1111111-0000-0000-0000-000000000011', '11111111-1111-1111-1111-111111111111', 'H', now() - interval '8 hours', 2, 'just_talk', now()),
+  ('a1111111-0000-0000-0000-00000000000a', '11111111-1111-1111-1111-111111111111', 'ZebratitleA', now() - interval '1 hour',  3, 'just_talk', null),
+  ('a1111111-0000-0000-0000-00000000000b', '11111111-1111-1111-1111-111111111111', 'ZebratitleB', now() - interval '2 hours', 2, 'just_talk', null),
+  ('a1111111-0000-0000-0000-00000000000c', '11111111-1111-1111-1111-111111111111', 'ZebratitleC', now() - interval '3 hours', 2, 'just_talk', null),
+  ('a1111111-0000-0000-0000-00000000000d', '11111111-1111-1111-1111-111111111111', 'ZebratitleD', now() - interval '4 hours', 1, 'just_talk', null),
+  ('a1111111-0000-0000-0000-00000000000e', '11111111-1111-1111-1111-111111111111', 'ZebratitleE', now() - interval '5 hours', 0, 'just_talk', null),
+  ('a1111111-0000-0000-0000-00000000000f', '11111111-1111-1111-1111-111111111111', 'ZebratitleF', now() - interval '6 hours', 2, 'just_talk', null),
+  ('a1111111-0000-0000-0000-000000000010', '11111111-1111-1111-1111-111111111111', 'ZebratitleG', now() - interval '7 hours', 2, 'weekly_debrief', null),
+  ('a1111111-0000-0000-0000-000000000011', '11111111-1111-1111-1111-111111111111', 'ZebratitleH', now() - interval '8 hours', 2, 'just_talk', now()),
   ('b2222222-0000-0000-0000-000000000001', '22222222-2222-2222-2222-222222222222', 'U2', now(), 2, 'just_talk', null);
 
 insert into public.entities (id, user_id, notebook_id, name, type, description, metadata, questions, mentions, first_seen, last_seen)
-  select 'ent-' || s.suffix, s.uid, s.nb, 'Name ' || s.suffix, 'person', null, '{}', null, 1, now(), now()
+  select 'ent-' || s.suffix, s.uid, s.nb, 'Zebraname' || s.suffix, 'person', null, '{}', null, 1, now(), now()
   from (values
     ('a1', '11111111-1111-1111-1111-111111111111'::uuid, 'a1111111-0000-0000-0000-00000000000a'::uuid),
     ('a2', '11111111-1111-1111-1111-111111111111', 'a1111111-0000-0000-0000-00000000000a'),
@@ -39,7 +39,7 @@ insert into public.entities (id, user_id, notebook_id, name, type, description, 
 
 -- B has a turn and no entities.
 insert into public.conversation_turns (notebook_id, turn_id, user_id, speaker, text, spoken_at) values
-  ('a1111111-0000-0000-0000-00000000000b', 't1', '11111111-1111-1111-1111-111111111111', 'user', 'hello', now());
+  ('a1111111-0000-0000-0000-00000000000b', 't1', '11111111-1111-1111-1111-111111111111', 'user', 'zebraturn', now());
 
 -- C is fully embedded; A has one of two; D has none.
 insert into public.entity_embeddings (notebook_id, entity_id, user_id, embedding, embedding_model, content_hash) values
@@ -51,6 +51,18 @@ insert into public.session_cards (notebook_id, user_id, conversation_mode, sourc
   ('a1111111-0000-0000-0000-00000000000b', '11111111-1111-1111-1111-111111111111', 'just_talk', 1, '{}', false),
   ('a1111111-0000-0000-0000-00000000000c', '11111111-1111-1111-1111-111111111111', 'just_talk', 2, '{}', false),
   ('a1111111-0000-0000-0000-00000000000d', '11111111-1111-1111-1111-111111111111', 'just_talk', 1, '{}', true);
+
+
+-- More shapes for user 1: Lumen-only turn (no entities); revision 0 with an
+-- entity; a newer non-just_talk notebook above the brief candidate.
+insert into public.notebooks (id, user_id, title, started_at, revision, conversation_mode) values
+  ('a1111111-0000-0000-0000-000000000020', '11111111-1111-1111-1111-111111111111', 'Zebratitle-lumen', now() - interval '9 hours', 2, 'just_talk'),
+  ('a1111111-0000-0000-0000-000000000021', '11111111-1111-1111-1111-111111111111', 'Zebratitle-rev0', now() - interval '10 hours', 0, 'just_talk'),
+  ('a1111111-0000-0000-0000-000000000022', '11111111-1111-1111-1111-111111111111', 'Zebratitle-newer', now() - interval '10 minutes', 2, 'weekly_debrief');
+insert into public.conversation_turns (notebook_id, turn_id, user_id, speaker, text, spoken_at) values
+  ('a1111111-0000-0000-0000-000000000020', 't1', '11111111-1111-1111-1111-111111111111', 'assistant', 'zebraturn', now());
+insert into public.entities (id, user_id, notebook_id, name, type, description, metadata, questions, mentions, first_seen, last_seen) values
+  ('ent-r0', '11111111-1111-1111-1111-111111111111', 'a1111111-0000-0000-0000-000000000021', 'Zebranamer0', 'person', null, '{}', null, 1, now(), now());
 
 -- User 4: 60 notebooks with no card, one entity each.
 insert into public.notebooks (id, user_id, title, started_at, revision, conversation_mode)
@@ -96,7 +108,9 @@ select is((select j -> 'cards' -> 2 from w),
 select is((select count(*)::int from w, jsonb_array_elements(j -> 'cards') c
            where c ->> 'notebookId' in ('a1111111-0000-0000-0000-00000000000c', 'a1111111-0000-0000-0000-00000000000e',
              'a1111111-0000-0000-0000-00000000000f', 'a1111111-0000-0000-0000-000000000010',
-             'a1111111-0000-0000-0000-000000000011', 'b2222222-0000-0000-0000-000000000001')), 0,
+             'a1111111-0000-0000-0000-000000000011', 'b2222222-0000-0000-0000-000000000001',
+             'a1111111-0000-0000-0000-000000000020', 'a1111111-0000-0000-0000-000000000021',
+             'a1111111-0000-0000-0000-000000000022')), 0,
   'finished, revision 0, empty, other-mode, forgotten and other-user notebooks never appear');
 
 select is((select j -> 'briefs' from w),
@@ -107,8 +121,9 @@ select is((select j -> 'vectors' from w),
   '[{"notebookId":"a1111111-0000-0000-0000-00000000000a","entityCount":2,"missing":1},
     {"notebookId":"a1111111-0000-0000-0000-00000000000d","entityCount":1,"missing":1},
     {"notebookId":"a1111111-0000-0000-0000-000000000010","entityCount":1,"missing":1},
-    {"notebookId":"a1111111-0000-0000-0000-000000000011","entityCount":1,"missing":1}]'::jsonb,
-  'vectors: notebooks with entities lacking an embedding row (C is complete)');
+    {"notebookId":"a1111111-0000-0000-0000-000000000011","entityCount":1,"missing":1},
+    {"notebookId":"a1111111-0000-0000-0000-000000000021","entityCount":1,"missing":1}]'::jsonb,
+  'vectors: notebooks with entities lacking an embedding row (C is complete; revision 0 does not matter here)');
 
 select is((select j -> 'erase' from w),
   '[{"id":"e1111111-0000-0000-0000-000000000001","rewritten":7,"nextBatch":3}]'::jsonb,
@@ -117,7 +132,18 @@ select is((select j -> 'erase' from w), public.forget_erase_pending(), 'erase ma
 select is((select (j ->> 'truncated')::boolean from w), false, 'a short list is not truncated');
 
 -- No text anywhere in the answer.
-select ok((select j::text from w) !~* '(Name |hello|"title"|"summary")', 'the answer carries no text');
+select ok((select j::text from w) !~* '(zebra|"title"|"summary")', 'the answer carries no text');
+
+-- A brief for a different notebook leaves the latest listed.
+reset role;
+insert into public.session_briefs (user_id, source_notebook_id, source_revision, brief, audio, sample_rate) values
+  ('11111111-1111-1111-1111-111111111111', 'a1111111-0000-0000-0000-00000000000b', 2, '{}', '\x00', 24000);
+set local role authenticated;
+select is(public.get_unfinished_work() -> 'briefs' -> 0 ->> 'notebookId', 'a1111111-0000-0000-0000-00000000000a',
+  'a brief for another notebook leaves the latest listed');
+reset role;
+delete from public.session_briefs;
+set local role authenticated;
 
 -- A brief at the current revision clears the list; an older one does not.
 reset role;
@@ -152,6 +178,32 @@ set local request.jwt.claim.sub = '44444444-4444-4444-4444-444444444444';
 select is(jsonb_array_length(public.get_unfinished_work() -> 'cards'), 50, 'cards are capped at 50');
 select is(public.get_unfinished_work() -> 'cards' -> 0 ->> 'notebookId', 'c4444444-0000-0000-0000-000000000001', 'newest notebook first');
 select is((public.get_unfinished_work() ->> 'truncated')::boolean, true, 'truncated is set when more than 50 are pending');
+
+-- Exactly 50 eligible: not truncated; 51: truncated.
+reset role;
+delete from public.notebooks where user_id = '44444444-4444-4444-4444-444444444444' and id >
+  ('c4444444-0000-0000-0000-' || lpad('50', 12, '0'))::uuid;
+set local role authenticated;
+set local request.jwt.claim.sub = '44444444-4444-4444-4444-444444444444';
+select is(jsonb_array_length(public.get_unfinished_work() -> 'cards'), 50, '50 pending: all 50 listed');
+select is((public.get_unfinished_work() ->> 'truncated')::boolean, false, 'exactly 50 is not truncated');
+reset role;
+insert into public.notebooks (id, user_id, title, started_at, revision, conversation_mode) values
+  ('c4444444-0000-0000-0000-000000000051', '44444444-4444-4444-4444-444444444444', 'N51', now() - interval '2 days', 1, 'just_talk');
+insert into public.entities (id, user_id, notebook_id, name, type, description, metadata, questions, mentions, first_seen, last_seen) values
+  ('e51', '44444444-4444-4444-4444-444444444444', 'c4444444-0000-0000-0000-000000000051', 'N51', 'person', null, '{}', null, 1, now(), now());
+set local role authenticated;
+select is((public.get_unfinished_work() ->> 'truncated')::boolean, true, '51 pending: truncated');
+
+-- Vectors-only truncation: every card is finished, 51 notebooks lack vectors.
+reset role;
+insert into public.session_cards (notebook_id, user_id, conversation_mode, source_revision, card, is_draft)
+  select id, user_id, 'just_talk', 1, '{}', false from public.notebooks
+  where user_id = '44444444-4444-4444-4444-444444444444';
+set local role authenticated;
+select is(public.get_unfinished_work() -> 'cards', '[]'::jsonb, 'user 4: no cards pending');
+select is(jsonb_array_length(public.get_unfinished_work() -> 'vectors'), 50, 'vectors are capped at 50');
+select is((public.get_unfinished_work() ->> 'truncated')::boolean, true, 'vectors alone set truncated');
 
 select * from finish();
 rollback;
