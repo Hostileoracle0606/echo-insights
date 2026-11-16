@@ -100,6 +100,24 @@ export function createHandler(deps: EmbedEntitiesDeps): (req: Request) => Promis
     const batch = stale.slice(0, CHUNK);
     if (batch.length) {
       const vecs = await embedder.embed(batch.map((s) => `${s.name}\n${s.description ?? ""}`));
+      // LM-102: the first vector stored for (entity, content_hash, model) wins.
+      // A changed hash or model is a new key: the old row goes (matched on its
+      // old hash, so a concurrent run that already stored the new key is left
+      // alone) and the new one is inserted. Inserting with ignoreDuplicates
+      // means a racing run that offers a different vector for a key that is
+      // already stored cannot overwrite it.
+      for (const s of batch) {
+        const cur = have.get(s.id);
+        if (!cur) continue;
+        const { error: oldErr } = await admin
+          .from("entity_embeddings")
+          .delete()
+          .eq("notebook_id", notebookId)
+          .eq("entity_id", s.id)
+          .eq("content_hash", cur.content_hash)
+          .eq("embedding_model", cur.embedding_model);
+        if (oldErr) return fail("replace", oldErr.code);
+      }
       const { error: upErr } = await admin.from("entity_embeddings").upsert(
         batch.map((s, i) => ({
           notebook_id: notebookId,
@@ -110,6 +128,7 @@ export function createHandler(deps: EmbedEntitiesDeps): (req: Request) => Promis
           content_hash: s.hash,
           updated_at: new Date().toISOString(),
         })),
+        { onConflict: "notebook_id,entity_id", ignoreDuplicates: true },
       );
       if (upErr) return fail("upsert", upErr.code); // a vector-cast/privilege failure is NOT a success
     }
