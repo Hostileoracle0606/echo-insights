@@ -86,6 +86,28 @@ const int finalizationDeadlineMs = 1500;
 /// reinterpreted by a different extractor than the one that produced it.
 const String extractorVersion = 'gemini/extract_graph/v2';
 
+/// Whether a session is actually active (LM-103 catch-up stays off its
+/// notebook): connecting, live, paused, or ending (draining its turns), or
+/// idle with a turn still extracting/committing. `error` is not live: a
+/// leave that failed (offline at session end) leaves the user outside the
+/// notebook, and catch-up finishes it on resume. Its turns are keyed (the
+/// runtime caches extractions by turn id, commits go through the request
+/// ledger), so the notifier retrying the same turns later is safe.
+bool sessionIsLive(SessionStatus status, {bool extracting = false}) =>
+    switch (status) {
+      SessionStatus.connecting ||
+      SessionStatus.live ||
+      SessionStatus.paused ||
+      SessionStatus.ending =>
+        true,
+      SessionStatus.idle => extracting,
+      SessionStatus.error => false,
+    };
+
+/// Whether the notifier, in [status], still owns its open notebook's
+/// journalled turns (it replays them itself). Not after a failed leave.
+bool catchUpOwnsNotebook(SessionStatus status) => status != SessionStatus.error;
+
 /// How long "Removed Priya · Undo" holds a removal before it is sent (LM-29).
 const Duration removeUndoWindow = Duration(seconds: 5);
 
@@ -236,15 +258,21 @@ class JournalNotifier extends Notifier<JournalState> {
 
   SessionStatus get status => _status;
 
-  /// The notebook this notifier has open, if any. Its journalled turns are
-  /// the notifier's to finish; launch-time catch-up (LM-103) leaves them.
+  /// The notebook this notifier has open, if any.
   String? get activeNotebookId => _activeNotebookId;
 
-  /// A session is on [notebookId] (connecting, live, paused, ending, or a
-  /// turn still extracting/committing): catch-up runs none of its steps.
+  /// The notebook whose journalled turns this notifier is working on, for
+  /// launch-time catch-up (LM-103) to leave alone: the open one, unless
+  /// leaving it failed (status `error`, e.g. offline at session end). Then
+  /// the user has left and catch-up may finish it on resume.
+  String? get catchUpOpenNotebookId =>
+      catchUpOwnsNotebook(_status) ? _activeNotebookId : null;
+
+  /// A session is actually on [notebookId]: catch-up runs none of its steps.
+  /// See [sessionIsLive].
   bool isNotebookLive(String notebookId) =>
       _activeNotebookId == notebookId &&
-      (_status != SessionStatus.idle || _extracting);
+      sessionIsLive(_status, extracting: _extracting);
   String get lastTranscript => _lastTranscript;
   String get liveUserText => _liveUserText;
   String get liveAgentText => _liveAgentText;

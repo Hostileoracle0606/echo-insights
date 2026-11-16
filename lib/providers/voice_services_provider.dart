@@ -207,6 +207,8 @@ class _VoiceServicesScopeState extends ConsumerState<VoiceServicesScope>
   /// Catch-up never fails a launch or a resume.
   void _requestCatchUp() {
     if (!mounted) return;
+    // A sign-out may have landed while the warm-up or resume work ran.
+    if (ref.read(authProvider).valueOrNull == null) return;
     try {
       ref.read(catchUpProvider.notifier).request();
     } catch (error) {

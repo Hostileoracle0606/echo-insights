@@ -14,12 +14,15 @@ void main() {
   late List<CatchUpReport> reports;
   late int runners;
   late ProviderContainer container;
+  late MemoryCatchUpSkipStore skips;
 
   setUp(() {
     cardGate = Completer<void>();
     reports = [];
     runners = 0;
+    skips = MemoryCatchUpSkipStore();
     container = ProviderContainer(overrides: [
+      catchUpSkipStoreProvider.overrideWithValue(skips),
       catchUpRunnerFactoryProvider.overrideWithValue(
         ({required turnsStillRunning, required onPendingCards}) {
           runners++;
@@ -36,7 +39,7 @@ void main() {
             },
             requestBrief: (_) async {},
             runErase: (_) async => true,
-            skips: MemoryCatchUpSkipStore(),
+            skips: skips,
             turnsStillRunning: turnsStillRunning,
             onPendingCards: onPendingCards,
             // No real timers in tests.
@@ -77,6 +80,7 @@ void main() {
   });
 
   test('sign-out cancels the run and clears the state', () async {
+    await skips.write({'card:old': 3});
     final notifier = container.read(catchUpProvider.notifier)
       ..setUnlocked(true)
       ..request();
@@ -87,5 +91,7 @@ void main() {
     await pumpEventQueue();
     expect(container.read(catchUpProvider), CatchUpState.idle);
     expect(reports.single.cancelled, isTrue);
+    expect(await skips.read(), isEmpty,
+        reason: 'the refused-card memory leaves with the account');
   });
 }

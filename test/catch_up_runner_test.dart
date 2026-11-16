@@ -424,6 +424,40 @@ void main() {
       expect(still, isEmpty);
     });
 
+    test('a cancelled turn step counts as still running until it settles',
+        () async {
+      final still = <String>{};
+      final rig = Rig()..journalIds = ['a'];
+      rig.hold['turns:a'] = Completer<void>();
+      final token = CatchUpCancelToken();
+      final first = rig.runner(turnsStillRunning: still).run(token);
+      await pumpEventQueue();
+      token.cancel(); // the app locked mid-step
+      final report = await first;
+      expect(outcomes(report), ['FinishTurnsStep(a) cancelled']);
+      expect(still, {'a'});
+
+      // The run after the unlock does not start a second finisher.
+      final second = await rig.runner(turnsStillRunning: still).run();
+      expect(outcomes(second), ['FinishTurnsStep(a) stillRunning']);
+      expect(rig.calls, ['turns:a']);
+
+      rig.hold['turns:a']!.complete();
+      await pumpEventQueue();
+      expect(still, isEmpty);
+    });
+
+    test('a live notebook never shows as waiting for its card', () async {
+      final rig = Rig(work: [
+        work(cards: [card('live', 1), card('b', 1)]),
+      ])
+        ..journalIds = ['live']
+        ..live.add('live');
+      await rig.runner().run();
+      expect(rig.pendingSeen.first, {'b'});
+      expect(rig.pendingSeen.every((ids) => !ids.contains('live')), isTrue);
+    });
+
     test('without an on-device vector build the server catches up', () async {
       final rig = Rig(work: [
         work(vectors: [
@@ -533,6 +567,26 @@ void main() {
       finish(0);
       await pumpEventQueue();
       expect(runs, hasLength(1), reason: 'no follow-up for the old account');
+    });
+
+    test('a run that throws synchronously does not wedge the scheduler',
+        () async {
+      var calls = 0;
+      final sync = CatchUpScheduler(
+        run: (token) {
+          calls++;
+          if (calls == 1) throw StateError('factory failed');
+          return Future.value(CatchUpReport.empty);
+        },
+      );
+      sync.setUnlocked(true);
+      sync.request();
+      await pumpEventQueue();
+      expect(sync.isRunning, isFalse);
+      sync.request();
+      await pumpEventQueue();
+      expect(calls, 2);
+      expect(sync.isRunning, isFalse);
     });
 
     test('a run that throws does not wedge the scheduler', () async {

@@ -110,7 +110,18 @@ final catchUpRunnerFactoryProvider = Provider<CatchUpRunnerFactory>((ref) {
       // builds missing vectors, and search works without them meanwhile.
       buildVectors: null,
       skips: ref.read(catchUpSkipStoreProvider),
-      openNotebookId: () => session.activeNotebookId,
+      // The open notebook's turns are the notifier's, except after a failed
+      // leave (status error): then the user has left and catch-up may.
+      //
+      // Known window: a session can open a notebook while its turn step is
+      // already running here. Both then work on the same journalled turns.
+      // That is safe, only wasteful: extraction is cached by turn id, and a
+      // commit goes through the request ledger (the same envelope is
+      // answered once; a different one under the same id is refused as
+      // requestIdReused, which drops the already-committed turn). The step is
+      // bounded by the step timeout, and a later run skips the notebook while
+      // the step is still going (turnsStillRunning).
+      openNotebookId: () => session.catchUpOpenNotebookId,
       isNotebookLive: session.isNotebookLive,
       turnsStillRunning: turnsStillRunning,
       onPendingCards: onPendingCards,
@@ -184,6 +195,8 @@ class CatchUpNotifier extends Notifier<CatchUpState> {
   void signedOut() {
     _scheduler.signedOut();
     _set(CatchUpState.idle);
+    // The refused-card memory belongs to the account that left.
+    unawaited(ref.read(catchUpSkipStoreProvider).clear());
   }
 
   /// The run in flight, if any (tests wait on it).

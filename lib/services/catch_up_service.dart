@@ -320,6 +320,9 @@ class CatchUpReport {
 abstract interface class CatchUpSkipStore {
   Future<Map<String, int>> read();
   Future<void> write(Map<String, int> skips);
+
+  /// Drops every entry (sign-out). Never throws.
+  Future<void> clear();
 }
 
 class MemoryCatchUpSkipStore implements CatchUpSkipStore {
@@ -330,6 +333,9 @@ class MemoryCatchUpSkipStore implements CatchUpSkipStore {
 
   @override
   Future<void> write(Map<String, int> skips) async => _skips = Map.of(skips);
+
+  @override
+  Future<void> clear() async => _skips = {};
 }
 
 /// A small JSON file next to the turn journal. Unreadable means empty: the
@@ -370,6 +376,16 @@ class FileCatchUpSkipStore implements CatchUpSkipStore {
     final tmp = File('${file.path}.tmp');
     await tmp.writeAsString(jsonEncode(skips), flush: true);
     await tmp.rename(file.path);
+  }
+
+  @override
+  Future<void> clear() async {
+    try {
+      final file = await _file();
+      if (await file.exists()) await file.delete();
+    } catch (error) {
+      debugPrint('catch-up: skips not cleared (${error.runtimeType})');
+    }
   }
 }
 
@@ -510,10 +526,15 @@ class CatchUpRunner {
       plans++;
       final skips = await _readSkips();
 
+      // A live notebook's card is the session's, not ours: no "Finishing
+      // up" line on it.
       pending.addAll([
         for (final step in plan.steps)
-          if ((step is CardStep && !_isSkipped(skips, step)) ||
-              (step is FinishTurnsStep && !_isNotebookLive(step.notebookId)))
+          if (!_isNotebookLive(step.notebookId ?? '') &&
+              ((step is CardStep && !_isSkipped(skips, step)) ||
+                  (step is FinishTurnsStep &&
+                      _openNotebookId() != step.notebookId &&
+                      !_turnsStillRunning.contains(step.notebookId))))
             step.notebookId!,
       ]);
       publish();
@@ -562,11 +583,12 @@ class CatchUpRunner {
           case _TimedOut():
             outcome = CatchUpOutcome.timedOut;
             stillJournalled.add(id);
-            _turnsStillRunning.add(id);
-            work.then((_) {}, onError: (Object _) {}).whenComplete(
-                () => _turnsStillRunning.remove(id));
+            _markStillRunning(id, work);
           case _Cancelled():
             outcome = CatchUpOutcome.cancelled;
+            // Abandoned, not stopped: a run after the unlock must not start
+            // a second finisher on the same notebook meanwhile.
+            _markStillRunning(id, work);
         }
         if (outcome != CatchUpOutcome.done) {
           debugPrint('catch-up: $step ${outcome.name}');
@@ -636,6 +658,13 @@ class CatchUpRunner {
       pending.clear();
       publish();
     }
+  }
+
+  void _markStillRunning(String notebookId, Future<Object?> work) {
+    _turnsStillRunning.add(notebookId);
+    work
+        .then<void>((_) {}, onError: (Object _) {})
+        .whenComplete(() => _turnsStillRunning.remove(notebookId));
   }
 
   Future<CatchUpOutcome> _runStep(
@@ -887,24 +916,34 @@ class CatchUpScheduler {
 
   void _start() {
     final token = _token = CatchUpCancelToken();
+    final done = Completer<void>();
+    _current = done.future;
     _onRunning?.call(true);
-    late final Future<void> current;
-    current = () async {
+    // _drive never throws, and a run that throws synchronously still lands
+    // here asynchronously, after _current is set: the scheduler is never
+    // left "running".
+    _drive(token).whenComplete(() {
+      if (identical(_current, done.future)) _current = null;
+      if (identical(_token, token)) _token = null;
       try {
-        final report = await _run(token);
-        _onReport?.call(report);
-      } catch (error) {
-        debugPrint('catch-up: run failed (${error.runtimeType})');
-      } finally {
-        if (identical(_current, current)) _current = null;
-        if (identical(_token, token)) _token = null;
         _onRunning?.call(false);
-        if (_again && _unlocked) {
-          _again = false;
-          _start();
-        }
+      } catch (error) {
+        debugPrint('catch-up: state not updated (${error.runtimeType})');
       }
-    }();
-    _current = current;
+      done.complete();
+      if (_again && _unlocked) {
+        _again = false;
+        _start();
+      }
+    });
+  }
+
+  Future<void> _drive(CatchUpCancelToken token) async {
+    try {
+      final report = await Future.sync(() => _run(token));
+      _onReport?.call(report);
+    } catch (error) {
+      debugPrint('catch-up: run failed (${error.runtimeType})');
+    }
   }
 }
