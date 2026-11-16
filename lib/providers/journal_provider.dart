@@ -235,6 +235,16 @@ class JournalNotifier extends Notifier<JournalState> {
   Set<String> get suppressedEntityIds => Set.unmodifiable(_suppressed);
 
   SessionStatus get status => _status;
+
+  /// The notebook this notifier has open, if any. Its journalled turns are
+  /// the notifier's to finish; launch-time catch-up (LM-103) leaves them.
+  String? get activeNotebookId => _activeNotebookId;
+
+  /// A session is on [notebookId] (connecting, live, paused, ending, or a
+  /// turn still extracting/committing): catch-up runs none of its steps.
+  bool isNotebookLive(String notebookId) =>
+      _activeNotebookId == notebookId &&
+      (_status != SessionStatus.idle || _extracting);
   String get lastTranscript => _lastTranscript;
   String get liveUserText => _liveUserText;
   String get liveAgentText => _liveAgentText;
