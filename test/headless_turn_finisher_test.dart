@@ -271,23 +271,37 @@ void main() {
       expect(await journal.loadCheckpoints(_notebook), isEmpty);
     });
 
-    test('a notebook the server no longer has drops its turn', () async {
+    test('a notebook the server does not find keeps its turn', () async {
       server.missing = true;
 
       final result = await finisher.finishNotebook(_notebook);
 
-      expect(result.rejectedTurnIds, ['turn-1']);
-      expect(result.done, isTrue);
-      expect(server.snapshotLoads, 1, reason: 'notFound is confirmed first');
-      expect(await journal.loadCheckpoints(_notebook), isEmpty);
+      expect(result.deferredTurnId, 'turn-1');
+      expect(result.notFound, isTrue);
+      expect(server.commitCalls, 1);
+      expect(await journal.loadCheckpoints(_notebook), hasLength(1),
+          reason: 'it may belong to another account on this phone');
+
+      // The rest of this run skips it: no further server calls.
+      final again = await finisher.finishNotebook(_notebook);
+      expect(again.notFound, isTrue);
+      expect(server.commitCalls, 1);
+      expect(server.snapshotLoads, 0);
+
+      // The next run tries once more, and still keeps it.
+      final nextRun = await build().finishNotebook(_notebook);
+      expect(nextRun.notFound, isTrue);
+      expect(server.commitCalls, 2);
+      expect(await journal.loadCheckpoints(_notebook), hasLength(1));
     });
 
-    test('notFound with a readable snapshot waits', () async {
+    test('notFound from the commit alone keeps the turn too', () async {
       server.commitNotFound = true;
 
       final result = await finisher.finishNotebook(_notebook);
 
       expect(result.deferredTurnId, 'turn-1');
+      expect(result.notFound, isTrue);
       expect(await journal.loadCheckpoints(_notebook), hasLength(1));
     });
 
@@ -348,6 +362,19 @@ void main() {
       final entity = (change['entities'] as List).single as Map;
       expect(entity['id'], 'acme');
       expect(entity['mentions'], 1);
+    });
+
+    test('a snapshot not found keeps the turn and skips the notebook',
+        () async {
+      server.missing = true;
+
+      final result = await finisher.finishNotebook(_notebook);
+      await finisher.finishNotebook(_notebook);
+
+      expect(result.notFound, isTrue);
+      expect(server.snapshotLoads, 1, reason: 'once per notebook per run');
+      expect(server.commitCalls, 0);
+      expect(await journal.loadCheckpoints(_notebook), hasLength(1));
     });
 
     test('a stale revision on the checkpoint is not used', () async {

@@ -83,6 +83,7 @@ class NotebookFinishResult {
     this.rejectedTurnIds = const [],
     this.deferredTurnId,
     this.revision,
+    this.notFound = false,
   });
 
   final String notebookId;
@@ -102,13 +103,17 @@ class NotebookFinishResult {
   /// The notebook's revision after the last commit, when one happened.
   final int? revision;
 
+  /// The server did not find the notebook for this account in this run.
+  /// Its turns are kept; the finisher skips it until the next run.
+  final bool notFound;
+
   bool get done => deferredTurnId == null;
 }
 
-enum _Finish { committed, rejected, deferred }
+enum _Finish { committed, rejected, deferred, notFound }
 
 /// Why [HeadlessTurnFinisher._prepare] could not make an envelope.
-enum _NotPrepared { deferred, gone }
+enum _NotPrepared { deferred, notFound }
 
 /// Commits a notebook's journalled turns without opening it (LM-103).
 ///
@@ -133,8 +138,13 @@ enum _NotPrepared { deferred, gone }
 ///   committed with an empty patch, so its words are kept as an entry and
 ///   later turns go on. Network failures are delay, not refusals: uncounted.
 /// - commit refused as `commitFailed` [maxAttempts] times: dropped.
-/// - a notebook the server no longer has (null snapshot, or `notFound`
-///   confirmed by a snapshot load): its turns are dropped.
+/// - a notebook the server does not find (null snapshot, or `notFound`):
+///   never dropped (it may be another account's on a shared phone, and
+///   design for delay, not loss). The turn is deferred and the notebook
+///   is skipped for the rest of this finisher's run: one server attempt
+///   per notebook per run.
+///
+/// One instance is one catch-up run: build a fresh one for each run.
 ///
 /// The caller must not run this for a notebook a live session has open:
 /// that notebook's own queue is finishing the same turns.
@@ -170,8 +180,18 @@ class HeadlessTurnFinisher {
   final ExtractJournalTurnFn _extract;
   final TurnRedaction _redaction;
 
+  /// Notebooks the server did not find during this run.
+  final Set<String> _notFoundThisRun = {};
+
   Future<NotebookFinishResult> finishNotebook(String notebookId) async {
     final checkpoints = await _journal.loadCheckpoints(notebookId);
+    if (checkpoints.isNotEmpty && _notFoundThisRun.contains(notebookId)) {
+      return NotebookFinishResult(
+        notebookId: notebookId,
+        deferredTurnId: checkpoints.first.turn.turnId,
+        notFound: true,
+      );
+    }
     final committed = <String>[];
     final rejected = <String>[];
     final earlier = <FinalizedTurn>[];
@@ -187,12 +207,16 @@ class HeadlessTurnFinisher {
         case _Finish.rejected:
           rejected.add(turnId);
         case _Finish.deferred:
+        case _Finish.notFound:
+          final notFound = outcome == _Finish.notFound;
+          if (notFound) _notFoundThisRun.add(notebookId);
           return NotebookFinishResult(
             notebookId: notebookId,
             committedTurnIds: committed,
             rejectedTurnIds: rejected,
             deferredTurnId: turnId,
             revision: revision,
+            notFound: notFound,
           );
       }
       earlier.add(checkpoint.turn);
@@ -217,7 +241,7 @@ class HeadlessTurnFinisher {
       if (prepared == null) {
         switch (await _prepare(turn, earlier)) {
           case (_NotPrepared reason, _):
-            return (await _settle(turn, reason), null);
+            return (_settle(reason), null);
           case (_, (FinalizedTurn, PreparedTurnCommit) made):
             (turn, prepared) = made;
         }
@@ -241,24 +265,14 @@ class HeadlessTurnFinisher {
             rebased = true;
             switch (await _prepare(turn, earlier)) {
               case (_NotPrepared reason, _):
-                return (await _settle(turn, reason), null);
+                return (_settle(reason), null);
               case (_, (FinalizedTurn, PreparedTurnCommit) made):
                 (turn, prepared) = made;
             }
           case CommitRejected(:final code):
             vlog('catchup', 'commit rejected for turn ${turn.turnId}: $code');
-            if (code == 'notFound') {
-              // Gone only if the server says so on a fresh read too.
-              final snapshot = await _loadSnapshot(turn.notebookId);
-              return (
-                await _settle(
-                    turn,
-                    snapshot == null
-                        ? _NotPrepared.gone
-                        : _NotPrepared.deferred),
-                null,
-              );
-            }
+            // Kept, never dropped: see the class comment.
+            if (code == 'notFound') return (_Finish.notFound, null);
             if (code == 'commitFailed') {
               final count = await _journal.countAttempt(
                 notebookId: turn.notebookId,
@@ -290,17 +304,11 @@ class HeadlessTurnFinisher {
         turnId: turn.turnId,
       );
 
-  /// A turn that could not be prepared: kept for later, or dropped with its
-  /// notebook.
-  Future<_Finish> _settle(FinalizedTurn turn, _NotPrepared reason) async {
-    if (reason == _NotPrepared.deferred) return _Finish.deferred;
-    vlog(
-        'catchup',
-        'notebook ${turn.notebookId} is gone: '
-            'turn ${turn.turnId} dropped');
-    await _forget(turn);
-    return _Finish.rejected;
-  }
+  /// A turn that could not be prepared is always kept for later.
+  static _Finish _settle(_NotPrepared reason) => switch (reason) {
+        _NotPrepared.deferred => _Finish.deferred,
+        _NotPrepared.notFound => _Finish.notFound,
+      };
 
   /// Loads the server snapshot, extracts if the turn has no result yet,
   /// merges, and persists the envelope before it is sent.
@@ -309,9 +317,9 @@ class HeadlessTurnFinisher {
     List<FinalizedTurn> earlier,
   ) async {
     final snapshot = await _loadSnapshot(turn.notebookId);
-    // Null is the server's answer (not found), not a network failure,
-    // which throws.
-    if (snapshot == null) return (_NotPrepared.gone, null);
+    // Null is the server's answer (not found for this account), not a
+    // network failure, which throws.
+    if (snapshot == null) return (_NotPrepared.notFound, null);
     await _redaction.ensureLoaded();
     // As the open notebook adopts a snapshot: a forgotten person is gone
     // from what is merged onto, and from what the extractor is shown.
