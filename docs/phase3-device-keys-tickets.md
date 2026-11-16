@@ -183,7 +183,7 @@ Today, forgetting a person blocks that name for good. Lumen never brings it up a
 - **B. Time-scoped.** Text from before the forget time stays suppressed; anything said afterwards starts a fresh record. It's simpler and lets people re-meet a name. It weakens the promise: if the user talks about the same person again, Lumen remembers that new talk.
 - **C. Time-scoped plus an explicit "unforget".** It is option A, with a control to lift the block.
 
-**Recommendation:** **A, with "unforget" added later if people ask for it.** It matches the user ruling of 2026-11-11 ("should never bring up forgotten context across any of its features"). The device-side check is cheap for lists of realistic size. Measure that as the first step of LM-96.
+**Decided (user, 2026-11-16): A, blocked forever.** "Unforget" may come later if people ask for it. Original recommendation, for the record: A, with "unforget" added later if people ask for it. It matches the user ruling of 2026-11-11 ("should never bring up forgotten context across any of its features"). The device-side check is cheap for lists of realistic size. Measure that as the first step of LM-96.
 
 **Acceptance criteria:** the decision and its reason are recorded in the SDD ledger and in LM-84's spec.
 
@@ -202,7 +202,10 @@ PR #32 lets a user opt in to replacing a forgotten multi-word name in their own 
 
 **Tradeoff:** the erase rewrites the user's own journal, and it can't be undone (there is no escrow and no server copy). It removes the risk that a forgotten name survives in stored text. It does not remove the need to block future mentions.
 
-**Recommendation:** **A, keep it opt-in.** A journal app that silently rewrites what someone said, irreversibly, breaks a different trust. The suppression list is still needed for future text under LM-85 A.
+**Decided (user, 2026-11-16): Forget always edits the transcripts too. No sign or trace of the person remains.** The Forget screen states it plainly before confirming: the passage count from the preview (`transcriptPassages`) and "You can't undo this". Open points for LM-84 and LM-99:
+- **Placeholder:** today the name is replaced with a neutral word ("someone"). "No trace" may mean removing the sentence or clause instead. Decide in the spec.
+- **Single-word names** ("Will", "May") are not erased (R34), because ordinary words would be rewritten. For them, a trace stays in the user's own transcripts; the Forget screen must say so.
+- **The forget list itself** (an encrypted entry per person, LM-105) still exists, so future mentions stay blocked. It is the one remaining record, readable only on the user's devices.
 
 **Acceptance criteria:** the decision is recorded; LM-99 and LM-110 copy follow it.
 
@@ -248,7 +251,7 @@ The class decides whether the app can decrypt while the phone is locked. It sets
 - **C. A mix:** the master key under B. A narrowly scoped, short-lived working key under A, holding only what pending jobs need, deleted when the queue is empty.
 - **"ThisDevice" variants:** these never sync through iCloud Keychain. That interacts with LM-89.
 
-**Recommendation:** **C, falling back to B if the spec review finds C too complex.** Delay is acceptable ("design for delay, not loss"). C keeps background completion possible without leaving the master key readable while the phone is locked.
+**Decided (user, 2026-11-16): A, readable after first unlock.** Background tasks (LM-104) can decrypt while the phone is locked. Because LM-89 chose iCloud Keychain sync, the key must use the synchronizable class (`afterFirstUnlock`), not the `ThisDevice` variant, which never syncs. LM-84 states the at-rest tradeoff in plain words. Original recommendation, for the record: C, falling back to B if the spec review finds C too complex. Delay is acceptable ("design for delay, not loss"). C keeps background completion possible without leaving the master key readable while the phone is locked.
 
 **Acceptance criteria:** the decision is recorded; LM-84 uses it.
 
@@ -268,7 +271,7 @@ Someone with two iPhones (or a replacement phone) needs the key on both. The two
 - **B. Recovery phrase only.** The user types the phrase on each new phone. The key never leaves a device except in the user's head or on paper. It's more friction, and the phrase is needed more often, so it is more likely to be written down somewhere unsafe.
 - **C. Device-to-device transfer.** The old phone shows a QR code or uses a nearby secure channel, and the phrase is the fallback. It needs the old phone to be present.
 
-**Recommendation:** **B for the first release, with C as a follow-up.** It keeps the claim simple ("only your devices and your phrase"). It avoids the Keychain-class conflict with LM-88. It also keeps Apple's sync out of the trust story. Revisit A if friction shows up in testing.
+**Decided (user, 2026-11-16): A, iCloud Keychain sync**, with the recovery phrase (LM-91) as the fallback when no synced device is available. LM-84 must check Apple's current Platform Security guide for how synchronizable Keychain items are protected, and say what the claim depends on (the user's Apple ID and its two-factor setup). Original recommendation, for the record: B for the first release, with C as a follow-up. It keeps the claim simple ("only your devices and your phrase"). It avoids the Keychain-class conflict with LM-88. It also keeps Apple's sync out of the trust story. Revisit A if friction shows up in testing.
 
 **Acceptance criteria:** the decision is recorded; LM-84 and LM-107 use it.
 
