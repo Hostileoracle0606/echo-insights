@@ -100,12 +100,12 @@ export function createHandler(deps: EmbedEntitiesDeps): (req: Request) => Promis
     const batch = stale.slice(0, CHUNK);
     if (batch.length) {
       const vecs = await embedder.embed(batch.map((s) => `${s.name}\n${s.description ?? ""}`));
-      // LM-102: the first vector stored for (entity, content_hash, model) wins.
-      // A changed hash or model is a new key: the old row goes (matched on its
-      // old hash, so a concurrent run that already stored the new key is left
-      // alone) and the new one is inserted. Inserting with ignoreDuplicates
-      // means a racing run that offers a different vector for a key that is
-      // already stored cannot overwrite it.
+      // LM-102: the row key is (notebook_id, entity_id); content_hash and
+      // embedding_model version it. The first vector stored for a version wins.
+      // A changed hash or model replaces the old row: the delete matches the
+      // old hash and model, so a row a concurrent run already stored for the
+      // new version is left alone. The write then ignores duplicates, so a
+      // racing run offering a different vector cannot overwrite a stored one.
       for (const s of batch) {
         const cur = have.get(s.id);
         if (!cur) continue;

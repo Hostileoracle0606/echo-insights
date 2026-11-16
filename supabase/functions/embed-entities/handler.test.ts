@@ -17,6 +17,8 @@ class FakeDb {
   embeddings: Row[] = [];
   /** Run before an upsert lands, to model a racing run that stored first. */
   beforeUpsert?: () => void;
+  /** Run before a delete lands, to model a racing run that replaced the row. */
+  beforeDelete?: () => void;
 
   client(): TableClient {
     return { from: (table: string) => this.query(table) as unknown as DbQuery };
@@ -39,6 +41,7 @@ class FakeDb {
     const run = () => {
       const matches = (r: Row) => preds.every((p) => p(r));
       if (op === "delete") {
+        db.beforeDelete?.();
         const keep = db.embeddings.filter((r) => !matches(r));
         db.embeddings.length = 0;
         db.embeddings.push(...keep);
@@ -174,3 +177,27 @@ async function sha(text: string): Promise<string> {
   const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
   return [...new Uint8Array(d)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
+
+Deno.test("LM-102 vectors: the replace delete is keyed on the old hash, so a newer row stored meanwhile survives", async () => {
+  const { db, embedder, run, addEntity } = setup();
+  addEntity("maya", "Maya", "A friend");
+  await run();
+  db.entities[0].description = "Moved to Berlin";
+  const newHash = await sha("Maya\nMoved to Berlin");
+  // Between this run's read and its delete, a racing run stores the new key.
+  db.beforeDelete = () => {
+    db.beforeDelete = undefined;
+    db.embeddings[0] = {
+      ...db.embeddings[0],
+      embedding: JSON.stringify([7]),
+      content_hash: newHash,
+    };
+  };
+  embedder.seed = 99;
+
+  await run();
+
+  assertEquals(db.embeddings.length, 1);
+  assertEquals(db.embeddings[0].content_hash, newHash);
+  assertEquals(db.embeddings[0].embedding, JSON.stringify([7]));
+});
