@@ -19,15 +19,16 @@ test('cell passes only when observed matches expected', () => {
   assert.equal(cell({ ...base, expected: 'deny', observed: 'leak' }).pass, false);
 });
 
-test('buildReport counts owner controls and totals', () => {
+test('buildReport counts only flagged positive controls', () => {
   const cells = [
-    cell({ surface: 'table', target: 'entities', credential: 'owner', operation: 'select', expected: 'allow', observed: 'allow' }),
+    cell({ surface: 'table', target: 'entities', credential: 'owner', operation: 'select', expected: 'allow', observed: 'allow', control: true }),
+    cell({ surface: 'table', target: 'retrieve_rate_limits', credential: 'owner', operation: 'select', expected: 'deny', observed: 'deny' }),
     cell({ surface: 'table', target: 'entities', credential: 'other_user', operation: 'select', expected: 'deny', observed: 'leak' }),
   ];
   const report = buildReport({ commit: 'abc1234', cells, startedAt: '2026-11-17T00:00:00Z' });
   assert.equal(report.version, 1);
   assert.equal(report.target, 'local');
-  assert.deepEqual(report.summary, { total: 2, passed: 1, failed: 1, controls: 1, controlsPassed: 1 });
+  assert.deepEqual(report.summary, { total: 3, passed: 2, failed: 1, controls: 1, controlsPassed: 1 });
   assert.ok(report.finishedAt);
 });
 

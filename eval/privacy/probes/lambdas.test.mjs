@@ -76,3 +76,18 @@ test('a second real user may use the user-scoped route but not the owner noteboo
   assert.equal(lambdaExpected(user, 'deleted_user'), 'deny');
   assert.equal(lambdaExpected(notebook, 'owner'), 'allow');
 });
+
+test('owner lambda cells are positive controls; the broker never hands out the permanent key', async () => {
+  const { probeLambdas } = await import('./lambdas.mjs');
+  const { cells } = await probeLambdas({
+    url: SUPABASE, anonKey: 'anon', kinds: ['owner', 'expired'], notebookId: 'nb',
+    headersByKind: { owner: { authorization: 'Bearer good' }, expired: { authorization: 'Bearer old' } },
+    canaries: [], permanentKey: 'CANARY-permanent_key-0011223344556677', entityCanary: 'x',
+    routes: LAMBDA_ROUTES.filter((r) => r.name === 'live-sessions'),
+    realFetch: async (_url, init) => (init.headers.authorization === 'Bearer good'
+      ? new Response('{"id":"user-a"}', { status: 200 }) : new Response('{}', { status: 401 })),
+  });
+  const owner = cells.filter((c) => c.credential === 'owner');
+  assert.ok(owner.length === 2 && owner.every((c) => c.control && c.pass));
+  assert.ok(cells.filter((c) => c.credential === 'expired').every((c) => !c.control && c.pass));
+});

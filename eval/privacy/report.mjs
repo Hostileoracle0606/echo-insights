@@ -13,8 +13,10 @@ export function assertLocalTarget(url) {
   return parsed;
 }
 
-export function cell({ surface, target, credential, operation, expected, observed }) {
-  return { surface, target, credential, operation, expected, observed, pass: observed === expected };
+// `control: true` marks a positive control: a legitimate request that must be
+// let through, proving the deny cells beside it tested something.
+export function cell({ surface, target, credential, operation, expected, observed, control = false }) {
+  return { surface, target, credential, operation, expected, observed, control, pass: observed === expected };
 }
 
 export function buildReport({ commit, cells, startedAt, notes = {} }) {
@@ -22,7 +24,7 @@ export function buildReport({ commit, cells, startedAt, notes = {} }) {
   if (FORBIDDEN.some((pattern) => pattern.test(serialized))) {
     throw new Error('report contains forbidden content');
   }
-  const controls = cells.filter((c) => c.credential === 'owner');
+  const controls = cells.filter((c) => c.control);
   const passed = cells.filter((c) => c.pass).length;
   return {
     version: 1,

@@ -10,6 +10,8 @@ import { newCanary, findLeaks } from './canary.mjs';
 import { probeTables, ownerQuery } from './probes/tables.mjs';
 import { probeFunctions } from './probes/functions.mjs';
 import { probeLambdas } from './probes/lambdas.mjs';
+import { probeSelf } from './probes/self.mjs';
+import { rowFor, SEED_ORDER } from './fixtures.mjs';
 import { envSecretsFrom, scanBundle, secretPatterns } from './bundle-scan.mjs';
 
 const root = resolve(dirname(new URL(import.meta.url).pathname), '../..');
@@ -47,50 +49,53 @@ async function call(path, { method = 'GET', headers = admin, body } = {}) {
   return text ? JSON.parse(text) : null;
 }
 
-async function createUser() {
+const EMAIL = /^privacy-matrix-[0-9a-f]+@example\.test$/;
+
+async function createUser(created) {
   const suffix = randomBytes(12).toString('hex');
   const email = `privacy-matrix-${suffix}@example.test`;
   const password = `Pm-${suffix}-Aa1!`;
   const user = await call('/auth/v1/admin/users', { method: 'POST', body: { email, password, email_confirm: true } });
+  created.push(user.id); // before sign-in, so a failed sign-in can't orphan it
   const session = await call('/auth/v1/token?grant_type=password', {
     method: 'POST', headers: { apikey: anonKey, 'content-type': 'application/json' }, body: { email, password },
   });
   return { id: user.id, token: session.access_token };
 }
 
-const deleteUser = (id) => call(`/auth/v1/admin/users/${id}`, { method: 'DELETE' });
+async function deleteUser(id) {
+  try {
+    await call(`/auth/v1/admin/users/${id}`, { method: 'DELETE' });
+  } catch (error) {
+    if (!/→ 404$/.test(error.message)) throw error; // already gone is fine
+  }
+}
+
+// Test users left by this or any earlier run, found by their reserved email shape.
+async function leftoverUsers() {
+  const page = await call('/auth/v1/admin/users?per_page=1000');
+  return (page.users ?? []).filter((u) => EMAIL.test(u.email ?? '')).map((u) => u.id);
+}
 
 async function seed(owner, canaries) {
-  const now = new Date().toISOString();
-  const [notebook] = await call('/rest/v1/notebooks', {
-    method: 'POST', headers: { ...admin, prefer: 'return=representation' },
-    body: { user_id: owner.id, title: canaries.notebook, started_at: now },
-  });
-  const notebookId = notebook.id;
-  const base = { user_id: owner.id, notebook_id: notebookId };
-  const rows = {
-    entities: [
-      { ...base, id: 'pm-entity-a', name: canaries.entity, type: 'project', first_seen: now, last_seen: now },
-      { ...base, id: 'pm-entity-b', name: 'Second fixture', type: 'person', first_seen: now, last_seen: now },
-    ],
-    relations: [{ ...base, id: 'pm-relation', source_id: 'pm-entity-a', target_id: 'pm-entity-b', label: canaries.relation }],
-    journal_entries: [{ ...base, text: canaries.entry, created_at: now }],
-    conversation_turns: [{ ...base, turn_id: 'pm-turn', speaker: 'user', text: canaries.turn, spoken_at: now }],
-    follow_ups: [{ ...base, question: canaries.follow_up }],
-    asked_questions: [{ ...base, question: canaries.asked }],
-    session_cards: [{ ...base, conversation_mode: 'just_talk', source_revision: 1, card: { note: canaries.card } }],
-  };
-  const seeded = new Set(['notebooks', 'profiles']);
+  const insert = async (table, row) => (await call(`/rest/v1/${table}`, {
+    method: 'POST', headers: { ...admin, prefer: 'return=representation' }, body: row,
+  }))[0];
+  const ctx = { userId: owner.id, marker: canaries.seed, unique: 'seed' };
+  ctx.notebookId = (await insert('notebooks', rowFor('notebooks', { ...ctx, marker: canaries.notebook }))).id;
+  for (const unique of ['a', 'b']) {
+    await insert('entities', rowFor('entities', { ...ctx, unique, marker: unique === 'a' ? canaries.entity : 'Second fixture' }));
+  }
+  ctx.sessionId = rowFor('conversation_runtime_sessions', ctx).id;
   const unseeded = [];
-  for (const [table, values] of Object.entries(rows)) {
+  for (const table of SEED_ORDER.filter((t) => t !== 'notebooks' && t !== 'entities')) {
     try {
-      await call(`/rest/v1/${table}`, { method: 'POST', body: values });
-      seeded.add(table);
+      await insert(table, rowFor(table, ctx));
     } catch {
       unseeded.push(table);
     }
   }
-  return { notebookId, seeded, unseeded };
+  return { ctx, unseeded };
 }
 
 function gitShortSha() {
@@ -98,8 +103,7 @@ function gitShortSha() {
 }
 
 const startedAt = new Date().toISOString();
-const canaries = Object.fromEntries(
-  ['notebook', 'entity', 'relation', 'entry', 'turn', 'follow_up', 'asked', 'card'].map((k) => [k, newCanary(k)]));
+const canaries = Object.fromEntries(['notebook', 'entity', 'seed'].map((k) => [k, newCanary(k)]));
 const permanentKey = newCanary('permanent_key');
 const created = [];
 const cells = [];
@@ -107,13 +111,17 @@ const notes = {};
 let cleanupFailed = false;
 
 try {
-  const a = await createUser(); created.push(a.id);
-  const b = await createUser(); created.push(b.id);
-  const c = await createUser();
+  notes.leftoverUsersAtStart = (await leftoverUsers()).length;
+  for (const id of await leftoverUsers()) await deleteUser(id);
+  const a = await createUser(created);
+  const b = await createUser(created);
+  const c = await createUser(created);
   await deleteUser(c.id); // its token still verifies until it expires
-  const { notebookId, seeded, unseeded } = await seed(a, canaries);
+  const { ctx, unseeded } = await seed(a, canaries);
+  const notebookId = ctx.notebookId;
   notes.unseededTables = unseeded;
   notes.signing = env.SUPABASE_JWT_SIGNING_JWK ? 'ES256' : 'HS256';
+  notes.functionsJwtGateway = env.PRIVACY_FUNCTIONS_JWT_GATEWAY ?? 'unknown';
   notes.migrationsHead = readdirSync(resolve(root, 'supabase/migrations')).sort().at(-1).replace(/\.sql$/, '');
 
   const now = new Date();
@@ -126,14 +134,17 @@ try {
   const owner = { userId: a.id, notebookId };
 
   cells.push(...await probeTables({
-    url, kinds: CREDENTIAL_KINDS, headersByKind, owner, seededTables: seeded,
+    url, kinds: CREDENTIAL_KINDS, headersByKind, owner, attackerId: b.id,
     markers: [a.id, notebookId, ...contentCanaries],
+    rowFor: (table, unique) => rowFor(table, { ...ctx, unique }),
     snapshot: async (table) => JSON.stringify(await call(`/rest/v1/${table}?select=*&${ownerQuery(table, owner)}`)),
   }));
   cells.push(...await probeFunctions({
     url, kinds: CREDENTIAL_KINDS, headersByKind, notebookId,
     canaries: contentCanaries, internalSecret: env.EMBED_INTERNAL_SECRET ?? randomUUID(),
+    ownerQueryText: canaries.entity, ownerMarkers: ['pm-entity-a'],
   }));
+  cells.push(...await probeSelf({ url, headersByKind, ids: { owner: a.id, deleted_user: c.id } }));
   const lambdas = await probeLambdas({
     url, anonKey, kinds: CREDENTIAL_KINDS, headersByKind, notebookId,
     canaries: contentCanaries, permanentKey, entityCanary: canaries.entity,
@@ -173,6 +184,11 @@ try {
 } finally {
   for (const id of created.reverse()) {
     try { await deleteUser(id); } catch { cleanupFailed = true; }
+  }
+  try {
+    if ((await leftoverUsers()).length) cleanupFailed = true;
+  } catch {
+    cleanupFailed = true;
   }
 }
 

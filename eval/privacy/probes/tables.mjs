@@ -31,14 +31,38 @@ function rowsOf(body) {
   }
 }
 
-export function classifySelect({ kind, table, status, body, markers, seeded }) {
-  if (status >= 400) return 'deny';
+const codeOf = (body) => {
+  try { return JSON.parse(body)?.code ?? null; } catch { return null; }
+};
+
+// Only an auth refusal proves a deny; a missing table or bad request proves nothing.
+const refused = (status, body) => status === 401 || status === 403 || codeOf(body) === '42501';
+
+export function classifySelect({ kind, table, status, body, markers }) {
+  if (refused(status, body)) return 'deny';
+  if (status === 0 || status >= 300) return 'error';
   const rows = rowsOf(body);
   if (!rows) return 'error';
   const marked = markers.some((m) => body.includes(m));
   if (!OWNER_READABLE.has(table)) return rows.length ? 'leak' : 'deny';
-  if (kind === 'owner') return !seeded || marked ? 'allow' : 'deny';
+  if (kind === 'owner') return marked ? 'allow' : 'deny';
   return marked ? 'leak' : 'deny';
+}
+
+// Postgres checks RLS WITH CHECK before constraints, so an integrity error
+// means the policy already accepted the row.
+const AFTER_RLS = new Set(['23502', '23503', '23505', '23514', '22P02']);
+
+export function classifyWrite({ status, body, changed }) {
+  if (changed) return 'leak';
+  if (refused(status, body)) return 'deny';
+  if (AFTER_RLS.has(codeOf(body))) return 'allow';
+  if (status >= 200 && status < 300) {
+    const rows = rowsOf(body);
+    if (rows === null) return 'error';
+    return rows.length ? 'leak' : 'deny';
+  }
+  return 'error';
 }
 
 // A filter that targets the owner's rows, or every row where no owner column exists.
@@ -55,17 +79,16 @@ export function ownerQuery(table, owner) {
   return value ? `${column}=eq.${value}` : `${column}=not.is.null`;
 }
 
-function writeRequest(operation, table, owner) {
-  const { column, value } = ownerFilter(table, owner);
-  const query = ownerQuery(table, owner);
-  const body = value ? JSON.stringify({ [column]: value }) : JSON.stringify({});
-  if (operation === 'insert') return { method: 'POST', query: '', body };
-  if (operation === 'update') return { method: 'PATCH', query, body };
-  return { method: 'DELETE', query, body: undefined };
+// Updates try to take the row: hand it to the attacker, or overwrite its payload.
+function takeover(table, attackerId) {
+  if (table === 'notebook_commit_requests') return { result: { taken: true } };
+  if (table === 'conversation_runtime_inbox') return { observation: { taken: true } };
+  if (table === 'retrieve_rate_limits') return { count: 999_999 };
+  return { user_id: attackerId };
 }
 
 export async function probeTables({
-  url, tables = USER_TABLES, kinds, headersByKind, owner, markers, seededTables,
+  url, tables = USER_TABLES, kinds, headersByKind, owner, attackerId, markers, rowFor,
   fetchImpl = fetch, snapshot,
 }) {
   const cells = [];
@@ -82,27 +105,36 @@ export async function probeTables({
       return { status: 0, body: '' };
     }
   };
+  const push = (fields) => cells.push(cell({ surface: 'table', ...fields }));
 
   for (const table of tables) {
+    // Without A's rows in the table, no cell here can observe anything.
+    const present = (await snapshot(table)) !== '[]';
+    let unique = 0;
     for (const kind of kinds) {
       const headers = headersByKind[kind];
+      const expected = expectedFor(kind, 'select', table);
       const read = await call(table, undefined, headers);
-      const observed = read.status === 0 ? 'error' : classifySelect({
-        kind, table, status: read.status, body: read.body, markers, seeded: seededTables.has(table),
+      push({
+        target: table, credential: kind, operation: 'select', expected,
+        control: kind === 'owner' && expected === 'allow',
+        observed: present ? classifySelect({ kind, table, status: read.status, body: read.body, markers }) : 'error',
       });
-      cells.push(cell({ surface: 'table', target: table, credential: kind, operation: 'select', expected: expectedFor(kind, 'select', table), observed }));
       if (kind === 'owner') continue;
 
+      const requests = {
+        insert: { method: 'POST', query: '', body: JSON.stringify(rowFor(table, `probe-${kind}-${unique++}`)) },
+        update: { method: 'PATCH', query: ownerQuery(table, owner), body: JSON.stringify(takeover(table, attackerId)) },
+        delete: { method: 'DELETE', query: ownerQuery(table, owner) },
+      };
       for (const operation of WRITES) {
         const before = await snapshot(table);
-        const response = await call(table, writeRequest(operation, table, owner), headers);
+        const response = await call(table, requests[operation], headers);
         const after = await snapshot(table);
-        const rows = response.status < 300 ? rowsOf(response.body) : null;
-        const wrote = before !== after || (rows !== null && rows.length > 0);
-        cells.push(cell({
-          surface: 'table', target: table, credential: kind, operation,
-          expected: 'deny', observed: wrote ? 'leak' : 'deny',
-        }));
+        push({
+          target: table, credential: kind, operation, expected: 'deny',
+          observed: present ? classifyWrite({ ...response, changed: before !== after }) : 'error',
+        });
       }
     }
   }

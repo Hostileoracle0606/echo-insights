@@ -140,7 +140,7 @@ export async function probeLambdas({
       const leakSet = kind === 'owner' ? [...canaries.filter((c) => c !== entityCanary), permanentKey] : watched;
       cells.push(cell({
         surface: 'lambda', target: route.name, credential: kind, operation: 'invoke',
-        expected: lambdaExpected(route, kind),
+        expected: lambdaExpected(route, kind), control: kind === 'owner',
         observed: result.statusCode === 0 ? 'error'
           : classifyLambda({ statusCode: result.statusCode, text, spent: providerCalls(), canaries: leakSet }),
       }));
@@ -150,7 +150,7 @@ export async function probeLambdas({
         const exposed = findLeaks([text], [permanentKey]).length > 0 || token === permanentKey;
         cells.push(cell({
           surface: 'lambda', target: route.name, credential: kind, operation: 'secret_off_client',
-          expected: 'no_leak', observed: token && !exposed ? 'no_leak' : exposed ? 'leak' : 'error',
+          expected: 'no_leak', control: true, observed: token && !exposed ? 'no_leak' : exposed ? 'leak' : 'error',
         }));
       }
     }
