@@ -19,6 +19,7 @@ export function rowFor(table, { userId, notebookId, sessionId, marker, unique })
   const now = new Date().toISOString();
   const owned = { user_id: userId, notebook_id: notebookId };
   const rows = {
+    profiles: { user_id: userId, display_name: marker },
     notebooks: { user_id: userId, title: marker, started_at: now },
     entities: { ...owned, id: `pm-entity-${unique}`, name: marker, type: 'project', first_seen: now, last_seen: now },
     relations: { ...owned, id: `pm-relation-${unique}`, source_id: 'pm-entity-a', target_id: 'pm-entity-b', label: marker },

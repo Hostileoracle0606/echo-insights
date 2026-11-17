@@ -10,7 +10,8 @@ const ctx = {
 
 test('every user table has a seed row and a seed position', () => {
   assert.deepEqual([...SEED_ORDER].sort(), [...USER_TABLES].filter((t) => t !== 'profiles').sort());
-  for (const table of SEED_ORDER) assert.equal(typeof rowFor(table, ctx), 'object', table);
+  // Insert probes need a row for every table, profiles included.
+  for (const table of USER_TABLES) assert.equal(typeof rowFor(table, ctx), 'object', table);
 });
 
 test('rows that carry content carry the marker so leaks are visible', () => {
