@@ -70,6 +70,7 @@ import {
   GEMINI_LIVE_SYSTEM_INSTRUCTION,
 } from "@/lib/conversation-policy";
 import { createLiveSessionRuntime } from "@/lib/notebook-runtime-http";
+import { createExtractionRuntime } from "@/lib/extraction-runtime-http";
 import { toast, Toaster } from "sonner";
 import { useSession } from "@/lib/auth/session";
 import { requireAuthOrRedirect } from "@/lib/auth/require-auth";
@@ -349,6 +350,10 @@ function SpeakerLabel({ name, pulse }: { name: string; pulse: boolean }) {
 
 function Index() {
   const { user, supabase } = useSession();
+  // Read through a ref so long-lived closures (the turn pipeline is built
+  // once) always use the current client.
+  const supabaseRef = useRef(supabase);
+  supabaseRef.current = supabase;
   const notebookIdRef = useRef<string | null>(null);
   const [state, setState] = useState<JournalState>(EMPTY_STATE);
   const [extractionMode, setExtractionMode] = useState<ExtractionMode>(DEFAULT_EXTRACTION_MODE);
@@ -525,7 +530,21 @@ function Index() {
       newRequestId,
       extractorVersion: EXTRACTOR_VERSION,
     });
+    const runtimeUrl = import.meta.env.VITE_NOTEBOOK_RUNTIME_URL?.trim();
     const ports = createWebTurnPorts({
+      // Graph extraction runs server-side on the Notebook Runtime, which holds
+      // the model credential. The browser sends only the user's access token.
+      extractionRuntime: runtimeUrl
+        ? createExtractionRuntime({
+            baseUrl: runtimeUrl,
+            getAccessToken: async () => {
+              const { data, error } = await supabaseRef.current.auth.getSession();
+              if (error) throw error;
+              return data.session?.access_token ?? null;
+            },
+          })
+        : null,
+      extractorVersion: EXTRACTOR_VERSION,
       // Every read goes through a ref so a result that resolves late sees the
       // state as it is now, not as it was when the request was issued.
       getState: () => stateRef.current,

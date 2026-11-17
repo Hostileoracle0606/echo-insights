@@ -1,6 +1,6 @@
 /**
  * Web adapter: binds the platform-free turn machine to this app's concrete
- * dependencies — the Gemini extractor, the Supabase Notebook Commit module,
+ * dependencies — the Notebook Runtime's extraction route, the Supabase Notebook Commit module,
  * semantic retrieval, and a browser-local turn journal.
  *
  * Nothing here makes policy decisions. Ordering, identity checks, idempotency
@@ -8,7 +8,8 @@
  * the I/O those decisions drive.
  */
 
-import { extractGraph, type ConversationTurn, type ExtractGraphResult } from "@/lib/extract-graph";
+import type { ConversationTurn, ExtractGraphResult } from "@/lib/extract-graph";
+import type { ExtractionRuntime } from "@/lib/extraction-runtime-http";
 import {
   compileExtractionContext,
   DEFAULT_EXTRACTION_TOKEN_BUDGET,
@@ -84,6 +85,14 @@ function safeStorage(): Pick<Storage, "getItem" | "setItem"> | null {
 }
 
 export interface WebTurnAdapterDeps {
+  /**
+   * The authenticated server-side extractor. Null when the runtime URL is not
+   * configured; extraction then fails rather than falling back to a browser
+   * call, because a browser call would need a provider key in the bundle.
+   */
+  extractionRuntime: ExtractionRuntime | null;
+  /** Recorded per turn; also keys the runtime's per-turn result cache. */
+  extractorVersion: string;
   /** Current local journal state, read fresh at each awaited boundary. */
   getState: () => JournalState;
   /** Canonical, finalized conversation turns for grounding. */
@@ -139,10 +148,19 @@ export function createWebTurnPorts(deps: WebTurnAdapterDeps): TurnPorts {
         recentTurns: deps.getConversation(),
         budget,
       });
-      const result = await extractGraph(
-        { text: transcript, context: context.clientContext },
+      if (!deps.extractionRuntime) {
+        throw new Error("VITE_NOTEBOOK_RUNTIME_URL is missing");
+      }
+      const result = await deps.extractionRuntime.extract(
+        {
+          notebookId: key.notebookId,
+          turnId: key.turnId,
+          extractorVersion: deps.extractorVersion,
+          text: transcript,
+          mode: deps.getExtractionMode(),
+          context: context.clientContext,
+        },
         signal,
-        deps.getExtractionMode(),
       );
       // Gemini owns dialogue, so the extractor's follow-up is suppressed here.
       // Entities, relations and supersedes all survive.

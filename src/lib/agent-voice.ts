@@ -163,67 +163,12 @@ async function requestElevenLabsAudio(body: {
     return (await response.json()) as ElevenLabsVoiceResponse;
   }
 
-  const localApiKey = import.meta.env.VITE_ELEVENLABS_API_KEY?.trim();
-  if (localApiKey) return requestElevenLabsDirect(body, localApiKey);
-
+  // The ElevenLabs credential lives only in the speak-agent function's
+  // secrets. There is deliberately no browser-direct path: it would need the
+  // provider key in the client bundle.
   const { data, error } = await supabase.functions.invoke("speak-agent", { body });
   if (error) return { error: error.message };
   return data as ElevenLabsVoiceResponse;
-}
-
-const DIRECT_VOICE_SETTINGS: Record<
-  AgentVoiceIntent,
-  { stability: number; similarity_boost: number; style: number; use_speaker_boost: boolean }
-> = {
-  "curious-follow-up": {
-    stability: 0.32,
-    similarity_boost: 0.85,
-    style: 0.55,
-    use_speaker_boost: true,
-  },
-  "supportive-error": {
-    stability: 0.45,
-    similarity_boost: 0.85,
-    style: 0.4,
-    use_speaker_boost: true,
-  },
-  neutral: { stability: 0.35, similarity_boost: 0.85, style: 0.5, use_speaker_boost: true },
-};
-
-async function requestElevenLabsDirect(
-  body: { text: string; intent: AgentVoiceIntent },
-  apiKey: string,
-): Promise<ElevenLabsVoiceResponse> {
-  const voiceId = import.meta.env.VITE_ELEVENLABS_VOICE_ID?.trim() || "EXAVITQu4vr4xnSDxMaL";
-  const modelId = import.meta.env.VITE_ELEVENLABS_MODEL_ID?.trim() || "eleven_turbo_v2_5";
-  const url = `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=mp3_44100_128`;
-
-  const response = await fetch(url, {
-    method: "POST",
-    headers: { "xi-api-key": apiKey, Accept: "audio/mpeg", "Content-Type": "application/json" },
-    body: JSON.stringify({
-      text: body.text,
-      model_id: modelId,
-      voice_settings: DIRECT_VOICE_SETTINGS[body.intent],
-    }),
-  });
-
-  if (!response.ok) {
-    const detail = await response.text().catch(() => "");
-    return { error: `ElevenLabs TTS ${response.status}: ${detail}` };
-  }
-
-  const buffer = await response.arrayBuffer();
-  const bytes = new Uint8Array(buffer);
-  const chunkSize = 0x8000;
-  let binary = "";
-  for (let i = 0; i < bytes.length; i += chunkSize) {
-    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
-  }
-  return {
-    audioBase64: btoa(binary),
-    mimeType: response.headers.get("Content-Type") ?? "audio/mpeg",
-  };
 }
 
 function getAgentTtsEndpoint() {
