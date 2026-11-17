@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createHmac } from 'node:crypto';
+import { createHmac, generateKeyPairSync, verify } from 'node:crypto';
 import {
-  CREDENTIAL_KINDS, signJwt, expiredTokenFor, forgedTokenFor, MALFORMED_TOKEN, headersFor,
+  CREDENTIAL_KINDS, signJwt, makeSigner, expiredTokenFor, forgedTokenFor, MALFORMED_TOKEN, headersFor,
 } from './credentials.mjs';
 
 const LOCAL_SECRET = 'super-secret-jwt-token-with-at-least-32-characters-long';
@@ -26,8 +26,21 @@ test('signJwt yields an HS256 token that verifies with its secret', () => {
   assert.ok(verifies(token, LOCAL_SECRET));
 });
 
+test('ES256 signer uses the stack key and its kid', () => {
+  const { privateKey, publicKey } = generateKeyPairSync('ec', { namedCurve: 'P-256' });
+  const jwk = { ...privateKey.export({ format: 'jwk' }), kid: 'kid-1', alg: 'ES256' };
+  const token = makeSigner({ jwk })({ sub: 'u1' });
+  const [h, p, s] = token.split('.');
+  assert.deepEqual(decode(h), { alg: 'ES256', typ: 'JWT', kid: 'kid-1' });
+  assert.ok(verify('sha256', Buffer.from(`${h}.${p}`), { key: publicKey, dsaEncoding: 'ieee-p1363' }, Buffer.from(s, 'base64url')));
+});
+
+test('HS256 signer is the fallback without a JWK', () => {
+  assert.ok(verifies(makeSigner({ secret: LOCAL_SECRET })({ sub: 'u1' }), LOCAL_SECRET));
+});
+
 test('expired token is genuinely signed but past its exp', () => {
-  const token = expiredTokenFor('u1', LOCAL_SECRET, NOW);
+  const token = expiredTokenFor('u1', makeSigner({ secret: LOCAL_SECRET }), NOW);
   const payload = decode(token.split('.')[1]);
   assert.ok(verifies(token, LOCAL_SECRET));
   assert.ok(payload.exp < NOW.getTime() / 1000);

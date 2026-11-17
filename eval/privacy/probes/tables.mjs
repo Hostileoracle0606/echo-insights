@@ -49,9 +49,15 @@ function ownerFilter(table, owner) {
   return { column: 'user_id', value: owner.userId };
 }
 
+// PostgREST filter selecting the owner's rows (all rows for owner-less tables).
+export function ownerQuery(table, owner) {
+  const { column, value } = ownerFilter(table, owner);
+  return value ? `${column}=eq.${value}` : `${column}=not.is.null`;
+}
+
 function writeRequest(operation, table, owner) {
   const { column, value } = ownerFilter(table, owner);
-  const query = value ? `${column}=eq.${value}` : `${column}=not.is.null`;
+  const query = ownerQuery(table, owner);
   const body = value ? JSON.stringify({ [column]: value }) : JSON.stringify({});
   if (operation === 'insert') return { method: 'POST', query: '', body };
   if (operation === 'update') return { method: 'PATCH', query, body };

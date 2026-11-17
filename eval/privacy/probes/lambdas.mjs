@@ -27,6 +27,14 @@ export const LAMBDA_ROUTES = Object.freeze([
   { name: 'brief', notebook: true, create: (d) => createSessionBriefHandler({ ...d, sleep: noSleep }) },
 ]);
 
+// A second genuine user acting as themselves on a user-scoped route is not a
+// boundary crossing; on a notebook route it is.
+export function lambdaExpected(route, kind) {
+  if (kind === 'owner') return 'allow';
+  if (kind === 'other_user' && !route.notebook) return 'allow';
+  return 'deny';
+}
+
 export function recordingFetch({ supabaseUrl, realFetch = fetch, providerResponder }) {
   const origin = new URL(supabaseUrl).origin;
   let calls = 0;
@@ -132,7 +140,7 @@ export async function probeLambdas({
       const leakSet = kind === 'owner' ? [...canaries.filter((c) => c !== entityCanary), permanentKey] : watched;
       cells.push(cell({
         surface: 'lambda', target: route.name, credential: kind, operation: 'invoke',
-        expected: kind === 'owner' ? 'allow' : 'deny',
+        expected: lambdaExpected(route, kind),
         observed: result.statusCode === 0 ? 'error'
           : classifyLambda({ statusCode: result.statusCode, text, spent: providerCalls(), canaries: leakSet }),
       }));

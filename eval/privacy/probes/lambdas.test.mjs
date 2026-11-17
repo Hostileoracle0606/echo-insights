@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  LAMBDA_ROUTES, recordingFetch, memoryClaimStore, gatewayInvoke, classifyLambda,
+  LAMBDA_ROUTES, lambdaExpected, recordingFetch, memoryClaimStore, gatewayInvoke, classifyLambda,
 } from './lambdas.mjs';
 
 const SUPABASE = 'http://127.0.0.1:55321';
@@ -66,4 +66,13 @@ test('classifyLambda: the owner is allowed once auth let it reach the provider o
   assert.equal(classifyLambda({ kind: 'owner', statusCode: 503, text: '', spent: 1, canaries: [] }), 'allow');
   assert.equal(classifyLambda({ kind: 'owner', statusCode: 200, text: '', spent: 0, canaries: [] }), 'allow');
   assert.equal(classifyLambda({ kind: 'owner', statusCode: 404, text: '', spent: 0, canaries: [] }), 'deny');
+});
+
+test('a second real user may use the user-scoped route but not the owner notebook routes', () => {
+  const user = LAMBDA_ROUTES.find((r) => r.name === 'live-sessions');
+  const notebook = LAMBDA_ROUTES.find((r) => r.name === 'extractions');
+  assert.equal(lambdaExpected(user, 'other_user'), 'allow');
+  assert.equal(lambdaExpected(notebook, 'other_user'), 'deny');
+  assert.equal(lambdaExpected(user, 'deleted_user'), 'deny');
+  assert.equal(lambdaExpected(notebook, 'owner'), 'allow');
 });
