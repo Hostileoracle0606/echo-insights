@@ -6,7 +6,7 @@
 create extension if not exists pgtap;
 
 begin;
-select plan(32);
+select plan(33);
 
 -- ── fixtures (default role, so RLS doesn't apply while seeding) ────────────
 insert into auth.users (id) values
@@ -85,10 +85,16 @@ select results_eq(
 -- ── 5. the same revision twice keeps the first card ────────────────────────
 select is(
   public.save_session_card('a1111111-0000-0000-0000-000000000001', 3,
-    public._test_card('a1111111-0000-0000-0000-000000000001', 3, 'Second try'),
-    'Second try', 'Another summary.')->'card'->>'title',
+    public._test_card('a1111111-0000-0000-0000-000000000001', 3, 'Maya''s move'),
+    'Maya''s move', 'You talked about Maya.')->'card'->>'title',
   'Maya''s move',
-  'duplicate: hands back the card already saved for this revision');
+  'duplicate (same payload): hands back the card already saved for this revision');
+select is(
+  public.save_session_card('a1111111-0000-0000-0000-000000000001', 3,
+    public._test_card('a1111111-0000-0000-0000-000000000001', 3, 'Second try'),
+    'Second try', 'Another summary.'),
+  '{"status": "rejected", "code": "keyReused"}'::jsonb,
+  'duplicate (different payload): refused as keyReused (LM-102)');
 select is((select title from public.notebooks where id = 'a1111111-0000-0000-0000-000000000001'),
   'Maya''s move', 'duplicate: title untouched');
 

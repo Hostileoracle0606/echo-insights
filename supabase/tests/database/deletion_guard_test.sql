@@ -20,7 +20,7 @@
 create extension if not exists pgtap;
 
 begin;
-select plan(2 + 3 * 18);
+select plan(2 + 3 * 19);
 
 -- ── inventory: table → predicate selecting one user's rows ─────────────────
 -- Placeholders: %U% user id, %N% that user's notebook id, %S% runtime session id.
@@ -45,6 +45,7 @@ insert into inventory values
   -- owned through a notebook / session only (no user_id): cascade from notebooks
   ('notebook_commit_requests',     'notebook_id = ''%N%'''),
   ('conversation_runtime_inbox',   'session_id = ''%S%'''),
+  ('forget_erase_batches',         'job_id in (select id from public.forget_erase_jobs where user_id = ''%U%'')'),
   -- no foreign key at all: keyed by 'user:<uid>' / 'notebook:<id>' text scopes,
   -- purged by the on_auth_user_deleted trigger
   ('retrieve_rate_limits',         'scope in (''user:%U%'', ''notebook:%N%'')');
@@ -117,6 +118,8 @@ insert into public.session_briefs (user_id, source_notebook_id, source_revision,
   select uid, nid, 1, '{}'::jsonb, '\x00', 24000 from who;
 insert into public.forget_erase_jobs (user_id, entity_hash, hashes, max_words)
   select uid, 'hash', array['h'], 2 from who;
+insert into public.forget_erase_batches (job_id, batch_no, request_hash, result)
+  select j.id, 1, 'h', '{}'::jsonb from public.forget_erase_jobs j join who on j.user_id = who.uid;
 insert into public.retrieve_rate_limits (scope, window_start, count)
   select s, now(), 1 from who, unnest(array['user:' || uid, 'notebook:' || nid]) s;
 

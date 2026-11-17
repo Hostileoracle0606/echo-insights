@@ -382,7 +382,7 @@ export function createCloseSessionHandler({
     metrics.revision = Number(notebook.revision);
 
     const stored = await db.select("session_cards", {
-      select: "source_revision,card",
+      select: "source_revision,card,is_draft",
       notebook_id: `eq.${notebookId}`,
       limit: "1",
     });
@@ -399,7 +399,10 @@ export function createCloseSessionHandler({
       Array.isArray(stored) &&
       stored.length > 0 &&
       Number(stored[0].source_revision) === Number(notebook.revision) &&
-      stored[0].card
+      stored[0].card &&
+      // A stored draft is not the final card: only a draft request is
+      // satisfied by it.
+      (!stored[0].is_draft || draft)
     ) {
       metrics.cached = true;
       return ready(stored[0].card, true);
@@ -422,6 +425,20 @@ export function createCloseSessionHandler({
     });
     if (saved?.status === "saved" && saved.card) return ready(saved.card, true);
     if (saved?.status === "stale") return "stale";
+    // LM-102: a card for this revision was stored first and this one differs
+    // (a model is not deterministic). That is "already done": hand back the
+    // stored card.
+    if (saved?.code === "keyReused") {
+      const winner = await db.select("session_cards", {
+        select: "source_revision,card",
+        notebook_id: `eq.${notebookId}`,
+        limit: "1",
+      });
+      if (Array.isArray(winner) && winner.length > 0 && winner[0].card) {
+        return ready(winner[0].card, true);
+      }
+      throw new Rejection(503, "providerUnavailable");
+    }
     if (saved?.code === "notFound") throw new Rejection(404, "notFound");
     throw new Rejection(503, "providerUnavailable");
   }

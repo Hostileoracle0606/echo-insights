@@ -113,6 +113,41 @@ void main() {
       expect(step.finished, isFalse);
     });
 
+    test('eraseBatch sends the batch number and reads a result', () async {
+      response = {
+        'rewritten': 4,
+        'total': 10,
+        'remaining': 1200,
+        'finished': false,
+        'batchNo': 2,
+      };
+      final step = await service.eraseBatch('job-1', 2);
+      expect(calls.last.$1, 'forget_erase_batch');
+      expect(calls.last.$2,
+          {'p_job_id': 'job-1', 'p_batch_no': 2, 'p_batch': 300});
+      expect(step.rejected, isFalse);
+      expect(step.remaining, 1200);
+    });
+
+    test('eraseBatch reads a refusal without throwing', () async {
+      response = {'status': 'rejected', 'code': 'outOfOrder', 'nextBatch': 3};
+      final step = await service.eraseBatch('job-1', 9);
+      expect(step.rejected, isTrue);
+      expect(step.rejectedCode, 'outOfOrder');
+      expect(step.nextBatch, 3);
+      expect(step.finished, isFalse);
+    });
+
+    test('pendingEraseJobs reads nextBatch; an older server has none',
+        () async {
+      response = [
+        {'id': 'job-1', 'rewritten': 3, 'nextBatch': 4},
+        {'id': 'job-2', 'rewritten': 0},
+      ];
+      final jobs = await service.pendingEraseJobs();
+      expect(jobs.map((j) => (j.id, j.nextBatch)), [('job-1', 4), ('job-2', null)]);
+    });
+
     test('pendingErases lists job ids', () async {
       response = [
         {'id': 'job-1', 'rewritten': 3},

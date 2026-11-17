@@ -12,6 +12,7 @@ import '../../providers/supabase_provider.dart';
 import '../../theme/lumen_colors.dart';
 import '../../theme/lumen_text.dart';
 import '../../widgets/delete_session.dart';
+import '../../widgets/finishing_up.dart';
 import '../../widgets/transcript_retention.dart';
 import '../privacy/shared_log_screen.dart';
 import 'privacy_sheet.dart';
@@ -247,6 +248,8 @@ class DashboardScreen extends ConsumerWidget {
                     color: colors.mutedForeground,
                   ),
                 ),
+                // LM-103: its card is still being made in the background.
+                FinishingUpNote(notebookId: notebook.id),
               ],
             ),
           ),

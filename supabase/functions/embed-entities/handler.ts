@@ -100,6 +100,24 @@ export function createHandler(deps: EmbedEntitiesDeps): (req: Request) => Promis
     const batch = stale.slice(0, CHUNK);
     if (batch.length) {
       const vecs = await embedder.embed(batch.map((s) => `${s.name}\n${s.description ?? ""}`));
+      // LM-102: the row key is (notebook_id, entity_id); content_hash and
+      // embedding_model version it. The first vector stored for a version wins.
+      // A changed hash or model replaces the old row: the delete matches the
+      // old hash and model, so a row a concurrent run already stored for the
+      // new version is left alone. The write then ignores duplicates, so a
+      // racing run offering a different vector cannot overwrite a stored one.
+      for (const s of batch) {
+        const cur = have.get(s.id);
+        if (!cur) continue;
+        const { error: oldErr } = await admin
+          .from("entity_embeddings")
+          .delete()
+          .eq("notebook_id", notebookId)
+          .eq("entity_id", s.id)
+          .eq("content_hash", cur.content_hash)
+          .eq("embedding_model", cur.embedding_model);
+        if (oldErr) return fail("replace", oldErr.code);
+      }
       const { error: upErr } = await admin.from("entity_embeddings").upsert(
         batch.map((s, i) => ({
           notebook_id: notebookId,
@@ -110,6 +128,7 @@ export function createHandler(deps: EmbedEntitiesDeps): (req: Request) => Promis
           content_hash: s.hash,
           updated_at: new Date().toISOString(),
         })),
+        { onConflict: "notebook_id,entity_id", ignoreDuplicates: true },
       );
       if (upErr) return fail("upsert", upErr.code); // a vector-cast/privilege failure is NOT a success
     }

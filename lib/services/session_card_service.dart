@@ -19,6 +19,40 @@ typedef CardRpc = Future<Object?> Function(
   Map<String, dynamic>? params,
 ]);
 
+/// What the server holds for a notebook at a revision (LM-102): the answer of
+/// `get_card_status`. [status] is `present`, `absent`, `stale` or `notFound`;
+/// no card text is ever part of it.
+class CardStatus {
+  const CardStatus({
+    required this.status,
+    this.cardRevision,
+    this.currentRevision,
+    this.draft = false,
+  });
+
+  final String status;
+  final int? cardRevision;
+  final int? currentRevision;
+
+  /// The stored card is a draft (written while the conversation went on),
+  /// not the final one: a final close still has work to do.
+  final bool draft;
+
+  bool get isPresent => status == 'present';
+
+  static CardStatus? fromJson(Object? json) {
+    if (json is! Map || json['status'] is! String) return null;
+    final card = json['cardRevision'];
+    final current = json['currentRevision'];
+    return CardStatus(
+      status: json['status'] as String,
+      cardRevision: card is int ? card : null,
+      currentRevision: current is int ? current : null,
+      draft: json['draft'] == true,
+    );
+  }
+}
+
 class SessionCardException implements Exception {
   final String message;
   final int? statusCode;
@@ -104,6 +138,21 @@ class SessionCardService {
     return closing;
   }
 
+  /// Asks the server whether a card exists for [notebookId] at [revision]
+  /// (`get_card_status`), so a retried close does not pay for a second model
+  /// call. Throws on a failed call or an unreadable answer.
+  Future<CardStatus> cardStatus(String notebookId, int revision) async {
+    final result = await _rpc('get_card_status', {
+      'p_notebook_id': notebookId,
+      'p_revision': revision,
+    });
+    final status = CardStatus.fromJson(result);
+    if (status == null) {
+      throw const FormatException('Invalid get_card_status response');
+    }
+    return status;
+  }
+
   /// A draft of the card from the conversation so far, written in the
   /// background while it goes on (see CardDrafter). Best-effort: one
   /// attempt, never shared with [close]. Null when there is nothing to
@@ -166,6 +215,24 @@ class SessionCardService {
       (t) => t.speaker == 'user' && t.text.trim().isNotEmpty,
     )) {
       return _Done(_readCard == null ? null : await load(notebookId));
+    }
+    // LM-102: ask first. A card already stored for this revision is the
+    // answer (a final, or for a draft request any card); nothing is sent to
+    // the model again. If the question itself
+    // fails, carry on: the save is keyed, so a repeat is safe.
+    if (_readCard != null) {
+      CardStatus? known;
+      try {
+        known = await cardStatus(notebookId, input.revision);
+      } on Exception {
+        known = null;
+      }
+      // A draft is not "done" for a final close; for a draft request any
+      // card at this revision is enough.
+      if (known != null && known.isPresent && (draft || !known.draft)) {
+        final stored = await load(notebookId);
+        if (stored != null) return _Done(stored);
+      }
     }
     await _pseudonyms.syncGraph(input.candidates);
     final swapped = await _pseudonyms.swapTurns(
@@ -326,6 +393,11 @@ class SessionCardService {
       return _Done(SessionCard.fromJson(result['card']));
     }
     if (result is Map && result['status'] == 'stale') return const _Stale();
+    // LM-102: a card for this revision is already stored and this one
+    // differs. That is "already done", not a failure: hand back the stored one.
+    if (result is Map && result['code'] == 'keyReused') {
+      return _Done(_readCard == null ? null : await load(notebookId));
+    }
     if (result is Map && result['code'] == 'notFound') {
       throw const SessionCardException(
         'The notebook was not found',

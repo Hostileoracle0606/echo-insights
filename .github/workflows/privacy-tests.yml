@@ -41,3 +41,4 @@ jobs:
           supabase/functions/log-privacy.test.ts
           supabase/functions/_shared/
           supabase/functions/retrieve-memory/
+          supabase/functions/embed-entities/

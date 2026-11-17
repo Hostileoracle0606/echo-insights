@@ -240,6 +240,23 @@ Deno.test("after auto-forget, an empty quote list is a normal answer, not a fail
   assert(res.body.context.includes("Priya Raman"), "memory outlives the transcript");
 });
 
+// LM-103 (acceptance 4): an entity added moments ago has no vector until
+// the embed sweep builds it. Search still finds it by name and says nothing
+// is wrong; a vector match that fails falls back to the same answer.
+Deno.test("an entity with no vector yet is found by name, with no error", async () => {
+  for (const match of [
+    () => ({ data: [], error: null }),
+    () => ({ data: null, error: { message: "embedding not built" } }),
+  ]) {
+    const h = harness({ ...rpcsAfterAutoForget(), match_user_entity_embeddings: match });
+    const res = await h.call("Lisbon trip");
+    assertEquals(res.status, 200);
+    assert(isRetrieveMemoryResponseV2(res.body));
+    assert(res.body.entityIds.includes("lisbon-trip"));
+    assert(!("error" in res.body));
+  }
+});
+
 // ── after Forget: she and her words are not returned ───────────────────────
 
 Deno.test("after forget, no query returns the forgotten person in context or ids", async () => {
