@@ -2,6 +2,8 @@
 // again for Apple users (a fresh, single-use authorization code), refreshes
 // the session so the function sees a new token, calls `delete-account`, and
 // signs this phone out only after the server says the account is gone.
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lumen/services/account_auth_service.dart';
 import 'package:lumen/services/account_deletion_service.dart';
@@ -48,8 +50,7 @@ void main() {
     );
   });
 
-  test('non-apple user: calls gateway with no code, returns deleted',
-      () async {
+  test('non-apple user: calls gateway with no code, returns deleted', () async {
     auth.identityList = [_identity('email')];
 
     final outcome = await service().deleteAccount();
@@ -95,7 +96,8 @@ void main() {
     expect(events.last, 'signOutLocal');
   });
 
-  test('gateway failure -> throws AccountAuthException, signOutLocal not called',
+  test(
+      'gateway failure -> throws AccountAuthException, signOutLocal not called',
       () async {
     for (final setup in <void Function()>[
       () => gateway.callError = StateError('server said: secret-body'),
@@ -110,14 +112,33 @@ void main() {
         service().deleteAccount(),
         throwsA(
           isA<AccountAuthException>()
-              .having((e) => e.message, 'message',
-                  'Could not delete your account. Check your connection and try again.')
+              .having(
+                  (e) => e.message,
+                  'message',
+                  'Could not delete your account. Check your connection and '
+                      'try again.')
               .having((e) => e.message, 'no server text',
                   isNot(contains('secret'))),
         ),
       );
       expect(events, isNot(contains('signOutLocal')));
     }
+  });
+
+  test('a call that never answers times out as failure, no sign-out', () async {
+    gateway.callGate = Completer<void>().future;
+    final slow = AccountDeletionService(
+      auth: AccountAuthService(auth),
+      gateway: gateway,
+      timeout: const Duration(milliseconds: 20),
+    );
+
+    await expectLater(
+      slow.deleteAccount(),
+      throwsA(isA<AccountAuthException>().having(
+          (e) => e.message, 'message', AccountDeletionService.failure.message)),
+    );
+    expect(events, ['refreshSession', 'call']);
   });
 
   test('a sign-out error after the account is gone still reports deleted',

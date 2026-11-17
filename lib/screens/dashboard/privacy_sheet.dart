@@ -37,10 +37,12 @@ class PrivacyButton extends StatelessWidget {
 }
 
 /// App lock, quiet mode, how long transcripts are kept, "Export my
-/// journal" and "Delete my account": every privacy setting, in one place. Self-contained: it reads
-/// and writes only [appLockProvider] and [quietModeProvider], and exports
-/// through [journalExportServiceProvider] and [shareVaultProvider];
-/// [TranscriptRetentionChoices] handles its own setting.
+/// journal" and "Delete my account": every privacy setting, in one place.
+/// It reads and writes [appLockProvider] and [quietModeProvider], exports
+/// through [journalExportServiceProvider] and [shareVaultProvider], and
+/// leaves account deletion to [DeleteAccountScreen];
+/// [TranscriptRetentionChoices] and [SignInSecurity] handle their own
+/// settings.
 class PrivacySheet extends ConsumerStatefulWidget {
   const PrivacySheet({super.key});
 

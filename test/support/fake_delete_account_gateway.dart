@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:lumen/services/account_deletion_service.dart';
 
 /// A stand-in for the `delete-account` function and the session calls around
@@ -14,6 +16,9 @@ class FakeDeleteAccountGateway implements DeleteAccountGateway {
   Object? callError;
   Object? signOutError;
 
+  /// When set, `call` waits for it (a slow or hung network).
+  Future<void>? callGate;
+
   @override
   Future<void> refreshSession() async {
     events.add('refreshSession');
@@ -26,6 +31,7 @@ class FakeDeleteAccountGateway implements DeleteAccountGateway {
   }) async {
     events.add('call');
     sentCodes.add(appleAuthorizationCode);
+    if (callGate != null) await callGate;
     if (callError != null) throw callError!;
     return result;
   }

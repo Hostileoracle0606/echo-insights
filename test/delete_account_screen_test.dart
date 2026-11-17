@@ -96,9 +96,14 @@ void main() {
   late FakeDeleteAccountGateway gateway;
   late int cleanups;
   late int exportFetches;
+  late AppleCredential? apple;
 
   setUp(() {
     exportFetches = 0;
+    apple = const AppleCredential(
+      identityToken: 'id-token',
+      authorizationCode: 'fresh-code',
+    );
     lock = _Lock();
     auth = FakeAuthGateway();
     gateway = FakeDeleteAccountGateway();
@@ -112,10 +117,7 @@ void main() {
     addTearDown(t.view.reset);
     final authService = AccountAuthService(
       auth,
-      appleCredential: (_) async => const AppleCredential(
-        identityToken: 'id-token',
-        authorizationCode: 'fresh-code',
-      ),
+      appleCredential: (_) async => apple,
     );
     await t.pumpWidget(
       ProviderScope(
@@ -128,7 +130,8 @@ void main() {
           privacyCoverProvider.overrideWithValue(_Cover()),
           privacyPreferenceStoreProvider.overrideWithValue(_Store()),
           signedOutCleanupProvider.overrideWithValue(() => cleanups += 1),
-          shareVaultProvider.overrideWithValue((vault, {Rect? origin}) async {}),
+          shareVaultProvider
+              .overrideWithValue((vault, {Rect? origin}) async {}),
           journalExportServiceProvider.overrideWithValue(
             JournalExportService(
               rpc: (fn, params) async => throw StateError('offline'),
@@ -208,7 +211,8 @@ void main() {
     final link = find.byKey(const Key('deleteAccountExportLink'));
     expect(link, findsOneWidget);
     expect(
-      find.descendant(of: link, matching: find.textContaining('Export my journal')),
+      find.descendant(
+          of: link, matching: find.textContaining('Export my journal')),
       findsOneWidget,
     );
     expect(confirm, findsOneWidget);
@@ -281,7 +285,8 @@ void main() {
     expect(notice, contains('Lumen'));
   });
 
-  testWidgets('failure keeps the person signed in, keeps local data, shows '
+  testWidgets(
+      'failure keeps the person signed in, keeps local data, shows '
       'retry', (t) async {
     gateway.callError = StateError('server body: secret');
     await pump(t);
@@ -294,8 +299,8 @@ void main() {
     expect(find.byType(DeleteAccountScreen), findsOneWidget);
     expect(find.byKey(const Key('deleteAccountProblem')), findsOneWidget);
     expect(
-      find.text(
-          'Could not delete your account. Check your connection and try again.'),
+      find.text('Could not delete your account. Check your connection and '
+          'try again.'),
       findsOneWidget,
     );
     expect(find.textContaining('secret'), findsNothing);
@@ -308,6 +313,40 @@ void main() {
     await t.pumpAndSettle();
     expect(cleanups, 1);
     expect(find.textContaining('Your account is deleted'), findsOneWidget);
+  });
+
+  testWidgets('a double tap on delete calls the function once', (t) async {
+    final gate = Completer<void>();
+    gateway.callGate = gate.future;
+    await pump(t);
+    await openConfirmation(t);
+    // Both taps land before the button rebuilds as disabled.
+    await t.tap(confirm);
+    await t.tap(confirm);
+    await t.pump();
+    gate.complete();
+    await t.pumpAndSettle();
+
+    expect(gateway.sentCodes, hasLength(1));
+    expect(cleanups, 1);
+  });
+
+  testWidgets(
+      'Apple sheet cancelled: nothing deleted, spinner cleared, '
+      'still on the screen', (t) async {
+    auth.identityList = [_identity('apple')];
+    apple = null;
+    await pump(t);
+    await openConfirmation(t);
+    await t.tap(confirm);
+    await t.pumpAndSettle();
+
+    expect(gateway.events, isEmpty);
+    expect(cleanups, 0);
+    expect(find.byType(DeleteAccountScreen), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(t.widget<FilledButton>(confirm).onPressed, isNotNull);
+    expect(find.byKey(const Key('deleteAccountProblem')), findsNothing);
   });
 
   testWidgets('the login screen shows the notice the delete flow left',

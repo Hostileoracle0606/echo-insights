@@ -77,11 +77,17 @@ class AccountDeletionService {
   AccountDeletionService({
     required AccountAuthService auth,
     required DeleteAccountGateway gateway,
+    Duration timeout = const Duration(seconds: 45),
   })  : _auth = auth,
-        _gateway = gateway;
+        _gateway = gateway,
+        _timeout = timeout;
 
   final AccountAuthService _auth;
   final DeleteAccountGateway _gateway;
+
+  /// For each network step, not Apple's sheet (the person may take their
+  /// time there). A hung request ends as [failure] instead of a spinner.
+  final Duration _timeout;
 
   static const failure = AccountAuthException(
     'Could not delete your account. Check your connection and try again.',
@@ -93,7 +99,7 @@ class AccountDeletionService {
     final ({bool deleted, bool? appleRevoked}) result;
     try {
       String? code;
-      if (await _auth.hasAppleLinked()) {
+      if (await _auth.hasAppleLinked().timeout(_timeout)) {
         final credential = await _auth.reauthenticateWithApple();
         if (credential == null) return DeleteOutcome.cancelled;
         // A missing code still deletes: the server reports Apple as not
@@ -101,8 +107,10 @@ class AccountDeletionService {
         final c = credential.authorizationCode;
         code = (c == null || c.isEmpty) ? null : c;
       }
-      await _gateway.refreshSession();
-      result = await _gateway.call(appleAuthorizationCode: code);
+      await _gateway.refreshSession().timeout(_timeout);
+      result = await _gateway
+          .call(appleAuthorizationCode: code)
+          .timeout(_timeout);
     } catch (_) {
       // Never pass the error on: it can carry a token or server text.
       throw failure;

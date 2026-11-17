@@ -32,6 +32,8 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
   String? _problem;
 
   Future<void> _delete() async {
+    // A second tap can land before the button rebuilds as disabled.
+    if (_deleting) return;
     // Read before any await: signing out rebuilds the router, and this
     // screen may be gone by the time the call returns.
     final service = ref.read(accountDeletionServiceProvider);
