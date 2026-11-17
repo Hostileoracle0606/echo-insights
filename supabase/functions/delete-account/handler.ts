@@ -21,7 +21,8 @@ export interface Deps {
   admin: () => AdminClient;
   now: () => number; // ms
   log: (fields: Record<string, unknown>) => void;
-  revokeApple?: (p: { code: string | undefined }) => Promise<boolean>; // added in Task 2
+  /** Undefined when Apple secrets are not configured. */
+  revokeApple?: (p: { code: string | undefined }) => Promise<boolean>;
 }
 
 export const corsHeaders = {
@@ -57,6 +58,30 @@ function issuedAt(token: string): number | undefined {
   }
 }
 
+/** The only body field read. Anything else (including ids) is ignored. */
+async function readCode(req: Request): Promise<string | undefined> {
+  try {
+    const body = await req.json();
+    const c = body?.apple_authorization_code;
+    return typeof c === "string" && c ? c : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** One retry; never throws; failure never blocks deletion. */
+async function tryRevokeApple(deps: Deps, code: string | undefined): Promise<boolean> {
+  if (!deps.revokeApple || !code) return false;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      if (await deps.revokeApple({ code })) return true;
+    } catch {
+      // swallow: error text could echo the code or Apple's body
+    }
+  }
+  return false;
+}
+
 export function createHandler(deps: Deps): (req: Request) => Promise<Response> {
   return async (req: Request): Promise<Response> => {
     if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -86,6 +111,12 @@ export function createHandler(deps: Deps): (req: Request) => Promise<Response> {
         return unauthorized();
       }
 
+      let appleRevoked: boolean | null = null;
+      if (user.identities?.some((i) => i.provider === "apple")) {
+        appleRevoked = await tryRevokeApple(deps, await readCode(req));
+        deps.log({ ok: appleRevoked, event: "apple_revoke" });
+      }
+
       const { error: delErr } = await client.auth.admin.deleteUser(user.id);
       if (delErr) {
         // Never log the error body: it can echo identifiers.
@@ -94,7 +125,7 @@ export function createHandler(deps: Deps): (req: Request) => Promise<Response> {
       }
 
       deps.log({ ok: true, event: "deleted" });
-      return json(200, { deleted: true, apple_revoked: null });
+      return json(200, { deleted: true, apple_revoked: appleRevoked });
     } catch (e) {
       deps.log({ ok: false, error: e instanceof Error ? e.name : "unknown" });
       return json(500, { deleted: false });
