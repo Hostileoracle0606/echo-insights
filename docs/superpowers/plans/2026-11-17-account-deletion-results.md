@@ -57,6 +57,9 @@ values inline or commit the file.
 - `client_secret` lifetime is 5 minutes (limit is 6 months): it is made per request.
 - Apple failure policy as in the ticket: one retry, then delete anyway.
 
+- Ruling (final review, Important): a reply lost after the server deleted leaves the app on "Could not delete" with local data kept, and Retry then fails. Not fixed here: deciding "the user is gone" from an auth error risks wiping local data when the server did NOT delete, which is worse. Left as the follow-up below, to be designed with the real error shapes on staging.
+- Minor findings left open: the Apple `id_token.sub` is not compared with the account's Apple identity (a code from another Apple ID would revoke that ID's grant; low risk on a phone); the real Dart gateway has no test pinning the field names (the fake is used; device check at LM-121); no `[functions.delete-account]` entry in `supabase/config.toml` (`verify_jwt` defaults to true).
+
 ## Doc notes for the sessions that own other docs (I did not edit them)
 
 - `docs/security/launch-checklist.md`: add (a) the Apple secrets below are set on the hosted project, (b) after a staging deletion confirm no `auth.flow_state` row remains for the deleted user (a failed purge is only a Postgres warning), (c) decide about `auth.audit_log_entries` (actor id and email in the payload; not cascaded; not covered by any ticket).
