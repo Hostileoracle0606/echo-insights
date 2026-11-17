@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../providers/login_notice_provider.dart';
 import '../../providers/supabase_provider.dart';
 import 'social_sign_in.dart';
 
@@ -42,6 +43,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Left by a flow that signed the person out (account deletion, LM-116).
+    final notice = ref.watch(loginNoticeProvider);
     return Scaffold(
       body: SafeArea(
         child: Center(
@@ -60,6 +63,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           fontWeight: FontWeight.w700,
                         ),
                   ),
+                  if (notice != null) ...[
+                    const SizedBox(height: 16),
+                    Text(
+                      notice,
+                      key: const Key('loginNotice'),
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                  ],
                   const SizedBox(height: 28),
                   const SocialSignInButtons(signup: false),
                   TextField(

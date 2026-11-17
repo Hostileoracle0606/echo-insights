@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../env.dart';
 import '../services/account_auth_service.dart';
+import '../services/account_deletion_service.dart';
 import '../services/extract_graph_service.dart';
 import '../services/fresh_access_token.dart';
 import '../services/memory_control_service.dart';
@@ -45,6 +46,14 @@ final supabaseServiceProvider = Provider<SupabaseService>((ref) {
 final accountAuthServiceProvider = Provider<AccountAuthService>((ref) {
   return AccountAuthService(
     SupabaseAuthGateway(ref.watch(supabaseClientProvider)),
+  );
+});
+
+/// "Delete my account" (LM-116): the `delete-account` edge function.
+final accountDeletionServiceProvider = Provider<AccountDeletionService>((ref) {
+  return AccountDeletionService(
+    auth: ref.watch(accountAuthServiceProvider),
+    gateway: SupabaseDeleteAccountGateway(ref.watch(supabaseClientProvider)),
   );
 });
 
