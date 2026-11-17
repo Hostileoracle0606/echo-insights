@@ -1,0 +1,5472 @@
+{
+  "version": 1,
+  "target": "local",
+  "commit": "c71aaa4",
+  "startedAt": "2026-11-17T16:43:52.845Z",
+  "finishedAt": "2026-11-17T16:44:02.461Z",
+  "summary": {
+    "total": 604,
+    "passed": 601,
+    "failed": 3,
+    "controls": 27,
+    "controlsPassed": 25
+  },
+  "notes": {
+    "unseededTables": [],
+    "signing": "ES256",
+    "migrationsHead": "20261112300000_forget_erase_transcripts",
+    "bundlesScanned": [
+      "dist/client"
+    ],
+    "envSecretsChecked": [
+      "VITE_ELEVENLABS_API_KEY",
+      "VITE_DEEPGRAM_API_KEY",
+      "VITE_GROQ_API_KEY",
+      "GEMINI_API_KEY",
+      "VITE_GEMINI_API_KEY"
+    ],
+    "bundleFindings": [
+      "dist/client/assets/index-CN1mV36-.js:google_api_key",
+      "dist/client/assets/index-CN1mV36-.js:env:GEMINI_API_KEY",
+      "dist/client/assets/index-CN1mV36-.js:env:VITE_GEMINI_API_KEY"
+    ]
+  },
+  "cells": [
+    {
+      "surface": "table",
+      "target": "profiles",
+      "credential": "owner",
+      "operation": "select",
+      "expected": "allow",
+      "observed": "allow",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "profiles",
+      "credential": "missing",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "profiles",
+      "credential": "missing",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "profiles",
+      "credential": "missing",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "profiles",
+      "credential": "missing",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "profiles",
+      "credential": "anon_only",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "profiles",
+      "credential": "anon_only",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "profiles",
+      "credential": "anon_only",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "profiles",
+      "credential": "anon_only",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "profiles",
+      "credential": "expired",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "profiles",
+      "credential": "expired",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "profiles",
+      "credential": "expired",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "profiles",
+      "credential": "expired",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "profiles",
+      "credential": "forged",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "profiles",
+      "credential": "forged",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "profiles",
+      "credential": "forged",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "profiles",
+      "credential": "forged",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "profiles",
+      "credential": "malformed",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "profiles",
+      "credential": "malformed",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "profiles",
+      "credential": "malformed",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "profiles",
+      "credential": "malformed",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "profiles",
+      "credential": "other_user",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "profiles",
+      "credential": "other_user",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "profiles",
+      "credential": "other_user",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "profiles",
+      "credential": "other_user",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "profiles",
+      "credential": "deleted_user",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "profiles",
+      "credential": "deleted_user",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "profiles",
+      "credential": "deleted_user",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "profiles",
+      "credential": "deleted_user",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "notebooks",
+      "credential": "owner",
+      "operation": "select",
+      "expected": "allow",
+      "observed": "allow",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "notebooks",
+      "credential": "missing",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "notebooks",
+      "credential": "missing",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "notebooks",
+      "credential": "missing",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "notebooks",
+      "credential": "missing",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "notebooks",
+      "credential": "anon_only",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "notebooks",
+      "credential": "anon_only",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "notebooks",
+      "credential": "anon_only",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "notebooks",
+      "credential": "anon_only",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "notebooks",
+      "credential": "expired",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "notebooks",
+      "credential": "expired",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "notebooks",
+      "credential": "expired",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "notebooks",
+      "credential": "expired",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "notebooks",
+      "credential": "forged",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "notebooks",
+      "credential": "forged",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "notebooks",
+      "credential": "forged",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "notebooks",
+      "credential": "forged",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "notebooks",
+      "credential": "malformed",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "notebooks",
+      "credential": "malformed",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "notebooks",
+      "credential": "malformed",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "notebooks",
+      "credential": "malformed",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "notebooks",
+      "credential": "other_user",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "notebooks",
+      "credential": "other_user",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "notebooks",
+      "credential": "other_user",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "notebooks",
+      "credential": "other_user",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "notebooks",
+      "credential": "deleted_user",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "notebooks",
+      "credential": "deleted_user",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "notebooks",
+      "credential": "deleted_user",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "notebooks",
+      "credential": "deleted_user",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "journal_entries",
+      "credential": "owner",
+      "operation": "select",
+      "expected": "allow",
+      "observed": "allow",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "journal_entries",
+      "credential": "missing",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "journal_entries",
+      "credential": "missing",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "journal_entries",
+      "credential": "missing",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "journal_entries",
+      "credential": "missing",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "journal_entries",
+      "credential": "anon_only",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "journal_entries",
+      "credential": "anon_only",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "journal_entries",
+      "credential": "anon_only",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "journal_entries",
+      "credential": "anon_only",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "journal_entries",
+      "credential": "expired",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "journal_entries",
+      "credential": "expired",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "journal_entries",
+      "credential": "expired",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "journal_entries",
+      "credential": "expired",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "journal_entries",
+      "credential": "forged",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "journal_entries",
+      "credential": "forged",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "journal_entries",
+      "credential": "forged",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "journal_entries",
+      "credential": "forged",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "journal_entries",
+      "credential": "malformed",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "journal_entries",
+      "credential": "malformed",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "journal_entries",
+      "credential": "malformed",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "journal_entries",
+      "credential": "malformed",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "journal_entries",
+      "credential": "other_user",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "journal_entries",
+      "credential": "other_user",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "journal_entries",
+      "credential": "other_user",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "journal_entries",
+      "credential": "other_user",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "journal_entries",
+      "credential": "deleted_user",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "journal_entries",
+      "credential": "deleted_user",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "journal_entries",
+      "credential": "deleted_user",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "journal_entries",
+      "credential": "deleted_user",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entities",
+      "credential": "owner",
+      "operation": "select",
+      "expected": "allow",
+      "observed": "allow",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entities",
+      "credential": "missing",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entities",
+      "credential": "missing",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entities",
+      "credential": "missing",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entities",
+      "credential": "missing",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entities",
+      "credential": "anon_only",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entities",
+      "credential": "anon_only",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entities",
+      "credential": "anon_only",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entities",
+      "credential": "anon_only",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entities",
+      "credential": "expired",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entities",
+      "credential": "expired",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entities",
+      "credential": "expired",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entities",
+      "credential": "expired",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entities",
+      "credential": "forged",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entities",
+      "credential": "forged",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entities",
+      "credential": "forged",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entities",
+      "credential": "forged",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entities",
+      "credential": "malformed",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entities",
+      "credential": "malformed",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entities",
+      "credential": "malformed",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entities",
+      "credential": "malformed",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entities",
+      "credential": "other_user",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entities",
+      "credential": "other_user",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entities",
+      "credential": "other_user",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entities",
+      "credential": "other_user",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entities",
+      "credential": "deleted_user",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entities",
+      "credential": "deleted_user",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entities",
+      "credential": "deleted_user",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entities",
+      "credential": "deleted_user",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "relations",
+      "credential": "owner",
+      "operation": "select",
+      "expected": "allow",
+      "observed": "allow",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "relations",
+      "credential": "missing",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "relations",
+      "credential": "missing",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "relations",
+      "credential": "missing",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "relations",
+      "credential": "missing",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "relations",
+      "credential": "anon_only",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "relations",
+      "credential": "anon_only",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "relations",
+      "credential": "anon_only",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "relations",
+      "credential": "anon_only",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "relations",
+      "credential": "expired",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "relations",
+      "credential": "expired",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "relations",
+      "credential": "expired",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "relations",
+      "credential": "expired",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "relations",
+      "credential": "forged",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "relations",
+      "credential": "forged",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "relations",
+      "credential": "forged",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "relations",
+      "credential": "forged",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "relations",
+      "credential": "malformed",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "relations",
+      "credential": "malformed",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "relations",
+      "credential": "malformed",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "relations",
+      "credential": "malformed",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "relations",
+      "credential": "other_user",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "relations",
+      "credential": "other_user",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "relations",
+      "credential": "other_user",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "relations",
+      "credential": "other_user",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "relations",
+      "credential": "deleted_user",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "relations",
+      "credential": "deleted_user",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "relations",
+      "credential": "deleted_user",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "relations",
+      "credential": "deleted_user",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "follow_ups",
+      "credential": "owner",
+      "operation": "select",
+      "expected": "allow",
+      "observed": "allow",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "follow_ups",
+      "credential": "missing",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "follow_ups",
+      "credential": "missing",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "follow_ups",
+      "credential": "missing",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "follow_ups",
+      "credential": "missing",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "follow_ups",
+      "credential": "anon_only",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "follow_ups",
+      "credential": "anon_only",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "follow_ups",
+      "credential": "anon_only",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "follow_ups",
+      "credential": "anon_only",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "follow_ups",
+      "credential": "expired",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "follow_ups",
+      "credential": "expired",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "follow_ups",
+      "credential": "expired",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "follow_ups",
+      "credential": "expired",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "follow_ups",
+      "credential": "forged",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "follow_ups",
+      "credential": "forged",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "follow_ups",
+      "credential": "forged",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "follow_ups",
+      "credential": "forged",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "follow_ups",
+      "credential": "malformed",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "follow_ups",
+      "credential": "malformed",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "follow_ups",
+      "credential": "malformed",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "follow_ups",
+      "credential": "malformed",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "follow_ups",
+      "credential": "other_user",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "follow_ups",
+      "credential": "other_user",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "follow_ups",
+      "credential": "other_user",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "follow_ups",
+      "credential": "other_user",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "follow_ups",
+      "credential": "deleted_user",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "follow_ups",
+      "credential": "deleted_user",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "follow_ups",
+      "credential": "deleted_user",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "follow_ups",
+      "credential": "deleted_user",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "asked_questions",
+      "credential": "owner",
+      "operation": "select",
+      "expected": "allow",
+      "observed": "allow",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "asked_questions",
+      "credential": "missing",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "asked_questions",
+      "credential": "missing",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "asked_questions",
+      "credential": "missing",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "asked_questions",
+      "credential": "missing",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "asked_questions",
+      "credential": "anon_only",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "asked_questions",
+      "credential": "anon_only",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "asked_questions",
+      "credential": "anon_only",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "asked_questions",
+      "credential": "anon_only",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "asked_questions",
+      "credential": "expired",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "asked_questions",
+      "credential": "expired",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "asked_questions",
+      "credential": "expired",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "asked_questions",
+      "credential": "expired",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "asked_questions",
+      "credential": "forged",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "asked_questions",
+      "credential": "forged",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "asked_questions",
+      "credential": "forged",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "asked_questions",
+      "credential": "forged",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "asked_questions",
+      "credential": "malformed",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "asked_questions",
+      "credential": "malformed",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "asked_questions",
+      "credential": "malformed",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "asked_questions",
+      "credential": "malformed",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "asked_questions",
+      "credential": "other_user",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "asked_questions",
+      "credential": "other_user",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "asked_questions",
+      "credential": "other_user",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "asked_questions",
+      "credential": "other_user",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "asked_questions",
+      "credential": "deleted_user",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "asked_questions",
+      "credential": "deleted_user",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "asked_questions",
+      "credential": "deleted_user",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "asked_questions",
+      "credential": "deleted_user",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_turns",
+      "credential": "owner",
+      "operation": "select",
+      "expected": "allow",
+      "observed": "allow",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_turns",
+      "credential": "missing",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_turns",
+      "credential": "missing",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_turns",
+      "credential": "missing",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_turns",
+      "credential": "missing",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_turns",
+      "credential": "anon_only",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_turns",
+      "credential": "anon_only",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_turns",
+      "credential": "anon_only",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_turns",
+      "credential": "anon_only",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_turns",
+      "credential": "expired",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_turns",
+      "credential": "expired",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_turns",
+      "credential": "expired",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_turns",
+      "credential": "expired",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_turns",
+      "credential": "forged",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_turns",
+      "credential": "forged",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_turns",
+      "credential": "forged",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_turns",
+      "credential": "forged",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_turns",
+      "credential": "malformed",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_turns",
+      "credential": "malformed",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_turns",
+      "credential": "malformed",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_turns",
+      "credential": "malformed",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_turns",
+      "credential": "other_user",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_turns",
+      "credential": "other_user",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_turns",
+      "credential": "other_user",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_turns",
+      "credential": "other_user",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_turns",
+      "credential": "deleted_user",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_turns",
+      "credential": "deleted_user",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_turns",
+      "credential": "deleted_user",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_turns",
+      "credential": "deleted_user",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_runtime_sessions",
+      "credential": "owner",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_runtime_sessions",
+      "credential": "missing",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_runtime_sessions",
+      "credential": "missing",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_runtime_sessions",
+      "credential": "missing",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_runtime_sessions",
+      "credential": "missing",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_runtime_sessions",
+      "credential": "anon_only",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_runtime_sessions",
+      "credential": "anon_only",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_runtime_sessions",
+      "credential": "anon_only",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_runtime_sessions",
+      "credential": "anon_only",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_runtime_sessions",
+      "credential": "expired",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_runtime_sessions",
+      "credential": "expired",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_runtime_sessions",
+      "credential": "expired",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_runtime_sessions",
+      "credential": "expired",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_runtime_sessions",
+      "credential": "forged",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_runtime_sessions",
+      "credential": "forged",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_runtime_sessions",
+      "credential": "forged",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_runtime_sessions",
+      "credential": "forged",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_runtime_sessions",
+      "credential": "malformed",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_runtime_sessions",
+      "credential": "malformed",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_runtime_sessions",
+      "credential": "malformed",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_runtime_sessions",
+      "credential": "malformed",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_runtime_sessions",
+      "credential": "other_user",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_runtime_sessions",
+      "credential": "other_user",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_runtime_sessions",
+      "credential": "other_user",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_runtime_sessions",
+      "credential": "other_user",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_runtime_sessions",
+      "credential": "deleted_user",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_runtime_sessions",
+      "credential": "deleted_user",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_runtime_sessions",
+      "credential": "deleted_user",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_runtime_sessions",
+      "credential": "deleted_user",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_runtime_inbox",
+      "credential": "owner",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_runtime_inbox",
+      "credential": "missing",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_runtime_inbox",
+      "credential": "missing",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_runtime_inbox",
+      "credential": "missing",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_runtime_inbox",
+      "credential": "missing",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_runtime_inbox",
+      "credential": "anon_only",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_runtime_inbox",
+      "credential": "anon_only",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_runtime_inbox",
+      "credential": "anon_only",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_runtime_inbox",
+      "credential": "anon_only",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_runtime_inbox",
+      "credential": "expired",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_runtime_inbox",
+      "credential": "expired",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_runtime_inbox",
+      "credential": "expired",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_runtime_inbox",
+      "credential": "expired",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_runtime_inbox",
+      "credential": "forged",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_runtime_inbox",
+      "credential": "forged",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_runtime_inbox",
+      "credential": "forged",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_runtime_inbox",
+      "credential": "forged",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_runtime_inbox",
+      "credential": "malformed",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_runtime_inbox",
+      "credential": "malformed",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_runtime_inbox",
+      "credential": "malformed",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_runtime_inbox",
+      "credential": "malformed",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_runtime_inbox",
+      "credential": "other_user",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_runtime_inbox",
+      "credential": "other_user",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_runtime_inbox",
+      "credential": "other_user",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_runtime_inbox",
+      "credential": "other_user",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_runtime_inbox",
+      "credential": "deleted_user",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_runtime_inbox",
+      "credential": "deleted_user",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_runtime_inbox",
+      "credential": "deleted_user",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "conversation_runtime_inbox",
+      "credential": "deleted_user",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "notebook_commit_requests",
+      "credential": "owner",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "notebook_commit_requests",
+      "credential": "missing",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "notebook_commit_requests",
+      "credential": "missing",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "notebook_commit_requests",
+      "credential": "missing",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "notebook_commit_requests",
+      "credential": "missing",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "notebook_commit_requests",
+      "credential": "anon_only",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "notebook_commit_requests",
+      "credential": "anon_only",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "notebook_commit_requests",
+      "credential": "anon_only",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "notebook_commit_requests",
+      "credential": "anon_only",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "notebook_commit_requests",
+      "credential": "expired",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "notebook_commit_requests",
+      "credential": "expired",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "notebook_commit_requests",
+      "credential": "expired",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "notebook_commit_requests",
+      "credential": "expired",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "notebook_commit_requests",
+      "credential": "forged",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "notebook_commit_requests",
+      "credential": "forged",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "notebook_commit_requests",
+      "credential": "forged",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "notebook_commit_requests",
+      "credential": "forged",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "notebook_commit_requests",
+      "credential": "malformed",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "notebook_commit_requests",
+      "credential": "malformed",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "notebook_commit_requests",
+      "credential": "malformed",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "notebook_commit_requests",
+      "credential": "malformed",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "notebook_commit_requests",
+      "credential": "other_user",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "notebook_commit_requests",
+      "credential": "other_user",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "notebook_commit_requests",
+      "credential": "other_user",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "notebook_commit_requests",
+      "credential": "other_user",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "notebook_commit_requests",
+      "credential": "deleted_user",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "notebook_commit_requests",
+      "credential": "deleted_user",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "notebook_commit_requests",
+      "credential": "deleted_user",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "notebook_commit_requests",
+      "credential": "deleted_user",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entity_embeddings",
+      "credential": "owner",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entity_embeddings",
+      "credential": "missing",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entity_embeddings",
+      "credential": "missing",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entity_embeddings",
+      "credential": "missing",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entity_embeddings",
+      "credential": "missing",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entity_embeddings",
+      "credential": "anon_only",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entity_embeddings",
+      "credential": "anon_only",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entity_embeddings",
+      "credential": "anon_only",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entity_embeddings",
+      "credential": "anon_only",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entity_embeddings",
+      "credential": "expired",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entity_embeddings",
+      "credential": "expired",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entity_embeddings",
+      "credential": "expired",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entity_embeddings",
+      "credential": "expired",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entity_embeddings",
+      "credential": "forged",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entity_embeddings",
+      "credential": "forged",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entity_embeddings",
+      "credential": "forged",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entity_embeddings",
+      "credential": "forged",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entity_embeddings",
+      "credential": "malformed",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entity_embeddings",
+      "credential": "malformed",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entity_embeddings",
+      "credential": "malformed",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entity_embeddings",
+      "credential": "malformed",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entity_embeddings",
+      "credential": "other_user",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entity_embeddings",
+      "credential": "other_user",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entity_embeddings",
+      "credential": "other_user",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entity_embeddings",
+      "credential": "other_user",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entity_embeddings",
+      "credential": "deleted_user",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entity_embeddings",
+      "credential": "deleted_user",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entity_embeddings",
+      "credential": "deleted_user",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entity_embeddings",
+      "credential": "deleted_user",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "retrieve_rate_limits",
+      "credential": "owner",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "retrieve_rate_limits",
+      "credential": "missing",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "retrieve_rate_limits",
+      "credential": "missing",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "retrieve_rate_limits",
+      "credential": "missing",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "retrieve_rate_limits",
+      "credential": "missing",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "retrieve_rate_limits",
+      "credential": "anon_only",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "retrieve_rate_limits",
+      "credential": "anon_only",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "retrieve_rate_limits",
+      "credential": "anon_only",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "retrieve_rate_limits",
+      "credential": "anon_only",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "retrieve_rate_limits",
+      "credential": "expired",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "retrieve_rate_limits",
+      "credential": "expired",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "retrieve_rate_limits",
+      "credential": "expired",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "retrieve_rate_limits",
+      "credential": "expired",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "retrieve_rate_limits",
+      "credential": "forged",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "retrieve_rate_limits",
+      "credential": "forged",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "retrieve_rate_limits",
+      "credential": "forged",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "retrieve_rate_limits",
+      "credential": "forged",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "retrieve_rate_limits",
+      "credential": "malformed",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "retrieve_rate_limits",
+      "credential": "malformed",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "retrieve_rate_limits",
+      "credential": "malformed",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "retrieve_rate_limits",
+      "credential": "malformed",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "retrieve_rate_limits",
+      "credential": "other_user",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "retrieve_rate_limits",
+      "credential": "other_user",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "retrieve_rate_limits",
+      "credential": "other_user",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "retrieve_rate_limits",
+      "credential": "other_user",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "retrieve_rate_limits",
+      "credential": "deleted_user",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "retrieve_rate_limits",
+      "credential": "deleted_user",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "retrieve_rate_limits",
+      "credential": "deleted_user",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "retrieve_rate_limits",
+      "credential": "deleted_user",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entity_suppressions",
+      "credential": "owner",
+      "operation": "select",
+      "expected": "allow",
+      "observed": "allow",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entity_suppressions",
+      "credential": "missing",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entity_suppressions",
+      "credential": "missing",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entity_suppressions",
+      "credential": "missing",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entity_suppressions",
+      "credential": "missing",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entity_suppressions",
+      "credential": "anon_only",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entity_suppressions",
+      "credential": "anon_only",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entity_suppressions",
+      "credential": "anon_only",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entity_suppressions",
+      "credential": "anon_only",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entity_suppressions",
+      "credential": "expired",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entity_suppressions",
+      "credential": "expired",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entity_suppressions",
+      "credential": "expired",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entity_suppressions",
+      "credential": "expired",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entity_suppressions",
+      "credential": "forged",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entity_suppressions",
+      "credential": "forged",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entity_suppressions",
+      "credential": "forged",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entity_suppressions",
+      "credential": "forged",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entity_suppressions",
+      "credential": "malformed",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entity_suppressions",
+      "credential": "malformed",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entity_suppressions",
+      "credential": "malformed",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entity_suppressions",
+      "credential": "malformed",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entity_suppressions",
+      "credential": "other_user",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entity_suppressions",
+      "credential": "other_user",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entity_suppressions",
+      "credential": "other_user",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entity_suppressions",
+      "credential": "other_user",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entity_suppressions",
+      "credential": "deleted_user",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entity_suppressions",
+      "credential": "deleted_user",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entity_suppressions",
+      "credential": "deleted_user",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "entity_suppressions",
+      "credential": "deleted_user",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "forget_erase_jobs",
+      "credential": "owner",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "forget_erase_jobs",
+      "credential": "missing",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "forget_erase_jobs",
+      "credential": "missing",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "forget_erase_jobs",
+      "credential": "missing",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "forget_erase_jobs",
+      "credential": "missing",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "forget_erase_jobs",
+      "credential": "anon_only",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "forget_erase_jobs",
+      "credential": "anon_only",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "forget_erase_jobs",
+      "credential": "anon_only",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "forget_erase_jobs",
+      "credential": "anon_only",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "forget_erase_jobs",
+      "credential": "expired",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "forget_erase_jobs",
+      "credential": "expired",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "forget_erase_jobs",
+      "credential": "expired",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "forget_erase_jobs",
+      "credential": "expired",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "forget_erase_jobs",
+      "credential": "forged",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "forget_erase_jobs",
+      "credential": "forged",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "forget_erase_jobs",
+      "credential": "forged",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "forget_erase_jobs",
+      "credential": "forged",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "forget_erase_jobs",
+      "credential": "malformed",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "forget_erase_jobs",
+      "credential": "malformed",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "forget_erase_jobs",
+      "credential": "malformed",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "forget_erase_jobs",
+      "credential": "malformed",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "forget_erase_jobs",
+      "credential": "other_user",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "forget_erase_jobs",
+      "credential": "other_user",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "forget_erase_jobs",
+      "credential": "other_user",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "forget_erase_jobs",
+      "credential": "other_user",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "forget_erase_jobs",
+      "credential": "deleted_user",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "forget_erase_jobs",
+      "credential": "deleted_user",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "forget_erase_jobs",
+      "credential": "deleted_user",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "forget_erase_jobs",
+      "credential": "deleted_user",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "session_briefs",
+      "credential": "owner",
+      "operation": "select",
+      "expected": "allow",
+      "observed": "allow",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "session_briefs",
+      "credential": "missing",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "session_briefs",
+      "credential": "missing",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "session_briefs",
+      "credential": "missing",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "session_briefs",
+      "credential": "missing",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "session_briefs",
+      "credential": "anon_only",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "session_briefs",
+      "credential": "anon_only",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "session_briefs",
+      "credential": "anon_only",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "session_briefs",
+      "credential": "anon_only",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "session_briefs",
+      "credential": "expired",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "session_briefs",
+      "credential": "expired",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "session_briefs",
+      "credential": "expired",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "session_briefs",
+      "credential": "expired",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "session_briefs",
+      "credential": "forged",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "session_briefs",
+      "credential": "forged",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "session_briefs",
+      "credential": "forged",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "session_briefs",
+      "credential": "forged",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "session_briefs",
+      "credential": "malformed",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "session_briefs",
+      "credential": "malformed",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "session_briefs",
+      "credential": "malformed",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "session_briefs",
+      "credential": "malformed",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "session_briefs",
+      "credential": "other_user",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "session_briefs",
+      "credential": "other_user",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "session_briefs",
+      "credential": "other_user",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "session_briefs",
+      "credential": "other_user",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "session_briefs",
+      "credential": "deleted_user",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "session_briefs",
+      "credential": "deleted_user",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "session_briefs",
+      "credential": "deleted_user",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "session_briefs",
+      "credential": "deleted_user",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "session_cards",
+      "credential": "owner",
+      "operation": "select",
+      "expected": "allow",
+      "observed": "allow",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "session_cards",
+      "credential": "missing",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "session_cards",
+      "credential": "missing",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "session_cards",
+      "credential": "missing",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "session_cards",
+      "credential": "missing",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "session_cards",
+      "credential": "anon_only",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "session_cards",
+      "credential": "anon_only",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "session_cards",
+      "credential": "anon_only",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "session_cards",
+      "credential": "anon_only",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "session_cards",
+      "credential": "expired",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "session_cards",
+      "credential": "expired",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "session_cards",
+      "credential": "expired",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "session_cards",
+      "credential": "expired",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "session_cards",
+      "credential": "forged",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "session_cards",
+      "credential": "forged",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "session_cards",
+      "credential": "forged",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "session_cards",
+      "credential": "forged",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "session_cards",
+      "credential": "malformed",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "session_cards",
+      "credential": "malformed",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "session_cards",
+      "credential": "malformed",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "session_cards",
+      "credential": "malformed",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "session_cards",
+      "credential": "other_user",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "session_cards",
+      "credential": "other_user",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "session_cards",
+      "credential": "other_user",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "session_cards",
+      "credential": "other_user",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "session_cards",
+      "credential": "deleted_user",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "session_cards",
+      "credential": "deleted_user",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "session_cards",
+      "credential": "deleted_user",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "session_cards",
+      "credential": "deleted_user",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "suppression_keys",
+      "credential": "owner",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "suppression_keys",
+      "credential": "missing",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "suppression_keys",
+      "credential": "missing",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "suppression_keys",
+      "credential": "missing",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "suppression_keys",
+      "credential": "missing",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "suppression_keys",
+      "credential": "anon_only",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "suppression_keys",
+      "credential": "anon_only",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "suppression_keys",
+      "credential": "anon_only",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "suppression_keys",
+      "credential": "anon_only",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "suppression_keys",
+      "credential": "expired",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "suppression_keys",
+      "credential": "expired",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "suppression_keys",
+      "credential": "expired",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "suppression_keys",
+      "credential": "expired",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "suppression_keys",
+      "credential": "forged",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "suppression_keys",
+      "credential": "forged",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "suppression_keys",
+      "credential": "forged",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "suppression_keys",
+      "credential": "forged",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "suppression_keys",
+      "credential": "malformed",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "suppression_keys",
+      "credential": "malformed",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "suppression_keys",
+      "credential": "malformed",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "suppression_keys",
+      "credential": "malformed",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "suppression_keys",
+      "credential": "other_user",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "suppression_keys",
+      "credential": "other_user",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "suppression_keys",
+      "credential": "other_user",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "suppression_keys",
+      "credential": "other_user",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "suppression_keys",
+      "credential": "deleted_user",
+      "operation": "select",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "suppression_keys",
+      "credential": "deleted_user",
+      "operation": "insert",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "suppression_keys",
+      "credential": "deleted_user",
+      "operation": "update",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "table",
+      "target": "suppression_keys",
+      "credential": "deleted_user",
+      "operation": "delete",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "function",
+      "target": "retrieve-memory",
+      "credential": "owner",
+      "operation": "scope:notebook",
+      "expected": "allow",
+      "observed": "deny",
+      "pass": false
+    },
+    {
+      "surface": "function",
+      "target": "retrieve-memory",
+      "credential": "owner",
+      "operation": "scope:user",
+      "expected": "allow",
+      "observed": "deny",
+      "pass": false
+    },
+    {
+      "surface": "function",
+      "target": "retrieve-memory",
+      "credential": "missing",
+      "operation": "scope:notebook",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "function",
+      "target": "retrieve-memory",
+      "credential": "missing",
+      "operation": "scope:user",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "function",
+      "target": "retrieve-memory",
+      "credential": "anon_only",
+      "operation": "scope:notebook",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "function",
+      "target": "retrieve-memory",
+      "credential": "anon_only",
+      "operation": "scope:user",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "function",
+      "target": "retrieve-memory",
+      "credential": "expired",
+      "operation": "scope:notebook",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "function",
+      "target": "retrieve-memory",
+      "credential": "expired",
+      "operation": "scope:user",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "function",
+      "target": "retrieve-memory",
+      "credential": "forged",
+      "operation": "scope:notebook",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "function",
+      "target": "retrieve-memory",
+      "credential": "forged",
+      "operation": "scope:user",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "function",
+      "target": "retrieve-memory",
+      "credential": "malformed",
+      "operation": "scope:notebook",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "function",
+      "target": "retrieve-memory",
+      "credential": "malformed",
+      "operation": "scope:user",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "function",
+      "target": "retrieve-memory",
+      "credential": "other_user",
+      "operation": "scope:notebook",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "function",
+      "target": "retrieve-memory",
+      "credential": "other_user",
+      "operation": "scope:user",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "function",
+      "target": "retrieve-memory",
+      "credential": "deleted_user",
+      "operation": "scope:notebook",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "function",
+      "target": "retrieve-memory",
+      "credential": "deleted_user",
+      "operation": "scope:user",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "function",
+      "target": "speak-agent",
+      "credential": "missing",
+      "operation": "invoke",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "function",
+      "target": "speak-agent",
+      "credential": "anon_only",
+      "operation": "invoke",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "function",
+      "target": "speak-agent",
+      "credential": "expired",
+      "operation": "invoke",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "function",
+      "target": "speak-agent",
+      "credential": "forged",
+      "operation": "invoke",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "function",
+      "target": "speak-agent",
+      "credential": "malformed",
+      "operation": "invoke",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "function",
+      "target": "speak-agent",
+      "credential": "deleted_user",
+      "operation": "invoke",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "function",
+      "target": "extract-graph",
+      "credential": "missing",
+      "operation": "invoke",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "function",
+      "target": "extract-graph",
+      "credential": "anon_only",
+      "operation": "invoke",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "function",
+      "target": "extract-graph",
+      "credential": "expired",
+      "operation": "invoke",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "function",
+      "target": "extract-graph",
+      "credential": "forged",
+      "operation": "invoke",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "function",
+      "target": "extract-graph",
+      "credential": "malformed",
+      "operation": "invoke",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "function",
+      "target": "extract-graph",
+      "credential": "deleted_user",
+      "operation": "invoke",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "function",
+      "target": "embed-entities",
+      "credential": "owner",
+      "operation": "invoke",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "function",
+      "target": "embed-entities",
+      "credential": "missing",
+      "operation": "invoke",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "function",
+      "target": "embed-entities",
+      "credential": "anon_only",
+      "operation": "invoke",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "function",
+      "target": "embed-entities",
+      "credential": "expired",
+      "operation": "invoke",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "function",
+      "target": "embed-entities",
+      "credential": "forged",
+      "operation": "invoke",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "function",
+      "target": "embed-entities",
+      "credential": "malformed",
+      "operation": "invoke",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "function",
+      "target": "embed-entities",
+      "credential": "other_user",
+      "operation": "invoke",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "function",
+      "target": "embed-entities",
+      "credential": "deleted_user",
+      "operation": "invoke",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "function",
+      "target": "embed-entities",
+      "credential": "wrong_secret",
+      "operation": "invoke",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "lambda",
+      "target": "live-sessions",
+      "credential": "owner",
+      "operation": "invoke",
+      "expected": "allow",
+      "observed": "allow",
+      "pass": true
+    },
+    {
+      "surface": "lambda",
+      "target": "live-sessions",
+      "credential": "owner",
+      "operation": "secret_off_client",
+      "expected": "no_leak",
+      "observed": "no_leak",
+      "pass": true
+    },
+    {
+      "surface": "lambda",
+      "target": "live-sessions",
+      "credential": "missing",
+      "operation": "invoke",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "lambda",
+      "target": "live-sessions",
+      "credential": "anon_only",
+      "operation": "invoke",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "lambda",
+      "target": "live-sessions",
+      "credential": "expired",
+      "operation": "invoke",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "lambda",
+      "target": "live-sessions",
+      "credential": "forged",
+      "operation": "invoke",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "lambda",
+      "target": "live-sessions",
+      "credential": "malformed",
+      "operation": "invoke",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "lambda",
+      "target": "live-sessions",
+      "credential": "other_user",
+      "operation": "invoke",
+      "expected": "allow",
+      "observed": "allow",
+      "pass": true
+    },
+    {
+      "surface": "lambda",
+      "target": "live-sessions",
+      "credential": "deleted_user",
+      "operation": "invoke",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "lambda",
+      "target": "notebook-live-sessions",
+      "credential": "owner",
+      "operation": "invoke",
+      "expected": "allow",
+      "observed": "allow",
+      "pass": true
+    },
+    {
+      "surface": "lambda",
+      "target": "notebook-live-sessions",
+      "credential": "missing",
+      "operation": "invoke",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "lambda",
+      "target": "notebook-live-sessions",
+      "credential": "anon_only",
+      "operation": "invoke",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "lambda",
+      "target": "notebook-live-sessions",
+      "credential": "expired",
+      "operation": "invoke",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "lambda",
+      "target": "notebook-live-sessions",
+      "credential": "forged",
+      "operation": "invoke",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "lambda",
+      "target": "notebook-live-sessions",
+      "credential": "malformed",
+      "operation": "invoke",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "lambda",
+      "target": "notebook-live-sessions",
+      "credential": "other_user",
+      "operation": "invoke",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "lambda",
+      "target": "notebook-live-sessions",
+      "credential": "deleted_user",
+      "operation": "invoke",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "lambda",
+      "target": "extractions",
+      "credential": "owner",
+      "operation": "invoke",
+      "expected": "allow",
+      "observed": "allow",
+      "pass": true
+    },
+    {
+      "surface": "lambda",
+      "target": "extractions",
+      "credential": "missing",
+      "operation": "invoke",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "lambda",
+      "target": "extractions",
+      "credential": "anon_only",
+      "operation": "invoke",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "lambda",
+      "target": "extractions",
+      "credential": "expired",
+      "operation": "invoke",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "lambda",
+      "target": "extractions",
+      "credential": "forged",
+      "operation": "invoke",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "lambda",
+      "target": "extractions",
+      "credential": "malformed",
+      "operation": "invoke",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "lambda",
+      "target": "extractions",
+      "credential": "other_user",
+      "operation": "invoke",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "lambda",
+      "target": "extractions",
+      "credential": "deleted_user",
+      "operation": "invoke",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "lambda",
+      "target": "close",
+      "credential": "owner",
+      "operation": "invoke",
+      "expected": "allow",
+      "observed": "allow",
+      "pass": true
+    },
+    {
+      "surface": "lambda",
+      "target": "close",
+      "credential": "missing",
+      "operation": "invoke",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "lambda",
+      "target": "close",
+      "credential": "anon_only",
+      "operation": "invoke",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "lambda",
+      "target": "close",
+      "credential": "expired",
+      "operation": "invoke",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "lambda",
+      "target": "close",
+      "credential": "forged",
+      "operation": "invoke",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "lambda",
+      "target": "close",
+      "credential": "malformed",
+      "operation": "invoke",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "lambda",
+      "target": "close",
+      "credential": "other_user",
+      "operation": "invoke",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "lambda",
+      "target": "close",
+      "credential": "deleted_user",
+      "operation": "invoke",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "lambda",
+      "target": "brief",
+      "credential": "owner",
+      "operation": "invoke",
+      "expected": "allow",
+      "observed": "allow",
+      "pass": true
+    },
+    {
+      "surface": "lambda",
+      "target": "brief",
+      "credential": "missing",
+      "operation": "invoke",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "lambda",
+      "target": "brief",
+      "credential": "anon_only",
+      "operation": "invoke",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "lambda",
+      "target": "brief",
+      "credential": "expired",
+      "operation": "invoke",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "lambda",
+      "target": "brief",
+      "credential": "forged",
+      "operation": "invoke",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "lambda",
+      "target": "brief",
+      "credential": "malformed",
+      "operation": "invoke",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "lambda",
+      "target": "brief",
+      "credential": "other_user",
+      "operation": "invoke",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "lambda",
+      "target": "brief",
+      "credential": "deleted_user",
+      "operation": "invoke",
+      "expected": "deny",
+      "observed": "deny",
+      "pass": true
+    },
+    {
+      "surface": "logs",
+      "target": "lambdas",
+      "credential": "all",
+      "operation": "audit",
+      "expected": "no_leak",
+      "observed": "no_leak",
+      "pass": true
+    },
+    {
+      "surface": "logs",
+      "target": "functions",
+      "credential": "all",
+      "operation": "audit",
+      "expected": "no_leak",
+      "observed": "no_leak",
+      "pass": true
+    },
+    {
+      "surface": "bundle",
+      "target": "client",
+      "credential": "none",
+      "operation": "secret_scan",
+      "expected": "no_leak",
+      "observed": "leak",
+      "pass": false
+    },
+    {
+      "surface": "run",
+      "target": "test_users",
+      "credential": "none",
+      "operation": "cleanup",
+      "expected": "no_leak",
+      "observed": "no_leak",
+      "pass": true
+    }
+  ]
+}
