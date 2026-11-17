@@ -264,7 +264,8 @@ SessionBrief _brief() => SessionBrief(
       focus: const ['Maya', 'the move'],
       openingThread: 'how the move to Lisbon went',
       openingLine: 'Hey, welcome back. How did the move to Lisbon go?',
-      createdAt: DateTime.utc(2026, 10, 27, 9, 30, 0, 0, 123),
+      // Relative to now: a fixed date goes stale after sessionBriefMaxAge.
+      createdAt: DateTime.now().toUtc().subtract(const Duration(hours: 2)),
       playedAt: null,
       pcm: Uint8List(24000), // 0.5 s at 24 kHz
       sampleRate: 24000,
