@@ -56,6 +56,10 @@ the function controls fail. Serving without it tests each handler's own
 `getUser` check; drop the flag and set `PRIVACY_FUNCTIONS_JWT_GATEWAY=on` to
 measure the gateway instead.
 
+`retrieve-memory/deno.lock` is lockfile version 5, which the edge runtime in
+Supabase CLI 2.75 can't read (`Unsupported lockfile version '5'`); move it
+aside for the run and restore it after, or upgrade the CLI.
+
 ## Not covered
 
 Hosted-only settings (hosted auth configuration, log retention), the iOS app
