@@ -13,6 +13,7 @@ import 'package:lumen/screens/journal/forget_entity_screen.dart';
 import 'package:lumen/screens/journal/wikilink.dart';
 import 'package:lumen/theme/lumen_colors.dart';
 import 'package:lumen/theme/lumen_text.dart';
+import 'package:lumen/widgets/beta_badge.dart';
 
 Future<void> showEntityNoteSheet(BuildContext context, String entityId) {
   return showModalBottomSheet<void>(
@@ -241,7 +242,7 @@ class _EntityNoteSheetState extends ConsumerState<EntityNoteSheet> {
         Align(
           alignment: Alignment.centerLeft,
           child: Semantics(
-            label: 'Forget ${entity.name}',
+            label: 'Forget ${entity.name}, beta',
             button: true,
             excludeSemantics: true,
             child: TextButton.icon(
@@ -250,7 +251,14 @@ class _EntityNoteSheetState extends ConsumerState<EntityNoteSheet> {
               ),
               onPressed: () => _openForget(entity),
               icon: const Icon(Icons.person_off_outlined, size: 18),
-              label: Text('Forget ${entity.name}'),
+              label: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Flexible(child: Text('Forget ${entity.name}')),
+                  const SizedBox(width: 8),
+                  const BetaBadge(),
+                ],
+              ),
             ),
           ),
         ),

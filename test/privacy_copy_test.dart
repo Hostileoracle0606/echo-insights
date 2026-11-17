@@ -89,6 +89,8 @@ void main() {
   // and memory.
   test('the shipped controls claim only what they do', () {
     final forget = gatedClaims[PrivacyFeature.forgetPerson]!;
+    // Forget ships as a beta for the first release.
+    expect(forget, startsWith('Forget (beta):'));
     expect(forget, contains("Lumen won't bring them up again"));
     expect(forget, contains("they're gone from your maps"));
     expect(forget, contains('transcripts keep your words for you to read'));

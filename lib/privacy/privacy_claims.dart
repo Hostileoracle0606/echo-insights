@@ -99,7 +99,7 @@ const sharedLogClaim =
 /// the `shipped` set passed to the screen.
 const Map<PrivacyFeature, String> gatedClaims = {
   PrivacyFeature.forgetPerson:
-      "You can forget a person from their page. Lumen won't bring them up "
+      "Forget (beta): you can forget a person from their page. Lumen won't bring them up "
       "again, and they're gone from your maps. Their name is replaced with "
       '“someone” in everything Lumen reads: your past conversations, your '
       'cards and what it remembers about others. Mentioning that name later '
