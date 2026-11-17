@@ -32,3 +32,39 @@ values inline or commit the file.
 - Confirm bundle id works as client_id (vs Services ID) and no `redirect_uri` is required.
 - Confirm a fresh code from re-auth reaches the function within 5 minutes.
 - Confirm missing-secret behaviour on staging yields `apple_revoked:false` and still deletes.
+
+## Test counts (run by the controller, 2026-11-17, local)
+
+| Ticket | Command | Result |
+|---|---|---|
+| LM-114/115 | the privacy-tests.yml edge-functions deno command plus `supabase/functions/delete-account/` | 94 passed, 0 failed (delete-account alone: 34 passed) |
+| LM-116 | `flutter test` on `account_deletion_service_test`, `delete_account_screen_test`, `account_auth_service_test`, `dashboard_test`, `privacy_copy_test` | 56 passed, 0 failed |
+| LM-116 | full `flutter test` | 1176 passed, 1 skipped, 3 failed. The 3 failures (`journal_session_lifecycle_test` x2, `off_the_record_test` x1) fail the same way on the base commit 8521923, so they are not from this work |
+| LM-117 | `deletion_guard_test.sql` on a throwaway Postgres built from this branch's migrations (the shared stack on port 55322 has a different migration set and was not touched) | 73 of 73 (was 56); the whole 28-file database suite: 1105 ok, 0 not ok. Run by the Task 3 implementer, not re-run by me |
+
+`privacy-tests.yml` runs the Deno tests (now including `delete-account`). It has no pgTAP job, so "passes in privacy-tests.yml" for LM-117 is not true yet: **decision for you** whether to add a job that runs `supabase start` and `supabase test db`.
+
+## What was built
+
+- `supabase/functions/delete-account/` (`handler.ts`, `apple.ts`, `index.ts`): user id only from the verified JWT (`auth.getUser`), `iat` no older than 5 minutes (the app refreshes its session right before calling), body never read except `apple_authorization_code`. Apple users: exchange the code once (retry only on transport error or 5xx), revoke the refresh token (retry once), 5 s timeout per Apple call; on failure the account is deleted anyway and the response says `apple_revoked:false`. Response `{deleted, apple_revoked}` (`null` for non-Apple users).
+- App: "Delete my account" on the Privacy sheet behind `requireReauth`, a confirmation screen (what goes, cannot be undone, link to Export), the Apple sheet for Apple users, a 45 s limit on the server calls, then the existing signed-out cleanup and login with "Your account is deleted" (`lib/providers/login_notice_provider.dart`). If Apple could not be revoked the message says how to remove Lumen under Settings, Apple ID, Sign in with Apple.
+- Database: `20261117000000_account_deletion_flow_state.sql` (new, beyond the ticket text). The guard test found that `auth.flow_state` (holds provider tokens) has no foreign key and survived deletion. The existing deletion trigger now also purges it, best-effort: if the function owner lacks DELETE on that table on the hosted project it warns and deletion proceeds. Applies with the normal migration deploy.
+
+## Rulings and deviations
+
+- JWT freshness window 5 minutes: an older stolen token must not delete an account.
+- Plan was not paused for human review (the task said write the plan, then implement).
+- `client_secret` lifetime is 5 minutes (limit is 6 months): it is made per request.
+- Apple failure policy as in the ticket: one retry, then delete anyway.
+
+## Doc notes for the sessions that own other docs (I did not edit them)
+
+- `docs/security/launch-checklist.md`: add (a) the Apple secrets below are set on the hosted project, (b) after a staging deletion confirm no `auth.flow_state` row remains for the deleted user (a failed purge is only a Postgres warning), (c) decide about `auth.audit_log_entries` (actor id and email in the payload; not cascaded; not covered by any ticket).
+- `docs/release-1-tickets.md`: LM-117's "passes in privacy-tests.yml" needs the CI job decision above; LM-128 must keep `notebook_commit_requests` in the guard test inventory (the table already exists on this branch from `20260821000000`, so nothing waits on LM-128 here).
+- Follow-up ticket candidate: if the server deletes the account but the response is lost, the app's retry fails at `refreshSession` (user gone) and the person is stuck on a dead session. Treat that failure on a retry as "already deleted": sign out locally and show the login notice.
+
+## Left for you
+
+- Create the Apple secrets (section above) and the key in Apple Developer; nothing is deployed from here.
+- Deploy: apply the new migration, deploy `delete-account` (with `--no-verify-jwt` NOT set, so the platform also checks the JWT), set the secrets.
+- LM-120/121 checks listed above.
