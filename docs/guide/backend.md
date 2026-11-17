@@ -107,7 +107,6 @@ Their configuration (`embed_entities_url`, `embed_internal_secret`) is read from
 | --- | --- | --- | --- |
 | `retrieve-memory` | ✅ | app (the `get_relevant_memory` tool) | Hybrid recall: BM25 + k-hop graph walk, seeded by vector matches. Falls back to lexical. Returns the [`retrieve-memory-v2`](../../contracts/retrieve-memory-v2.schema.json) shape |
 | `embed-entities` | ❌ (shared secret) | database trigger, cron | Embeds entities with `gte-small` (384-d), in chunks of 10, re-enqueueing itself |
-| `extract-graph` | ✅ | web client only | Legacy extraction. The app uses the AWS route |
 | `speak-agent` | ✅ | web client only | ElevenLabs TTS for the web prototype |
 
 The retrieval core in `supabase/functions/_shared/graphloop/` is **vendored**

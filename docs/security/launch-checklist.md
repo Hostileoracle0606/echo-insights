@@ -53,7 +53,7 @@ Staging first, then production. Do not use production for testing.
    Why `…700` follows them: LM-49's `…300` redefines `save_session_card` and `save_session_brief` without LM-46's caps, so applying them in order silently drops the caps until `…700` restores them. `…700` also makes `delete_empty_notebook` keep a notebook auto-forget emptied.
    **Post-migration check (staging, then production):** an oversized card call to `save_session_card` must be refused, a card naming a forgotten person must be stored redacted, and a card mentioning a merely removed word must be stored unchanged. Do not proceed to the Lambda deploy if either fails.
    Why the migrations come first: the new `close-session` code calls an RPC from `…300`. If the Lambda ships first, every session close returns 503 (it fails closed). The LM-51 migrations `…350` and `…360` ship together with the Lambda.
-2. **Edge functions** (LM-44 and LM-46 changed them), after the migrations: `supabase functions deploy embed-entities`, `retrieve-memory` and `speak-agent`, each with `--project-ref bjoevzvsdlhlcjywpyfx` (use the staging ref first when testing). **Delete the legacy `extract-graph` edge function, do not redeploy it:** nothing calls it (the app uses the runtime's extraction route) and it has no forget redaction, so leaving it live is a way around LM-63: `supabase functions delete extract-graph --project-ref ...`. Delete `speak-agent` too if you retire it (section 4).
+2. **Edge functions** (LM-44 and LM-46 changed them), after the migrations: `supabase functions deploy embed-entities`, `retrieve-memory` and `speak-agent`, each with `--project-ref bjoevzvsdlhlcjywpyfx` (use the staging ref first when testing). **Delete the legacy Groq `extract-graph` edge function (its source is gone from the repo since LM-118, so there is nothing to redeploy):** it has no forget redaction, so leaving it live is a way around LM-63. First read its invocation logs for recent calls, then `supabase functions delete extract-graph --project-ref ...` on staging and production, and remove the `GROQ_API_KEY` secret. The AWS Lambda of the same name (step 3) is the live Gemini route and stays. Delete `speak-agent` too if you retire it (section 4).
 3. **`cdk deploy`** (your own deploy, with the Supabase parameters). Add `-c alertEmail=<your address>` so alerts reach you. This creates the log groups (LM-44), the per-route throttles (LM-46), the alerts topic and alarms, and the CloudTrail trail and its bucket (LM-54).
 4. **Confirm the alert email subscription** (click the link AWS sends). Unconfirmed means no alerts.
 5. **Delete the old auto-created `/aws/lambda/*` log groups** for the functions (LM-44), only after the `cdk deploy` step. They never expire and may hold old content.
@@ -74,7 +74,7 @@ Staging first, then production. Do not use production for testing.
 - [ ] Enable billing on the Google Cloud project that owns the key in secret `echo-insights/gemini-api-key`, and on the one behind `VITE_GEMINI_API_KEY` (web), or retire that path.
 - [ ] AI Studio, Logs and Datasets: turn project logging off unless you want retention; create no datasets.
 - [ ] Run a 10-call burst against the billed key and confirm no 429s (no key on the command line).
-- [ ] Check and remove the Groq (`extract-graph`) and ElevenLabs (`speak-agent`) edge functions and secrets if unused.
+- [ ] Confirm the Groq `extract-graph` edge function is deleted on staging and production and `GROQ_API_KEY` is removed (LM-118). Check the ElevenLabs (`speak-agent`) edge function and secrets and remove them if unused.
 - [ ] Ask Google Cloud support in writing the four questions in `ai-processing.md` section 4.
 - [ ] Then flip `paidTierVerified` to `true` in `lib/privacy/privacy_claims.dart`. Do not claim "keeps nothing": the paid Gemini API has no documented zero-retention mode.
 
@@ -104,7 +104,7 @@ Staging first, then production. Do not use production for testing.
 ## 8. Known follow-ups, not blocking Phase 1 or 2
 
 - Move the edge functions to a custom-named `sb_secret_` key, then disable the legacy keys (LM-45).
-- Retire or document Groq, ElevenLabs, the web `VITE_GEMINI_API_KEY`, and Live session resumption (LM-43).
+- Retire or document ElevenLabs (Groq: LM-118), the web `VITE_GEMINI_API_KEY`, and Live session resumption (LM-43).
 - Web `types.ts` not regenerated (LM-51).
 
 ## 9. Sign in with Apple, passkeys, device list (LM-58)
