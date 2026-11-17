@@ -2,27 +2,21 @@
 
 ## Apple REST API, confirmed
 
-Honesty note: Apple's developer.apple.com doc pages are client-rendered. WebFetch
-returned only the page titles for all three pages below, so its summaries were
-the fetch model's general knowledge, NOT confirmed page text. A web search
-surfaced only Apple Developer Forums threads and third-party guides (no
-official page text). Everything below is therefore "documented per tooling
-recall plus community reports", not verified against Apple's live text. Re-check
-the three pages in a browser before LM-120/121.
+Confirmed 2026-11-17 by reading Apple's live pages in the in-app browser (the pages are client-rendered, so plain fetch returns only titles):
+- https://developer.apple.com/documentation/signinwithapplerestapi/generate-and-validate-tokens ("Token validation")
+- https://developer.apple.com/documentation/signinwithapplerestapi/revoke-tokens ("Token revocation")
+- https://developer.apple.com/documentation/accountorganizationaldatasharing/creating-a-client-secret (the "Creating a client secret" article; the Sign in with Apple page links to this same article, and the fields are identical)
 
-URLs attempted:
-- https://developer.apple.com/documentation/signinwithapplerestapi/revoke-tokens (title only)
-- https://developer.apple.com/documentation/signinwithapplerestapi/generate-and-validate-tokens (title only)
-- https://developer.apple.com/documentation/accountorganizationaldatasharing/creating-a-client-secret (title only)
-- Community: https://developer.apple.com/forums/thread/708839 , /thread/706792 , /thread/759934 (search snippets only)
+Confirmed facts:
+- Token endpoint `POST https://appleid.apple.com/auth/token`, `application/x-www-form-urlencoded`. Params: `client_id`, `client_secret`, `code`, `grant_type=authorization_code`. The code is single-use and valid five minutes. Response has `access_token`, `refresh_token`, `id_token`, `expires_in`, `token_type`.
+- `redirect_uri`: Apple's note says to include it only if the app supplied one in the initial authorization request. A native `getAppleIDCredential` call supplies none, so the function omits it.
+- Revoke endpoint `POST https://appleid.apple.com/auth/revoke`, form-urlencoded. Params: `client_id`, `client_secret`, `token` (refresh or access token), optional `token_type_hint` (`refresh_token` or `access_token`). 200 with no body on success, and also if the token was already invalid; 400 with an ErrorResponse otherwise.
+- `client_id` is "App ID or Services ID", must match the identifier used in the authorization request, and must not include the Team ID. For the native flow that is the bundle id.
+- Client secret: JWT, `alg=ES256` (ECDSA P-256 + SHA-256), header `kid` = 10-character Key ID; claims `iss` = 10-character Team ID, `iat`, `exp` (at most 15777000 s, six months, ahead), `aud=https://appleid.apple.com`, `sub` = the same value as `client_id` (case-sensitive).
+- To revoke you need a refresh or access token; Apple says to obtain tokens by validating an authorization code. So the design holds: exchange the fresh code, then revoke. Revoking the refresh token "invalidates the token and associated user authorizations".
+- Differences from the ticket's assumptions: none in parameters. The code lives only five minutes, so the app must re-run Sign in with Apple at delete time and send that code at once.
 
-Facts used by the implementation (unverified against live docs, consistent across sources):
-- Token endpoint: POST https://appleid.apple.com/auth/token, `application/x-www-form-urlencoded`, params `client_id`, `client_secret`, `code`, `grant_type=authorization_code`. Response JSON includes `refresh_token`, `access_token`, `id_token`. `redirect_uri` is listed for web flows; native-code exchange is expected to work without it (UNCONFIRMED; verify on device).
-- Revoke endpoint: POST https://appleid.apple.com/auth/revoke, form-urlencoded, params `client_id`, `client_secret`, `token`, `token_type_hint` (`refresh_token`). 200 with empty body on success.
-- Client secret: JWT, header `alg=ES256`, `kid=<Key ID>`; claims `iss=<Team ID>`, `iat`, `exp` (max 6 months after iat, 15777000 s), `aud=https://appleid.apple.com`, `sub=<client_id>`.
-- client_id for a native iOS authorization code: the app bundle id (community reports; one forum reply claims a Services ID was needed instead, so confirm on device). The `sub` claim must equal the `client_id` sent.
-- Revoking the refresh token is the standard way to end the grant (also invalidates access tokens issued from it).
-- Differences from the plan's assumptions: the authorization code is single-use and valid only about 5 minutes, so the app (Task 4) must obtain a FRESH code by re-authenticating with Apple at delete time and send it immediately. A code captured at original sign-in cannot be used.
+Still not confirmable from docs (needs a device, LM-121): that Lumen disappears from Settings, Apple ID, Sign in with Apple after revoking the refresh token alone, and that a native code exchanges with the bundle id as `client_id` (one forum thread claimed a Services ID was needed; Apple's text says "App ID or Services ID" matching the authorization request).
 
 ## Secrets the user must create (LM-120)
 
