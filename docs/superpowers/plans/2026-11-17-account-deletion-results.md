@@ -28,7 +28,6 @@ values inline or commit the file.
 
 ## Checks left for LM-120/121 (staging + real device)
 
-- Confirm the three Apple pages (above) in a browser.
 - Real device: Sign in with Apple, delete account, confirm `apple_revoked:true` and the app disappears from Settings > Apple ID > Sign in with Apple.
 - Confirm bundle id works as client_id (vs Services ID) and no `redirect_uri` is required.
 - Confirm a fresh code from re-auth reaches the function within 5 minutes.
