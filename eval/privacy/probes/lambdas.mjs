@@ -23,8 +23,8 @@ export const LAMBDA_ROUTES = Object.freeze([
       context: { entities: [], relations: [], recentConversation: [] },
     }),
   },
-  { name: 'close', notebook: true, create: (d) => createCloseSessionHandler({ ...d, sleep: noSleep, log: () => {} }) },
-  { name: 'brief', notebook: true, create: (d) => createSessionBriefHandler({ ...d, sleep: noSleep, log: () => {} }) },
+  { name: 'close', notebook: true, create: (d) => createCloseSessionHandler({ ...d, sleep: noSleep }) },
+  { name: 'brief', notebook: true, create: (d) => createSessionBriefHandler({ ...d, sleep: noSleep }) },
 ]);
 
 export function recordingFetch({ supabaseUrl, realFetch = fetch, providerResponder }) {
