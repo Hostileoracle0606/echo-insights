@@ -91,3 +91,16 @@ test('owner lambda cells are positive controls; the broker never hands out the p
   assert.ok(owner.length === 2 && owner.every((c) => c.control && c.pass));
   assert.ok(cells.filter((c) => c.credential === 'expired').every((c) => !c.control && c.pass));
 });
+
+test('the owner seeing their own planted content is not a leak; the permanent key always is', async () => {
+  const { probeLambdas } = await import('./lambdas.mjs');
+  const notebookTitle = 'CANARY-notebook-0011223344556677';
+  const route = { name: 'echo', notebook: false, create: () => async () => ({ statusCode: 200, body: `{"title":"${notebookTitle}"}` }) };
+  const { cells } = await probeLambdas({
+    url: SUPABASE, anonKey: 'anon', kinds: ['owner'], notebookId: 'nb',
+    headersByKind: { owner: { authorization: 'Bearer good' } },
+    canaries: [notebookTitle], permanentKey: 'CANARY-permanent_key-8899aabbccddeeff', entityCanary: 'x',
+    routes: [route], realFetch: async () => new Response('{"id":"user-a"}', { status: 200 }),
+  });
+  assert.equal(cells[0].observed, 'allow');
+});

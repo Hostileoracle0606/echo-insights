@@ -93,3 +93,14 @@ test('embed-entities: denied without the secret, allowed with it as its control'
   assert.equal(byCred.owner.observed, 'deny');
   assert.equal(byCred.wrong_secret.observed, 'deny');
 });
+
+test('the owner reading back their own planted content is the control passing, not a leak', async () => {
+  const entity = newCanary('entity');
+  const cells = await probeFunctions({
+    ...base, canaries: [entity], kinds: ['owner'], targets: ['retrieve-memory'], ownerQueryText: entity,
+    fetchImpl: async () => new Response(`{"context":"${entity}","entityIds":["pm-entity-a"]}`, { status: 200 }),
+  });
+  const control = cells.find((c) => c.control);
+  assert.equal(control.observed, 'allow');
+  assert.equal(control.pass, true);
+});

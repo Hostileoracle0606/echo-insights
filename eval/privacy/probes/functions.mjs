@@ -48,8 +48,8 @@ export async function probeFunctions({
     const probe = async ({ credential, operation, headers, body, expected, control = false, judge }) => {
       const requestCanary = newCanary('request');
       const result = await send(fetchImpl, endpoint, headers, { text: requestCanary, query: requestCanary, ...body });
-      // The owner's own request echoed back to the owner is not a cross-account leak.
-      const watched = credential === 'owner' ? canaries : [...canaries, requestCanary];
+      // Every planted canary is A's own data, so nothing the owner receives can leak.
+      const watched = credential === 'owner' ? [] : [...canaries, requestCanary];
       const observed = judge ? judge(result, watched) : classifyFunction({ ...result, canaries: watched });
       own.push(cell({ surface: 'function', target: target.name, credential, operation, expected, observed, control }));
     };

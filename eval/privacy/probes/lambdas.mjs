@@ -136,8 +136,8 @@ export async function probeLambdas({
         result = { statusCode: 0, body: '' };
       }
       const text = `${JSON.stringify(result.headers ?? {})}\n${result.body ?? ''}`;
-      // The owner sending its own text is not a leak; the permanent key always is.
-      const leakSet = kind === 'owner' ? [...canaries.filter((c) => c !== entityCanary), permanentKey] : watched;
+      // Every planted canary is A's own data, so for the owner only the permanent key can leak.
+      const leakSet = kind === 'owner' ? [permanentKey] : watched;
       cells.push(cell({
         surface: 'lambda', target: route.name, credential: kind, operation: 'invoke',
         expected: lambdaExpected(route, kind), control: kind === 'owner',
