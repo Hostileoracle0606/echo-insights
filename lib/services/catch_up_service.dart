@@ -363,7 +363,8 @@ class FileCatchUpSkipStore implements CatchUpSkipStore {
       if (decoded is! Map) return {};
       return {
         for (final e in decoded.entries)
-          if (e.key is String && e.value is int) e.key as String: e.value as int,
+          if (e.key is String && e.value is int)
+            e.key as String: e.value as int,
       };
     } catch (error) {
       debugPrint('catch-up: skips unreadable (${error.runtimeType})');
@@ -502,29 +503,68 @@ class CatchUpRunner {
         );
 
     try {
+      // The two opening reads are bounded like any step: a half-open
+      // connection must not hang the run (and, the scheduler being
+      // single-flight, every later launch and resume with it).
+      Future<_Raced> guarded(Future<Object?> read) {
+        final left = remaining();
+        if (left == null) return Future.value(const _TimedOut());
+        return _race(read, left, token);
+      }
+
       Future<UnfinishedWork> load() async {
+        final Future<UnfinishedWork> read;
         try {
-          return await _loadWork();
+          read = _loadWork();
         } catch (error) {
           loadFailed = true;
           debugPrint('catch-up: work list unread (${error.runtimeType})');
           return UnfinishedWork.empty;
         }
+        switch (await guarded(read)) {
+          case _Value(:final value):
+            return value as UnfinishedWork;
+          case _Error(:final error):
+            loadFailed = true;
+            debugPrint('catch-up: work list unread (${error.runtimeType})');
+          case _TimedOut():
+            loadFailed = true;
+            debugPrint('catch-up: work list timed out');
+          case _Cancelled():
+            loadFailed = true;
+        }
+        return UnfinishedWork.empty;
       }
 
-      List<String> journal;
-      try {
-        journal = await _journalNotebookIds();
-      } catch (error) {
-        debugPrint('catch-up: journal unread (${error.runtimeType})');
-        journal = const [];
+      Future<List<String>> readJournal(List<String> fallback) async {
+        final Future<List<String>> read;
+        try {
+          read = _journalNotebookIds();
+        } catch (error) {
+          debugPrint('catch-up: journal unread (${error.runtimeType})');
+          return fallback;
+        }
+        switch (await guarded(read)) {
+          case _Value(:final value):
+            return value as List<String>;
+          case _Error(:final error):
+            debugPrint('catch-up: journal unread (${error.runtimeType})');
+          case _TimedOut():
+            debugPrint('catch-up: journal read timed out');
+          case _Cancelled():
+            break;
+        }
+        return fallback;
       }
+
+      final journal = await readJournal(const []);
       if (token.isCancelled) return report();
       var plan = CatchUpPlanner.plan(
         openNotebookId: _openNotebookId(),
         journalNotebookIds: journal,
         serverWork: await load(),
       );
+      if (token.isCancelled) return report();
       plans++;
       final skips = await _readSkips();
 
@@ -605,12 +645,7 @@ class CatchUpRunner {
         loadFailed = false;
         final again = await load();
         if (!loadFailed) {
-          List<String> journalNow;
-          try {
-            journalNow = await _journalNotebookIds();
-          } catch (_) {
-            journalNow = journal;
-          }
+          final journalNow = await readJournal(journal);
           plan = CatchUpPlanner.plan(
             openNotebookId: _openNotebookId(),
             journalNotebookIds: journalNow,
@@ -644,7 +679,8 @@ class CatchUpRunner {
           budgetExhausted = true;
           return report();
         }
-        final outcome = await _runStep(step, skips, stillJournalled, left, token);
+        final outcome =
+            await _runStep(step, skips, stillJournalled, left, token);
         records.add(CatchUpStepRecord(step, outcome));
         if (step is CardStep && pending.remove(step.notebookId)) publish();
         if (outcome == CatchUpOutcome.cancelled) return report();
@@ -763,14 +799,14 @@ class CatchUpRunner {
     }
     final key = _skipKey(step);
     if (key != null) {
-      final revision = step is CardStep
-          ? step.revision
-          : (step as BriefStep).revision;
+      final revision =
+          step is CardStep ? step.revision : (step as BriefStep).revision;
       try {
         if (outcome == CatchUpOutcome.terminal) {
           skips[key] = revision;
           await _skips.write(skips);
-        } else if (outcome == CatchUpOutcome.done && skips.remove(key) != null) {
+        } else if (outcome == CatchUpOutcome.done &&
+            skips.remove(key) != null) {
           await _skips.write(skips);
         }
       } catch (error) {
@@ -794,9 +830,8 @@ class CatchUpRunner {
   static bool _isSkipped(Map<String, int> skips, CatchUpStep step) {
     final key = _skipKey(step);
     if (key == null) return false;
-    final revision = step is CardStep
-        ? step.revision
-        : (step as BriefStep).revision;
+    final revision =
+        step is CardStep ? step.revision : (step as BriefStep).revision;
     return skips[key] == revision;
   }
 

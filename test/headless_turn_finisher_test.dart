@@ -3,7 +3,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lumen/logic/turn_state.dart'
-    show DurableStage, FinalizedTurn, Speaker;
+    show ConversationTurn, DurableStage, FinalizedTurn, Speaker;
 import 'package:lumen/models/entity.dart';
 import 'package:lumen/models/graph_patch.dart';
 import 'package:lumen/models/journal_state.dart';
@@ -135,13 +135,17 @@ void main() {
   late HeadlessTurnFinisher finisher;
 
   // A fresh instance is what a relaunch gets: nothing but the journal.
-  HeadlessTurnFinisher build({TurnRedaction redaction = TurnRedaction.none}) =>
+  HeadlessTurnFinisher build({
+    TurnRedaction redaction = TurnRedaction.none,
+    Future<void> Function(String, ConversationTurn)? saveTranscript,
+  }) =>
       HeadlessTurnFinisher(
         journal: journal,
         commit: server.commit,
         loadSnapshot: server.snapshot,
         extract: extractor.call,
         redaction: redaction,
+        saveTranscript: saveTranscript,
       );
 
   setUp(() async {
@@ -154,6 +158,42 @@ void main() {
 
   tearDown(() async {
     if (await directory.exists()) await directory.delete(recursive: true);
+  });
+
+  group('transcript (conversation_turns) for the card and brief', () {
+    test('a journalled turn is saved to the transcript before it commits',
+        () async {
+      final saved = <(String, ConversationTurn)>[];
+      final order = <String>[];
+      finisher = build(saveTranscript: (nb, t) async {
+        order.add('save');
+        saved.add((nb, t));
+      });
+      await journal.persistTurn(_turn());
+      final result = await finisher.finishNotebook(_notebook);
+
+      expect(result.committedTurnIds, ['turn-1']);
+      expect(saved, hasLength(1));
+      expect(saved.single.$1, _notebook);
+      expect(saved.single.$2.turnId, 'turn-1');
+      expect(saved.single.$2.text, 'I work at Acme with Maya.');
+      expect(saved.single.$2.role, Speaker.user);
+      expect(order, ['save']);
+    });
+
+    test('a failed transcript save leaves the turn for later, uncommitted',
+        () async {
+      finisher = build(saveTranscript: (_, __) async {
+        throw const SocketException('offline');
+      });
+      await journal.persistTurn(_turn());
+      final result = await finisher.finishNotebook(_notebook);
+
+      expect(result.committedTurnIds, isEmpty);
+      expect(result.deferredTurnId, 'turn-1');
+      expect(server.commitCalls, 0);
+      expect(await journal.listNotebookIdsWithTurns(), [_notebook]);
+    });
   });
 
   group('(a) a prepared commit', () {

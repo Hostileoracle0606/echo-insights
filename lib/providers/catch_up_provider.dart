@@ -96,6 +96,7 @@ final catchUpRunnerFactoryProvider = Provider<CatchUpRunnerFactory>((ref) {
               recentConversation: r.recentConversation,
             ),
         redaction: TurnRedaction.of(ref.read(forgetRedactorProvider)),
+        saveTranscript: ref.read(transcriptStoreProvider).save,
       ).finishNotebook,
       // close() asks get_card_status first; null is a 422/501 answer.
       closeCard: (notebookId) async =>
@@ -105,7 +106,8 @@ final catchUpRunnerFactoryProvider = Provider<CatchUpRunnerFactory>((ref) {
           ref.read(sessionBriefServiceProvider).requestBrief(notebookId),
       // The erase notifier's own run: numbered batches, shared with the
       // resume at launch (one run per job).
-      runErase: (jobId) => ref.read(transcriptEraseProvider.notifier).run(jobId),
+      runErase: (jobId) =>
+          ref.read(transcriptEraseProvider.notifier).run(jobId),
       // No embed call from the phone yet: the server's embed-reconcile sweep
       // builds missing vectors, and search works without them meanwhile.
       buildVectors: null,
@@ -158,9 +160,8 @@ class CatchUpNotifier extends Notifier<CatchUpState> {
               _set(state.copyWith(pendingCardNotebookIds: ids)),
         )
         .run(token),
-    onRunning: (running) => _set(running
-        ? state.copyWith(running: true)
-        : CatchUpState.idle),
+    onRunning: (running) =>
+        _set(running ? state.copyWith(running: true) : CatchUpState.idle),
     onReport: (report) {
       try {
         ref.read(catchUpFinishedHookProvider)(report);

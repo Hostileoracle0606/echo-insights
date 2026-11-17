@@ -17,6 +17,7 @@ import 'dart:io';
 import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:lumen/logic/turn_state.dart' show ConversationTurn;
 import 'package:lumen/models/entity.dart';
 import 'package:lumen/models/graph_patch.dart';
 import 'package:lumen/models/journal_entry.dart';
@@ -109,6 +110,22 @@ class FakeLumenServer {
   /// extract-graph's cache: `notebook:turn` -> (input hash, patch).
   final _extractCache = <String, (String, GraphPatch)>{};
 
+  /// `conversation_turns`: notebook -> turn id -> text, in save order. The
+  /// card and the brief are written from THIS, as the app reads it, not from
+  /// committed journal entries: a turn the phone never saved here is missing
+  /// from the card.
+  final transcripts = <String, Map<String, String>>{};
+
+  /// The turn texts the card was last given, per notebook.
+  final cardInputTexts = <String, List<String>>{};
+
+  Future<void> saveTranscript(String notebookId, ConversationTurn turn) async {
+    transcripts.putIfAbsent(notebookId, () => {}).putIfAbsent(
+          turn.turnId,
+          () => turn.text,
+        );
+  }
+
   /// Brief speak tokens -> the revision they were written for.
   final _speakTokens = <String, int>{};
 
@@ -131,6 +148,7 @@ class FakeLumenServer {
     final nb = notebooks[id] = FakeNotebook(id, touched: ++_clock);
     for (final text in userTurns) {
       nb.revision++;
+      transcripts.putIfAbsent(id, () => {})['seed-${nb.revision}'] = text;
       nb.entries.add(JournalEntry(
         id: 'seed-${nb.revision}',
         text: text,
@@ -244,7 +262,8 @@ class FakeLumenServer {
       case 'get_unfinished_work':
         return unfinishedWork();
       case 'get_card_status':
-        return _cardStatus(p['p_notebook_id'] as String, p['p_revision'] as int);
+        return _cardStatus(
+            p['p_notebook_id'] as String, p['p_revision'] as int);
       case 'get_brief_status':
         return _briefStatus(
             p['p_notebook_id'] as String, p['p_revision'] as int);
@@ -311,7 +330,11 @@ class FakeLumenServer {
   Map<String, dynamic> _cardStatus(String id, int revision) {
     final nb = notebooks[id];
     if (nb == null) {
-      return {'status': 'notFound', 'cardRevision': null, 'currentRevision': null};
+      return {
+        'status': 'notFound',
+        'cardRevision': null,
+        'currentRevision': null
+      };
     }
     final card = cards[id];
     return {
@@ -329,7 +352,11 @@ class FakeLumenServer {
   Map<String, dynamic> _briefStatus(String id, int revision) {
     final nb = notebooks[id];
     if (nb == null) {
-      return {'status': 'notFound', 'briefRevision': null, 'currentRevision': null};
+      return {
+        'status': 'notFound',
+        'briefRevision': null,
+        'currentRevision': null
+      };
     }
     final mine = brief?.notebookId == id ? brief!.revision : null;
     return {
@@ -369,7 +396,8 @@ class FakeLumenServer {
     }
     final hash = _hash(card);
     if (stored != null && stored.revision == revision && !stored.draft) {
-      if (stored.hash != hash) return {'status': 'rejected', 'code': 'keyReused'};
+      if (stored.hash != hash)
+        return {'status': 'rejected', 'code': 'keyReused'};
       return {'status': 'saved', 'card': stored.card};
     }
     cards[id] = FakeCard(revision, card, hash: hash);
@@ -390,7 +418,8 @@ class FakeLumenServer {
     if (stored != null &&
         stored.notebookId == id &&
         stored.revision == revision) {
-      if (stored.hash != hash) return {'status': 'rejected', 'code': 'keyReused'};
+      if (stored.hash != hash)
+        return {'status': 'rejected', 'code': 'keyReused'};
       return {'status': 'unchanged'};
     }
     if (stored != null &&
@@ -453,9 +482,11 @@ class FakeLumenServer {
   /// The model inputs the app reads from the notebook (revision first).
   CardInput cardInput(String id) {
     final nb = notebooks[id]!;
+    final turns = _turns(nb);
+    cardInputTexts[id] = [for (final t in turns) t.text];
     return CardInput(
       revision: nb.revision,
-      turns: _turns(nb),
+      turns: turns,
       candidates: const [],
     );
   }
@@ -473,9 +504,10 @@ class FakeLumenServer {
     );
   }
 
-  static List<InputTurn> _turns(FakeNotebook nb) => [
-        for (final e in nb.entries)
-          (speaker: 'user', text: e.text, spokenAt: null),
+  List<InputTurn> _turns(FakeNotebook nb) => [
+        for (final text
+            in (transcripts[nb.id] ?? const <String, String>{}).values)
+          (speaker: 'user', text: text, spokenAt: null),
       ];
 
   // ── Vectors: embed-reconcile, the server's sweep. ──
@@ -650,6 +682,8 @@ class Phone {
         loadSnapshot: (id) => net(() => server.getNotebookSnapshot(id)),
         extract: (r) => net(() => server.extract(r)),
         redaction: TurnRedaction.none,
+        saveTranscript: (id, turn) =>
+            net(() => server.saveTranscript(id, turn)),
       ).finishNotebook,
       closeCard: (id) async => (await cards.close(id))?.sourceRevision,
       requestBrief: briefs.requestBrief,

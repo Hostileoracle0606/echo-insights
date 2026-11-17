@@ -1,7 +1,8 @@
 import '../logic/conversation_policy.dart' show extractAssistantTurns;
 import '../logic/forget_redaction.dart';
 import '../logic/turn_commit.dart';
-import '../logic/turn_state.dart' show DurableStage, FinalizedTurn, Speaker;
+import '../logic/turn_state.dart'
+    show ConversationTurn, DurableStage, FinalizedTurn, Speaker;
 import '../logic/voice_log.dart';
 import '../models/graph_patch.dart';
 import '../models/journal_state.dart';
@@ -161,6 +162,7 @@ class HeadlessTurnFinisher {
     required LoadNotebookSnapshotFn loadSnapshot,
     required ExtractJournalTurnFn extract,
     required TurnRedaction redaction,
+    this.saveTranscript,
   })  : _journal = journal,
         _commit = commit,
         _loadSnapshot = loadSnapshot,
@@ -185,6 +187,15 @@ class HeadlessTurnFinisher {
   final LoadNotebookSnapshotFn _loadSnapshot;
   final ExtractJournalTurnFn _extract;
   final TurnRedaction _redaction;
+
+  /// Saves the turn to the notebook's server transcript
+  /// (`conversation_turns`, idempotent), which is what the closing card and
+  /// the brief are written from. The live session saves turns on a separate,
+  /// fire-and-forget path, so a turn that only reached the journal before a
+  /// kill is missing there; without this the card would be written without
+  /// it. A failure leaves the turn for the next run (nothing committed).
+  final Future<void> Function(String notebookId, ConversationTurn turn)?
+      saveTranscript;
 
   /// Notebooks the server did not find during this run.
   final Set<String> _notFoundThisRun = {};
@@ -244,6 +255,19 @@ class HeadlessTurnFinisher {
     var rebased = false;
 
     try {
+      final save = saveTranscript;
+      if (save != null) {
+        await save(
+          turn.notebookId,
+          ConversationTurn(
+            turnId: turn.turnId,
+            role: turn.speaker,
+            text: turn.transcript,
+            createdAt: turn.finalizedAt,
+            input: turn.input,
+          ),
+        );
+      }
       if (prepared == null) {
         switch (await _prepare(turn, earlier)) {
           case (_NotPrepared reason, _):

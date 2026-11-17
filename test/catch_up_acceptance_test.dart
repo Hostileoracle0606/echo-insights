@@ -465,7 +465,8 @@ void main() {
       );
 
       final first = await device.runner().run();
-      expect(_outcomes(first), ['VectorsStep($_nb, 1 missing) serverCatchesUp']);
+      expect(
+          _outcomes(first), ['VectorsStep($_nb, 1 missing) serverCatchesUp']);
       expect(server.embedModelCalls, 0, reason: 'the phone builds none');
 
       // The server's sweep catches up.

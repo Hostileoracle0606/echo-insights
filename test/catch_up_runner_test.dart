@@ -33,6 +33,9 @@ class Rig {
   final cardErrors = <String, Object>{};
   final briefErrors = <String, Object>{};
 
+  /// While set, the work-list read hangs (a half-open connection).
+  Completer<void>? loadHold;
+
   /// A step that never finishes until released (keyed by call name).
   final hold = <String, Completer<void>>{};
 
@@ -76,6 +79,8 @@ class Rig {
     return CatchUpRunner(
       loadWork: () async {
         loads++;
+        final held = loadHold;
+        if (held != null) await held.future;
         if (loadError != null) throw loadError!;
         return work[(loads - 1).clamp(0, work.length - 1)];
       },
@@ -358,6 +363,34 @@ void main() {
       expect(report.loadFailed, isTrue);
     });
 
+    test('a hung work-list read times out; the run ends, not hangs', () async {
+      final rig = Rig(work: [
+        work(cards: [card('a', 1)]),
+      ])
+        ..loadHold = Completer<void>();
+      final running = rig.runner(stepTimeout: const Duration(seconds: 5)).run();
+      await pumpEventQueue();
+      expect(rig.delays.last.duration, const Duration(seconds: 5));
+      rig.fireDelays();
+      final report = await running;
+      expect(report.loadFailed, isTrue);
+      expect(rig.calls, isEmpty);
+    });
+
+    test('cancelling while the work-list read hangs ends the run', () async {
+      final rig = Rig(work: [
+        work(cards: [card('a', 1)]),
+      ])
+        ..loadHold = Completer<void>();
+      final token = CatchUpCancelToken();
+      final running = rig.runner().run(token);
+      await pumpEventQueue();
+      token.cancel();
+      final report = await running;
+      expect(report.cancelled, isTrue);
+      expect(rig.calls, isEmpty);
+    });
+
     test('a step that hangs is timed out and the next one runs', () async {
       final rig = Rig(work: [
         work(cards: [card('a', 1), card('b', 1)]),
@@ -366,7 +399,7 @@ void main() {
       final running = rig.runner(stepTimeout: const Duration(seconds: 5)).run();
       await pumpEventQueue();
       expect(rig.calls, ['card:a']);
-      expect(rig.delays.single.duration, const Duration(seconds: 5));
+      expect(rig.delays.last.duration, const Duration(seconds: 5));
       rig.fireDelays();
       final report = await running;
       expect(outcomes(report), [
@@ -389,7 +422,7 @@ void main() {
           .run();
       rig.clock = rig.clock.add(const Duration(seconds: 50));
       await pumpEventQueue();
-      expect(rig.delays.single.duration, const Duration(seconds: 10));
+      expect(rig.delays.last.duration, const Duration(seconds: 10));
       rig.fireDelays();
       await running;
     });
@@ -431,8 +464,7 @@ void main() {
       final still = <String>{};
       final rig = Rig()..journalIds = ['a'];
       rig.hold['turns:a'] = Completer<void>();
-      final first =
-          rig
+      final first = rig
           .runner(
             turnsStillRunning: still,
             stepTimeout: const Duration(seconds: 1),
