@@ -22,6 +22,10 @@
 --      on_auth_user_deleted trigger. Sessions, refresh tokens, identities,
 --      one-time tokens and flow_state are seeded and checked like section 3.
 --
+-- NOTE: the auth seeds below hard-code GoTrue's column names (sessions,
+-- refresh_tokens, identities, one_time_tokens, flow_state); a GoTrue upgrade
+-- that renames or adds a required column breaks the seed, not the deletion.
+--
 -- To cover a new table: add one `inventory` row, one seed insert, and bump
 -- the plan below (2 + 3 per public table, 2 + 3 per seeded auth table).
 -- LM-128 (separate branch) must keep notebook_commit_requests in `inventory`.
@@ -189,7 +193,7 @@ begin
   return n;
 end $$;
 
--- rows a user has in an auth table (sid doubles as U's auth.sessions id, seeded above)
+-- rows a user has in an auth table, by the auth_inventory predicate (user_id only)
 create function pg_temp.auth_rows_of(p_tbl text, p_who text) returns bigint
 language plpgsql as $$
 declare
