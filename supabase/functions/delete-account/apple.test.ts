@@ -19,7 +19,7 @@ async function throwawayConfig() {
 }
 
 type Rec = { url: string; method: string; contentType: string | null; form: URLSearchParams };
-function fakeFetch(responses: Array<{ status: number; json?: unknown } | "throw">) {
+function fakeFetch(responses: Array<{ status: number; json?: unknown } | "throw" | "hang">) {
   const calls: Rec[] = [];
   let i = 0;
   const f = (async (url: string | URL | Request, init?: RequestInit) => {
@@ -30,6 +30,11 @@ function fakeFetch(responses: Array<{ status: number; json?: unknown } | "throw"
       form: new URLSearchParams(String(init?.body ?? "")),
     });
     const r = responses[Math.min(i++, responses.length - 1)];
+    if (r === "hang") {
+      return await new Promise<Response>((_, rej) =>
+        init?.signal?.addEventListener("abort", () => rej(new DOMException("aborted", "TimeoutError")))
+      );
+    }
     if (r === "throw") throw new Error("network");
     return new Response(r.json === undefined ? "" : JSON.stringify(r.json), { status: r.status });
   }) as typeof fetch;
@@ -129,4 +134,59 @@ Deno.test("appleConfigFromEnv: complete -> config; any missing -> null", () => {
 Deno.test("appleConfigFromEnv: literal \\n in PEM is normalized", () => {
   const env = { get: (k: string) => ({ APPLE_TEAM_ID: "T", APPLE_KEY_ID: "K", APPLE_CLIENT_ID: "C", APPLE_PRIVATE_KEY: "a\\nb" } as Record<string, string>)[k] };
   assertEquals(appleConfigFromEnv(env)!.privateKeyPem, "a\nb");
+});
+
+Deno.test("exchange ok, revoke fails once then ok -> true, exchange called once", async () => {
+  const { cfg } = await throwawayConfig();
+  const { f, calls } = fakeFetch([
+    { status: 200, json: { refresh_token: "RT" } },
+    { status: 500 },
+    { status: 200 },
+  ]);
+  assertEquals(await revokeAppleAccess({ cfg, code: "c", fetch: f, now: () => 1_800_000_000_000 }), true);
+  assertEquals(calls.map((c) => c.url.split("/").pop()), ["token", "revoke", "revoke"]);
+  assertEquals(calls[2].form.get("token"), "RT");
+});
+
+Deno.test("revoke fails twice -> false, at most 2 revoke calls", async () => {
+  const { cfg } = await throwawayConfig();
+  const { f, calls } = fakeFetch([{ status: 200, json: { refresh_token: "RT" } }, { status: 500 }]);
+  assertEquals(await revokeAppleAccess({ cfg, code: "c", fetch: f, now: () => 1_800_000_000_000 }), false);
+  assertEquals(calls.length, 3);
+});
+
+Deno.test("exchange 400 is not retried (code is consumed)", async () => {
+  const { cfg } = await throwawayConfig();
+  const { f, calls } = fakeFetch([{ status: 400, json: { error: "invalid_grant" } }]);
+  assertEquals(await revokeAppleAccess({ cfg, code: "c", fetch: f, now: () => 1_800_000_000_000 }), false);
+  assertEquals(calls.length, 1);
+});
+
+Deno.test("exchange 5xx then ok is retried once", async () => {
+  const { cfg } = await throwawayConfig();
+  const { f, calls } = fakeFetch([
+    { status: 503 },
+    { status: 200, json: { refresh_token: "RT" } },
+    { status: 200 },
+  ]);
+  assertEquals(await revokeAppleAccess({ cfg, code: "c", fetch: f, now: () => 1_800_000_000_000 }), true);
+  assertEquals(calls.length, 3);
+});
+
+Deno.test("exchange transport error then ok is retried once", async () => {
+  const { cfg } = await throwawayConfig();
+  const { f, calls } = fakeFetch(["throw", { status: 200, json: { refresh_token: "RT" } }, { status: 200 }]);
+  assertEquals(await revokeAppleAccess({ cfg, code: "c", fetch: f, now: () => 1_800_000_000_000 }), true);
+  assertEquals(calls.length, 3);
+});
+
+Deno.test("never-resolving fetch ends as failure (timeout), does not hang", async () => {
+  const { cfg } = await throwawayConfig();
+  const { f } = fakeFetch(["hang"]);
+  const t0 = Date.now();
+  assertEquals(
+    await revokeAppleAccess({ cfg, code: "c", fetch: f, now: () => 1_800_000_000_000, timeoutMs: 20 }),
+    false,
+  );
+  assert(Date.now() - t0 < 2000);
 });

@@ -224,18 +224,13 @@ Deno.test("non-apple user: revoke never called, apple_revoked null", async () =>
   assertEquals(h.order, ["delete"]);
 });
 
-Deno.test("apple failure retried once then deletes anyway with apple_revoked:false", async () => {
+Deno.test("apple failure (retries live inside apple.ts) deletes anyway with apple_revoked:false", async () => {
   const h = appleHarness({ revoke: () => Promise.resolve(false) });
   const r = await h.run();
   assertEquals(r.status, 200);
   assertEquals(r.body, { deleted: true, apple_revoked: false });
-  assertEquals(h.order, ["revoke", "revoke", "delete"]);
-});
-
-Deno.test("apple retry succeeding on second attempt -> true", async () => {
-  let n = 0;
-  const h = appleHarness({ revoke: () => Promise.resolve(++n === 2) });
-  assertEquals((await h.run()).body, { deleted: true, apple_revoked: true });
+  assertEquals(h.order, ["revoke", "delete"]); // handler never re-calls: the code is single-use
+  assertEquals(h.logs.some((l) => l.event === "apple_revoke" && l.stage === "failed"), true);
 });
 
 Deno.test("missing code -> delete proceeds, apple_revoked:false", async () => {
@@ -243,6 +238,7 @@ Deno.test("missing code -> delete proceeds, apple_revoked:false", async () => {
   const r = await h.run({});
   assertEquals(r.body, { deleted: true, apple_revoked: false });
   assertEquals(h.order.at(-1), "delete");
+  assertEquals(h.logs.some((l) => l.event === "apple_revoke" && l.stage === "no_code"), true);
 });
 
 Deno.test("missing apple config (no revokeApple dep) -> delete proceeds, apple_revoked:false", async () => {
@@ -250,13 +246,14 @@ Deno.test("missing apple config (no revokeApple dep) -> delete proceeds, apple_r
   const r = await h.run();
   assertEquals(r.body, { deleted: true, apple_revoked: false });
   assertEquals(h.order, ["delete"]);
+  assertEquals(h.logs.some((l) => l.event === "apple_revoke" && l.stage === "no_config"), true);
 });
 
 Deno.test("a thrown revoke does not block deletion and is not logged verbatim", async () => {
   const h = appleHarness({ revoke: () => Promise.reject(new Error("secret-body CODE-X")) });
   const r = await h.run();
   assertEquals(r.body, { deleted: true, apple_revoked: false });
-  assertEquals(h.order, ["revoke", "revoke", "delete"]);
+  assertEquals(h.order, ["revoke", "delete"]);
   const dump = JSON.stringify(h.logs);
   assert(!dump.includes("CODE-X") && !dump.includes("secret-body"));
 });
@@ -265,4 +262,13 @@ Deno.test("body is read only for apple_authorization_code (non-string ignored)",
   const h = appleHarness();
   await h.run({ apple_authorization_code: 123, user_id: "victim" });
   assertEquals(h.codes, []); // no usable code: revoke not attempted
+});
+
+Deno.test("apple log reason survives safeLog's allowlist", async () => {
+  const { sanitizeLogFields } = await import("../_shared/safe-log.ts");
+  assertEquals(sanitizeLogFields({ event: "apple_revoke", stage: "no_config", ok: false }), {
+    event: "apple_revoke",
+    stage: "no_config",
+    ok: false,
+  });
 });

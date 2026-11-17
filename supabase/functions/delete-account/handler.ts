@@ -69,17 +69,21 @@ async function readCode(req: Request): Promise<string | undefined> {
   }
 }
 
-/** One retry; never throws; failure never blocks deletion. */
-async function tryRevokeApple(deps: Deps, code: string | undefined): Promise<boolean> {
-  if (!deps.revokeApple || !code) return false;
-  for (let attempt = 0; attempt < 2; attempt++) {
-    try {
-      if (await deps.revokeApple({ code })) return true;
-    } catch {
-      // swallow: error text could echo the code or Apple's body
-    }
+/** Retries live in apple.ts (the code exchange must not be repeated). Never throws. */
+async function tryRevokeApple(
+  deps: Deps,
+  code: string | undefined,
+): Promise<{ revoked: boolean; reason: string }> {
+  if (!deps.revokeApple) return { revoked: false, reason: "no_config" };
+  if (!code) return { revoked: false, reason: "no_code" };
+  try {
+    return (await deps.revokeApple({ code }))
+      ? { revoked: true, reason: "ok" }
+      : { revoked: false, reason: "failed" };
+  } catch {
+    // swallow: error text could echo the code or Apple's body
+    return { revoked: false, reason: "failed" };
   }
-  return false;
 }
 
 export function createHandler(deps: Deps): (req: Request) => Promise<Response> {
@@ -113,8 +117,10 @@ export function createHandler(deps: Deps): (req: Request) => Promise<Response> {
 
       let appleRevoked: boolean | null = null;
       if (user.identities?.some((i) => i.provider === "apple")) {
-        appleRevoked = await tryRevokeApple(deps, await readCode(req));
-        deps.log({ ok: appleRevoked, event: "apple_revoke" });
+        const r = await tryRevokeApple(deps, await readCode(req));
+        appleRevoked = r.revoked;
+        // `stage` is on safeLog's string allowlist; `reason` would be dropped.
+        deps.log({ ok: r.revoked, event: "apple_revoke", stage: r.reason });
       }
 
       const { error: delErr } = await client.auth.admin.deleteUser(user.id);

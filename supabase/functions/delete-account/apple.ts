@@ -54,48 +54,76 @@ export async function makeClientSecret(cfg: AppleConfig, nowSec: number): Promis
   return `${signingInput}.${b64url(sig)}`;
 }
 
-const form = (o: Record<string, string>) => ({
+const DEFAULT_TIMEOUT_MS = 5000;
+
+const form = (o: Record<string, string>, timeoutMs: number) => ({
   method: "POST",
   headers: { "Content-Type": "application/x-www-form-urlencoded" },
   body: new URLSearchParams(o).toString(),
+  signal: AbortSignal.timeout(timeoutMs),
 });
 
-/** Exchange the code for a refresh token, then revoke it. True on 2xx both. */
+/** Exchange the code ONCE (retry only if no answer from Apple: throw/5xx), then
+ * revoke the refresh token (one retry). True on 2xx for both. Never throws. */
 export async function revokeAppleAccess(p: {
   cfg: AppleConfig;
   code: string;
   fetch: typeof fetch;
   now: () => number; // ms
   baseUrl?: string;
+  timeoutMs?: number;
 }): Promise<boolean> {
   const base = p.baseUrl ?? APPLE;
-  const secret = await makeClientSecret(p.cfg, Math.floor(p.now() / 1000));
-
-  const tokenRes = await p.fetch(
-    `${base}/auth/token`,
-    form({ client_id: p.cfg.clientId, client_secret: secret, code: p.code, grant_type: "authorization_code" }),
-  );
-  if (!tokenRes.ok) {
-    await tokenRes.body?.cancel();
-    return false;
-  }
-  let refresh: unknown;
+  const timeout = p.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   try {
-    refresh = (await tokenRes.json())?.refresh_token;
+    const secret = await makeClientSecret(p.cfg, Math.floor(p.now() / 1000));
+
+    // A 4xx means Apple consumed or rejected the single-use code: do not resend.
+    let refresh: string | undefined;
+    for (let attempt = 0; attempt < 2 && refresh === undefined; attempt++) {
+      let res: Response;
+      try {
+        res = await p.fetch(
+          `${base}/auth/token`,
+          form({
+            client_id: p.cfg.clientId,
+            client_secret: secret,
+            code: p.code,
+            grant_type: "authorization_code",
+          }, timeout),
+        );
+      } catch {
+        continue; // transport error or timeout: Apple never answered
+      }
+      if (res.ok) {
+        try {
+          const t = (await res.json())?.refresh_token;
+          if (typeof t === "string" && t) refresh = t;
+        } catch { /* unreadable body */ }
+        break;
+      }
+      await res.body?.cancel().catch(() => {});
+      if (res.status < 500) return false;
+    }
+    if (refresh === undefined) return false;
+
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const res = await p.fetch(
+          `${base}/auth/revoke`,
+          form({
+            client_id: p.cfg.clientId,
+            client_secret: secret,
+            token: refresh,
+            token_type_hint: "refresh_token",
+          }, timeout),
+        );
+        await res.body?.cancel().catch(() => {});
+        if (res.ok) return true;
+      } catch { /* retry once */ }
+    }
+    return false;
   } catch {
     return false;
   }
-  if (typeof refresh !== "string" || !refresh) return false;
-
-  const revokeRes = await p.fetch(
-    `${base}/auth/revoke`,
-    form({
-      client_id: p.cfg.clientId,
-      client_secret: secret,
-      token: refresh,
-      token_type_hint: "refresh_token",
-    }),
-  );
-  await revokeRes.body?.cancel();
-  return revokeRes.ok;
 }
