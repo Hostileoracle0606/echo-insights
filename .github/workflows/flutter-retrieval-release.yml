@@ -90,6 +90,7 @@ jobs:
           flutter build ios --release --no-codesign \
             --dart-define="SUPABASE_URL=$SUPABASE_URL" \
             --dart-define="SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY" \
-            --dart-define="NOTEBOOK_RUNTIME_URL=$NOTEBOOK_RUNTIME_URL"
+            --dart-define="NOTEBOOK_RUNTIME_URL=$NOTEBOOK_RUNTIME_URL" \
+            --dart-define=PASSKEYS_ENABLED=true
       - name: Check build for bundled credentials
         run: node scripts/production-secrets.mjs build/ios/iphoneos/Runner.app
