@@ -18,7 +18,7 @@ import { ExtractionFailed, PROVIDER_HOSTS, replayScenario } from "./replay";
 import { interleaveByCategory, loadScenarios } from "./scenario.mjs";
 import { scoreProbe, summarize } from "./score.mjs";
 import { snapshotDigest, takeSnapshot } from "./snapshot.mjs";
-import { localStack } from "./stack.mjs";
+import { localStack, withUser } from "./stack.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const resultsRoot = join(root, "eval/results");
@@ -99,6 +99,8 @@ const saveQuota = () => {
 const scenarios = interleaveByCategory(loadScenarios(join(root, "eval/memory/scenarios")))
   .filter((s) => !only || s.id === only);
 const rel = (p: string) => relative(root, p);
+// Test users whose delete failed even after retries; the final sweep retries them.
+const leftovers: string[] = [];
 
 async function extract() {
   const log: Array<Record<string, unknown>> = [];
@@ -106,15 +108,14 @@ async function extract() {
   for (const scenario of scenarios) {
     if (latest("graphs", scenario.id)) continue;
     if (fetchImpl.stopReason()) break;
-    const users: string[] = [];
     try {
-      const user = await stack!.createUser(users);
-      const result = await replayScenario({
+      const { value: result, leftover } = await withUser(stack!, (user: { id: string; token: string }) => replayScenario({
         scenario,
         env: { supabaseUrl: stack!.url, anonKey: stack!.anonKey, user, geminiKey },
         fetchImpl,
         takeSnapshot: (notebookId) => takeSnapshot({ ...stack!.admin, userId: user.id, notebookId }),
-      });
+      }));
+      leftovers.push(...leftover);
       const snapshot = result.snapshot as Parameters<typeof snapshotDigest>[0];
       writeJson(join(runDir, "graphs", `${scenario.id}.json`), {
         meta: { ...result.meta, commit: sha },
@@ -134,7 +135,6 @@ async function extract() {
       log.push({ scenario: scenario.id, outcome: `failed: ${outcome}` });
       console.log(`extract ${scenario.id}: failed (${outcome}); nothing saved`);
     } finally {
-      for (const id of users) await stack!.deleteUser(id);
       saveQuota();
     }
   }
@@ -178,13 +178,14 @@ async function probe() {
     }
     const saved = readJson(path);
     if (snapshotDigest(saved.snapshot) !== saved.digest) throw new Error(`${rel(path)}: digest mismatch`);
-    const probeResults = await probeScenario({
+    const { results: probeResults, leftover } = await probeScenario({
       snapshot: saved.snapshot,
       scenario,
       stack,
       embedSecret: env.EMBED_INTERNAL_SECRET,
       brief: (ctx: { user: { id: string; token: string }; notebookId: string }) => brief(scenario.id, saved.digest, ctx),
     });
+    leftovers.push(...leftover);
     sources[scenario.id] = { graph: rel(path), extractCommit: saved.meta.commit, actions: saved.meta.actions,
       brief: probeResults[0]?.briefOutcome ?? "not_run" };
     results.push(...probeResults);
@@ -255,6 +256,12 @@ try {
   exitCode = 1;
 } finally {
   saveQuota();
-  await stack.sweep().catch(() => {});
+  try {
+    const swept = await stack.sweep();
+    if (leftovers.length || swept) console.log(`cleanup: ${leftovers.length} delete(s) failed during the run; final sweep removed ${swept} memory-eval user(s)`);
+  } catch (error) {
+    console.error(`cleanup: final sweep failed (${(error as Error).message}); memory-eval users may remain, the next run's sweep removes them`);
+    exitCode = exitCode || 1;
+  }
 }
 process.exit(exitCode);

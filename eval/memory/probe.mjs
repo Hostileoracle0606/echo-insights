@@ -7,6 +7,7 @@ import { createSupabaseAuthorizer } from '../../infra/lambda/supabase-authorizer
 import { createSessionBriefHandler } from '../../infra/lambda/close-session/brief.mjs';
 import { gatewayInvoke } from '../privacy/probes/lambdas.mjs';
 import { restoreSnapshot } from './snapshot.mjs';
+import { withUser } from './stack.mjs';
 
 export const RETRIEVE_K = 8;
 
@@ -65,10 +66,9 @@ export async function runBrief({ stack, user, notebookId, geminiKey, fetchImpl }
   return { brief: rows[0]?.brief ?? null, outcome: 'ready' };
 }
 
+/** Returns {results, leftover}: leftover lists a test user whose delete failed after retries. */
 export async function probeScenario({ snapshot, scenario, stack, embedSecret, brief }) {
-  const users = [];
-  try {
-    const user = await stack.createUser(users);
+  const { value: results, leftover } = await withUser(stack, async (user) => {
     const { notebookId } = await restoreSnapshot({ ...stack.admin, userId: user.id, snapshot });
     const embed = await fetch(`${stack.url}/functions/v1/embed-entities`, {
       method: 'POST',
@@ -111,7 +111,6 @@ export async function probeScenario({ snapshot, scenario, stack, embedSecret, br
       });
     }
     return results;
-  } finally {
-    for (const id of users) await stack.deleteUser(id);
-  }
+  });
+  return { results, leftover };
 }

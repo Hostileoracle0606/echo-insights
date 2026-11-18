@@ -7,7 +7,12 @@ import { makeSigner } from '../privacy/credentials.mjs';
 
 export const TEST_EMAIL = /^memory-eval-[0-9a-f]+@example\.test$/;
 
-export function localStack(env) {
+// 502/503/504: the local gateway or auth server timed out; worth another try.
+const TRANSIENT = new Set([502, 503, 504]);
+
+export function localStack(env, {
+  fetchImpl = fetch, sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+} = {}) {
   if (!env.SUPABASE_URL || !env.SUPABASE_ANON_KEY || !env.SUPABASE_SERVICE_ROLE_KEY) return null;
   if (!env.SUPABASE_JWT_SECRET && !env.SUPABASE_JWT_SIGNING_JWK) return null;
   const url = assertLocalTarget(env.SUPABASE_URL).origin;
@@ -30,7 +35,7 @@ export function localStack(env) {
   };
 
   async function call(path, { method = 'GET', headers = adminHeaders, body } = {}) {
-    const response = await fetch(`${url}${path}`, {
+    const response = await fetchImpl(`${url}${path}`, {
       method, headers, body: body === undefined ? undefined : JSON.stringify(body),
       signal: AbortSignal.timeout(15_000),
     });
@@ -51,11 +56,18 @@ export function localStack(env) {
     return { id: user.id, token: session.access_token };
   }
 
+  // Idempotent, so a transient timeout is retried (1, 2, 4, 8 s); 404 = gone.
   async function deleteUser(id) {
-    try {
-      await call(`/auth/v1/admin/users/${id}`, { method: 'DELETE' });
-    } catch (error) {
-      if (!/→ 404$/.test(error.message)) throw error;
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        await call(`/auth/v1/admin/users/${id}`, { method: 'DELETE' });
+        return;
+      } catch (error) {
+        if (/→ 404$/.test(error.message)) return;
+        const status = Number(/→ (\d+)$/.exec(error.message)?.[1]);
+        if (!TRANSIENT.has(status) || attempt >= 5) throw error;
+        await sleep(1000 * 2 ** (attempt - 1));
+      }
     }
   }
 
@@ -68,4 +80,31 @@ export function localStack(env) {
   }
 
   return { url, anonKey, admin: { url, adminHeaders }, call, createUser, deleteUser, sweep };
+}
+
+/**
+ * Runs `work` as a fresh throwaway user and deletes the user after. If the
+ * work succeeded and only the delete failed (after deleteUser's retries), the
+ * work is kept and the user is reported in `leftover` for the end-of-run
+ * sweep; a work error is rethrown after the cleanup attempt.
+ */
+export async function withUser(stack, work) {
+  const created = [];
+  let value;
+  let workError = null;
+  try {
+    value = await work(await stack.createUser(created));
+  } catch (error) {
+    workError = error;
+  }
+  const leftover = [];
+  for (const id of created) {
+    try {
+      await stack.deleteUser(id);
+    } catch {
+      leftover.push(id);
+    }
+  }
+  if (workError) throw workError;
+  return { value, leftover };
 }
