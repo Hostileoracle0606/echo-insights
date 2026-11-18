@@ -1,0 +1,8 @@
+{"id":"deletion-remove-project","category":"deletion",
+ "sessions":[{"turns":["I'm building a birdhouse project called Wren Box for my nephew Otto."]},
+             {"turns":["Otto asked about the Wren Box again, and his soccer team won on Sunday."]}],
+ "actions":[{"after_session":1,"kind":"remove","name":"Wren Box"}],
+ "probes":[{"ask":"What am I building?","expect_not_retrieved":["Wren Box"]},
+           {"ask":"What's going on with Otto?","expect_retrieved":["Otto"],"expect_not_retrieved":["Wren Box"]},
+           {"ask":"Do I have any woodworking projects?","expect_not_retrieved":["Wren Box"]},
+           {"ask":"How did the soccer game go?","expect_retrieved":["Otto"]}]}

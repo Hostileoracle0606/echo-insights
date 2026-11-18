@@ -1,0 +1,8 @@
+{"id":"correction-edit-description","category":"correction",
+ "sessions":[{"turns":["Had coffee with Felix Navarro, he's a pediatric nurse at Saint Corin hospital."]},
+             {"turns":["Felix invited me to his birthday dinner on Friday."]}],
+ "actions":[{"after_session":1,"kind":"correct","name":"Felix Navarro","description":"Felix Navarro is a physical therapist at Saint Corin hospital and an old friend from college."}],
+ "probes":[{"ask":"What does Felix do for work?","expect_retrieved":["Felix Navarro"],"expect_status":"decided","decided_markers":["physical therapist"],"tentative_markers":["nurse"],"stale_text":["pediatric nurse"]},
+           {"ask":"Where does Felix work?","expect_retrieved":["Saint Corin"]},
+           {"ask":"Whose birthday is coming up?","expect_retrieved":["Felix Navarro"]},
+           {"ask":"How do I know Felix?","expect_retrieved":["Felix Navarro"],"expect_status":"decided","decided_markers":["college"],"tentative_markers":["nurse"]}]}
