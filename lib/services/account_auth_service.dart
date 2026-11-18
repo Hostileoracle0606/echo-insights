@@ -1,3 +1,6 @@
+// The passkey API is experimental in supabase_flutter 2.15+ (LM-79).
+// ignore_for_file: experimental_member_use
+
 import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
@@ -153,8 +156,8 @@ class SupabaseAuthGateway implements AuthGateway {
   @override
   Future<List<UserIdentity>> identities() => _client.auth.getUserIdentities();
 
-  // The passkey API is experimental in supabase_flutter 2.15+.
-  // ignore_for_file: experimental_member_use
+  // The passkey API is experimental in supabase_flutter 2.15+; see the
+  // file-level ignore at the top of this file.
   @override
   Future<AuthResponse?> signInWithPasskey() async {
     try {
