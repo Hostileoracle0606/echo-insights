@@ -125,7 +125,7 @@ async function extract() {
         digest: snapshotDigest(snapshot),
         snapshot,
       });
-      log.push({ scenario: scenario.id, outcome: "saved", providerCalls: result.meta.providerCalls, actions: result.meta.actions });
+      log.push({ scenario: scenario.id, outcome: "saved", providerCalls: result.meta.providerCalls, actions: result.meta.actions, lostTurns: result.meta.lostTurns });
       done += 1;
       console.log(`extract ${scenario.id}: saved (${result.meta.providerCalls} calls)`);
     } catch (error) {
@@ -190,12 +190,25 @@ async function probe() {
     });
     leftovers.push(...leftover);
     sources[scenario.id] = { graph: rel(path), extractCommit: saved.meta.commit, actions: saved.meta.actions,
-      brief: probeResults[0]?.briefOutcome ?? "not_run" };
+      lostTurns: saved.meta.lostTurns ?? [], brief: probeResults[0]?.briefOutcome ?? "not_run" };
     results.push(...probeResults);
     console.log(`probe ${scenario.id}: ${probeResults.length} probes, brief ${probeResults[0]?.briefOutcome}`);
   }
   writeJson(join(runDir, "probes.json"), { commit: sha, k: 8, sources, results });
   return { results, sources };
+}
+
+// The newest extract-log entry for a scenario, across run directories.
+function lastExtractOutcome(id: string): string | undefined {
+  if (!existsSync(resultsRoot)) return undefined;
+  const dirs = readdirSync(resultsRoot).filter((d) => /^\d{4}-\d{2}-\d{2}-/.test(d)).sort().reverse();
+  for (const dir of dirs) {
+    const path = join(resultsRoot, dir, "memory", "extract-log.json");
+    if (!existsSync(path)) continue;
+    const entry = (readJson(path) as Array<{ scenario: string; outcome: string }>).filter((e) => e.scenario === id).pop();
+    if (entry) return entry.outcome;
+  }
+  return undefined;
 }
 
 type ProbeResult = { scenario: string; probeIndex: number; retrieved: Array<{ name: string }>; briefOutcome: string };
@@ -212,7 +225,11 @@ function score({ results, sources }: { results: unknown[]; sources: Record<strin
       ask: probe.ask,
       retrievedNames: r.retrieved.map((i) => i.name),
       brief: r.briefOutcome,
-      ...scoreProbe(probe, r),
+      ...scoreProbe(probe, r, {
+        actionsApplied: sources[r.scenario]?.actions?.length
+          ? sources[r.scenario].actions.every((a: { outcome: string }) => a.outcome === "applied")
+          : undefined,
+      }),
     };
   });
   const missing = scenarios.filter((s) => !sources[s.id]?.graph);
@@ -234,7 +251,12 @@ function score({ results, sources }: { results: unknown[]; sources: Record<strin
       scored: scenarios.length - missing.length,
       probesScored: rows.length,
       probesTotal: scenarios.reduce((n, s) => n + s.probes.length, 0),
-      notScored: missing.map((s) => s.id),
+      // Not scored yet: no snapshot. `failed` = the latest extract attempt
+      // ended in an error (not a quota stop); `pending` = not attempted or
+      // stopped by quota.
+      failed: missing.filter((s) => lastExtractOutcome(s.id)?.startsWith("failed")).map((s) => ({ id: s.id, outcome: lastExtractOutcome(s.id) })),
+      pending: missing.filter((s) => !lastExtractOutcome(s.id)?.startsWith("failed")).map((s) => s.id),
+      lostTurns: Object.fromEntries(Object.entries(sources).filter(([, v]) => v.lostTurns?.length).map(([id, v]) => [id, v.lostTurns])),
       briefs: Object.fromEntries(Object.entries(sources).map(([id, v]) => [id, v.brief ?? "not_run"])),
       actions: Object.fromEntries(Object.entries(sources).filter(([, v]) => v.actions?.length).map(([id, v]) => [id, v.actions])),
     },
@@ -244,8 +266,8 @@ function score({ results, sources }: { results: unknown[]; sources: Record<strin
   writeJson(join(runDir, "memory.json"), memory);
   const t = memory.summary.total;
   console.log(`scored ${rows.length}/${memory.scenarios.probesTotal} probes from ${memory.scenarios.scored}/${scenarios.length} scenarios`);
-  console.log(`recall@8 ${t.recall.hit}/${t.recall.of} · extraction misses ${t.extractionMisses.count}/${t.extractionMisses.ofExpected} · precision@8 ${t.precision.hit}/${t.precision.of}`);
-  console.log(`stale ${t.stale.probes}/${t.stale.of} (retrieval ${t.stale.retrieval}, brief ${t.stale.brief}/${t.stale.briefChecked} checked) · status ${t.status.correct}/${t.status.of} · order ${t.order.kept}/${t.order.of} · ambiguity ${t.ambiguity.acknowledged}/${t.ambiguity.of}`);
+  console.log(`recall@1 ${t.recallAt1.hit}/${t.recallAt1.of} · recall@3 ${t.recallAt3.hit}/${t.recallAt3.of} · recall@8 ${t.recall.hit}/${t.recall.of} (k covered the whole graph in ${t.coversGraph.probes}/${t.coversGraph.of} probes) · extraction misses ${t.extractionMisses.count}/${t.extractionMisses.ofExpected} · precision@8 ${t.precision.hit}/${t.precision.of}`);
+  console.log(`stale probes ${t.stale.probes}/${t.stale.of} (retrieval ${t.stale.retrieval}/${t.stale.of}; vacuous ${t.staleVacuous}) · stale briefs ${t.briefs.stale}/${t.briefs.of} · status ${t.status.correct}/${t.status.of} · order ${t.order.kept}/${t.order.of} · ambiguity ${t.ambiguity.acknowledged}/${t.ambiguity.of} · distractor confusion ${t.distractors.confused}/${t.distractors.of}`);
 }
 
 let exitCode = 0;

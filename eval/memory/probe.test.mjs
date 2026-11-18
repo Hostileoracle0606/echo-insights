@@ -51,3 +51,9 @@ test('embedNotebook fails loudly after 3 attempts, or at once on ok:false', asyn
   await assert.rejects(embedNotebook({ url: 'http://x', secret: 's', notebookId: 'nb',
     fetchImpl: async () => new Response('{"ok":false,"stage":"notebook"}', { status: 200 }), sleep: async () => {} }), /notebook/);
 });
+
+test('retrieved items carry superseded relations separately as history, never as current text', () => {
+  const [northwind] = retrievedItems(state, ['northwind']);
+  assert.equal(northwind.history, 'user might leave Northwind');
+  assert.doesNotMatch(northwind.text, /might leave/);
+});

@@ -43,6 +43,7 @@ const broken = {
   },
   'ambiguity expected with no token to look for': (s) => { s.probes[0].expect_ambiguity = true; },
   'stale_text that is not a list of strings': (s) => { s.probes[0].stale_text = 'senior'; },
+  'distractors that is not a list of strings': (s) => { s.probes[0].distractors = 'Priyanka'; },
 };
 for (const [label, breakIt] of Object.entries(broken)) {
   test(`${label} throws naming the file`, () => {
@@ -71,4 +72,11 @@ test('interleaveByCategory takes one scenario per category in turn, so a partial
   const s = (id, category) => ({ id, category });
   const out = interleaveByCategory([s('a1', 'continuity'), s('a2', 'continuity'), s('b1', 'correction'), s('c1', 'deletion'), s('d1', 'changing_facts'), s('d2', 'changing_facts')]);
   assert.deepEqual(out.map((x) => x.id), ['a1', 'b1', 'c1', 'd1', 'a2', 'd2']);
+});
+
+test('the similar-names scenario scores its look-alike as a distractor, not as a stale fact', () => {
+  const dir = fileURLToPath(new URL('./scenarios/', import.meta.url));
+  const s = loadScenarios(dir).find((x) => x.id === 'changing-similar-names');
+  assert.deepEqual(s.probes.map((p) => p.distractors ?? []), [['Priyanka Rao'], [], ['Priya Shah'], []]);
+  assert.ok(s.probes.every((p) => !p.expect_not_retrieved?.length));
 });

@@ -2,7 +2,7 @@
 // the repo's @ alias): npx vitest run --config eval/memory/vite.config.ts
 import { describe, expect, it } from "vitest";
 import { BudgetExhausted, createBudget, providerFetch } from "./budget.mjs";
-import { CommitRejected, replayScenario } from "./replay";
+import { replayScenario } from "./replay";
 
 const SUPABASE = "http://127.0.0.1:55321";
 const NOTEBOOK = "11111111-2222-4333-8444-555555555555";
@@ -100,15 +100,19 @@ describe("replayScenario", () => {
     expect(backend.events.filter((e) => e === "extract")).toHaveLength(1);
   });
 
-  it("names the turn and the undeclared relation endpoints when the commit is rejected", async () => {
+  it("loses a turn whose commit is rejected and carries on, as the app does, naming the turn and the undeclared endpoints", async () => {
     const backend = fakeBackend({ relationTo: "Harbor Street" });
     const fetchImpl = providerFetch({ realFetch: backend.realFetch, budget: createBudget(10),
       providerHosts: ["generativelanguage.googleapis.com"], supabaseUrl: SUPABASE });
-    const error = await replayScenario({ scenario, env, fetchImpl, takeSnapshot: async () => ({}) as never })
-      .catch((e) => e);
-    expect(error).toBeInstanceOf(CommitRejected);
-    expect(error.turnId).toBe("job-change-decided-s1-t1");
-    expect(error.code).toBe("invalidChange");
-    expect(error.undeclaredEndpoints).toEqual(["harbor-street"]);
+    let snapshotted = 0;
+    const result = await replayScenario({ scenario, env, fetchImpl,
+      takeSnapshot: async () => { snapshotted += 1; return {} as never; } });
+    expect(snapshotted).toBe(1);
+    expect(backend.events.filter((e) => e === "extract")).toHaveLength(2);
+    expect(result.meta.lostTurns).toEqual([
+      { turnId: "job-change-decided-s1-t1", reason: "commit invalidChange", undeclaredEndpoints: ["harbor-street"] },
+      { turnId: "job-change-decided-s2-t1", reason: "commit invalidChange", undeclaredEndpoints: ["harbor-street"] },
+    ]);
+    expect(result.meta.actions[0].outcome).toBe("not_extracted");
   });
 });

@@ -1,7 +1,7 @@
 {"id":"changing-similar-names","category":"changing_facts",
  "sessions":[{"turns":["My colleague Priya Shah is leading the Atlas migration."]},
              {"turns":["Priyanka Rao from finance approved the Atlas budget today."]}],
- "probes":[{"ask":"What does Priya do?","expect_retrieved":["Priya Shah"],"expect_not_retrieved":["Priyanka Rao"]},
+ "probes":[{"ask":"What does Priya do?","expect_retrieved":["Priya Shah"],"distractors":["Priyanka Rao"]},
            {"ask":"Who approved the budget?","expect_retrieved":["Priyanka Rao"]},
-           {"ask":"What team is Priyanka on?","expect_retrieved":["Priyanka Rao"],"expect_not_retrieved":["Priya Shah"]},
+           {"ask":"What team is Priyanka on?","expect_retrieved":["Priyanka Rao"],"distractors":["Priya Shah"]},
            {"ask":"What's happening with Atlas?","expect_retrieved":["Atlas"]}]}

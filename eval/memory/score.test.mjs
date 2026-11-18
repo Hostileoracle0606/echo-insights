@@ -61,9 +61,9 @@ test('status: decided is correct when a decided marker is present and no tentati
   assert.equal(scoreProbe({ expect_retrieved: ['N'] }, result()).status, 'n/a');
 });
 
-test('order: kept when the latest marker is in active text and every earlier one is still in what retrieval returns', () => {
+test('order: kept when the latest marker is in active text and every earlier one survives as a statement', () => {
   const probe = { expect_retrieved: ['Kyoto'], expect_order: ['Lisbon', 'Kyoto'] };
-  assert.equal(scoreProbe(probe, result({ retrieved: [item('Kyoto', 'trip to Kyoto'), item('Lisbon')], context: '- Lisbon\n- Kyoto' })).order, 'kept');
+  assert.equal(scoreProbe(probe, result({ retrieved: [item('Kyoto', 'trip to Kyoto, after cancelling Lisbon')] })).order, 'kept');
   assert.equal(scoreProbe(probe, result({ retrieved: [item('Kyoto', 'trip to Kyoto')], context: '- Kyoto' })).order, 'lost');
   assert.equal(scoreProbe(probe, result({ retrieved: [item('Lisbon', 'trip to Lisbon')], context: '- Lisbon' })).order, 'lost');
 });
@@ -90,4 +90,59 @@ test('summarize: counts per category and in total, never percentages alone', () 
   assert.deepEqual(out.byCategory.deletion.stale, { probes: 1, of: 1, retrieval: 0, brief: 1, briefChecked: 1 });
   assert.deepEqual(out.byCategory.continuity.recall, { hit: 1, of: 1 });
   assert.equal(out.total.probes, 3);
+});
+
+// ── Fix pass after the whole-branch review ─────────────────────────────────
+
+test('rank: recall@1 and @3 use the ranked list, and a probe whose k covers the whole graph is flagged', () => {
+  const s = scoreProbe({ expect_retrieved: ['Maren', 'Clayhouse'] },
+    result({ retrieved: [item('Bellport'), item('Maren'), item('Kiln room'), item('Clayhouse')], extracted: ['Bellport', 'Maren', 'Kiln room', 'Clayhouse'] }));
+  assert.equal(s.firstRank, 2);
+  assert.deepEqual(s.recallAt1, [0, 2]);
+  assert.deepEqual(s.recallAt3, [1, 2]);
+  assert.equal(s.coversGraph, true);
+  assert.equal(scoreProbe({ expect_retrieved: ['Maren'] },
+    result({ retrieved: [item('Maren')], extracted: ['Maren', 'Bellport'] })).coversGraph, false);
+});
+
+test('order: an earlier state that survives only as a bare entity name is not a preserved sequence', () => {
+  const probe = { expect_retrieved: ['Kyoto'], expect_order: ['Lisbon', 'Kyoto'] };
+  // The Lisbon relation is superseded and nothing says the trip was earlier: only the name is left.
+  assert.equal(scoreProbe(probe, result({ retrieved: [item('Kyoto', 'User to Kyoto'), item('Lisbon', '')], context: '- Lisbon (place)\n- Kyoto' })).order, 'lost');
+  // The superseded relation is carried as history: the earlier state is recorded as earlier.
+  assert.equal(scoreProbe(probe, result({ retrieved: [{ ...item('Kyoto', 'User to Kyoto'), history: '' }, { ...item('Lisbon', ''), history: 'User to Lisbon' }] })).order, 'kept');
+});
+
+test('a stale check is vacuous when the scripted action never applied', () => {
+  const s = scoreProbe({ expect_not_retrieved: ['Dana Whitfield'] }, result({ retrieved: [item('Ruth Okafor')] }), { actionsApplied: false });
+  assert.equal(s.stale, null);
+  assert.equal(s.staleVacuous, true);
+});
+
+test('a name-only stale check is vacuous when the name was never in the graph and no action ran', () => {
+  const s = scoreProbe({ expect_retrieved: ['Imogen'], expect_not_retrieved: ['Dayton'] },
+    result({ retrieved: [item('Imogen')], extracted: ['Imogen', 'Dalton'] }));
+  assert.equal(s.stale, null);
+  assert.equal(s.staleVacuous, true);
+});
+
+test('a similar-name distractor is scored as confusion, not as stale resurfacing', () => {
+  const probe = { expect_retrieved: ['Priya Shah'], distractors: ['Priyanka Rao'] };
+  const s = scoreProbe(probe, result({ retrieved: [item('Priya Shah'), item('Priyanka Rao')], extracted: ['Priya Shah', 'Priyanka Rao'] }));
+  assert.equal(s.confused, true);
+  assert.equal(s.stale, null);
+  assert.equal(s.inserted, 0, 'a retrieved distractor is counted as confusion, not as an unrelated insertion');
+});
+
+test('summarize: the brief is tallied once per scenario, and rank and confusion are summed', () => {
+  const stalePr = (i) => ({ scenario: 'city', category: 'correction', probeIndex: i,
+    ...scoreProbe({ expect_retrieved: ['Imogen'], stale_text: ['Dayton'] }, result({ retrieved: [item('Imogen')], extracted: ['Imogen'], brief: { text: 'Dayton' } })) });
+  const rows = [stalePr(0), stalePr(1), stalePr(2),
+    { scenario: 'felix', category: 'correction', probeIndex: 0, ...scoreProbe({ expect_retrieved: ['Felix'], stale_text: ['nurse'] }, result({ retrieved: [item('Felix')], extracted: ['Felix'], brief: { text: 'therapist' } })) },
+    { scenario: 'names', category: 'changing_facts', probeIndex: 0, ...scoreProbe({ expect_retrieved: ['Priya Shah'], distractors: ['Priyanka Rao'] }, result({ retrieved: [item('Priyanka Rao'), item('Priya Shah')], extracted: ['Priya Shah', 'Priyanka Rao'] })) }];
+  const out = summarize(rows);
+  assert.deepEqual(out.total.briefs, { stale: 1, of: 2 });
+  assert.deepEqual(out.total.recallAt1, { hit: 4, of: 5 });
+  assert.deepEqual(out.total.coversGraph, { probes: 5, of: 5 });
+  assert.deepEqual(out.total.distractors, { confused: 1, of: 1 });
 });

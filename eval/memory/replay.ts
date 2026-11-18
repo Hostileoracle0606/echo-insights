@@ -188,6 +188,7 @@ export async function replayScenario({
   const extract = createExtractGraphHandler({ ...deps, ...memoryClaimStore(), sleep: async () => {} });
 
   const actions: Array<Action & { entityId: string | null; outcome: string }> = [];
+  const lostTurns: Array<{ turnId: string; reason: string; undeclaredEndpoints: string[] }> = [];
   let turns = 0;
   for (const [index, session] of scenario.sessions.entries()) {
     const sessionNumber = index + 1;
@@ -230,7 +231,16 @@ export async function replayScenario({
       });
       stopIfSpent();
       const parsed = JSON.parse(response.body || "{}");
-      if (response.statusCode !== 200) throw new ExtractionFailed(response.statusCode, parsed.code ?? "unknown");
+      // A failed extraction or a rejected commit loses this turn's memory in
+      // the app, which carries on with the conversation; so does the replay,
+      // recording the loss. (The turn itself was said, so it stays in the
+      // recent conversation.) Quota stops are the only thing that aborts.
+      turns += 1;
+      sessionTurns.push({ role: "user", text });
+      if (response.statusCode !== 200) {
+        lostTurns.push({ turnId, reason: `extraction ${response.statusCode} ${parsed.code ?? "unknown"}`, undeclaredEndpoints: [] });
+        continue;
+      }
       // The web adapter drops the extractor's follow-up: Gemini Live owns dialogue.
       const { change } = mergeExtraction(state, text, { ...parsed.patch, followUp: undefined });
       const outcome = await rest("rpc/commit_notebook", {
@@ -239,10 +249,8 @@ export async function replayScenario({
       if (outcome?.status !== "committed") {
         const known = new Set([...Object.keys(state.entities), ...change.entities.map((e) => e.id)]);
         const undeclared = change.relations.flatMap((r) => [r.source, r.target]).filter((id) => !known.has(id));
-        throw new CommitRejected(turnId, outcome?.code ?? outcome?.status ?? "unknown", [...new Set(undeclared)]);
+        lostTurns.push({ turnId, reason: `commit ${outcome?.code ?? outcome?.status ?? "unknown"}`, undeclaredEndpoints: [...new Set(undeclared)] });
       }
-      sessionTurns.push({ role: "user", text });
-      turns += 1;
     }
     for (const action of (scenario.actions ?? []).filter((a) => a.after_session === sessionNumber)) {
       const { state } = await loadSnapshot();
@@ -265,6 +273,6 @@ export async function replayScenario({
   return {
     snapshot,
     meta: { scenario: scenario.id, extractorVersion: EXTRACTOR_VERSION, mode: DEFAULT_EXTRACTION_MODE,
-      model: "gemini-2.5-flash", turns, providerCalls, actions, extractedAt: now().toISOString() },
+      model: "gemini-2.5-flash", turns, providerCalls, actions, lostTurns, extractedAt: now().toISOString() },
   };
 }

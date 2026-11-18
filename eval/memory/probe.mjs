@@ -16,13 +16,17 @@ export const RETRIEVE_K = 8;
 // item, so every item is reported as `combined` rather than guessed.
 export function retrievedItems(state, entityIds) {
   const entities = state.entities ?? {};
-  const active = Object.values(state.relations ?? {}).filter((r) => !r.supersededAt);
+  const relations = Object.values(state.relations ?? {});
   const nameOf = (id) => entities[id]?.name ?? id;
+  const linesFor = (id, superseded) => relations
+    .filter((r) => Boolean(r.supersededAt) === superseded && (r.source === id || r.target === id))
+    .map((r) => `${nameOf(r.source)} ${r.label} ${nameOf(r.target)}`);
   return entityIds.filter((id) => entities[id]).map((id) => {
-    const lines = active.filter((r) => r.source === id || r.target === id)
-      .map((r) => `${nameOf(r.source)} ${r.label} ${nameOf(r.target)}`);
-    const text = [entities[id].description ?? '', ...lines].filter(Boolean).join('\n');
-    return { name: entities[id].name, text, path: 'combined' };
+    const text = [entities[id].description ?? '', ...linesFor(id, false)].filter(Boolean).join('\n');
+    // Superseded relations: what the graph remembers as earlier, kept apart
+    // from current text (scored only for sequence preservation).
+    const history = linesFor(id, true).join('\n');
+    return { name: entities[id].name, text, history, path: 'combined' };
   });
 }
 
