@@ -20,6 +20,17 @@ const allowedFieldKeys = {
 /// On only in builds made with `--dart-define=LUMEN_TIMING=1`.
 const _enabledByDefine = bool.fromEnvironment('LUMEN_TIMING');
 
+/// An entity count as its order of magnitude (0, 1, 10, 100, 1000+), so a
+/// mark says how large a history is without saying exactly.
+int entityCountBucket(int count) {
+  if (count <= 0) return 0;
+  var bucket = 1;
+  while (bucket < 1000 && count >= bucket * 10) {
+    bucket *= 10;
+  }
+  return bucket;
+}
+
 String get _buildMode =>
     kDebugMode ? 'debug' : (kProfileMode ? 'profile' : 'release');
 
@@ -48,6 +59,11 @@ class TimingMarks {
   final Stopwatch _clock;
   final void Function(String line) _sink;
   final Map<String, int> _open = {};
+  final Set<String> _once = {};
+
+  /// Whether a live session is active now. Background work that ends while
+  /// it is records `overlap`.
+  bool turnActive = false;
 
   // `print`, not `debugPrint`: it must reach the console in profile builds.
   // ignore: avoid_print
@@ -64,6 +80,12 @@ class TimingMarks {
     _emit(stage, 'mark', fields: fields);
   }
 
+  /// As [mark], for a stage that happens once per app run.
+  void markOnce(String stage, {Map<String, Object> fields = const {}}) {
+    if (!enabled || !_once.add(stage)) return;
+    _emit(stage, 'mark', fields: fields);
+  }
+
   /// The start of a stage that [end] closes.
   void begin(String stage) {
     if (!enabled) return;
@@ -77,6 +99,18 @@ class TimingMarks {
     final began = _open.remove(stage);
     _emit(stage, 'end', began: began, incomplete: began == null,
         fields: fields);
+  }
+
+  /// The clock now, for a later [span].
+  int get now => _clock.elapsedMilliseconds;
+
+  /// A whole stage in one line, timed from [since] (read from [now]). For
+  /// stages that can run concurrently with themselves, where begin/end
+  /// pairing by name would cross.
+  void span(String stage,
+      {required int since, Map<String, Object> fields = const {}}) {
+    if (!enabled) return;
+    _emit(stage, 'span', began: since, fields: fields);
   }
 
   /// Whether [stage] has begun and not yet ended.

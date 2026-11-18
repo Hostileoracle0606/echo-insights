@@ -129,4 +129,42 @@ void main() {
     expect(line.keys.toSet().difference({'v', 'stage', 'phase', 't_ms', 'mode'}),
         allowedFieldKeys);
   });
+
+  test('markOnce marks a stage only the first time', () {
+    final m = marks()..start();
+    m.markOnce('home_interactive');
+    m.markOnce('home_interactive');
+    expect(lines, hasLength(1));
+  });
+
+  test('entity counts go out as order-of-magnitude buckets', () {
+    expect([0, 1, 9, 10, 50, 99, 100, 500, 999, 1000, 40000]
+        .map(entityCountBucket)
+        .toList(), [0, 1, 1, 10, 10, 10, 100, 100, 100, 1000, 1000]);
+  });
+
+  test('turnActive starts false and is settable for overlap checks', () {
+    final m = marks();
+    expect(m.turnActive, isFalse);
+    m.turnActive = true;
+    expect(m.turnActive, isTrue);
+  });
+
+  test('span: a self-contained duration from a start read off the clock', () {
+    final m = marks()..start();
+    clock.ms = 40;
+    final t0 = m.now;
+    clock.ms = 70;
+    m.span('retrieval', since: t0, fields: {'count': 2, 'scope': 1});
+    expect(_json(lines.single), {
+      'v': 1, 'stage': 'retrieval', 'phase': 'span', 't_ms': 70,
+      'dur_ms': 30, 'mode': 'profile', 'count': 2, 'scope': 1,
+    });
+  });
+
+  test('span: disabled emits nothing', () {
+    final m = marks(enabled: false)..start();
+    m.span('commit', since: m.now);
+    expect(lines, isEmpty);
+  });
 }
