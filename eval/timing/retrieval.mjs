@@ -5,7 +5,7 @@
 //   source eval/privacy/local-env.sh; source <file exporting TIMING_USER_PASSWORD>
 //   node eval/timing/retrieval.mjs --email timing-eval-…@example.test --size 50 [--runs 50] [--warmup 5]
 //
-// Writes retrieval-<size>.jsonl (one `[lumen-timing]` span per call, warm-up
+// Writes retrieval-<size>-1.jsonl (one `[lumen-timing]` span per call, warm-up
 // discarded) into eval/results/<date>-<sha>/timing/. A refused or failed call
 // is kept with ok:false, never retried away.
 import { execFileSync } from 'node:child_process';
@@ -99,7 +99,7 @@ async function main() {
   const sha = execFileSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: root }).toString().trim();
   const dir = resolve(root, `eval/results/${new Date().toISOString().slice(0, 10)}-${sha}/timing`);
   mkdirSync(dir, { recursive: true });
-  writeFileSync(resolve(dir, `retrieval-${size}.jsonl`), `${lines.join('\n')}\n`);
+  writeFileSync(resolve(dir, `retrieval-${size}-1.jsonl`), `${lines.join('\n')}\n`);
   const failed = lines.filter((l) => l.includes('"ok":false')).length;
   console.log(`retrieval ${size}: ${lines.length} calls, ${failed} failed`);
 }
