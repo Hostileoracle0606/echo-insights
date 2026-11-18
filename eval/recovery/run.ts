@@ -8,14 +8,10 @@ import { mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { createSupabaseAuthorizer } from "../../infra/lambda/supabase-authorizer/core.mjs";
-import { createExtractGraphHandler } from "../../infra/lambda/extract-graph/core.mjs";
-import { createSessionBriefHandler } from "../../infra/lambda/close-session/brief.mjs";
-import { gatewayInvoke, memoryClaimStore, recordingFetch } from "../privacy/probes/lambdas.mjs";
 import { auditUser } from "./audit.mjs";
-import fixtures from "./fixtures/patches.json";
 import { localStack } from "./local.mjs";
 import { FAULTS, runFault, type FaultResult, type ScenarioEnv } from "./scenarios";
+import { createStubbedLambdas } from "./stub-lambdas.mjs";
 import { summarize } from "./summary.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -28,53 +24,7 @@ if (!stack) {
   process.exit(2);
 }
 
-// ── Provider stub and the guard that proves nothing left the machine ──────────
-const LOOPBACK = new Set(["127.0.0.1", "localhost", "[::1]", "::1"]);
-let realProviderCalls = 0;
-const guardedFetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-  if (!LOOPBACK.has(new URL(String(input)).hostname)) {
-    realProviderCalls += 1;
-    throw new TypeError("recovery eval: request to a non-local host refused");
-  }
-  return fetch(input, init);
-}) as typeof fetch;
-
-const extractCallsByText = new Map<string, number>();
-const turnTexts = Object.values(fixtures.turns);
-const json = (value: unknown) =>
-  new Response(JSON.stringify(value), { status: 200, headers: { "content-type": "application/json" } });
-
-function stubProvider(url: string, init?: RequestInit): Response {
-  const body = String(init?.body ?? "");
-  if (url.includes("-tts:")) {
-    // 0.1 s of PCM16 silence.
-    const data = Buffer.alloc(4800).toString("base64");
-    return json({ candidates: [{ content: { parts: [{ inlineData: { mimeType: "audio/L16;codec=pcm;rate=24000", data } }] } }] });
-  }
-  if (body.includes("write_session_brief")) {
-    return json({ candidates: [{ content: { parts: [{ functionCall: { name: "write_session_brief", args: fixtures.brief } }] } }] });
-  }
-  const turn = turnTexts.find((t) => body.includes(t.text));
-  if (!turn) return new Response('{"error":{"code":503}}', { status: 503 });
-  extractCallsByText.set(turn.text, (extractCallsByText.get(turn.text) ?? 0) + 1);
-  return json({ candidates: [{ content: { parts: [{ functionCall: { name: "extract_graph", args: { supersedes: [], ...turn.patch } } }] } }] });
-}
-
-const lambdaFetch = recordingFetch({ supabaseUrl: stack.url, realFetch: guardedFetch, providerResponder: stubProvider });
-const noSleep = async () => {};
-const deps = {
-  supabaseUrl: stack.url,
-  publishableKey: stack.anonKey,
-  fetchImpl: lambdaFetch.fetchImpl,
-  getPermanentCredential: async () => "recovery-eval-stub-credential",
-};
-const authorize = createSupabaseAuthorizer(deps);
-// One claim store for the whole run: it stands in for DynamoDB, which outlives
-// any client process.
-const handlers: Record<string, (event: unknown) => Promise<{ statusCode: number; body: string }>> = {
-  extractions: createExtractGraphHandler({ ...deps, ...memoryClaimStore(), sleep: noSleep }),
-  brief: createSessionBriefHandler({ ...deps, sleep: noSleep, log: () => {} }),
-};
+const lambdas = createStubbedLambdas({ url: stack.url, anonKey: stack.anonKey });
 
 const created: string[] = [];
 async function rows(table: string, userId: string): Promise<string[]> {
@@ -85,7 +35,7 @@ async function rows(table: string, userId: string): Promise<string[]> {
 const env: ScenarioEnv = {
   supabaseUrl: stack.url,
   anonKey: stack.anonKey,
-  realFetch: guardedFetch,
+  realFetch: lambdas.guardedFetch as typeof fetch,
   async newUser() {
     const user = await stack!.createUser(created);
     const notebook = await stack!.insert("notebooks", {
@@ -99,17 +49,13 @@ const env: ScenarioEnv = {
   async cleanupUser(userId) {
     await stack!.deleteUser(userId);
   },
-  async gateway(route, event) {
-    const handler = handlers[route];
-    if (!handler) return { statusCode: 404, body: '{"message":"Not Found"}' };
-    return gatewayInvoke({ authorize, handler, event });
-  },
+  gateway: (route, event) => lambdas.gateway(route, event),
   audit: (userId) => auditUser({ url: stack!.url, adminHeaders: stack!.admin, userId }),
   async texts(userId) {
     return { journal: await rows("journal_entries", userId), turns: await rows("conversation_turns", userId) };
   },
-  providerCalls: () => ({ real: realProviderCalls, stub: lambdaFetch.providerCalls() }),
-  extractCalls: (text) => extractCallsByText.get(text) ?? 0,
+  providerCalls: () => lambdas.providerCalls(),
+  extractCalls: (text) => lambdas.extractCalls(text),
 };
 
 // The Lambdas log ids and counts; keep the run output to progress lines.
@@ -146,6 +92,7 @@ for (const fault of FAULTS.filter((f) => !ONLY || ONLY.includes(f))) {
   }
 }
 
+const { real: realProviderCalls, stub: stubProviderCalls } = lambdas.providerCalls();
 let cleanupFailed = false;
 for (const id of created) {
   try {
@@ -173,7 +120,7 @@ const report = {
   },
   notes: {
     providerRealCalls: realProviderCalls,
-    providerStubCalls: lambdaFetch.providerCalls(),
+    providerStubCalls: stubProviderCalls,
     leftoverUsersAtStart: leftoverAtStart,
     leftoverUsersAtEnd: leftoverAtEnd,
     cleanupFailed,
@@ -193,5 +140,5 @@ console.log(`\n${relative(root, out)}`);
 for (const [fault, s] of Object.entries(report.summary.faults)) {
   console.log(`${fault.padEnd(20)} pass ${s.pass}/${s.runs}  fail ${s.fail}  not_triggered ${s.not_triggered}  error ${s.error}`);
 }
-console.log(`provider calls: real ${realProviderCalls}, stub ${lambdaFetch.providerCalls()}`);
+console.log(`provider calls: real ${realProviderCalls}, stub ${stubProviderCalls}`);
 process.exit(realProviderCalls === 0 && report.summary.total.pass === report.summary.total.runs && !cleanupFailed && leftoverAtEnd === 0 ? 0 : 1);
