@@ -81,7 +81,10 @@ const quotaLog: Record<string, { used: number; limit: number; stops: string[] }>
 const today = (quotaLog[day] ??= { used: 0, limit, stops: [] });
 today.limit = limit;
 // After a 429, no more provider calls that day, briefs included: never retry past one.
-const budget = createBudget(today.stops.includes("QuotaExhausted") ? 0 : Math.max(0, limit - today.used));
+// MEMORY_RESUME_AFTER_429=1 is the owner's explicit say-so to try again the
+// same day; the first new 429 still stops the run.
+const stoppedToday = today.stops.includes("QuotaExhausted") && env.MEMORY_RESUME_AFTER_429 !== "1";
+const budget = createBudget(stoppedToday ? 0 : Math.max(0, limit - today.used));
 // Free-tier per-minute limits: one provider call per MEMORY_CALL_INTERVAL_MS.
 const fetchImpl = providerFetch({
   budget, providerHosts: PROVIDER_HOSTS, supabaseUrl: stack.url,

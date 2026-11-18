@@ -66,18 +66,32 @@ export async function runBrief({ stack, user, notebookId, geminiKey, fetchImpl }
   return { brief: rows[0]?.brief ?? null, outcome: 'ready' };
 }
 
+// Idempotent (it re-embeds the notebook and prunes orphans), so a 5xx is
+// retried: a freshly started edge runtime cancels the first gte-small load at
+// its CPU-time limit. ok:false is a real failure and is not retried.
+export async function embedNotebook({ url, secret, notebookId, fetchImpl = fetch,
+  sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)) }) {
+  for (let attempt = 1; ; attempt += 1) {
+    const response = await fetchImpl(`${url}/functions/v1/embed-entities`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-internal-secret': secret },
+      body: JSON.stringify({ notebookId }),
+      signal: AbortSignal.timeout(120_000),
+    });
+    const body = await response.json().catch(() => ({}));
+    if (response.ok && body.ok !== false) return body;
+    if (response.status < 500 || attempt >= 3) {
+      throw new Error(`embed-entities → ${response.status} ${body.stage ?? ''}`.trim());
+    }
+    await sleep(2000 * attempt);
+  }
+}
+
 /** Returns {results, leftover}: leftover lists a test user whose delete failed after retries. */
 export async function probeScenario({ snapshot, scenario, stack, embedSecret, brief }) {
   const { value: results, leftover } = await withUser(stack, async (user) => {
     const { notebookId } = await restoreSnapshot({ ...stack.admin, userId: user.id, snapshot });
-    const embed = await fetch(`${stack.url}/functions/v1/embed-entities`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-internal-secret': embedSecret },
-      body: JSON.stringify({ notebookId }),
-      signal: AbortSignal.timeout(120_000),
-    });
-    const embedded = await embed.json().catch(() => ({}));
-    if (!embed.ok || embedded.ok === false) throw new Error(`embed-entities → ${embed.status} ${embedded.stage ?? ''}`);
+    await embedNotebook({ url: stack.url, secret: embedSecret, notebookId });
 
     const userHeaders = { apikey: stack.anonKey, authorization: `Bearer ${user.token}`, 'content-type': 'application/json' };
     const snap = await (await fetch(`${stack.url}/rest/v1/rpc/get_notebook_snapshot`, {

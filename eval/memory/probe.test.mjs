@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { briefText, retrievedItems } from './probe.mjs';
+import { briefText, embedNotebook, retrievedItems } from './probe.mjs';
 
 const state = {
   entities: {
@@ -24,4 +24,30 @@ test('retrieved items keep the service order, carry active relation text only, a
 test('briefText joins every string in the saved brief', () => {
   assert.equal(briefText({ openingLine: 'Hi again.', focus: ['Northwind', 'the commute'], n: 3 }), 'Hi again.\nNorthwind\nthe commute');
   assert.equal(briefText(null), null);
+});
+
+test('embedNotebook retries a 5xx (the edge runtime cancels a cold model load at its CPU limit)', async () => {
+  const statuses = [502, 200];
+  const calls = [];
+  const waits = [];
+  await embedNotebook({
+    url: 'http://127.0.0.1:55321', secret: 's', notebookId: 'nb',
+    fetchImpl: async (url, init) => {
+      calls.push(init.headers['x-internal-secret']);
+      const status = statuses.shift();
+      return new Response(JSON.stringify(status === 200 ? { ok: true } : { error: 'x' }), { status });
+    },
+    sleep: async (ms) => { waits.push(ms); },
+  });
+  assert.deepEqual(calls, ['s', 's']);
+  assert.deepEqual(waits, [2000]);
+});
+
+test('embedNotebook fails loudly after 3 attempts, or at once on ok:false', async () => {
+  let n = 0;
+  await assert.rejects(embedNotebook({ url: 'http://x', secret: 's', notebookId: 'nb',
+    fetchImpl: async () => { n += 1; return new Response('{}', { status: 502 }); }, sleep: async () => {} }), /embed-entities → 502/);
+  assert.equal(n, 3);
+  await assert.rejects(embedNotebook({ url: 'http://x', secret: 's', notebookId: 'nb',
+    fetchImpl: async () => new Response('{"ok":false,"stage":"notebook"}', { status: 200 }), sleep: async () => {} }), /notebook/);
 });
