@@ -82,7 +82,8 @@ select throws_ok($$ delete from public.session_briefs $$,
 select is(
   public.save_session_brief('a1111111-0000-0000-0000-000000000001', 3,
     '{"focus":[],"openingThread":"x","openingLine":"Different line"}'::jsonb, 'AQID', 24000),
-  '{"status": "unchanged"}'::jsonb, 'same revision: unchanged');
+  '{"status": "rejected", "code": "keyReused"}'::jsonb,
+  'same revision, different brief: refused (LM-102), nothing written');
 select is(public.get_session_brief()->'brief'->>'openingLine', 'How did the move go?',
   'same revision: the stored brief is kept');
 

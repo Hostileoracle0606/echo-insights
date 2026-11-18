@@ -115,6 +115,33 @@ void main() {
     );
   });
 
+  test('a refused reuse of the turn id carries the runtime code', () async {
+    final service = ExtractGraphService(
+      baseUrl: 'https://runtime.example.com',
+      accessTokenProvider: () async => 'signed-user-token',
+      pseudonyms: testPseudonyms(),
+      client: MockClient((request) async => http.Response(
+            jsonEncode({'status': 'rejected', 'code': 'requestIdReused'}),
+            409,
+          )),
+    );
+
+    await expectLater(
+      service.extract(
+        notebookId: notebookId,
+        turnId: 'turn-123',
+        extractorVersion: 'gemini/extract_graph/v2',
+        text: 'I met Maya for coffee.',
+        state: JournalState.empty(),
+        mode: 'granular',
+        maxRetries: 0,
+      ),
+      throwsA(isA<GraphExtractionException>()
+          .having((error) => error.statusCode, 'statusCode', 409)
+          .having((error) => error.code, 'code', 'requestIdReused')),
+    );
+  });
+
   test(
       'waits for an in-progress canonical extraction without spending the error retry budget',
       () async {

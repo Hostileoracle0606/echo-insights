@@ -69,10 +69,29 @@ class EraseStep {
     required this.total,
     required this.remaining,
     required this.finished,
+    this.rejectedCode,
+    this.nextBatch,
   });
   final int total;
   final int remaining;
   final bool finished;
+
+  /// `keyReused` or `outOfOrder` when the server refused a keyed batch
+  /// (LM-102): nothing was rewritten, so the caller re-reads pending.
+  final String? rejectedCode;
+
+  /// With `outOfOrder`, the batch number the server expects.
+  final int? nextBatch;
+
+  bool get rejected => rejectedCode != null;
+}
+
+/// A pending erase and the batch number it expects next. [nextBatch] is null
+/// from a server that does not number batches yet.
+class EraseJob {
+  const EraseJob(this.id, this.nextBatch);
+  final String id;
+  final int? nextBatch;
 }
 
 /// The user's controls over what Lumen keeps (LM-29): a thin adapter over
@@ -160,12 +179,42 @@ class MemoryControlService {
     );
   }
 
+  /// Batch [batchNo] of erase [jobId], keyed by job and batch number (LM-102):
+  /// the same batch twice rewrites once and returns the same result. A
+  /// refused batch comes back [EraseStep.rejected], having changed nothing.
+  Future<EraseStep> eraseBatch(String jobId, int batchNo,
+      {int batch = 300}) async {
+    final data = await _rpc('forget_erase_batch', {
+      'p_job_id': jobId,
+      'p_batch_no': batchNo,
+      'p_batch': batch,
+    }) as Map;
+    if (data['status'] == 'rejected') {
+      return EraseStep(
+        total: 0,
+        remaining: 0,
+        finished: false,
+        rejectedCode: data['code'] as String? ?? 'rejected',
+        nextBatch: (data['nextBatch'] as num?)?.toInt(),
+      );
+    }
+    return EraseStep(
+      total: (data['total'] as num?)?.toInt() ?? 0,
+      remaining: (data['remaining'] as num?)?.toInt() ?? 0,
+      finished: data['finished'] == true,
+    );
+  }
+
   /// The caller's erases that haven't finished, to resume.
-  Future<List<String>> pendingErases() async {
+  Future<List<String>> pendingErases() async =>
+      [for (final job in await pendingEraseJobs()) job.id];
+
+  /// The same, with the batch number each expects next.
+  Future<List<EraseJob>> pendingEraseJobs() async {
     final data = await _rpc('forget_erase_pending', {});
     return [
       for (final job in (data as List? ?? const []).cast<Map>())
-        job['id'] as String,
+        EraseJob(job['id'] as String, (job['nextBatch'] as num?)?.toInt()),
     ];
   }
 }

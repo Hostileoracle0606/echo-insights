@@ -19,11 +19,11 @@ import '../logic/live_signal_gate.dart';
 import '../logic/opening_choice.dart';
 import '../logic/resume_context.dart';
 import '../logic/memory_removal.dart';
-import '../logic/merge.dart' as merge_logic;
 import '../logic/session_opening_coordinator.dart';
 import '../logic/slugify.dart';
 import '../logic/transcript_assembler.dart';
 import '../logic/turn_effect_queue.dart';
+import '../logic/turn_commit.dart';
 import '../logic/turn_state.dart';
 import '../logic/voice_log.dart';
 import '../models/graph_patch.dart';
@@ -85,6 +85,28 @@ const int finalizationDeadlineMs = 1500;
 /// every finalized turn so a replayed checkpoint is never silently
 /// reinterpreted by a different extractor than the one that produced it.
 const String extractorVersion = 'gemini/extract_graph/v2';
+
+/// Whether a session is actually active (LM-103 catch-up stays off its
+/// notebook): connecting, live, paused, or ending (draining its turns), or
+/// idle with a turn still extracting/committing. `error` is not live: a
+/// leave that failed (offline at session end) leaves the user outside the
+/// notebook, and catch-up finishes it on resume. Its turns are keyed (the
+/// runtime caches extractions by turn id, commits go through the request
+/// ledger), so the notifier retrying the same turns later is safe.
+bool sessionIsLive(SessionStatus status, {bool extracting = false}) =>
+    switch (status) {
+      SessionStatus.connecting ||
+      SessionStatus.live ||
+      SessionStatus.paused ||
+      SessionStatus.ending =>
+        true,
+      SessionStatus.idle => extracting,
+      SessionStatus.error => false,
+    };
+
+/// Whether the notifier, in [status], still owns its open notebook's
+/// journalled turns (it replays them itself). Not after a failed leave.
+bool catchUpOwnsNotebook(SessionStatus status) => status != SessionStatus.error;
 
 /// How long "Removed Priya · Undo" holds a removal before it is sent (LM-29).
 const Duration removeUndoWindow = Duration(seconds: 5);
@@ -235,6 +257,22 @@ class JournalNotifier extends Notifier<JournalState> {
   Set<String> get suppressedEntityIds => Set.unmodifiable(_suppressed);
 
   SessionStatus get status => _status;
+
+  /// The notebook this notifier has open, if any.
+  String? get activeNotebookId => _activeNotebookId;
+
+  /// The notebook whose journalled turns this notifier is working on, for
+  /// launch-time catch-up (LM-103) to leave alone: the open one, unless
+  /// leaving it failed (status `error`, e.g. offline at session end). Then
+  /// the user has left and catch-up may finish it on resume.
+  String? get catchUpOpenNotebookId =>
+      catchUpOwnsNotebook(_status) ? _activeNotebookId : null;
+
+  /// A session is actually on [notebookId]: catch-up runs none of its steps.
+  /// See [sessionIsLive].
+  bool isNotebookLive(String notebookId) =>
+      _activeNotebookId == notebookId &&
+      sessionIsLive(_status, extracting: _extracting);
   String get lastTranscript => _lastTranscript;
   String get liveUserText => _liveUserText;
   String get liveAgentText => _liveAgentText;
@@ -840,9 +878,7 @@ class JournalNotifier extends Notifier<JournalState> {
       try {
         // Prefer the in-memory typed patch; fall back to the durable checkpoint
         // so a restored turn commits without re-extracting.
-        final stored = turn.extraction;
-        final patch = _lastPatches[turn.turnId] ??
-            (stored == null ? null : GraphPatch.fromJson(stored));
+        final patch = _lastPatches[turn.turnId] ?? checkpointedPatch(turn);
         if (patch == null) {
           _dispatchTurn(
               CommitRejected(turnId: turn.turnId, code: 'invalidRequest'));
@@ -852,13 +888,14 @@ class JournalNotifier extends Notifier<JournalState> {
         // Prepare once. An unknown-outcome retry must reuse this exact envelope
         // instead of merging again against the already-optimistic local state.
         final before = state;
-        final result = merge_logic.merge(state, turn.transcript, patch,
-            suppressed: _suppressed);
-        prepared = PreparedTurnCommit(
+        final result = prepareTurnCommit(
+          state: state,
+          turn: turn,
+          patch: patch,
           expectedRevision: turn.baseRevision ?? _revision,
-          change: result.change,
-          entryId: result.entryId,
+          suppressed: _suppressed,
         );
+        prepared = result.prepared;
         // Persist the exact network envelope before sending it. If the process
         // dies after the request leaves, recovery must retry identical input
         // with the same request id so the server ledger can replay it safely.
@@ -872,7 +909,7 @@ class JournalNotifier extends Notifier<JournalState> {
           id: ++_activitySeq,
           prev: before,
           next: result.next,
-          entryId: result.entryId,
+          entryId: result.prepared.entryId,
         ));
         vlog(
             'session',

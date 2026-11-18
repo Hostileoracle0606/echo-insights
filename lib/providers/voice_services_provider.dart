@@ -4,8 +4,11 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../audio/audio_output.dart';
+import '../security/app_lock.dart' show AppLockStatus;
+import '../security/app_lock_provider.dart';
 import '../services/live_credentials.dart';
 import 'auth_provider.dart';
+import 'catch_up_provider.dart';
 import 'journal_provider.dart'
     show forgottenThisRunProvider, turnJournalServiceProvider;
 import 'forget_redactor_provider.dart';
@@ -36,6 +39,8 @@ final audioOutputProvider = Provider<AudioOutput>((ref) {
 /// What one account leaves behind in memory, dropped when it signs out.
 final signedOutCleanupProvider = Provider<void Function()>((ref) {
   return () {
+    // Catch-up for the account that left stops here (LM-103).
+    ref.read(catchUpProvider.notifier).signedOut();
     ref.read(openingPrepProvider).clear();
     ref.read(forgottenThisRunProvider).clear();
     // The hashes of the people they forgot, in memory and the Keychain.
@@ -175,6 +180,10 @@ class _VoiceServicesScopeState extends ConsumerState<VoiceServicesScope>
             // background: it never holds up a session.
             unawaited(runEraseResume(
                 () => ref.read(transcriptEraseProvider.notifier)));
+            // LM-103: finish what an earlier run left (turns, cards, the
+            // brief), in the background once the app lock is open. After
+            // the forget check, so nothing goes out with a forgotten name.
+            _requestCatchUp();
           });
         },
         // Coming back also re-asks for a brief that failed earlier.
@@ -185,7 +194,7 @@ class _VoiceServicesScopeState extends ConsumerState<VoiceServicesScope>
               () => ref.read(transcriptEraseProvider.notifier)))),
           openingPrep.refresh(),
           openingPrep.retryPendingBrief(),
-        ]),
+        ]).whenComplete(_requestCatchUp),
         onSignedOut: ref.read(signedOutCleanupProvider),
         // Fails closed: until a check after the next resume succeeds, the
         // held brief (it may name someone forgotten elsewhere) isn't played.
@@ -195,10 +204,32 @@ class _VoiceServicesScopeState extends ConsumerState<VoiceServicesScope>
     _binding!.signedInChanged(signedIn, userId: userId);
   }
 
+  /// Catch-up never fails a launch or a resume.
+  void _requestCatchUp() {
+    if (!mounted) return;
+    // A sign-out may have landed while the warm-up or resume work ran.
+    if (ref.read(authProvider).valueOrNull == null) return;
+    try {
+      ref.read(catchUpProvider.notifier).request();
+    } catch (error) {
+      debugPrint('Catch-up not started: ${error.runtimeType}');
+    }
+  }
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    // Catch-up runs only while the app lock is open (it waits for the
+    // unlock, and locking stops it). AppLockGate sees the lifecycle first, so
+    // a resume past the grace period is already locked when onResume asks.
+    ref.listenManual<AppLockStatus>(
+      appLockProvider.select((lock) => lock.status),
+      (_, status) => ref
+          .read(catchUpProvider.notifier)
+          .setUnlocked(status == AppLockStatus.unlocked),
+      fireImmediately: true,
+    );
     final user = ref.read(authProvider).valueOrNull;
     _signedInChanged(user != null, user?.id);
   }

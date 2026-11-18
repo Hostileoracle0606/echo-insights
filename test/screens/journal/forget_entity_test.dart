@@ -109,6 +109,8 @@ Future<({_Journal journal, List<String> rpcs})> _open(
             return preview;
           case 'forget_erase_sample':
             return _sample;
+          case 'forget_erase_pending':
+            return const [];
           case 'forget_erase_step':
             if (failStep) throw Exception('offline');
             return {'rewritten': 12, 'total': 12, 'remaining': 0, 'finished': true};

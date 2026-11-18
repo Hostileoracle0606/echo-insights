@@ -37,15 +37,50 @@ class PreparedTurnCommit {
       );
 }
 
+/// A step of a journalled turn whose refusals are counted.
+enum TurnStepKind { extract, commit }
+
 class TurnJournalCheckpoint {
-  const TurnJournalCheckpoint({required this.turn, this.preparedCommit});
+  const TurnJournalCheckpoint({
+    required this.turn,
+    this.preparedCommit,
+    this.extractAttempts = 0,
+    this.commitAttempts = 0,
+  });
 
   final FinalizedTurn turn;
   final PreparedTurnCommit? preparedCommit;
 
+  /// Refused extraction attempts so far (counts only), so catch-up can stop
+  /// asking after a bound instead of blocking the notebook forever.
+  final int extractAttempts;
+
+  /// Refused (`commitFailed`) commit attempts so far.
+  final int commitAttempts;
+
+  int attempts(TurnStepKind kind) => switch (kind) {
+        TurnStepKind.extract => extractAttempts,
+        TurnStepKind.commit => commitAttempts,
+      };
+
+  TurnJournalCheckpoint _with({
+    FinalizedTurn? turn,
+    PreparedTurnCommit? preparedCommit,
+    int? extractAttempts,
+    int? commitAttempts,
+  }) =>
+      TurnJournalCheckpoint(
+        turn: turn ?? this.turn,
+        preparedCommit: preparedCommit ?? this.preparedCommit,
+        extractAttempts: extractAttempts ?? this.extractAttempts,
+        commitAttempts: commitAttempts ?? this.commitAttempts,
+      );
+
   Map<String, dynamic> toJson() => {
         'turn': turn.toJson(),
         if (preparedCommit != null) 'preparedCommit': preparedCommit!.toJson(),
+        if (extractAttempts > 0) 'extractAttempts': extractAttempts,
+        if (commitAttempts > 0) 'commitAttempts': commitAttempts,
       };
 
   factory TurnJournalCheckpoint.fromJson(Map<String, dynamic> json) =>
@@ -58,6 +93,8 @@ class TurnJournalCheckpoint {
                 (json['preparedCommit'] as Map).cast<String, dynamic>(),
               )
             : null,
+        extractAttempts: (json['extractAttempts'] as num?)?.toInt() ?? 0,
+        commitAttempts: (json['commitAttempts'] as num?)?.toInt() ?? 0,
       );
 }
 
@@ -100,10 +137,7 @@ class TurnJournalService {
       if (index == -1) {
         checkpoints.add(TurnJournalCheckpoint(turn: turn));
       } else {
-        checkpoints[index] = TurnJournalCheckpoint(
-          turn: turn,
-          preparedCommit: checkpoints[index].preparedCommit,
-        );
+        checkpoints[index] = checkpoints[index]._with(turn: turn);
       }
       await _writeCheckpoints(turn.notebookId, checkpoints);
     });
@@ -118,16 +152,42 @@ class TurnJournalService {
       final index = checkpoints.indexWhere(
         (checkpoint) => checkpoint.turn.turnId == turn.turnId,
       );
-      final checkpoint = TurnJournalCheckpoint(
-        turn: turn,
-        preparedCommit: preparedCommit,
-      );
       if (index == -1) {
-        checkpoints.add(checkpoint);
+        checkpoints.add(TurnJournalCheckpoint(
+          turn: turn,
+          preparedCommit: preparedCommit,
+        ));
       } else {
-        checkpoints[index] = checkpoint;
+        checkpoints[index] = checkpoints[index]._with(
+          turn: turn,
+          preparedCommit: preparedCommit,
+        );
       }
       await _writeCheckpoints(turn.notebookId, checkpoints);
+    });
+  }
+
+  /// Adds one refused [kind] attempt to the turn's checkpoint and returns
+  /// the new count; 0 when the turn is no longer journalled.
+  Future<int> countAttempt({
+    required String notebookId,
+    required String turnId,
+    required TurnStepKind kind,
+  }) {
+    return _serialized(() async {
+      final checkpoints = await _readCheckpoints(notebookId);
+      final index = checkpoints.indexWhere(
+        (checkpoint) => checkpoint.turn.turnId == turnId,
+      );
+      if (index == -1) return 0;
+      final current = checkpoints[index];
+      final count = current.attempts(kind) + 1;
+      checkpoints[index] = switch (kind) {
+        TurnStepKind.extract => current._with(extractAttempts: count),
+        TurnStepKind.commit => current._with(commitAttempts: count),
+      };
+      await _writeCheckpoints(notebookId, checkpoints);
+      return count;
     });
   }
 
@@ -146,6 +206,51 @@ class TurnJournalService {
         return;
       }
       await _writeCheckpoints(notebookId, checkpoints);
+    });
+  }
+
+  /// Notebook ids holding at least one journalled turn, newest turn first.
+  ///
+  /// The journal only ever holds turns not yet committed: a confirmed commit
+  /// or a refused one removes its checkpoint ([forgetTurn]), and a
+  /// checkpoint left at [DurableStage.committed] or [DurableStage.failed] is
+  /// ignored on read. So every id here has work to finish. A file that
+  /// cannot be read is skipped: it must not stop the others being found.
+  Future<List<String>> listNotebookIdsWithTurns() {
+    return _serialized(() async {
+      final directory = await _journalDirectory();
+      final newest = <String, DateTime>{};
+      await for (final entity in directory.list(followLinks: false)) {
+        if (entity is! File) continue;
+        final name = entity.uri.pathSegments.last;
+        if (!name.endsWith('.json')) continue;
+        final String notebookId;
+        try {
+          notebookId = Uri.decodeComponent(
+            name.substring(0, name.length - '.json'.length),
+          );
+        } on ArgumentError {
+          continue;
+        }
+        final List<TurnJournalCheckpoint> checkpoints;
+        try {
+          checkpoints = await _readCheckpoints(notebookId);
+        } on Object {
+          continue;
+        }
+        for (final checkpoint in checkpoints) {
+          final at = DateTime.tryParse(checkpoint.turn.finalizedAt) ??
+              DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
+          final seen = newest[notebookId];
+          if (seen == null || at.isAfter(seen)) newest[notebookId] = at;
+        }
+      }
+      final ids = newest.keys.toList()
+        ..sort((a, b) {
+          final byTime = newest[b]!.compareTo(newest[a]!);
+          return byTime != 0 ? byTime : a.compareTo(b);
+        });
+      return ids;
     });
   }
 

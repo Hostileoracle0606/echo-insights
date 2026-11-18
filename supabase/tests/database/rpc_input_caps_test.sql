@@ -133,6 +133,12 @@ select throws_ok($$ select public.save_session_card('a1111111-0000-0000-0000-000
   '22023', 'card must be an object', 'card: a non-object card refused');
 
 -- Size is the whole card as text: pad the one note to land exactly on the limit.
+-- (The normal card above already holds revision 0; LM-102 refuses a different
+-- payload under the same key, so clear it to test the size limit alone.)
+reset role;
+delete from public.session_cards where notebook_id = 'a1111111-0000-0000-0000-000000000001';
+set local role authenticated;
+set local request.jwt.claim.sub = '11111111-1111-1111-1111-111111111111';
 select is((public.save_session_card('a1111111-0000-0000-0000-000000000001', 0,
     public._t_card(0, repeat('x', 65536 - octet_length(public._t_card(0, '')::text))), 'T', 'S'))->>'status',
   'saved', 'card: exactly 64 KiB accepted');
@@ -140,6 +146,10 @@ select throws_ok($$ select public.save_session_card('a1111111-0000-0000-0000-000
     public._t_card(0, repeat('x', 65537 - octet_length(public._t_card(0, '')::text))), 'T', 'S') $$,
   '22023', 'card is too large (max 65536 bytes)', 'card: one byte over 64 KiB refused');
 
+reset role;
+delete from public.session_cards where notebook_id = 'a1111111-0000-0000-0000-000000000001';
+set local role authenticated;
+set local request.jwt.claim.sub = '11111111-1111-1111-1111-111111111111';
 select is((public.save_session_card('a1111111-0000-0000-0000-000000000001', 0,
     public._t_card(0), repeat('t', 1000), repeat('s', 1000)))->>'status',
   'saved', 'card: 1000-char title and summary accepted (then cut to 60/280)');
