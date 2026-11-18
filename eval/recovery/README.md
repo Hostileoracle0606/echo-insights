@@ -141,6 +141,18 @@ mark isn't on this branch, so the gateway's own log line is the anchor and the
 delays are fixed. A kill that lands after turn 2 has fully committed (nothing
 left in the journal at relaunch) is `not_triggered`.
 
+### Results (`2026-11-18-288df1a/recovery-kill.json`)
+
+On an iPhone 17 simulator, 5 of 5 passed in each case, no duplicates:
+
+- **transcription**: 5 of 5 `dropped`. A turn still being transcribed when the
+  app died left nothing behind (no journal checkpoint, no transcript row, no
+  half entry). Turn 1 kept every time.
+- **extraction**: 5 of 5 `recovered`. Every relaunch found turn 2 in the turn
+  journal (1 checkpoint), extracted and committed it once, and drained.
+
+The gateway answered 25 model requests from the stub and made 0 real calls.
+
 ```bash
 supabase start && source eval/privacy/local-env.sh
 eval/recovery/kill.sh 5
