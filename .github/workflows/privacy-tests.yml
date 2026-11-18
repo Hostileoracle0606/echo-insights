@@ -42,3 +42,4 @@ jobs:
           supabase/functions/_shared/
           supabase/functions/retrieve-memory/
           supabase/functions/embed-entities/
+          supabase/functions/delete-account/

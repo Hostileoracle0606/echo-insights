@@ -15,12 +15,24 @@
 --      which is what auth.admin.deleteUser runs), then assert the user's rows
 --      are gone and the bystander's remain.
 --
+--   4. (LM-117) the same for the auth schema, which holds device sessions:
+--      every auth table with a user_id column must be in `auth_inventory`
+--      and must cascade from auth.users (directly or through auth.sessions),
+--      except flow_state, which has no foreign key and is purged by the
+--      on_auth_user_deleted trigger. Sessions, refresh tokens, identities,
+--      one-time tokens and flow_state are seeded and checked like section 3.
+--
+-- NOTE: the auth seeds below hard-code GoTrue's column names (sessions,
+-- refresh_tokens, identities, one_time_tokens, flow_state); a GoTrue upgrade
+-- that renames or adds a required column breaks the seed, not the deletion.
+--
 -- To cover a new table: add one `inventory` row, one seed insert, and bump
--- the plan below (2 + 3 per table).
+-- the plan below (2 + 3 per public table, 2 + 3 per seeded auth table).
+-- LM-128 (separate branch) must keep notebook_commit_requests in `inventory`.
 create extension if not exists pgtap;
 
 begin;
-select plan(2 + 3 * 19);
+select plan(2 + 3 * 19 + 2 + 3 * 5);
 
 -- ── inventory: table → predicate selecting one user's rows ─────────────────
 -- Placeholders: %U% user id, %N% that user's notebook id, %S% runtime session id.
@@ -71,6 +83,39 @@ select is_empty(
                            and k.confrelid in ('auth.users'::regclass, 'public.notebooks'::regclass)))
         and c.relname::text not in (select tbl from inventory) $$,
   'every table with a user_id or a foreign key to auth.users or notebooks is in the inventory');
+
+-- ── 4a. auth tables that carry a user id (device sessions live here) ──────
+create temp table auth_inventory (tbl text primary key, pred text not null, seeded bool not null) on commit drop;
+insert into auth_inventory values
+  ('sessions',            'user_id = ''%U%''', true),   -- what list_my_sessions reads
+  ('refresh_tokens',      'user_id = ''%U%''', true),   -- varchar user_id; cascades from sessions
+  ('identities',          'user_id = ''%U%''', true),
+  ('one_time_tokens',     'user_id = ''%U%''', true),
+  ('flow_state',          'user_id = ''%U%''', true),   -- no FK: purged by trigger
+  ('mfa_factors',         'user_id = ''%U%''', false),  -- FK cascade, checked in the catalog
+  ('oauth_authorizations','user_id = ''%U%''', false),
+  ('oauth_consents',      'user_id = ''%U%''', false),
+  ('webauthn_challenges', 'user_id = ''%U%''', false),
+  ('webauthn_credentials','user_id = ''%U%''', false);
+
+select set_eq(
+  $$ select c.relname::text from pg_class c
+       join pg_attribute a on a.attrelid = c.oid
+      where c.relnamespace = 'auth'::regnamespace and c.relkind in ('r', 'p')
+        and a.attname = 'user_id' and a.attnum > 0 and not a.attisdropped $$,
+  $$ select tbl from auth_inventory $$,
+  'every auth table with a user_id column is in the auth deletion inventory (a new GoTrue table must be added here)');
+
+select is_empty(
+  $$ select c.relname::text from pg_class c
+       join pg_attribute a on a.attrelid = c.oid
+      where c.relnamespace = 'auth'::regnamespace and c.relkind in ('r', 'p')
+        and a.attname = 'user_id' and a.attnum > 0 and not a.attisdropped
+        and c.relname::text <> 'flow_state'
+        and not exists (select 1 from pg_constraint k
+                         where k.conrelid = c.oid and k.contype = 'f' and k.confdeltype = 'c'
+                           and k.confrelid in ('auth.users'::regclass, 'auth.sessions'::regclass)) $$,
+  'every auth table with a user_id cascades from auth.users or auth.sessions (flow_state is trigger-purged and seeded below)');
 
 -- ── seed: U is deleted, V is a bystander ───────────────────────────────────
 create temp table who (name text primary key, uid uuid, nid uuid, sid uuid) on commit drop;
@@ -123,6 +168,19 @@ insert into public.forget_erase_batches (job_id, batch_no, request_hash, result)
 insert into public.retrieve_rate_limits (scope, window_start, count)
   select s, now(), 1 from who, unnest(array['user:' || uid, 'notebook:' || nid]) s;
 
+-- auth rows (device sessions and friends), one session + one token per user
+insert into auth.sessions (id, user_id, created_at, updated_at, user_agent)
+  select sid, uid, now(), now(), 'Dart/3.5 (dart:io)' from who;
+insert into auth.refresh_tokens (token, user_id, session_id, revoked)
+  select 'tok-' || name, uid::text, sid, false from who;
+insert into auth.identities (provider_id, user_id, identity_data, provider)
+  select uid::text, uid, '{}'::jsonb, 'apple' from who;
+insert into auth.one_time_tokens (id, user_id, token_type, token_hash, relates_to)
+  select gen_random_uuid(), uid, 'recovery_token', 'hash-' || name, 'x@example.test' from who;
+insert into auth.flow_state (id, user_id, auth_code, code_challenge_method, code_challenge,
+                             provider_type, provider_access_token, authentication_method)
+  select gen_random_uuid(), uid, 'code-' || name, 's256', 'chal', 'apple', 'tok', 'oauth' from who;
+
 -- rows a user has in a table, by the inventory predicate
 create function pg_temp.rows_of(p_tbl text, p_who text) returns bigint
 language plpgsql as $$
@@ -138,10 +196,28 @@ begin
   return n;
 end $$;
 
+-- rows a user has in an auth table, by the auth_inventory predicate (user_id only)
+create function pg_temp.auth_rows_of(p_tbl text, p_who text) returns bigint
+language plpgsql as $$
+declare
+  w who%rowtype;
+  p text;
+  n bigint;
+begin
+  select * into w from who where name = p_who;
+  select replace(pred, '%U%', w.uid::text) into p from auth_inventory where tbl = p_tbl;
+  execute format('select count(*) from auth.%I where %s', p_tbl, p) into n;
+  return n;
+end $$;
+
 -- ── 3. seeded, then deleted the way the app does it ────────────────────────
 select ok(pg_temp.rows_of(tbl, 'U') > 0 and pg_temp.rows_of(tbl, 'V') > 0,
           tbl || ': seeded for both users')
   from inventory order by tbl;
+
+select ok(pg_temp.auth_rows_of(tbl, 'U') > 0 and pg_temp.auth_rows_of(tbl, 'V') > 0,
+          'auth.' || tbl || ': seeded for both users')
+  from auth_inventory where seeded order by tbl;
 
 delete from auth.users where id = (select uid from who where name = 'U');
 
@@ -150,6 +226,12 @@ select is(pg_temp.rows_of(tbl, 'U'), 0::bigint, tbl || ': nothing left for the d
 
 select ok(pg_temp.rows_of(tbl, 'V') > 0, tbl || ': a bystander''s rows are untouched')
   from inventory order by tbl;
+
+-- ── 4b. the seeded auth tables, after the delete ────────────────────────────
+select is(pg_temp.auth_rows_of(tbl, 'U'), 0::bigint, 'auth.' || tbl || ': nothing left for the deleted account')
+  from auth_inventory where seeded order by tbl;
+select ok(pg_temp.auth_rows_of(tbl, 'V') > 0, 'auth.' || tbl || ': a bystander''s rows are untouched')
+  from auth_inventory where seeded order by tbl;
 
 select * from finish();
 rollback;
