@@ -24,3 +24,9 @@ test('an unknown gateway route is a 404, not a handler call', async () => {
   const lambdas = createStubbedLambdas({ url: 'http://127.0.0.1:55321', anonKey: 'anon', realFetch: async () => new Response('{}') });
   assert.equal((await lambdas.gateway('live-sessions', {})).statusCode, 404);
 });
+
+test('the turn is read from the new utterance, not from the recent conversation before it', () => {
+  const prompt = `RECENT CONVERSATION (for pronoun resolution only):\n- user: ${fixtures.turns.t1.text}\n\nNEW UTTERANCE:\n"""${fixtures.turns.t2.text}"""`;
+  const body = JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }] });
+  assert.equal(turnFor(body), fixtures.turns.t2);
+});

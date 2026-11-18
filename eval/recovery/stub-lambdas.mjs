@@ -20,9 +20,13 @@ const json = (value) => new Response(JSON.stringify(value), { status: 200, heade
 const call = (name, args) => json({ candidates: [{ content: { parts: [{ functionCall: { name, args } }] } }] });
 
 // A turn is recognised by a phrase that holds no name, so it still matches
-// after the iOS app swaps names for stand-ins before extraction.
+// after the iOS app swaps names for stand-ins before extraction. Only the
+// prompt's NEW UTTERANCE section counts: the recent conversation before it
+// carries earlier turns' text.
 export function turnFor(body) {
-  return Object.values(fixtures.turns).find((t) => body.includes(t.key));
+  const at = body.lastIndexOf('NEW UTTERANCE:');
+  const current = at >= 0 ? body.slice(at) : body;
+  return Object.values(fixtures.turns).find((t) => current.includes(t.key));
 }
 
 export function createStubbedLambdas({ url, anonKey, realFetch = fetch }) {

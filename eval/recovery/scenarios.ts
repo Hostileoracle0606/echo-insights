@@ -157,6 +157,54 @@ async function untilDoneOrKilled(work: Promise<void>, fault: ReturnType<typeof f
   if (!done) await sleep(50);
 }
 
+export interface Observed {
+  triggered: boolean;
+  kept: number;
+  of: number;
+  partial: PartialTurn;
+  duplicateTotal: number;
+  /** Turns the restarted client found in the turn journal. */
+  resumed: number;
+  /** Model calls for turn 2 across the whole run, restart included. */
+  turn2Extractions: number;
+  conflicts: number;
+  brief?: { first: string; retry: string | null };
+  stubCalls: number;
+}
+
+/**
+ * The pass rule, per fault. Nothing lost and nothing twice, always. Beyond
+ * that, only the extraction faults may leave turn 2 out of the graph (the
+ * spec's "dropped or marked"); every other fault must finish it exactly once,
+ * by the route the fault is about: a kill through the journal, a lost commit
+ * through a deduplicated retry, a race through a rebase, and a retried close
+ * through "unchanged" without a second brief.
+ */
+export function judge(fault: FaultName, o: Observed): Outcome {
+  if (!o.triggered) return "not_triggered";
+  if (o.kept < o.of || o.duplicateTotal > 0) return "fail";
+  const once = o.partial === "recovered" && o.turn2Extractions === 1;
+  switch (fault) {
+    case "extract_before":
+    case "extract_lost_ack":
+      return ["recovered", "marked", "dropped"].includes(o.partial) ? "pass" : "fail";
+    case "commit_before":
+    case "commit_lost_ack":
+      return once ? "pass" : "fail";
+    case "kill_after_journal":
+    case "kill_after_extract":
+      return once && o.resumed >= 1 ? "pass" : "fail";
+    case "concurrent_commit":
+      return once && o.conflicts >= 1 ? "pass" : "fail";
+    case "brief_lost_ack":
+      // Three turn extractions, then one brief write and one speech call.
+      return o.partial === "recovered" && o.brief?.first === "lost" && o.brief.retry === "unchanged" &&
+        o.stubCalls === o.of + 2
+        ? "pass"
+        : "fail";
+  }
+}
+
 const SEVERITY: PartialTurn[] = ["lost_completed", "duplicated", "dropped", "marked", "recovered"];
 const worst = (outcomes: PartialTurn[]) =>
   SEVERITY.find((s) => outcomes.includes(s)) ?? "recovered";
@@ -286,12 +334,20 @@ export async function runFault(
 
     const triggered = name === "concurrent_commit" ? conflicts > 0 : Boolean(fault?.triggered());
     const duplicateTotal = Object.values(audit.duplicates).reduce((a, b) => a + b, 0);
-    const clean =
-      kept === completed.length &&
-      ["recovered", "marked", "dropped"].includes(partialTurn) &&
-      duplicateTotal === 0;
-    const outcome: Outcome = !triggered ? "not_triggered" : clean ? "pass" : "fail";
     const providerAfter = env.providerCalls();
+    const turn2Extractions = env.extractCalls(turns.t2.text) - turn2Before;
+    const outcome = judge(name, {
+      triggered,
+      kept,
+      of: completed.length,
+      partial: partialTurn,
+      duplicateTotal,
+      resumed,
+      turn2Extractions,
+      conflicts,
+      brief,
+      stubCalls: providerAfter.stub - providerBefore.stub,
+    });
 
     return {
       fault: name,
@@ -305,7 +361,7 @@ export async function runFault(
       duplicates: audit.duplicates,
       counts: audit.counts,
       resumed,
-      turn2_extractions: env.extractCalls(turns.t2.text) - turn2Before,
+      turn2_extractions: turn2Extractions,
       conflicts,
       ...(brief ? { brief } : {}),
       client_errors: clients.reduce((n, c) => n + c.errors.length, 0),

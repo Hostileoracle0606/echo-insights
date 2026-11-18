@@ -19,7 +19,7 @@ const T2 = fixtures.turns.t2.text;
 // greeting and the user has the floor at once.
 export const SEED_ENTRY = 'Earlier note.';
 
-export function classifyKill({ journal, turns, duplicates, committedBeforeKill, found = null }) {
+export function classifyKill({ journal, turns, duplicates, committedBeforeKill, found = null, drained = false }) {
   const count = (text) => journal.filter((t) => t === text).length;
   const kept = count(T1) >= 1 ? 1 : 0;
   let partial;
@@ -34,8 +34,10 @@ export function classifyKill({ journal, turns, duplicates, committedBeforeKill, 
     completed_turns_kept: { n: kept, of: 1 },
     partial_turn: partial,
     duplicates,
+    // A relaunch that never reported or never drained tested no recovery.
     // Nothing left to resume and turn 2 already whole: the kill missed the turn.
-    outcome: committedBeforeKill || (found === 0 && partial === 'recovered') ? 'not_triggered' : clean ? 'pass' : 'fail',
+    outcome: found === null || !drained ? 'error'
+      : committedBeforeKill || (found === 0 && partial === 'recovered') ? 'not_triggered' : clean ? 'pass' : 'fail',
   };
 }
 
@@ -85,7 +87,7 @@ async function main([command, ...args]) {
     const { duplicates } = await auditUser({ url: stack.url, adminHeaders: stack.admin, userId });
     const result = classifyKill({
       journal: await texts('journal_entries'), turns: await texts('conversation_turns'),
-      duplicates, committedBeforeKill: committedBeforeKill === 'true', found: found === '' ? null : Number(found),
+      duplicates, committedBeforeKill: committedBeforeKill === 'true', found: found === '' ? null : Number(found), drained: drained === 'true',
     });
     console.log(JSON.stringify({
       case: killCase, run: Number(run), delay_ms: Number(delayMs),

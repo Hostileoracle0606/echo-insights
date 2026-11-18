@@ -6,7 +6,7 @@ import { fixtures } from './stub-lambdas.mjs';
 const t1 = fixtures.turns.t1.text;
 const t2 = fixtures.turns.t2.text;
 const none = { journal_entries: 0, entities: 0, relations: 0, conversation_turns: 0, session_briefs: 0 };
-const base = { duplicates: none, committedBeforeKill: false };
+const base = { duplicates: none, committedBeforeKill: false, found: 1, drained: true };
 
 test('turn 2 resumed and committed once is recovered and passes', () => {
   const r = classifyKill({ ...base, journal: ['Earlier note.', t1, t2], turns: [t1, t2] });
@@ -53,4 +53,11 @@ test('an empty journal at relaunch with turn 2 already landed means the kill cam
   assert.equal(r.outcome, 'not_triggered');
   const resumed = classifyKill({ ...base, found: 1, journal: [t1, t2], turns: [t1, t2] });
   assert.equal(resumed.outcome, 'pass');
+});
+
+test('a relaunch that never reported, or never drained, is an error, not a pass', () => {
+  const ok = { ...base, journal: [t1], turns: [t1, 'Odette introduced me to Imre, who'] };
+  assert.equal(classifyKill({ ...ok, found: null, drained: true }).outcome, 'error');
+  assert.equal(classifyKill({ ...ok, found: 0, drained: false }).outcome, 'error');
+  assert.equal(classifyKill({ ...ok, found: 0, drained: true }).outcome, 'pass');
 });
