@@ -151,7 +151,7 @@ On an iPhone 17 simulator, 5 of 5 passed in each case, no duplicates:
 - **extraction**: 5 of 5 `recovered`. Every relaunch found turn 2 in the turn
   journal (1 checkpoint), extracted and committed it once, and drained.
 
-The gateway answered 25 model requests from the stub and made 0 real calls.
+The gateway answered 20 model requests from the stub (turns 1 and 2 of each run) and made 0 real calls.
 
 ```bash
 supabase start && source eval/privacy/local-env.sh
