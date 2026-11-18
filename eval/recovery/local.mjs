@@ -45,7 +45,7 @@ export function localStack(env) {
     const session = await call('/auth/v1/token?grant_type=password', {
       method: 'POST', headers: { apikey: anonKey, 'content-type': 'application/json' }, body: { email, password },
     });
-    return { id: user.id, token: session.access_token };
+    return { id: user.id, token: session.access_token, email, password };
   }
 
   async function deleteUser(id) {

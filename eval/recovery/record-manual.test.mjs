@@ -57,3 +57,9 @@ test('an unfilled row is pending, never an entry', () => {
 test('three cases, as the spec names them', () => {
   assert.deepEqual(Object.keys(CASES), ['physical_kill', 'airplane_mode', 'interrupt_reply']);
 });
+
+test('only the sheet table counts, not other tables in the document', () => {
+  const doc = `| outcome | meaning |\n|---|---|\n| \`recovered\` | turn 2 once |\n\n${sheet(['| physical_kill | 1 |  |  |  |  |  |'])}`;
+  const { entries, pending, errors } = parseSheet(doc);
+  assert.deepEqual([entries.length, pending, errors.length], [0, 1, 0]);
+});

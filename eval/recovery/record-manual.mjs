@@ -24,10 +24,19 @@ export function parseSheet(markdown) {
   const entries = [];
   const errors = [];
   let pending = 0;
+  let inSheet = false; // only the table headed "| case | run | ..."
   for (const [index, line] of markdown.split('\n').entries()) {
-    if (!/^\s*\|/.test(line) || /^\s*\|\s*-/.test(line)) continue;
+    if (!/^\s*\|/.test(line)) {
+      inSheet = false;
+      continue;
+    }
+    if (/^\s*\|\s*-/.test(line)) continue;
     const cells = line.trim().replace(/^\||\|$/g, '').split('|').map((c) => c.trim());
-    if (cells[0] === 'case') continue; // header
+    if (cells[0] === 'case') {
+      inSheet = true;
+      continue;
+    }
+    if (!inSheet) continue;
     const row = Object.fromEntries(COLUMNS.map((name, i) => [name, cells[i] ?? '']));
     const where = `line ${index + 1}`;
     if (!row.outcome && !row.date && !row.device) {
