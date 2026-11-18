@@ -35,8 +35,19 @@ void main() {
     clock = _ManualClock();
   });
 
-  test('the shared recorder is off unless LUMEN_TIMING is defined', () {
-    expect(TimingMarks.instance.enabled, isFalse);
+  // Run both ways: plain `flutter test`, and with --dart-define=LUMEN_TIMING=1
+  // (the value the build docs use; bool.fromEnvironment would read it false).
+  test('the shared recorder is on exactly when built with LUMEN_TIMING=1', () {
+    expect(TimingMarks.instance.enabled,
+        const String.fromEnvironment('LUMEN_TIMING') == '1');
+  });
+
+  test('LUMEN_TIMING values that turn timing on', () {
+    expect(timingEnabledFor('1'), isTrue);
+    expect(timingEnabledFor('true'), isTrue);
+    expect(timingEnabledFor(''), isFalse);
+    expect(timingEnabledFor('0'), isFalse);
+    expect(timingEnabledFor('false'), isFalse);
   });
 
   test('disabled: nothing is emitted', () {

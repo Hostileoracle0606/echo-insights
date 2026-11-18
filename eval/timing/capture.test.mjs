@@ -23,3 +23,22 @@ test('no first_frame within the window: no host span is invented', () => {
   const out = annotate([{ text: app({ stage: 'process_start', phase: 'mark', t_ms: 0 }), at: 5 }], { launchedAt: 0 });
   assert.deepEqual(parseRun(out, { allowDebug: true }).marks.map((m) => m.stage), ['process_start']);
 });
+
+test('unified-log timestamps parse to epoch ms', async () => {
+  const { logTime } = await import('./capture.mjs');
+  assert.equal(logTime('2026-11-18 16:13:36.054321-0800'), Date.parse('2026-11-18T16:13:36.054-08:00'));
+  assert.equal(logTime('2026-11-18 16:13:36.054321+0530'), Date.parse('2026-11-18T16:13:36.054+05:30'));
+  assert.ok(Number.isNaN(logTime('garbage')));
+});
+
+test('ndjson log events become host-timestamped lines', async () => {
+  const { fromLogStream } = await import('./capture.mjs');
+  const events = [
+    JSON.stringify({ eventMessage: 'flutter: [lumen-timing] {"v":1}', timestamp: '2026-11-18 16:13:36.054321-0800' }),
+    'Filtering the log data using "process == …"',
+    '',
+  ].join('\n');
+  assert.deepEqual(fromLogStream(events), [
+    { text: 'flutter: [lumen-timing] {"v":1}', at: Date.parse('2026-11-18T16:13:36.054-08:00') },
+  ]);
+});

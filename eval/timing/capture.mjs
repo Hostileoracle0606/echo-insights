@@ -1,12 +1,11 @@
-// One cold launch on a simulator: spawn `simctl launch --console-pty`, keep
-// the `[lumen-timing]` lines for a fixed window, and add a host-side span
+// One cold launch on a simulator: launch the app, keep its `[lumen-timing]`
+// lines from the unified log for a fixed window, and add a host-side span
 // from the launch command to the arrival of first_frame (the in-app clock
 // starts at Dart main(), so it cannot see native/engine start-up).
 //
 //   node eval/timing/capture.mjs <device> <bundle-id> <seconds> <out.jsonl>
-import { spawn } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
-import { performance } from 'node:perf_hooks';
 import { pathToFileURL } from 'node:url';
 import { PREFIX } from './parse.mjs';
 
@@ -35,27 +34,52 @@ export function annotate(lines, { launchedAt }) {
   return out.length ? `${out.join('\n')}\n` : '';
 }
 
+/** "2026-11-18 16:13:36.054321-0800" (unified log) → epoch ms; NaN if not one. */
+export function logTime(ts) {
+  const m = /^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2})\.(\d{3})\d*([+-])(\d{2})(\d{2})$/.exec(ts ?? '');
+  if (!m) return NaN;
+  return Date.parse(`${m[1]}T${m[2]}.${m[3]}${m[4]}${m[5]}:${m[6]}`);
+}
+
+/** `log stream --style ndjson` output → [{text, at}] (non-JSON lines skipped). */
+export function fromLogStream(text) {
+  const out = [];
+  for (const raw of text.split('\n')) {
+    if (!raw.startsWith('{')) continue;
+    try {
+      const event = JSON.parse(raw);
+      if (typeof event.eventMessage === 'string') out.push({ text: event.eventMessage, at: logTime(event.timestamp) });
+    } catch {
+      // a partial line at the cut-off
+    }
+  }
+  return out;
+}
+
+// Flutter's print reaches the simulator's unified log (`flutter: …`), not the
+// `simctl launch --console` streams, so the run is read from `log stream`.
+// Both the launch time and the log timestamps are this Mac's clock.
 function capture(device, bundleId, seconds, outPath) {
-  return new Promise((resolve) => {
-    const lines = [];
-    const launchedAt = performance.now();
-    const child = spawn('xcrun', ['simctl', 'launch', '--console-pty', device, bundleId], { stdio: ['ignore', 'pipe', 'pipe'] });
-    let buffer = '';
-    const onData = (chunk) => {
-      const at = performance.now();
-      buffer += chunk.toString();
-      const parts = buffer.split(/\r?\n/);
-      buffer = parts.pop();
-      for (const text of parts) lines.push({ text, at });
-    };
-    child.stdout.on('data', onData);
-    child.stderr.on('data', onData);
+  return new Promise((resolve, reject) => {
+    const stream = spawn('xcrun', ['simctl', 'spawn', device, 'log', 'stream', '--style', 'ndjson', '--level', 'debug',
+      '--predicate', `process == "Runner" AND eventMessage CONTAINS "${PREFIX}"`], { stdio: ['ignore', 'pipe', 'ignore'] });
+    let text = '';
+    stream.stdout.on('data', (chunk) => { text += chunk.toString(); });
+    // Give the stream a moment to attach before the launch.
     setTimeout(() => {
-      child.kill('SIGTERM');
-      if (buffer) lines.push({ text: buffer, at: performance.now() });
-      writeFileSync(outPath, annotate(lines, { launchedAt }));
-      resolve(lines.length);
-    }, seconds * 1000);
+      const launchedAt = Date.now();
+      execFile('xcrun', ['simctl', 'launch', device, bundleId], (error) => {
+        if (error) {
+          stream.kill('SIGTERM');
+          reject(error);
+        }
+      });
+      setTimeout(() => {
+        stream.kill('SIGTERM');
+        writeFileSync(outPath, annotate(fromLogStream(text), { launchedAt }));
+        resolve();
+      }, seconds * 1000);
+    }, 1500);
   });
 }
 

@@ -71,8 +71,9 @@ node eval/timing/seed.mjs --entities 500 --email timing-eval-…@example.test
 eval/timing/collect.sh lumen-timing 20 sim-cold-500
 ```
 
-Each run terminates the app, waits 2 s, launches it with `--console-pty` and
-keeps 20 s of lines in `eval/results/<date>-<sha>/timing/<label>-<n>.jsonl`.
+Each run terminates the app, waits 2 s, launches it and keeps 20 s of its
+lines from the simulator's unified log (Flutter's `print` goes there, not to
+`simctl launch --console`) in `eval/results/<date>-<sha>/timing/<label>-<n>.jsonl`.
 Delete the `warmup-*` file before summarizing.
 
 Server-side retrieval (×50 per size after 5 discarded warm-up calls; paced

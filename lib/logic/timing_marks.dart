@@ -18,7 +18,10 @@ const allowedFieldKeys = {
 };
 
 /// On only in builds made with `--dart-define=LUMEN_TIMING=1`.
-const _enabledByDefine = bool.fromEnvironment('LUMEN_TIMING');
+const _timingDefine = String.fromEnvironment('LUMEN_TIMING');
+
+/// Whether a LUMEN_TIMING define value turns timing on ("1" or "true").
+bool timingEnabledFor(String value) => value == '1' || value == 'true';
 
 /// An entity count as its order of magnitude (0, 1, 10, 100, 1000+), so a
 /// mark says how large a history is without saying exactly.
@@ -41,12 +44,13 @@ String get _buildMode =>
 /// build defines `LUMEN_TIMING=1`, so shipped builds behave as before.
 class TimingMarks {
   TimingMarks({
-    this.enabled = _enabledByDefine,
+    bool? enabled,
     bool strict = kDebugMode,
     String? mode,
     Stopwatch? clock,
     void Function(String line)? sink,
-  })  : _strict = strict,
+  })  : enabled = enabled ?? timingEnabledFor(_timingDefine),
+        _strict = strict,
         _mode = mode ?? _buildMode,
         _clock = clock ?? Stopwatch(),
         _sink = sink ?? _print;

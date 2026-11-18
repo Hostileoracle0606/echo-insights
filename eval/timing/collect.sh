@@ -9,7 +9,7 @@
 # (JIT): every mark says mode=debug and the summary labels it. Device runs
 # (device-sheet.md) are profile. Never mix the two in one figure.
 #
-# Each run: terminate the app, wait 2 s, launch it with --console-pty and keep
+# Each run: terminate the app, wait 2 s, launch it and keep
 # 20 s of [lumen-timing] lines in eval/results/<date>-<sha>/timing/<label>-<n>.jsonl.
 # The app must already be signed in (the session survives relaunches).
 set -euo pipefail
