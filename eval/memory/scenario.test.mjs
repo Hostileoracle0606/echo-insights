@@ -4,7 +4,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { CATEGORIES, loadScenarios } from './scenario.mjs';
+import { CATEGORIES, interleaveByCategory, loadScenarios } from './scenario.mjs';
 
 const valid = () => ({
   id: 'job-change-decided',
@@ -65,4 +65,10 @@ test('the shipped corpus: 12 scenarios, 4/3/2/3 by category, at least 45 probes'
   assert.ok(sessions / 12 <= 2.5, `avg sessions ${sessions / 12}`);
   assert.ok(turns / sessions <= 1.5, `avg turns ${turns / sessions}`);
   assert.equal(new Set(scenarios.map((s) => s.id)).size, 12);
+});
+
+test('interleaveByCategory takes one scenario per category in turn, so a partial day covers every category', () => {
+  const s = (id, category) => ({ id, category });
+  const out = interleaveByCategory([s('a1', 'continuity'), s('a2', 'continuity'), s('b1', 'correction'), s('c1', 'deletion'), s('d1', 'changing_facts'), s('d2', 'changing_facts')]);
+  assert.deepEqual(out.map((x) => x.id), ['a1', 'b1', 'c1', 'd1', 'a2', 'd2']);
 });

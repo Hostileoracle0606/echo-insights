@@ -15,7 +15,7 @@ import { fileURLToPath } from "node:url";
 import { BudgetExhausted, QuotaExhausted, createBudget, providerFetch } from "./budget.mjs";
 import { probeScenario, runBrief } from "./probe.mjs";
 import { ExtractionFailed, PROVIDER_HOSTS, replayScenario } from "./replay";
-import { loadScenarios } from "./scenario.mjs";
+import { interleaveByCategory, loadScenarios } from "./scenario.mjs";
 import { snapshotDigest, takeSnapshot } from "./snapshot.mjs";
 import { localStack } from "./stack.mjs";
 
@@ -90,7 +90,8 @@ const saveQuota = () => {
   writeJson(quotaPath, quotaLog);
 };
 
-const scenarios = loadScenarios(join(root, "eval/memory/scenarios")).filter((s) => !only || s.id === only);
+const scenarios = interleaveByCategory(loadScenarios(join(root, "eval/memory/scenarios")))
+  .filter((s) => !only || s.id === only);
 const rel = (p: string) => relative(root, p);
 
 async function extract() {

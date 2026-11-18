@@ -57,3 +57,12 @@ export function loadScenarios(dir) {
     return { actions: [], ...scenario };
   });
 }
+
+// Round-robin over CATEGORIES, keeping each category's own order: a day's
+// quota that runs out partway still covers every category.
+export function interleaveByCategory(scenarios) {
+  const queues = CATEGORIES.map((c) => scenarios.filter((s) => s.category === c));
+  const out = [];
+  while (queues.some((q) => q.length)) for (const q of queues) if (q.length) out.push(q.shift());
+  return out;
+}
