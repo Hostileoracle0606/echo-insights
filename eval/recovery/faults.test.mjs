@@ -67,3 +67,15 @@ test('kill: never settles and never reaches the server', async () => {
 test('rejects an unknown mode', () => {
   assert.throws(() => faultyFetch({ realFetch: fetch, plan: { match: () => true, mode: 'sideways', after: 1 } }));
 });
+
+test('kill_after: reaches the server, then never settles', async () => {
+  const { seen, realFetch } = counting();
+  const f = faultyFetch({ realFetch, plan: { match: isCommit, mode: 'kill_after', after: 1 } });
+  const outcome = await Promise.race([
+    f.fetchImpl('http://x/rpc/commit_notebook').then(() => 'settled', () => 'settled'),
+    new Promise((resolve) => setTimeout(() => resolve('pending'), 30)),
+  ]);
+  assert.equal(outcome, 'pending');
+  assert.deepEqual(seen, ['http://x/rpc/commit_notebook']);
+  assert.equal(f.triggered(), true);
+});

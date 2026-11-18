@@ -1,0 +1,50 @@
+{
+  "note": "Synthetic turns and the extract_graph patches a stubbed provider answers with. Not recorded from a model: recovery measures persistence, not extraction quality.",
+  "turns": {
+    "t1": {
+      "text": "Started the Lantern Bay garden plot with Odette this morning.",
+      "patch": {
+        "entities": [
+          { "name": "Lantern Bay garden", "type": "project", "description": "A shared garden plot.", "questions": ["What are you growing first?", "Who else has a plot there?"] },
+          { "name": "Odette", "type": "person", "questions": ["How did you and Odette meet?", "What does Odette bring to the garden?"] }
+        ],
+        "relations": [{ "source": "Odette", "target": "Lantern Bay garden", "label": "works_on" }]
+      }
+    },
+    "t2": {
+      "text": "Odette introduced me to Imre, who keeps bees near the north fence.",
+      "patch": {
+        "entities": [
+          { "name": "Odette", "type": "person" },
+          { "name": "Imre", "type": "person", "questions": ["How long has Imre kept bees?", "Would Imre help with the plot?"] }
+        ],
+        "relations": [{ "source": "Odette", "target": "Imre", "label": "introduced" }]
+      }
+    },
+    "t2b": {
+      "text": "Imre offered to bring a hive over to the Lantern Bay garden.",
+      "patch": {
+        "entities": [
+          { "name": "Imre", "type": "person", "questions": ["How long has Imre kept bees?", "Where would the hive go?"] },
+          { "name": "Lantern Bay garden", "type": "project" }
+        ],
+        "relations": [{ "source": "Imre", "target": "Lantern Bay garden", "label": "offered_hive_to" }]
+      }
+    },
+    "t3": {
+      "text": "Booked the Corvel tool library for Saturday to borrow a tiller.",
+      "patch": {
+        "entities": [
+          { "name": "Corvel tool library", "type": "organization", "questions": ["What else do you borrow there?", "Is it near the garden?"] },
+          { "name": "Lantern Bay garden", "type": "project" }
+        ],
+        "relations": [{ "source": "Corvel tool library", "target": "Lantern Bay garden", "label": "supports" }]
+      }
+    }
+  },
+  "brief": {
+    "focus": ["The Lantern Bay garden", "Imre's bees"],
+    "openingThread": "Whether the hive went in",
+    "openingLine": "Did the hive make it to the garden?"
+  }
+}

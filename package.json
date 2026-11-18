@@ -18,6 +18,7 @@
     "check:production-secrets": "node scripts/production-secrets.mjs",
     "test:watch": "vitest",
     "eval:privacy": "node eval/privacy/run.mjs",
+    "eval:recovery": "vite-node --config eval/recovery/vite.config.ts eval/recovery/run.ts",
     "test:eval": "node --test \"eval/**/*.test.mjs\""
   },
   "dependencies": {
