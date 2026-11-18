@@ -1,0 +1,120 @@
+import 'dart:convert';
+
+import 'package:flutter/foundation.dart';
+
+/// Prefix of every timing line, so a collector can pick them out of a log.
+const timingLinePrefix = '[lumen-timing]';
+
+/// The only field keys a mark may carry. Values are numbers or booleans:
+/// never text, names, ids or tokens. `scope` is a [RetrievalScope] index.
+const allowedFieldKeys = {
+  'count',
+  'bytes',
+  'overlap',
+  'scope',
+  'size',
+  'ok',
+  'retry',
+};
+
+/// On only in builds made with `--dart-define=LUMEN_TIMING=1`.
+const _enabledByDefine = bool.fromEnvironment('LUMEN_TIMING');
+
+String get _buildMode =>
+    kDebugMode ? 'debug' : (kProfileMode ? 'profile' : 'release');
+
+/// Content-free timing marks for the responsiveness eval: one JSON line per
+/// mark, offsets from one monotonic [Stopwatch] started in `main()`.
+///
+/// Unlike `vlog`, it works in profile builds, and it is silent unless the
+/// build defines `LUMEN_TIMING=1`, so shipped builds behave as before.
+class TimingMarks {
+  TimingMarks({
+    this.enabled = _enabledByDefine,
+    bool strict = kDebugMode,
+    String? mode,
+    Stopwatch? clock,
+    void Function(String line)? sink,
+  })  : _strict = strict,
+        _mode = mode ?? _buildMode,
+        _clock = clock ?? Stopwatch(),
+        _sink = sink ?? _print;
+
+  static final instance = TimingMarks();
+
+  final bool enabled;
+  final bool _strict;
+  final String _mode;
+  final Stopwatch _clock;
+  final void Function(String line) _sink;
+  final Map<String, int> _open = {};
+
+  // `print`, not `debugPrint`: it must reach the console in profile builds.
+  // ignore: avoid_print
+  static void _print(String line) => print(line);
+
+  /// Starts the clock. Call first thing in `main()`; later calls are no-ops.
+  void start() {
+    if (!_clock.isRunning) _clock.start();
+  }
+
+  /// A point in time, such as `first_frame`.
+  void mark(String stage, {Map<String, Object> fields = const {}}) {
+    if (!enabled) return;
+    _emit(stage, 'mark', fields: fields);
+  }
+
+  /// The start of a stage that [end] closes.
+  void begin(String stage) {
+    if (!enabled) return;
+    _emit(stage, 'begin');
+    _open[stage] = _clock.elapsedMilliseconds;
+  }
+
+  /// The end of a stage. Without an open [begin] it is `incomplete`.
+  void end(String stage, {Map<String, Object> fields = const {}}) {
+    if (!enabled) return;
+    final began = _open.remove(stage);
+    _emit(stage, 'end', began: began, incomplete: began == null,
+        fields: fields);
+  }
+
+  /// Whether [stage] has begun and not yet ended.
+  bool isOpen(String stage) => _open.containsKey(stage);
+
+  void _emit(String stage, String phase,
+      {int? began, bool incomplete = false, Map<String, Object> fields = const {}}) {
+    final safe = _checked(fields);
+    final now = _clock.elapsedMilliseconds;
+    final line = <String, Object>{
+      'v': 1,
+      'stage': stage,
+      'phase': phase,
+      't_ms': now,
+      if (began != null) 'dur_ms': now - began,
+      if (incomplete) 'incomplete': true,
+      'mode': _mode,
+      ...safe,
+    };
+    _sink('$timingLinePrefix ${jsonEncode(line)}');
+  }
+
+  Map<String, Object> _checked(Map<String, Object> fields) {
+    final safe = <String, Object>{};
+    for (final entry in fields.entries) {
+      final value = entry.value;
+      final okKey = allowedFieldKeys.contains(entry.key);
+      final okValue = value is num || value is bool;
+      if (okKey && okValue) {
+        safe[entry.key] = value;
+      } else if (_strict) {
+        throw ArgumentError.value(
+            okKey ? value.runtimeType : entry.key,
+            okKey ? 'timing field value' : 'timing field key',
+            'timing marks carry allow-listed keys with number or boolean '
+                'values only');
+      }
+    }
+    return safe;
+  }
+}

@@ -6,11 +6,16 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'app.dart';
 import 'env.dart';
+import 'logic/timing_marks.dart';
 import 'security/fresh_install.dart';
 import 'services/markdown_export.dart';
 import 'services/shared_log.dart';
 
 Future<void> main() async {
+  // The one clock every timing mark reads; silent unless LUMEN_TIMING=1.
+  TimingMarks.instance
+    ..start()
+    ..mark('process_start');
   WidgetsFlutterBinding.ensureInitialized();
   await Env.load();
 
@@ -34,4 +39,6 @@ Future<void> main() async {
   unawaited(SharedLog.instance.sweep().catchError((Object _) {}));
 
   runApp(const ProviderScope(child: LumenApp()));
+  WidgetsBinding.instance.addPostFrameCallback(
+      (_) => TimingMarks.instance.mark('first_frame'));
 }
