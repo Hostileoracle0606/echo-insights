@@ -49,6 +49,7 @@ export async function runBrief({ stack, user, notebookId, geminiKey, fetchImpl }
   const briefFetch = async (url, init) => (String(url).includes('-tts:') ? ttsStub() : fetchImpl(url, init));
   const deps = { supabaseUrl: stack.url, publishableKey: stack.anonKey, fetchImpl: briefFetch,
     getPermanentCredential: async () => geminiKey };
+  await fetchImpl.pace?.();
   const response = await gatewayInvoke({
     authorize: createSupabaseAuthorizer(deps),
     handler: createSessionBriefHandler({ ...deps, sleep: async () => {}, log: () => {} }),

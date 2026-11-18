@@ -80,7 +80,11 @@ const quotaLog: Record<string, { used: number; limit: number; stops: string[] }>
 const today = (quotaLog[day] ??= { used: 0, limit, stops: [] });
 today.limit = limit;
 const budget = createBudget(Math.max(0, limit - today.used));
-const fetchImpl = providerFetch({ budget, providerHosts: PROVIDER_HOSTS, supabaseUrl: stack.url });
+// Free-tier per-minute limits: one provider call per MEMORY_CALL_INTERVAL_MS.
+const fetchImpl = providerFetch({
+  budget, providerHosts: PROVIDER_HOSTS, supabaseUrl: stack.url,
+  minIntervalMs: Number(env.MEMORY_CALL_INTERVAL_MS ?? 7000),
+});
 let logged = 0;
 const saveQuota = () => {
   today.used += budget.used() - logged;

@@ -2,7 +2,7 @@
 // the repo's @ alias): npx vitest run --config eval/memory/vite.config.ts
 import { describe, expect, it } from "vitest";
 import { BudgetExhausted, createBudget, providerFetch } from "./budget.mjs";
-import { replayScenario } from "./replay";
+import { CommitRejected, replayScenario } from "./replay";
 
 const SUPABASE = "http://127.0.0.1:55321";
 const NOTEBOOK = "11111111-2222-4333-8444-555555555555";
@@ -17,7 +17,7 @@ const scenario = {
   probes: [{ ask: "x", expect_retrieved: ["Northwind"] }],
 };
 
-function fakeBackend() {
+function fakeBackend({ relationTo }: { relationTo?: string } = {}) {
   const events: string[] = [];
   const expectedRevisions: number[] = [];
   let revision = 0;
@@ -31,7 +31,7 @@ function fakeBackend() {
       return json({
         candidates: [{ content: { parts: [{ functionCall: { name: "extract_graph", args: {
           entities: [{ name: "Northwind", type: "organization", description: "Where the user works." }],
-          relations: [], supersedes: [],
+          relations: relationTo ? [{ source: "Northwind", target: relationTo, label: "near" }] : [], supersedes: [],
         } } }] } }],
       });
     }
@@ -51,6 +51,10 @@ function fakeBackend() {
     }
     if (path === "/rest/v1/rpc/commit_notebook") {
       events.push("commit");
+      const known = new Set([...Object.keys(entities), ...body.p_change.entities.map((e: { id: string }) => e.id)]);
+      if (body.p_change.relations.some((r: { source: string; target: string }) => !known.has(r.source) || !known.has(r.target))) {
+        return json({ status: "rejected", code: "invalidChange" });
+      }
       expectedRevisions.push(body.p_expected_revision);
       for (const e of body.p_change.entities) entities[e.id] = e;
       revision += 1;
@@ -69,6 +73,9 @@ describe("replayScenario", () => {
     const backend = fakeBackend();
     const fetchImpl = providerFetch({ realFetch: backend.realFetch, budget: createBudget(10),
       providerHosts: ["generativelanguage.googleapis.com"], supabaseUrl: SUPABASE });
+    let paced = 0;
+    const pace = fetchImpl.pace;
+    fetchImpl.pace = async () => { paced += 1; await pace(); };
     let snapshotted = 0;
     const result = await replayScenario({ scenario, env, fetchImpl,
       takeSnapshot: async () => { snapshotted += 1; return { version: 1 } as never; } });
@@ -76,6 +83,7 @@ describe("replayScenario", () => {
     expect(backend.expectedRevisions).toEqual([0, 1]);
     expect(backend.events).toEqual(["turn", "extract", "commit", "forget:northwind", "turn", "extract", "commit"]);
     expect(snapshotted).toBe(1);
+    expect(paced).toBe(2);
     expect(result.meta.providerCalls).toBe(2);
     expect(result.meta.actions).toEqual([{ after_session: 1, kind: "forget", name: "Northwind", entityId: "northwind", outcome: "applied" }]);
   });
@@ -90,5 +98,17 @@ describe("replayScenario", () => {
       .rejects.toBeInstanceOf(BudgetExhausted);
     expect(snapshotted).toBe(0);
     expect(backend.events.filter((e) => e === "extract")).toHaveLength(1);
+  });
+
+  it("names the turn and the undeclared relation endpoints when the commit is rejected", async () => {
+    const backend = fakeBackend({ relationTo: "Harbor Street" });
+    const fetchImpl = providerFetch({ realFetch: backend.realFetch, budget: createBudget(10),
+      providerHosts: ["generativelanguage.googleapis.com"], supabaseUrl: SUPABASE });
+    const error = await replayScenario({ scenario, env, fetchImpl, takeSnapshot: async () => ({}) as never })
+      .catch((e) => e);
+    expect(error).toBeInstanceOf(CommitRejected);
+    expect(error.turnId).toBe("job-change-decided-s1-t1");
+    expect(error.code).toBe("invalidChange");
+    expect(error.undeclaredEndpoints).toEqual(["harbor-street"]);
   });
 });

@@ -30,6 +30,7 @@ export const PROVIDER_HOSTS = ["generativelanguage.googleapis.com"];
 
 type Fetch = ((input: string | URL, init?: RequestInit) => Promise<Response>) & {
   stopReason?: () => Error | null;
+  pace?: () => Promise<void>;
 };
 type Action = { after_session: number; kind: "correct" | "remove" | "forget"; name: string; description?: string };
 type Scenario = { id: string; sessions: Array<{ turns: string[] }>; actions?: Action[] };
@@ -39,6 +40,21 @@ export class ExtractionFailed extends Error {
   constructor(readonly statusCode: number, readonly code: string) {
     super(`extraction returned ${statusCode} ${code}`);
     this.name = "ExtractionFailed";
+  }
+}
+
+// A rejected commit loses the whole turn in the app too. Names the turn, the
+// RPC's code and any relation endpoint that is neither an existing entity nor
+// one arriving in the same change (commit_notebook's "relation endpoint not
+// found" check), which the RPC's own message doesn't reach the caller with.
+export class CommitRejected extends Error {
+  constructor(
+    readonly turnId: string,
+    readonly code: string,
+    readonly undeclaredEndpoints: string[],
+  ) {
+    super(`commit rejected ${code} at ${turnId}${undeclaredEndpoints.length ? ` (undeclared endpoints: ${undeclaredEndpoints.join(", ")})` : ""}`);
+    this.name = "CommitRejected";
   }
 }
 
@@ -201,6 +217,7 @@ export async function replayScenario({
         mode: DEFAULT_EXTRACTION_MODE,
         context: toRuntimeContext(compiled.clientContext),
       };
+      await fetchImpl.pace?.();
       const response = await gatewayInvoke({
         authorize,
         handler: extract,
@@ -219,7 +236,11 @@ export async function replayScenario({
       const outcome = await rest("rpc/commit_notebook", {
         body: { p_notebook_id: notebookId, p_expected_revision: revision, p_request_id: randomUUID(), p_change: change },
       });
-      if (outcome?.status !== "committed") throw new Error(`commit ${outcome?.status ?? "failed"} ${outcome?.code ?? ""}`);
+      if (outcome?.status !== "committed") {
+        const known = new Set([...Object.keys(state.entities), ...change.entities.map((e) => e.id)]);
+        const undeclared = change.relations.flatMap((r) => [r.source, r.target]).filter((id) => !known.has(id));
+        throw new CommitRejected(turnId, outcome?.code ?? outcome?.status ?? "unknown", [...new Set(undeclared)]);
+      }
       sessionTurns.push({ role: "user", text });
       turns += 1;
     }

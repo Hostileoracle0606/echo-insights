@@ -23,10 +23,14 @@ export function createBudget(limit) {
   };
 }
 
-export function providerFetch({ realFetch = fetch, budget, providerHosts, supabaseUrl }) {
+export function providerFetch({
+  realFetch = fetch, budget, providerHosts, supabaseUrl, minIntervalMs = 0,
+  now = () => Date.now(), sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+}) {
   const providers = new Set(providerHosts);
   const supabaseOrigin = supabaseUrl ? new URL(supabaseUrl).origin : null;
   let stop = null;
+  let lastProviderCall = -Infinity;
   const fetchImpl = async (url, init) => {
     const target = new URL(String(url));
     if (!providers.has(target.hostname)) {
@@ -40,6 +44,7 @@ export function providerFetch({ realFetch = fetch, budget, providerHosts, supaba
       stop = new BudgetExhausted();
       throw stop;
     }
+    lastProviderCall = now();
     const response = await realFetch(url, init);
     if (response.status === 429) {
       stop = new QuotaExhausted();
@@ -48,5 +53,11 @@ export function providerFetch({ realFetch = fetch, budget, providerHosts, supaba
     return response;
   };
   fetchImpl.stopReason = () => stop;
+  // The free tier also limits requests per minute. Called before a Lambda is
+  // invoked, not inside fetch: the Lambdas start their provider timeout first.
+  fetchImpl.pace = async () => {
+    const wait = lastProviderCall + minIntervalMs - now();
+    if (wait > 0) await sleep(wait);
+  };
   return fetchImpl;
 }

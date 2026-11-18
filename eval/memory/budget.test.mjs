@@ -57,3 +57,22 @@ test('a host that is neither Supabase nor a known provider is refused', async ()
   await assert.rejects(fetchImpl('https://api.groq.com/openai/v1/chat/completions'), /unexpected host/);
   assert.equal(calls.length, 0);
 });
+
+test('pace() waits until minIntervalMs after the last provider call; Supabase calls do not count', async () => {
+  // Pacing happens before a Lambda is invoked, never inside fetch: the Lambdas
+  // start their provider timeout before calling fetch.
+  const { realFetch } = fakeFetch();
+  let clock = 1_000;
+  const waits = [];
+  const fetchImpl = providerFetch({
+    realFetch, budget: createBudget(5), providerHosts: hosts, minIntervalMs: 7_000,
+    now: () => clock, sleep: async (ms) => { waits.push(ms); clock += ms; },
+  });
+  await fetchImpl.pace();
+  await fetchImpl(GEMINI);
+  clock += 2_000;
+  await fetchImpl(new URL('/rest/v1/notebooks', SUPABASE));
+  await fetchImpl.pace();
+  await fetchImpl(GEMINI);
+  assert.deepEqual(waits, [5_000]);
+});
