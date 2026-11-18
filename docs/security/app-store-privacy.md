@@ -28,12 +28,18 @@ For every type below: **Linked to the user: Yes** (the data is held under the us
 
 **Biometrics:** Face ID is used for app lock through `local_auth`; the app never receives biometric data, so nothing to declare.
 
+### Release 1 decisions that touch these answers (2026-11-17)
+
+- **Account deletion runs through a server queue.** "Delete my account" in the app calls the `delete-account` function, which deletes the account; a deletion worker (built by another session, **not in this branch yet**) removes what the cascade does not reach, including a deleted user's `auth.audit_log_entries` and `auth.flow_state` rows. What stays is only the user id and timestamps in `account_deletion_requests`, kept as proof the request was handled. Answer "yes, users can request deletion" and point to the in-app route. The form has no place for the retained record; if a field asks, the User ID row stays "collected" and the purpose is App Functionality. **<CONFIRM table name, what the worker purges and the retention of this record once the worker merges.>** Backups can outlive a delete for a limited time (`reachClaim`); do not say deletion is instant or complete everywhere.
+- **Sign-in audit log is off.** You turn off "Write audit logs to the database" (Authentication, Audit Logs) on staging and production (runbook, section 2). So the app does not add sign-in audit rows with the user's email to the database. Sign-in records may still sit in the provider's own logs, kept for a limited time the provider sets, then removed (the line on `/privacy`). This does not remove Email Address or User ID from section 2, since the account itself holds them.
+- **Passkeys are on.** A passkey adds a public key and a credential id to the account in Supabase Auth; the private key stays in the iPhone's Keychain, and Lumen never receives biometric data. It adds no Apple data type beyond Email Address and User ID already listed. Passkeys depend on Supabase's beta, so their device test (LM-121) must pass before you rely on them in the notes.
+
 ## 3. Answers that must not be stronger than the page
 
 - Do not state or imply "data is encrypted in transit and at rest" in marketing text. `privacy_claims.dart` keeps `supabaseEncryptionVerified` false, so the app says only that the journal "isn't encrypted with a key only you hold".
 - Do not state that Google does not train on the data: `paidTierVerified` is false until LM-123 is done and its checks pass.
 - Do not say "we keep nothing" or that you cannot read journals.
-- Deletion: the form asks whether users can request deletion. The in-app route ("Delete my account", LM-116) must be live in the submitted build **(confirm on device)**.
+- Deletion: the form asks whether users can request deletion. The in-app route ("Delete my account", LM-116) is merged and must be in the submitted build **(confirm on device)**.
 
 ## 4. Does the app need its own `PrivacyInfo.xcprivacy`?
 
@@ -80,4 +86,4 @@ For every type below: **Linked to the user: Yes** (the data is held under the us
 - [ ] Resolve each **(unverified)** row in section 2 against the release build.
 - [ ] Add and verify `ios/Runner/PrivacyInfo.xcprivacy` (section 4); run the privacy report.
 - [ ] Privacy policy URL: `/privacy` (LM-119). It must be live when you submit; see `app-review-notes.md`.
-- [ ] Re-read these answers after LM-114 to LM-117 and LM-127 merge (account deletion, Apple revocation, passkeys): a new data type or a stored name changes section 2.
+- [ ] Re-read these answers once the deletion worker merges (the retained deletion record, the purge list) and again after the LM-121 device pass: a new data type or a stored name changes section 2.

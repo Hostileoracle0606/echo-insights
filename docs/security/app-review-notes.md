@@ -49,7 +49,7 @@ Review needs a way in. Lumen's sign-in is email and password, Sign in with Apple
 | Why microphone? | Live voice conversation. |
 | Do you use data for tracking? | No tracking. See `app-store-privacy.md` for the App Privacy answers. |
 | Is AI-generated content moderated / is it a medical app? | Lumen is a journaling companion, not medical or therapy advice. **(your call: if you want a line saying this inside the app or notes, add it here)** |
-| Privacy policy URL? | `<your web domain>/privacy` (LM-119). It must be **live before you submit**; the checklist deploys the web app after the iOS build is released, so deploy the `/privacy` page first or give review a URL that already works. |
+| Privacy policy URL? | `https://lumen.trigo.workers.dev/privacy` (LM-119). It must be **live before you submit**: deploy the early static site first (runbook, section 5); the rest of the web app is not part of release 1. |
 
 ## 4. Before you press Submit
 
