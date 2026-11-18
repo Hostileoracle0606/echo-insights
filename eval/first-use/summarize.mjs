@@ -22,6 +22,8 @@ function median(sorted) {
 
 export function summarize(sessions) {
   if (!sessions.length) throw new Error('no sessions to summarize');
+  // An unapproved quote is dropped here, whatever its source, before validation.
+  sessions = sessions.map((s) => (Array.isArray(s?.quotes) ? { ...s, quotes: s.quotes.filter((q) => q?.approved === true) } : s));
   const seen = new Set();
   for (const session of sessions) {
     validateSession(session);

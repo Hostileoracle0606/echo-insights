@@ -58,9 +58,9 @@ test('nobody reaching a first turn gives null median and range', () => {
 
 test('completion counts per task', () => {
   assert.deepEqual(summarize(sessions).tasks, {
-    talk: { yes: 2, with_help: 1, no: 1, of: 4 },
-    find: { yes: 1, with_help: 1, no: 2, of: 4 },
-    correct: { yes: 1, with_help: 0, no: 3, of: 4 },
+    talk: { yes: 2, with_help: 1, no: 1, skipped: 0, of: 4 },
+    find: { yes: 1, with_help: 1, no: 2, skipped: 0, of: 4 },
+    correct: { yes: 1, with_help: 0, no: 3, skipped: 0, of: 4 },
   });
 });
 
@@ -77,9 +77,9 @@ test('confusions per code: total moments and how many people had it', () => {
 
 test('comprehension counts per question', () => {
   assert.deepEqual(summarize(sessions).comprehension, {
-    listening: { correct: 2, partial: 1, wrong: 1, of: 4 },
-    purpose: { correct: 2, partial: 1, wrong: 1, of: 4 },
-    keeps: { correct: 1, partial: 1, wrong: 2, of: 4 },
+    listening: { correct: 2, partial: 1, wrong: 1, skipped: 0, of: 4 },
+    purpose: { correct: 2, partial: 1, wrong: 1, skipped: 0, of: 4 },
+    keeps: { correct: 1, partial: 1, wrong: 2, skipped: 0, of: 4 },
   });
 });
 
@@ -92,10 +92,18 @@ test('keeps approved quotes only and drops the unapproved one', () => {
   assert.ok(!JSON.stringify(summarize(sessions)).includes('Said no to this one.'));
 });
 
-test('a quote with no approved flag is rejected before it can reach the summary', () => {
+test('a quote with no approved flag is dropped too', () => {
   const s = structuredClone(sessions[0]);
   s.quotes = [{ text: 'No flag.' }];
-  assert.throws(() => summarize([s]), /approved/); // invalid input never reaches the summary
+  assert.deepEqual(summarize([s]).quotes, []);
+});
+
+test('skips are counted on their own, not as failures', () => {
+  const s = validSession({ participant: 'P5', tasks: { talk: 'yes', find: 'skipped', correct: 'no' },
+    comprehension: { listening: 'correct', purpose: 'skipped', keeps: 'wrong' } });
+  const summary = summarize([sessions[0], s]);
+  assert.deepEqual(summary.tasks.find, { yes: 1, with_help: 0, no: 0, skipped: 1, of: 2 });
+  assert.deepEqual(summary.comprehension.purpose, { correct: 1, partial: 0, wrong: 0, skipped: 1, of: 2 });
 });
 
 test('reports counts, never percentages or fractions', () => {

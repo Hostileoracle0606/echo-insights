@@ -139,3 +139,16 @@ test('every field row on the observation sheet is a field of the schema, and the
     .sort();
   assert.deepEqual(sheetFields, schemaFields);
 });
+
+test('rejects a quote the person did not approve, so its words never reach the repo', () => {
+  assert.throws(() => validateSession(validSession({ quotes: [{ text: 'They said no.', approved: false }] })), /approved/);
+});
+
+test('a skipped task or question is coded as skipped, not as a failure', () => {
+  const s = validateSession(validSession({
+    tasks: { talk: 'yes', find: 'skipped', correct: 'skipped' },
+    comprehension: { listening: 'correct', purpose: 'skipped', keeps: 'wrong' },
+  }));
+  assert.equal(s.tasks.find, 'skipped');
+  assert.equal(s.comprehension.purpose, 'skipped');
+});

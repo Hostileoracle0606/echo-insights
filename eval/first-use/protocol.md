@@ -2,7 +2,7 @@
 
 What this measures: whether someone who has never used Lumen can work out
 what it is for, when it is listening, and what it keeps, with no
-explanation. Three tasks, three questions, about 35 minutes.
+explanation. Three tasks, three questions, 30 to 40 minutes with the person.
 
 Read every line in **bold** word for word. Everything else is for you.
 
@@ -36,6 +36,10 @@ waiting 30 seconds between steps.
 If they reach the task's time limit, say **"Let's move on."** and mark the
 task `no` unless they finished.
 
+**Skips.** If the person chooses to skip a task or a question (consent
+allows it), mark it `skipped`, not `no` or `wrong`. A skip is counted
+separately in the summary, never as a failure.
+
 ## Before they arrive (10 minutes)
 
 1. Reset and reseed the study account (README, "Run a session").
@@ -60,7 +64,7 @@ Hand them the device.
 ## 2. Task 1: talk through your day (up to 8 minutes)
 
 **"Use the app to talk through your day so far. It can be real or made
-up. Keep going until you've said what you want to say, or until about
+up. Carry on until you've said what you want to say, or until about
 five minutes have passed."**
 
 - Start the timer when you finish reading the task.
@@ -157,8 +161,7 @@ Is that OK?"**
 Only a clear yes makes it `"approved": true`. Changed wording must be read
 back again. If they say no, cross it out.
 
-**"Thank you. Everything you said to the app is deleted when I reset the
-account, which I'll do now."**
+**"Thank you. I'm erasing the test account now."**
 
 ## 7. After they leave (5 minutes)
 
@@ -177,4 +180,4 @@ account, which I'll do now."**
 | Task 2: find | 5 min |
 | Task 3: correct | 5 min |
 | Wrap up and quotes | 5 min |
-| **Total with the person** | **about 31 min, at most 40** |
+| **Total with the person** | **30 to 40 minutes** (limits add up to 31; allow time between parts) |

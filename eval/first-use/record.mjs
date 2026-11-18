@@ -9,9 +9,9 @@ import { fileURLToPath } from 'node:url';
 
 export const MAX_TEXT = 140;
 export const TASKS = Object.freeze(['talk', 'find', 'correct']);
-export const COMPLETION = Object.freeze(['yes', 'with_help', 'no']);
+export const COMPLETION = Object.freeze(['yes', 'with_help', 'no', 'skipped']);
 export const QUESTIONS = Object.freeze(['listening', 'purpose', 'keeps']);
-export const SCORES = Object.freeze(['correct', 'partial', 'wrong']);
+export const SCORES = Object.freeze(['correct', 'partial', 'wrong', 'skipped']);
 export const CONFUSION_CODES = Object.freeze(['mic_state', 'what_to_say', 'where_memory_is', 'correction_path', 'permissions', 'other']);
 export const CONFUSION_TASKS = Object.freeze(['setup', 'talk', 'checks', 'find', 'correct']);
 const DEVICES = ['simulator', 'testflight'];
@@ -113,7 +113,8 @@ export function validateSession(obj) {
     requireObject(q, path);
     checkKeys(q, ['text', 'approved'], path);
     if (typeof q.text !== 'string' || !q.text.trim()) fail(`${path}.text must be text`);
-    if (typeof q.approved !== 'boolean') fail(`${path}.approved must be true or false`);
+    // Words the person did not approve are never recorded, so never reach the repository.
+    if (q.approved !== true) fail(`${path}.approved must be true; leave out quotes the person did not approve`);
   });
 
   if ('notes' in obj && typeof obj.notes !== 'string') fail('notes must be text');

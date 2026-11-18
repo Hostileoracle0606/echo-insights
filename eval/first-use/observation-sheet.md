@@ -15,15 +15,15 @@ anything about their life. Free-text boxes take 140 characters at most.
 | `consent` | ☐ | must be `true` (they said yes to `consent.md`) |
 | `secondsToFirstTurn` | ______ s | whole seconds from the end of the Task 1 prompt to the app's first reply; `null` if none within 8 min |
 | `firstTurnMode` | ☐ voice ☐ typed | `voice`, `typed`, or `null` when there was no reply |
-| `tasks.talk` | ☐ yes ☐ with help ☐ no | `yes`, `with_help`, `no` |
-| `tasks.find` | ☐ yes ☐ with help ☐ no | `yes`, `with_help`, `no` |
-| `tasks.correct` | ☐ yes ☐ with help ☐ no | `yes`, `with_help`, `no` |
+| `tasks.talk` | ☐ yes ☐ with help ☐ no ☐ skipped | `yes`, `with_help`, `no`, `skipped` |
+| `tasks.find` | ☐ yes ☐ with help ☐ no ☐ skipped | `yes`, `with_help`, `no`, `skipped` |
+| `tasks.correct` | ☐ yes ☐ with help ☐ no ☐ skipped | `yes`, `with_help`, `no`, `skipped` |
 | `listeningStateWhenAsked` | ☐ listening ☐ not listening | `listening` or `not_listening`: what the app was really doing when you asked question A |
-| `comprehension.listening` | ☐ correct ☐ partial ☐ wrong | question A |
-| `comprehension.purpose` | ☐ correct ☐ partial ☐ wrong | question B |
-| `comprehension.keeps` | ☐ correct ☐ partial ☐ wrong | question C |
+| `comprehension.listening` | ☐ correct ☐ partial ☐ wrong ☐ skipped | question A |
+| `comprehension.purpose` | ☐ correct ☐ partial ☐ wrong ☐ skipped | question B |
+| `comprehension.keeps` | ☐ correct ☐ partial ☐ wrong ☐ skipped | question C |
 | `confusions` | one line each, below | `task` + `code` (+ `note`) |
-| `quotes` | on the quotes paper | `text` + `approved` |
+| `quotes` | on the quotes paper | `text` + `approved` (always `true`) |
 | `notes` | ______ | optional; behaviour only, 140 characters |
 
 ## Confusions
@@ -68,6 +68,6 @@ rejected.
 }
 ```
 
-Leave `quotes` as `[]` if there are none. A quote without
-`"approved": true` is never shown in the summary; do not record quotes
-the person said no to at all.
+Leave `quotes` as `[]` if there are none. Only quotes the person said
+yes to go in, each with `"approved": true`. The recorder rejects any
+other quote, so words someone did not approve never reach the repository.

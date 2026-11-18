@@ -26,11 +26,17 @@ that the person approved word for word.
 - \* Only the fields on the sheet are accepted. Anything else, and any
   field named like `transcript` or `content`, is rejected.
 - \* Every piece of text is 140 characters or fewer.
-- \* Quotes appear in the summary only with `"approved": true`.
+- \* Only quotes the person approved word for word are recorded
+  (`"approved": true`); the recorder rejects any other quote.
 - \* The summary gives counts ("2 of 4"), never percentages.
 - \* The study account is wiped after every person, and the wipe is
   checked by counting what is left (it must be 0).
 - No audio or video recording. Paper notes are destroyed once recorded.
+- What participants say goes to Google's Gemini service, which may hold on
+  to it under Google's terms; `consent.md` tells them so. Erasing the
+  study account clears only the Supabase side.
+- Known bias: consent has to say the test account is erased afterwards,
+  which hints that the app holds on to things before question C is asked.
 - The JSON you fill in lives outside the repository until it is recorded.
 - Never use your own account, or anyone's real account, for a session.
 
@@ -139,8 +145,8 @@ node eval/first-use/summarize.mjs
 
 It reads every `eval/results/*/first-use/P*.json`, checks each again, and
 writes `eval/results/<date>-<commit>/first-use.json`: median and range of
-time to first reply, completion counts per task, confusion counts per
-code, comprehension counts per question, and approved quotes. Commit the
+time to first reply, completion counts per task (`skipped` counted
+separately, never as a failure), confusion counts per code, comprehension counts per question, and approved quotes. Commit the
 per-person files and the summary together.
 
 ## Tests
