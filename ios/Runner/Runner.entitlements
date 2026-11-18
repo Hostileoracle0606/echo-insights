@@ -8,11 +8,9 @@
 	</array>
 	<key>com.apple.developer.associated-domains</key>
 	<array>
-		<!-- Replace REPLACE_WITH_RELYING_PARTY_DOMAIN with the bare domain that
-		     is the Supabase Relying Party ID (LM-127). Not a guess: the domain
-		     is the owner's to choose, and changing it later breaks every
-		     enrolled passkey. -->
-		<string>webcredentials:REPLACE_WITH_RELYING_PARTY_DOMAIN</string>
+		<!-- The Supabase Relying Party ID (LM-127), chosen by the owner on
+		     2026-11-18. Changing it later breaks every enrolled passkey. -->
+		<string>webcredentials:lumen.trigo.workers.dev</string>
 	</array>
 	<key>com.apple.developer.default-data-protection</key>
 	<string>NSFileProtectionComplete</string>
