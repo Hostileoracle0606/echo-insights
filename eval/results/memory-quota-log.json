@@ -1,7 +1,7 @@
 {
   "2026-11-18": {
     "used": 18,
-    "limit": 20,
+    "limit": 18,
     "stops": [
       "QuotaExhausted"
     ]

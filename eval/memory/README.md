@@ -22,15 +22,17 @@ Gemini free-tier quota (20 requests/day/model) and probing mostly doesn't.
 
 **Extract** (`--phase extract`): spends quota and resumes across days. For each scenario with no saved snapshot:
 1. Create a fresh `memory-eval-*@example.test` user.
-2. Replay each turn the way the web app does (`src/lib/turn-state/web-adapter.ts`):
-   - save the turn as `lib/services/transcript_store.dart` does;
+2. Replay each turn through the production pieces both clients share. This is a composite, not one client's exact path:
+   - save the turn as the Flutter app does (`lib/services/transcript_store.dart`);
    - reload `get_notebook_snapshot`, so every session is a client rebuilt from the database;
-   - run local lexical `retrieveMemory` and `compileExtractionContext`;
+   - build the extraction context with the web app's `retrieveMemory` and `compileExtractionContext` (`src/lib/turn-state/web-adapter.ts`). Recent conversation holds the user's earlier lines in the session only; there are no Lumen replies in a scripted replay;
    - build the runtime request body (as PR #35's `toRuntimeContext` and the Flutter client do);
-   - call the **extraction Lambda in-process**, authorizer first, real `gemini-2.5-flash`;
-   - run `mergeExtraction` with the follow-up dropped, as the web adapter does;
+   - call the **extraction Lambda in-process**, authorizer first, real `gemini-2.5-flash`. This is the route Flutter uses, and web after PR #35;
+   - run the web app's `mergeExtraction` with the follow-up dropped, as the web adapter does;
    - commit with `commit_notebook`.
-3. Between sessions, run the scripted user actions through the same RPCs the app's memory controls call (`edit_entity_description`, `remove_entity`, `forget_entity`).
+
+   A turn whose extraction fails or whose commit is rejected is recorded in `lostTurns` and the scenario carries on, as the app does. Only a quota stop aborts a scenario.
+3. Between sessions, run the scripted user actions through the same RPCs the app's memory controls call (`edit_entity_description`, `remove_entity`, `forget_entity`). Forget runs **without** transcript erase, which is the app's default, so the saved transcript and journal entries keep the name.
 4. Save the graph as `graphs/<id>.json`. Owner ids become placeholders, and a sha256 digest makes drift detectable.
 
 The run stops cleanly at `MEMORY_CALL_BUDGET` or at the first 429, with no retry. A scenario that stops partway saves nothing and restarts from its first session on the next run.
@@ -70,38 +72,54 @@ Tests: `node --test eval/memory/*.test.mjs` (the snapshot round trip runs only w
 
 All metrics are counts over probes. Text is compared as whole words, ignoring case and punctuation.
 
-- **recall@8:** expected names found among the retrieved entities. An expected entity that extraction never produced counts as an **extraction miss** and is left out of the recall denominator, so extraction failures and retrieval failures stay separate.
-- **precision@8 / unrelated insertions:** retrieved entities that answer the probe, and the rest. The graphs are small (3–6 entities), so `k = 8` often returns the whole graph and precision is low by construction. Read it as "how much else comes along", not as a ranking-quality score.
-- **stale resurfacing:** a removed, forgotten or corrected thing (`expect_not_retrieved` names, `stale_text`) appearing in retrieval (entity names, active relation text, descriptions, the context string the voice model gets) or in the brief. Counted per surface. `retrieve-memory` returns one ranked list and doesn't say whether the lexical, semantic or graph path found an item, so the retrieval surface is reported as `combined` rather than guessed.
+- **recall@1 / @3 / @8:** expected names found within the first 1, 3 or 8 retrieved entities. The scored graphs hold 3–6 entities, so `k = 8` returned the **whole graph in 20 of 20 probes**. That makes recall@8 a check that the entity exists, not of ranking: read recall@1. An expected entity that extraction never produced counts as an **extraction miss** and is left out of every recall denominator.
+- **precision@8 / unrelated insertions:** retrieved entities that answer the probe, and the rest. Low by construction when `k` exceeds the graph size.
+- **stale resurfacing:** a removed, forgotten or corrected thing (`expect_not_retrieved` names, `stale_text`) appearing in retrieval or in the brief.
+  - **Retrieval** covers entity names, descriptions, active relations and the context string the voice model gets. `retrieve-memory` returns one ranked list and doesn't say whether the lexical, semantic or graph path found an item, so this surface is reported as `combined` rather than guessed. With `k` ≥ graph size, a stale *entity* that still exists always surfaces, so read this as "the stale fact is still in memory".
+  - **Brief:** tallied **once per scenario**, since there is one brief per scenario.
+  - **Vacuous checks** are reported apart and not counted. A check is vacuous when the scripted action didn't apply (for example, its entity was never extracted), or when, with no action, a name-only check names something never in the graph.
+- **distractor confusion:** a look-alike name (`distractors`, e.g. Priya / Priyanka) that is retrieved. This is scored apart from stale resurfacing, because a look-alike isn't a stale fact.
 - **tentative/decided:** `decided` is correct when a retrieved description or active relation contains a decided marker and none contains a tentative or old marker. Lumen has no tentative/decided field, so this scores what the stored text says.
-- **sequence preserved:** the latest state is in active retrieved text, and every earlier state is still somewhere in what retrieval returns.
+- **sequence preserved:** the latest state is in active retrieved text, and every earlier state survives as a *statement*: a description, a relation, or a superseded relation kept as history. A leftover bare entity name doesn't count. This rule was tightened after the first results, because the first version passed on the name alone.
 - **ambiguity acknowledged:** two distinct retrieved entities share the ambiguous first name, meaning they weren't merged into one person.
 
-## Results so far (2026-11-18, `eval/results/2026-11-18-f4e7de1/memory/memory.json`)
+## Results so far (2026-11-18, `eval/results/2026-11-18-9a89931/memory/memory.json`)
 
-**Partial:** 5 of 12 scenarios have been extracted (20 of 48 probes, at least one scenario per category). The other 7 resume on the next quota day.
+**Partial:** 5 of 12 scenarios have been extracted (20 of 48 probes, at least one scenario per category).
+- **Failed:** `continuity-paraphrase` (a commit was rejected; see finding 4).
+- **Pending:** the other 6, for the next quota day.
+
+`eval/results/2026-11-18-f4e7de1/` is the same probes under the scorer before the review fixes, kept for comparison.
 
 | | continuity | correction | deletion | changing facts | **total** |
 |---|---|---|---|---|---|
 | probes scored | 4 | 8 | 4 | 4 | **20** |
-| recall@8 | 5/5 | 8/8 | 2/2 | 5/5 | **20/20** |
-| extraction misses | 0 | 0 | 0 | 0 | **0/20** |
+| recall@1 | 0/5 | 5/8 | 1/2 | 1/5 | **7/20** |
+| recall@3 | 5/5 | 8/8 | 2/2 | 5/5 | **20/20** |
+| recall@8 (k ≥ graph in 20/20) | 5/5 | 8/8 | 2/2 | 5/5 | **20/20** |
+| extraction misses | 0/5 | 0/8 | 0/2 | 0/5 | **0/20** |
 | precision@8 | 5/24 | 8/24 | 2/12 | 5/16 | **20/76** |
-| stale resurfacing (probes) | – | 4/4 | 0/3 | – | **4/7** |
-| … in retrieval | – | 3 | 0 | – | **3** |
-| … in the brief | – | 4/4 | 0/3 | – | **4/7** |
+| stale probes (any surface) | – | 4/4 | 0/3 | – | **4/7** |
+| … stale in retrieval | – | 3/4 | 0/3 | – | **3/7** |
+| stale briefs (per scenario) | – | 2/2 | 0/1 | – | **2/3** |
 | decided/correct status | – | 2/3 | – | – | **2/3** |
 | sequence preserved | – | – | – | 2/2 | **2/2** |
-| ambiguity acknowledged | – | – | – | – | 0/0 (two-Sams/two-Alexes not yet extracted) |
+| ambiguity acknowledged | – | – | – | – | 0/0 (two-Sams/two-Alexes pending) |
+| distractor confusion | – | – | – | – | 0/0 (similar-names pending) |
+
+No stale check was vacuous in this run.
 
 ### Findings
 
 1. **A same-session correction fixes the relation but not the descriptions** (`correction-city-same-session`). After "Dayton … sorry, Dalton", Lumen's graph has the right active relation (`Imogen --moved_to--> Dalton`, with the Dayton relation superseded). But Imogen's description still reads "moved to Dayton", and a `Dayton` entity remains whose description is "Imogen moved to Dayton". Retrieval hands both to the voice model in 3 of 4 probes, and the `decided` status check fails.
 2. **A user-edited description doesn't reach the session brief** (`correction-edit-description`). After the user corrects Felix from "pediatric nurse" to "physical therapist" with `edit_entity_description`, retrieval is right everywhere (status 2/2). But the brief, written from the saved transcript, says "Felix Navarro is a pediatric nurse".
-3. **Forget holds in both surfaces** (`deletion-forget-person`). After `forget_entity("Dana Whitfield")`, neither retrieval nor the brief mentions her (0/3).
-4. **Extraction can lose a whole turn** (`continuity-paraphrase`, not scored yet). `commit_notebook` rejected the merged change as `invalidChange`, so nothing was saved. The likeliest cause is a relation to an entity the model didn't declare, which the RPC rejects outright. The runner now records the turn and the undeclared endpoints; the next extract run will show which.
+3. **Forget: the scored surfaces are clean, but the name survives elsewhere** (`deletion-forget-person`).
+   - **Clean:** after `forget_entity("Dana Whitfield")`, neither retrieval nor the brief contains "Dana Whitfield" or "Whitfield" (0/3 probes, 0/1 brief). The brief said "someone".
+   - **Not scored, from the snapshot:** the stored question "Why is Dana considering Oslo?" survives on the Oslo entity. Entity questions feed the brief prompt, and the suppression covers the two-word name, not "Dana" alone. The journal entry and transcript also keep the full name, because forget ran without transcript erase.
+4. **Extraction can lose a whole turn** (`continuity-paraphrase`). `commit_notebook` rejected the merged change as `invalidChange` on day 1, when the runner still aborted the scenario. The likeliest cause is a relation to an entity the model didn't declare. The runner now records it as a lost turn, with the undeclared endpoints, and carries on; the next extract run will show which endpoint it was.
+5. **Ranking rarely puts the answer first for indirect questions:** recall@1 is 0/5 for continuity (the target is typically ranked 2nd or 3rd) against 5/8 for corrections.
 
-**Scorer caveat:** in finding 1, the brief's "Dalton, not Dayton" counts as stale because word matching can't see the negation. Of the 4 brief-stale probes, 3 come from that one brief; the 4th is finding 2. The rule was fixed before results existed and isn't adjusted after the fact.
+**Scorer caveat:** of the 2 stale briefs, the Imogen brief says "Dalton, not Dayton". It counts as stale because word matching can't see the negation. The other is finding 2.
 
 ## Limitations
 

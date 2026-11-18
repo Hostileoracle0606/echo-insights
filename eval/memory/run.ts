@@ -8,12 +8,13 @@
  *          restores every snapshot, probes retrieval and the brief, scores.
  */
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { BudgetExhausted, QuotaExhausted, createBudget, providerFetch } from "./budget.mjs";
 import { probeScenario, runBrief } from "./probe.mjs";
+import { newestRunFile } from "./results.mjs";
 import { ExtractionFailed, PROVIDER_HOSTS, replayScenario } from "./replay";
 import { interleaveByCategory, loadScenarios } from "./scenario.mjs";
 import { scoreProbe, summarize } from "./score.mjs";
@@ -58,16 +59,10 @@ const writeJson = (path: string, value: unknown) => {
 };
 const readJson = (path: string) => JSON.parse(readFileSync(path, "utf8"));
 
-// The newest saved file for a scenario across every earlier run directory, so
-// a run resumes whatever commit it is on. Directory names sort by date.
+// The newest saved file for a scenario across every run directory, so a run
+// resumes whatever commit it is on (results.mjs: by day, then write time).
 function latest(kind: "graphs" | "briefs", id: string): string | null {
-  if (!existsSync(resultsRoot)) return null;
-  const dirs = readdirSync(resultsRoot).filter((d) => /^\d{4}-\d{2}-\d{2}-/.test(d)).sort().reverse();
-  for (const dir of dirs) {
-    const path = join(resultsRoot, dir, "memory", kind, `${id}.json`);
-    if (existsSync(path)) return path;
-  }
-  return null;
+  return newestRunFile(resultsRoot, `${kind}/${id}.json`);
 }
 
 // Free tier: 20 requests/day/model, reset at midnight Pacific. Spend is logged
@@ -200,15 +195,9 @@ async function probe() {
 
 // The newest extract-log entry for a scenario, across run directories.
 function lastExtractOutcome(id: string): string | undefined {
-  if (!existsSync(resultsRoot)) return undefined;
-  const dirs = readdirSync(resultsRoot).filter((d) => /^\d{4}-\d{2}-\d{2}-/.test(d)).sort().reverse();
-  for (const dir of dirs) {
-    const path = join(resultsRoot, dir, "memory", "extract-log.json");
-    if (!existsSync(path)) continue;
-    const entry = (readJson(path) as Array<{ scenario: string; outcome: string }>).filter((e) => e.scenario === id).pop();
-    if (entry) return entry.outcome;
-  }
-  return undefined;
+  const entries = (path: string) => (readJson(path) as Array<{ scenario: string; outcome: string }>).filter((e) => e.scenario === id);
+  const newest = newestRunFile(resultsRoot, "extract-log.json", (path: string) => entries(path).length > 0);
+  return newest ? entries(newest).pop()?.outcome : undefined;
 }
 
 type ProbeResult = { scenario: string; probeIndex: number; retrieved: Array<{ name: string }>; briefOutcome: string };
