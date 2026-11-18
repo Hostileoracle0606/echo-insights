@@ -6,7 +6,6 @@ import type { DbClient, TableClient } from "./_shared/db-client.ts";
 import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { StubEmbedder } from "./_shared/embedder.ts";
 import { createHandler as embedEntities } from "./embed-entities/handler.ts";
-import { createHandler as extractGraph } from "./extract-graph/handler.ts";
 import { createHandler as retrieveMemory } from "./retrieve-memory/handler.ts";
 import { createHandler as speakAgent } from "./speak-agent/handler.ts";
 import { safeLog } from "./_shared/safe-log.ts";
@@ -68,58 +67,6 @@ function userClient(overrides: Record<string, unknown> = {}): DbClient {
 
 const failingResponse = (status: number) =>
   new Response(`{"error":"${MARKER} the provider echoed the prompt"}`, { status });
-
-// ── extract-graph ────────────────────────────────────────────
-
-const extractBody = {
-  text: `I met ${MARKER} at ${MARKER} cafe`,
-  notebookId: NB,
-  existingEntities: [{ name: `${MARKER} Maya`, type: "person", description: MARKER }],
-  recentConversation: [{ speaker: "user", text: `${MARKER} hello` }],
-};
-
-function extractHandler(fetchImpl: typeof fetch, client = userClient()) {
-  return extractGraph({
-    userClient: () => client,
-    env: (name) => (name === "GROQ_API_KEY" ? "test-key" : undefined),
-    fetch: fetchImpl,
-  });
-}
-
-Deno.test("extract-graph logs no content when Groq answers with an error body", async () => {
-  for (const status of [429, 402, 500]) {
-    const handle = extractHandler(() => Promise.resolve(failingResponse(status)));
-    assertClean(await capture(() => handle(post("http://x/", extractBody))));
-  }
-});
-
-Deno.test(
-  "extract-graph logs no content when the model returns unparseable arguments",
-  async () => {
-    const handle = extractHandler(() =>
-      Promise.resolve(
-        Response.json({
-          choices: [
-            { message: { tool_calls: [{ function: { arguments: `{"entities": ${MARKER}` } }] } },
-          ],
-        }),
-      ),
-    );
-    assertClean(await capture(() => handle(post("http://x/", extractBody))));
-  },
-);
-
-Deno.test("extract-graph logs no content when the network throws", async () => {
-  const handle = extractHandler(() => Promise.reject(new TypeError(`fetch failed for ${MARKER}`)));
-  assertClean(await capture(() => handle(post("http://x/", extractBody))));
-});
-
-Deno.test("extract-graph logs no content when the request body is malformed", async () => {
-  const handle = extractHandler(() => Promise.reject(new Error("unused")));
-  const run = await capture(() => handle(post("http://x/", `{"text": "${MARKER}`)));
-  assertClean(run);
-  assertEquals(run.response?.status, 500);
-});
 
 // ── speak-agent ──────────────────────────────────────────────
 
@@ -293,7 +240,6 @@ Deno.test("function sources print only through safeLog", async () => {
   const offenders: string[] = [];
   for (const dir of [
     "embed-entities",
-    "extract-graph",
     "speak-agent",
     "retrieve-memory",
     "_shared",

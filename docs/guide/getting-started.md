@@ -136,8 +136,8 @@ select vault.create_secret('<same long random string>', 'embed_internal_secret')
 > Vault secret and the function secret don't match. Re-set both to the same
 > value.
 
-`extract-graph` and `speak-agent` are used only by the web client. The app
-uses the AWS runtime for extraction.
+`speak-agent` is used only by the web client. Extraction runs on the AWS
+runtime (the legacy Groq `extract-graph` edge function was removed in LM-118).
 
 ### 2.3 AWS runtime
 

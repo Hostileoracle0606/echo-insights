@@ -45,7 +45,7 @@ Other places the name appears:
 - `public.conversation_runtime(text, jsonb)` is executable by `service_role` only (`supabase/migrations/20260917000000_conversation_runtime.sql`). Nothing in `lib/`, `src/`, `infra/` or `supabase/functions` calls it, so it is reachable only by someone holding the key.
 - `scripts/production-secrets.mjs` scans the iOS build for these names so they never ship in the app.
 
-Other server-side secrets that exist: `GROQ_API_KEY` (edge function `extract-graph`), `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID`, `ELEVENLABS_MODEL_ID`, `ELEVENLABS_OUTPUT_FORMAT` (edge function `speak-agent`). Whether these functions are still deployed or used is unverified. They are third-party keys, not database access, but they are in the same dashboard.
+Other server-side secrets that exist: `GROQ_API_KEY` (the deleted edge function `extract-graph`; remove the secret, LM-118), `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID`, `ELEVENLABS_MODEL_ID`, `ELEVENLABS_OUTPUT_FORMAT` (edge function `speak-agent`). Whether these functions are still deployed or used is unverified. They are third-party keys, not database access, but they are in the same dashboard.
 
 Note on the GitHub workflow: `SUPABASE_PROJECT_REF` is a repo/environment variable and the workflow runs `supabase db push --linked --yes` and deploys functions against it. It checks that the URL matches the ref, not that the ref is staging. Confirm the variable in the `staging` environment is a staging project and not `bjoevzvsdlhlcjywpyfx` (unverified). The service-role key stored there must belong to that same staging project.
 
