@@ -24,9 +24,9 @@ DEVICE_NAME=${RECOVERY_SIM_NAME:-Recovery Eval iPhone}
 BUNDLE=com.echoinsights.lumen
 PORT=${RECOVERY_GATEWAY_PORT:-55399}
 # Each extraction response is held this long, so a kill can land inside it.
-export RECOVERY_GATEWAY_HOLD_MS=${RECOVERY_GATEWAY_HOLD_MS:-300}
+export RECOVERY_GATEWAY_HOLD_MS=${RECOVERY_GATEWAY_HOLD_MS:-2000}
 DELAYS_transcription=(0 150 300 600 1200)
-DELAYS_extraction=(0 150 300 450 900)
+DELAYS_extraction=(0 400 800 1200 1800)
 
 # shellcheck disable=SC1091
 source eval/privacy/local-env.sh
@@ -122,7 +122,7 @@ for kase in transcription extraction; do
       node eval/recovery/kill-audit.mjs delete "$user"
       continue
     fi
-    sleep "$(node -e "process.stdout.write(String($delay / 1000))")"
+    sleep "$(awk "BEGIN { print $delay / 1000 }")"
     xcrun simctl terminate "$udid" "$BUNDLE" 2>/dev/null || true
     kill "$flutter_pid" 2>/dev/null || true
     wait "$flutter_pid" 2>/dev/null || true

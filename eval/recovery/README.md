@@ -114,9 +114,9 @@ each on a fresh user:
 - **transcription**: after turn 1 is committed, the fake Live server streams
   part of turn 2's input transcription and nothing finalizes it; the app is
   killed 0–1200 ms later.
-- **extraction**: turn 2 is typed and sent; the app is killed 0–900 ms after the
+- **extraction**: turn 2 is typed and sent; the app is killed 0–1800 ms after the
   gateway logs that turn 2's extraction began (the gateway holds each
-  extraction response 300 ms, so early kills land inside it).
+  extraction response 2 s, so the kill lands inside it: a commit is a few ms, too short to aim at from outside the simulator).
 
 `simctl terminate` kills the app; the script then runs the test again in
 `resume` phase, which reopens the notebook (replaying the on-device turn
