@@ -60,8 +60,12 @@ source, target, label), `conversation_turns` (notebook, turn id),
 | `duplicated` | some turn is in the graph twice |
 | `lost_completed` | a turn that had finished is missing |
 
-A run **passes** when every completed turn is kept, the partial turn is
-`recovered`, `marked` or `dropped`, and there are no duplicates. A run whose
+A run **passes** when every completed turn is kept and there are no
+duplicates, and turn 2 ends the way its fault requires (`judge` in
+`scenarios.ts`): only the extraction faults may leave it `marked` or
+`dropped`. A kill must be finished from the turn journal, a lost commit by a
+deduplicated retry, a race by a rebase, each with exactly one model call for
+turn 2; a retried close must come back `unchanged` with no second brief. A run whose
 fault never fired is `not_triggered`: inconclusive, never a pass. For
 `concurrent_commit` "fired" means a real revision conflict was observed.
 
@@ -71,9 +75,11 @@ before turn 2 (and between the two racing devices), and picks the kill variant
 by parity. Ten passing seeds mostly show the behaviour is deterministic; they
 are not ten independent samples of a noisy process.
 
-### First results (`2026-11-18-376a330/recovery.json`)
+### Results (`2026-11-18-c7f4f66/recovery.json`)
 
-Every fault passed 10 of 10: no duplicate row in any table, every completed
+Every fault passed 10 of 10 under the per-fault rule above. (The first run,
+`2026-11-18-376a330`, used a looser rule that only asked for no loss and no
+duplicates; it also passed 80/80 and is kept as it was.) In both: no duplicate row in any table, every completed
 turn kept, 0 real provider calls (260 stub). In detail:
 
 - Lost commit response: the retry reused the request id and the server
