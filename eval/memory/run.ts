@@ -16,6 +16,7 @@ import { BudgetExhausted, QuotaExhausted, createBudget, providerFetch } from "./
 import { probeScenario, runBrief } from "./probe.mjs";
 import { ExtractionFailed, PROVIDER_HOSTS, replayScenario } from "./replay";
 import { interleaveByCategory, loadScenarios } from "./scenario.mjs";
+import { scoreProbe, summarize } from "./score.mjs";
 import { snapshotDigest, takeSnapshot } from "./snapshot.mjs";
 import { localStack } from "./stack.mjs";
 
@@ -79,7 +80,8 @@ const quotaLog: Record<string, { used: number; limit: number; stops: string[] }>
   : {};
 const today = (quotaLog[day] ??= { used: 0, limit, stops: [] });
 today.limit = limit;
-const budget = createBudget(Math.max(0, limit - today.used));
+// After a 429, no more provider calls that day, briefs included: never retry past one.
+const budget = createBudget(today.stops.includes("QuotaExhausted") ? 0 : Math.max(0, limit - today.used));
 // Free-tier per-minute limits: one provider call per MEMORY_CALL_INTERVAL_MS.
 const fetchImpl = providerFetch({
   budget, providerHosts: PROVIDER_HOSTS, supabaseUrl: stack.url,
@@ -192,12 +194,62 @@ async function probe() {
   return { results, sources };
 }
 
+type ProbeResult = { scenario: string; probeIndex: number; retrieved: Array<{ name: string }>; briefOutcome: string };
+
+function score({ results, sources }: { results: unknown[]; sources: Record<string, any> }) {
+  const byId = new Map(scenarios.map((s) => [s.id, s]));
+  const rows = (results as ProbeResult[]).map((r) => {
+    const scenario = byId.get(r.scenario)!;
+    const probe = scenario.probes[r.probeIndex];
+    return {
+      scenario: r.scenario,
+      category: scenario.category,
+      probeIndex: r.probeIndex,
+      ask: probe.ask,
+      retrievedNames: r.retrieved.map((i) => i.name),
+      brief: r.briefOutcome,
+      ...scoreProbe(probe, r),
+    };
+  });
+  const missing = scenarios.filter((s) => !sources[s.id]?.graph);
+  const memory = {
+    version: 1,
+    target: "local",
+    commit: sha,
+    scoredAt: new Date().toISOString(),
+    method: {
+      extractionRunsPerScenario: 1,
+      model: "gemini-2.5-flash (thinking off), extraction Lambda in-process",
+      retrieval: "retrieve-memory, scope notebook, k=8, local gte-small embeddings",
+      pathAttribution: "combined: retrieve-memory returns one ranked list and does not say which path found an item",
+      statusRule: "decided is correct when a retrieved entity description or active relation contains a decided marker and none contains a tentative marker; Lumen stores no tentative/decided field, so this scores the stored text",
+      limitation: "N=1 extraction per scenario: no run-to-run spread is claimed",
+    },
+    scenarios: {
+      total: scenarios.length,
+      scored: scenarios.length - missing.length,
+      probesScored: rows.length,
+      probesTotal: scenarios.reduce((n, s) => n + s.probes.length, 0),
+      notScored: missing.map((s) => s.id),
+      briefs: Object.fromEntries(Object.entries(sources).map(([id, v]) => [id, v.brief ?? "not_run"])),
+      actions: Object.fromEntries(Object.entries(sources).filter(([, v]) => v.actions?.length).map(([id, v]) => [id, v.actions])),
+    },
+    summary: summarize(rows),
+    probes: rows,
+  };
+  writeJson(join(runDir, "memory.json"), memory);
+  const t = memory.summary.total;
+  console.log(`scored ${rows.length}/${memory.scenarios.probesTotal} probes from ${memory.scenarios.scored}/${scenarios.length} scenarios`);
+  console.log(`recall@8 ${t.recall.hit}/${t.recall.of} · extraction misses ${t.extractionMisses.count}/${t.extractionMisses.ofExpected} · precision@8 ${t.precision.hit}/${t.precision.of}`);
+  console.log(`stale ${t.stale.probes}/${t.stale.of} (retrieval ${t.stale.retrieval}, brief ${t.stale.brief}/${t.stale.briefChecked} checked) · status ${t.status.correct}/${t.status.of} · order ${t.order.kept}/${t.order.of} · ambiguity ${t.ambiguity.acknowledged}/${t.ambiguity.of}`);
+}
+
 let exitCode = 0;
 try {
   const swept = await stack.sweep();
   if (swept) console.log(`swept ${swept} leftover memory-eval users`);
   if (phase !== "probe") await extract();
-  if (phase !== "extract") await probe();
+  if (phase !== "extract") score(await probe());
 } catch (error) {
   console.error(`memory eval failed: ${(error as Error).message}`);
   exitCode = 1;
