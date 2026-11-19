@@ -76,9 +76,12 @@ If a file sorts before one already applied remotely, `db push` refuses; do not f
 | 22 | `20261116000100_erase_batch_keys.sql` | LM-102/103 |
 | 23 | `20261116000200_unfinished_work.sql` | LM-102/103 |
 | 24 | `20261117000000_account_deletion_flow_state.sql` (purges `auth.flow_state` on account deletion; best-effort, a failed purge is only a Postgres warning) | LM-117 |
-| 25 | **`<ADD NEW 20261118… FILES HERE, IN FILE-NAME ORDER>`** Two sessions are still adding migrations (timestamps `20261118000100` to `20261118000900`). Run `ls supabase/migrations` on the final release branch and copy every file that is newer than row 24 into this table before the rehearsal. | account deletion worker and others |
+| 25 | `20261118000100_account_deletion_requests.sql` | LM-114–117 |
+| 26 | `20261118000200_account_deletion_worker.sql` | LM-114–117 |
+| 27 | `20261118000300_account_deletion_worker_locking.sql` | LM-117 |
+| 28 | `20261118000500_unfinished_work_window.sql` | LM-128 |
 
-The list above is the whole set on `feat/release-beta-forget` as of 2026-11-18 plus the open row. The count in `launch-checklist.md` ("18") is out of date for release 1.
+This table lists the 28 migrations from the Phase 1 starting point through Release 1. Use the Remote column to determine which are pending on the target.
 
 Why this order: `…300` drops LM-46's caps and `…700` restores them, so a partial run leaves the caps off. `…200000` must be live before the iOS build ships. The new `close-session` code calls an RPC from `…300` and selects `is_draft` (added by the LM-102 migrations), so the `close-session` Lambda deploys only after **all** migrations, including every `20261118…` file; otherwise every session close returns 503.
 
@@ -97,8 +100,10 @@ Standard practice for this release: Supabase writes a sign-in audit log into the
 
 1. Supabase dashboard, the target project, Authentication, Audit Logs: switch **"Write audit logs to the database" off**. Save.
 2. Write the date down. **(unverified: the exact label and where the toggle lives may differ on your dashboard; if it is not there, record what you see and stop.)**
-3. The account deletion worker (built by another session) purges a deleted user's `auth.audit_log_entries` and `auth.flow_state` rows. After a staging test deletion, check both tables for the deleted user's id and expect no rows. The only record kept is the user id and timestamps in `account_deletion_requests`. **<CONFIRM the table and the check query once the worker merges.>**
-4. Sign-in records that remain in the provider's own logs are kept for a limited time set by the provider, then removed. That sentence is on `/privacy`; do not say more than that.
+3. Verify the `process-account-deletions` job is active in `cron.job` and scheduled every minute. After submitting a disposable account for deletion, it becomes eligible in five minutes. Verify a scheduled run completes its request.
+4. For the disposable user, check that `auth.flow_state` has zero rows with that `user_id` and `auth.audit_log_entries` has zero rows where `payload->>'actor_id'` or `payload->'traits'->>'user_id'` matches their ID. Confirm that a bystander's audit rows remain. Both purges are best-effort, so a completed request alone does not prove either purge succeeded.
+5. Check the request row in `public.account_deletion_requests` for a populated `completed_at` and null `last_error`. The queue keeps the user and request IDs, request and completion timestamps, attempt count, and last failure SQLSTATE. The migrations set no expiry for these rows.
+6. Verify a new test sign-in creates no database audit row after the switch. Sign-in records in the provider's own logs follow the provider's retention window, as stated on `/privacy`.
 
 ## 3. Edge functions
 
@@ -122,7 +127,7 @@ supabase functions deploy delete-account  --project-ref "$REF"
   supabase secrets set --env-file /path/outside/repo/apple.env --project-ref "$REF"
   ```
 
-  Without these the function still deletes the account and answers `apple_revoked:false`.
+  Without these the function still queues the deletion and answers `apple_revoked:false` for an Apple account.
 - If you retire `speak-agent` (checklist section 4), leave its line out and run `supabase functions delete speak-agent --project-ref "$REF"`.
 
 Delete the legacy Groq function. Its source is gone from the repo (LM-118), so nothing redeploys it, but a copy deployed earlier keeps running with no forget redaction.

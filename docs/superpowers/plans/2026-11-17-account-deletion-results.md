@@ -16,6 +16,12 @@ Apply `20261117000000_account_deletion_flow_state.sql`, then `20261118000100_acc
 
 GitHub Actions and the hosted staging rehearsal are tracked in `2026-11-19-account-deletion-closeout.md`. Verify Apple revocation on a real device. A launch retry carries no Apple authorization code because the code is single-use. If the original request never reached the server, the retry still queues the deletion and the app provides the manual Apple removal steps.
 
+### Review fixes and release integration
+
+- The phone keeps the pending marker until the persistent wipes finish, including the phone's turn journal and temporary checkpoints. A storage failure preserves the marker for the next launch. The Keychain marker binds the request to its owner so a new account cannot resend it under its own credentials.
+- The original Apple request still attempts revocation before writing the queue row. If its result is unavailable after retry, the app offers manual Apple removal steps. The queue stores no Apple token or revocation result.
+- On the merged release tree, 35 database files passed 1,295 pgTAP tests with both WebAuthn tables present, and the Deno CI command passed 99 tests. The runbook's 28 migration entries match the Release 1 migration files in order.
+
 ## Original synchronous flow (2026-11-17)
 
 The rest of this report records the earlier synchronous flow and its test results.

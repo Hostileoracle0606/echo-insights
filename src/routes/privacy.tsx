@@ -70,7 +70,7 @@ const IPHONE_CONTROLS: string[] = [
   "Forget (beta): you can forget a person from their page. Lumen won't bring them up again, and they're gone from your maps. Their name is replaced with “someone” in everything Lumen reads: your past conversations, your cards and what it remembers about others. Mentioning that name later doesn't bring them back. Lumen matches the name they were saved under, so a nickname or a first name alone can slip through. Your saved transcripts keep your words for you to read. For a name of two or more words you can also erase it, as it was saved, from what you and Lumen said there, which replaces it with “someone” for good.",
   "Off the record: Lumen doesn't save what you say while it is on, and writes no card from it. Your voice still goes to Google so Lumen can answer.",
   "You can have old transcripts deleted automatically after 7, 30 or 90 days. Cards and what Lumen remembers stay.",
-  'Delete my account: Privacy has "Delete my account". It erases everything Lumen keeps for you: your conversations and their transcripts, your cards, your map of people and places, your briefs and what Lumen remembers. This cannot be undone. If you signed in with Apple, Lumen also asks Apple to end that sign-in.',
+  'Delete my account: Privacy has "Delete my account". Lumen records your request, then deletes your account, conversations, transcripts, cards, map, briefs and what Lumen remembers. Lumen keeps a record of the request and when it was handled. This cannot be undone. If you signed in with Apple, Lumen also asks Apple to end that sign-in.',
 ];
 
 function PrivacyPage() {

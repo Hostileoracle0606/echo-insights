@@ -32,7 +32,7 @@ Review needs a way in. Lumen's sign-in is email and password, Sign in with Apple
 >
 > **Sign in.** Email and password, Sign in with Apple, and passkeys (from Settings after signing in, **(confirm on device)**). Sign in with Apple is offered with Apple's own button.
 >
-> **Account deletion.** In the app: Privacy, then "Delete my account" at the bottom **(confirm on device: LM-116)**. It asks you to confirm and, for an Apple account, to sign in with Apple once more so the Apple token can be revoked. The account and everything in it is deleted.
+> **Account deletion.** Open Privacy and choose "Delete my account" **(confirm on device: LM-116)**. The app asks you to confirm. For Apple accounts it also asks you to sign in with Apple once more so it can revoke the Apple token. The app signs you out and clears local account data once the server accepts the request. A scheduled job then deletes the account and its journal data.
 >
 > **Other controls.** Privacy also has "Export my journal", app lock (Face ID or passcode), "Off the record" mode, automatic deletion of old transcripts, and "Forget" for a person. Forget is labelled beta in the app.
 >
