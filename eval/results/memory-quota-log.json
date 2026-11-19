@@ -5,5 +5,12 @@
     "stops": [
       "QuotaExhausted"
     ]
+  },
+  "2026-11-19": {
+    "used": 7,
+    "limit": 18,
+    "stops": [
+      "QuotaExhausted"
+    ]
   }
 }
