@@ -37,10 +37,11 @@ Gemini free-tier quota (20 requests/day/model) and probing mostly doesn't.
 
 The run stops cleanly at `MEMORY_CALL_BUDGET` or at the first 429, with no retry. A scenario that stops partway saves nothing and restarts from its first session on the next run.
 
-**Probe** (`--phase probe`): restores each snapshot into a fresh user, then:
-- runs `embed-entities` (local gte-small);
-- calls `retrieve-memory` for every probe (`scope: notebook`, `k = 8`);
-- writes the session brief once per scenario through the real brief Lambda. The text call is real Gemini, cached by snapshot digest; TTS is answered by a stub because audio isn't scored.
+**Probe** (`--phase probe`) restores each snapshot into a fresh user.
+
+- Generate the session-close brief through the brief Lambda using the scenario graph. Cache Gemini text by snapshot digest and stub the TTS call.
+- Add the same 50 synthetic background entities to each notebook. Run `embed-entities` (local gte-small) until it confirms that zero rows remain.
+- Call `retrieve-memory` in notebook scope for each probe. Score ranked entity IDs at the first 1, 3, and 8 positions. Check stale content in the full context string returned by the service as well.
 
 Then it scores and writes `memory.json`.
 
@@ -48,14 +49,15 @@ The Groq edge function `supabase/functions/extract-graph` is never called.
 
 ```bash
 source eval/privacy/local-env.sh                 # local stack only (assertLocalTarget)
-mv supabase/functions/retrieve-memory/deno.lock /tmp/   # lockfile v5 vs CLI 2.75, see eval/privacy/README.md
-printf 'EMBED_INTERNAL_SECRET=%s\n' "$(openssl rand -hex 24)" > /tmp/functions.env
-supabase functions serve --no-verify-jwt --env-file /tmp/functions.env &
-set -a; . /tmp/functions.env; set +a
+memory_edge_dir=$(mktemp -d /tmp/lumen-memory-edge.XXXXXX)
+# CLI 2.75 cannot serve the checked-in v5 lockfile. Serve a disposable copy.
+git archive HEAD supabase | tar -xf - --exclude='supabase/functions/retrieve-memory/deno.lock' -C "$memory_edge_dir"
+(umask 077; printf 'EMBED_INTERNAL_SECRET=%s\n' "$(openssl rand -hex 24)" > "$memory_edge_dir/functions.env")
+supabase functions serve --workdir "$memory_edge_dir" --no-verify-jwt --env-file "$memory_edge_dir/functions.env" &
+set -a; . "$memory_edge_dir/functions.env"; set +a
 export GEMINI_API_KEY=...                        # free tier
 npm run eval:memory -- --phase extract           # resumable; run again tomorrow
 npm run eval:memory -- --phase probe             # rerun freely; briefs are cached
-mv /tmp/deno.lock supabase/functions/retrieve-memory/deno.lock
 ```
 
 These environment variables control spending and pacing:
@@ -72,42 +74,48 @@ Tests: `node --test eval/memory/*.test.mjs` (the snapshot round trip runs only w
 
 All metrics are counts over probes. Text is compared as whole words, ignoring case and punctuation.
 
-- **recall@1 / @3 / @8:** expected names found within the first 1, 3 or 8 retrieved entities. The scored graphs hold 3–6 entities, so `k = 8` returned the **whole graph in 20 of 20 probes**. That makes recall@8 a check that the entity exists, not of ranking: read recall@1. An expected entity that extraction never produced counts as an **extraction miss** and is left out of every recall denominator.
-- **precision@8 / unrelated insertions:** retrieved entities that answer the probe, and the rest. Low by construction when `k` exceeds the graph size.
+- **recall@1 / @3 / @8** counts expected names found in the first 1, 3 or 8 ranked entities. Expected names missing from the graph count separately as **extraction misses** and are excluded from recall denominators.
+- **precision@3 / @8** counts labeled hits among the ranked items after excluding explicitly labeled related names. **Unrelated insertions** count retrieved background entities. Other same-story items are reported separately.
 - **stale resurfacing:** a removed, forgotten or corrected thing (`expect_not_retrieved` names, `stale_text`) appearing in retrieval or in the brief.
-  - **Retrieval** covers entity names, descriptions, active relations and the context string the voice model gets. `retrieve-memory` returns one ranked list and doesn't say whether the lexical, semantic or graph path found an item, so this surface is reported as `combined` rather than guessed. With `k` ≥ graph size, a stale *entity* that still exists always surfaces, so read this as "the stale fact is still in memory".
-  - **Brief:** tallied **once per scenario**, since there is one brief per scenario.
+  - **Retrieval** counts a forbidden entity name in the ranked items as resurfacing even when nearby text denies the old fact. It also checks for asserted stale text in the retrieved items and service context. The service returns one ranked list, so path attribution is `combined`.
+  - **Brief** is tallied once per scenario with an available brief and applicable stale check. Text matching uses rules for common explicit negations, including “Dalton, not Dayton.”
   - **Vacuous checks** are reported apart and not counted. A check is vacuous when the scripted action didn't apply (for example, its entity was never extracted), or when, with no action, a name-only check names something never in the graph.
 - **distractor confusion:** a look-alike name (`distractors`, e.g. Priya / Priyanka) that is retrieved. This is scored apart from stale resurfacing, because a look-alike isn't a stale fact.
 - **tentative/decided:** `decided` is correct when a retrieved description or active relation contains a decided marker and none contains a tentative or old marker. Lumen has no tentative/decided field, so this scores what the stored text says.
 - **sequence preserved:** the latest state is in active retrieved text, and every earlier state survives as a *statement*: a description, a relation, or a superseded relation kept as history. A leftover bare entity name doesn't count. This rule was tightened after the first results, because the first version passed on the name alone.
 - **ambiguity acknowledged:** two distinct retrieved entities share the ambiguous first name, meaning they weren't merged into one person.
 
-## Results so far (2026-11-18, `eval/results/2026-11-18-9a89931/memory/memory.json`)
+## Partial results, November 19, 2026
 
-**Partial:** 5 of 12 scenarios have been extracted (20 of 48 probes, at least one scenario per category).
-- **Failed:** `continuity-paraphrase` (a commit was rejected; see finding 4).
-- **Pending:** the other 6, for the next quota day.
+The local run scored **8 of 12 scenarios and 32 of 48 retrieval probes**.
+Five scenarios had cached briefs. Gemini returned HTTP 429 during extraction,
+leaving four scenarios to replay and three saved scenarios awaiting briefs.
+The JSON report links each probe to its source snapshot and extraction commit.
+[Scores](../results/2026-11-19-9d35e9a/memory/memory.json) ·
+[Raw probes](../results/2026-11-19-9d35e9a/memory/probes.json) ·
+[Extraction log](../results/2026-11-19-80a36bd/memory/extract-log.json)
 
-`eval/results/2026-11-18-f4e7de1/` is the same probes under the scorer before the review fixes, kept for comparison.
-
-| | continuity | correction | deletion | changing facts | **total** |
+| | Continuity | Correction | Deletion | Changing facts | Total |
 |---|---|---|---|---|---|
-| probes scored | 4 | 8 | 4 | 4 | **20** |
-| recall@1 | 0/5 | 5/8 | 1/2 | 1/5 | **7/20** |
-| recall@3 | 5/5 | 8/8 | 2/2 | 5/5 | **20/20** |
-| recall@8 (k ≥ graph in 20/20) | 5/5 | 8/8 | 2/2 | 5/5 | **20/20** |
-| extraction misses | 0/5 | 0/8 | 0/2 | 0/5 | **0/20** |
-| precision@8 | 5/24 | 8/24 | 2/12 | 5/16 | **20/76** |
-| stale probes (any surface) | – | 4/4 | 0/3 | – | **4/7** |
-| … stale in retrieval | – | 3/4 | 0/3 | – | **3/7** |
-| stale briefs (per scenario) | – | 2/2 | 0/1 | – | **2/3** |
-| decided/correct status | – | 2/3 | – | – | **2/3** |
-| sequence preserved | – | – | – | 2/2 | **2/2** |
-| ambiguity acknowledged | – | – | – | – | 0/0 (two-Sams/two-Alexes pending) |
-| distractor confusion | – | – | – | – | 0/0 (similar-names pending) |
+| Probes scored | 8 | 8 | 8 | 8 | **32** |
+| Recall@1 | 1/5 | 5/8 | 2/4 | 3/9 | **11/26** |
+| Recall@3 | 3/5 | 7/8 | 3/4 | 6/9 | **19/26** |
+| Recall@8 | 5/5 | 8/8 | 3/4 | 7/9 | **23/26** |
+| Extraction misses | 4/9 | 0/8 | 0/4 | 0/9 | **4/30** |
+| Precision@8 | 5/64 | 8/64 | 3/64 | 8/64 | **24/256** |
+| Stale retrieval | – | 3/4 | 0/6 | – | **3/10** |
+| Stale briefs with an applicable check | – | 1/2 | 0/1 | – | **1/3** |
+| Decided/correct status | – | 2/3 | – | – | **2/3** |
+| Sequence preserved | – | – | – | 2/2 | **2/2** |
+| Distractor confusion | – | – | – | 1/2 | **1/2** |
 
-No stale check was vacuous in this run.
+The top eight covered the whole notebook in 0 of 32 probes. The scorer counted
+184 background items across those 32 probes and zero vacuous stale checks.
+Both same-first-name scenarios, the next-session job-title correction, and the
+tentative-to-decided scenario are pending. Ambiguity has zero scored checks.
+
+The November 18 reports remain available as historical evidence from the
+smaller graphs and earlier scorers.
 
 ### Findings
 
@@ -116,16 +124,14 @@ No stale check was vacuous in this run.
 3. **Forget: the scored surfaces are clean, but the name survives elsewhere** (`deletion-forget-person`).
    - **Clean:** after `forget_entity("Dana Whitfield")`, neither retrieval nor the brief contains "Dana Whitfield" or "Whitfield" (0/3 probes, 0/1 brief). The brief said "someone".
    - **Not scored, from the snapshot:** the stored question "Why is Dana considering Oslo?" survives on the Oslo entity. Entity questions feed the brief prompt, and the suppression covers the two-word name, not "Dana" alone. The journal entry and transcript also keep the full name, because forget ran without transcript erase.
-4. **Extraction can lose a whole turn** (`continuity-paraphrase`). `commit_notebook` rejected the merged change as `invalidChange` on day 1, when the runner still aborted the scenario. The likeliest cause is a relation to an entity the model didn't declare. The runner now records it as a lost turn, with the undeclared endpoints, and carries on; the next extract run will show which endpoint it was.
-5. **Ranking rarely puts the answer first for indirect questions:** recall@1 is 0/5 for continuity (the target is typically ranked 2nd or 3rd) against 5/8 for corrections.
-
-**Scorer caveat:** of the 2 stale briefs, the Imogen brief says "Dalton, not Dayton". It counts as stale because word matching can't see the negation. The other is finding 2.
+4. **A rejected graph commit can discard a whole turn's memory** (`continuity-paraphrase`). On replay, Gemini emitted relations referencing the undeclared entity `training`. The commit rejected the whole patch as `invalidChange`. The runner saved the patch in `lostTurns`, then continued to the next session. All four labeled extraction misses came from this scenario.
+5. **Continuity ranked the target first in 1 of 5 findable cases.** Corrections ranked it first in 5 of 8. One of two similar-name checks surfaced the look-alike.
 
 ## Limitations
 
 - **N = 1** extraction per scenario (free-tier quota). No run-to-run spread is claimed; the model runs at temperature 0, but output can still vary.
 - Local stack at a given commit; Gemini is the real provider.
 - Path attribution is `combined` (see above).
-- Text markers are blunt: they can't tell "not Dayton" from "Dayton". Raw retrieval and brief text for every probe is in `probes.json`, so each score can be checked by hand.
+- Text scores use word markers and a small set of negation rules. The raw retrieval and brief text in `probes.json` is available for manual review.
 - Spoken answers (an LLM judge over Live transcripts) are not covered yet. That needs Live quota scheduling and is planned separately.
 - Snapshots carry the throwaway user's random suppression key (`suppressionKey`). Forget hashes are keyed per user, and a restored forget needs that key to keep redacting the name. The key protected only the synthetic names in these files, and its user is deleted.

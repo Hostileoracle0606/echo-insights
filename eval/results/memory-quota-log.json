@@ -10,7 +10,8 @@
     "used": 7,
     "limit": 18,
     "stops": [
-      "QuotaExhausted"
+      "QuotaExhausted",
+      "BudgetExhausted"
     ]
   }
 }
