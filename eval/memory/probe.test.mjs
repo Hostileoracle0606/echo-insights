@@ -35,12 +35,30 @@ test('embedNotebook retries a 5xx (the edge runtime cancels a cold model load at
     fetchImpl: async (url, init) => {
       calls.push(init.headers['x-internal-secret']);
       const status = statuses.shift();
-      return new Response(JSON.stringify(status === 200 ? { ok: true } : { error: 'x' }), { status });
+      return new Response(JSON.stringify(status === 200 ? { ok: true, embedded: 1, remaining: 0, pruned: 0 } : { error: 'x' }), { status });
     },
     sleep: async (ms) => { waits.push(ms); },
   });
   assert.deepEqual(calls, ['s', 's']);
   assert.deepEqual(waits, [2000]);
+});
+
+test('embedNotebook waits for all batches before retrieval can start', async () => {
+  const batches = [42, 32, 22, 12, 2, 0];
+  const result = await embedNotebook({
+    url: 'http://127.0.0.1:55321', secret: 's', notebookId: 'nb',
+    fetchImpl: async () => Response.json({ ok: true, embedded: 10, remaining: batches.shift(), pruned: 0 }),
+    sleep: async () => {},
+  });
+  assert.equal(result.remaining, 0);
+});
+
+test('embedNotebook rejects an unconfirmed completion', async () => {
+  await assert.rejects(embedNotebook({
+    url: 'http://127.0.0.1:55321', secret: 's', notebookId: 'nb',
+    fetchImpl: async () => Response.json({ ok: true }),
+    sleep: async () => {},
+  }), /missing or invalid remaining/);
 });
 
 test('embedNotebook fails loudly after 3 attempts, or at once on ok:false', async () => {

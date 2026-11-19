@@ -71,25 +71,37 @@ export async function runBrief({ stack, user, notebookId, geminiKey, fetchImpl }
   return { brief: rows[0]?.brief ?? null, outcome: 'ready' };
 }
 
-// Idempotent (it re-embeds the notebook and prunes orphans), so a 5xx is
-// retried: a freshly started edge runtime cancels the first gte-small load at
-// its CPU-time limit. ok:false is a real failure and is not retried.
+// A 5xx may be a cold gte-small load hitting the edge runtime's CPU limit.
+// On success the handler persists one batch and re-enqueues the rest. Wait for
+// a response confirming completion, since retrieval can run in the meantime.
 export async function embedNotebook({ url, secret, notebookId, fetchImpl = fetch,
   sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)) }) {
-  for (let attempt = 1; ; attempt += 1) {
+  const deadline = AbortSignal.timeout(180_000);
+  let consecutiveFailures = 0;
+  while (!deadline.aborted) {
     const response = await fetchImpl(`${url}/functions/v1/embed-entities`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-internal-secret': secret },
       body: JSON.stringify({ notebookId }),
-      signal: AbortSignal.timeout(120_000),
+      signal: deadline,
     });
     const body = await response.json().catch(() => ({}));
-    if (response.ok && body.ok !== false) return body;
-    if (response.status < 500 || attempt >= 3) {
+    if (response.ok && body.ok === true) {
+      if (!Number.isInteger(body.remaining) || body.remaining < 0) {
+        throw new Error('embed-entities → missing or invalid remaining count');
+      }
+      if (body.remaining === 0) return body;
+      consecutiveFailures = 0;
+      await sleep(1000);
+      continue;
+    }
+    consecutiveFailures += 1;
+    if (response.status < 500 || consecutiveFailures >= 3) {
       throw new Error(`embed-entities → ${response.status} ${body.stage ?? ''}`.trim());
     }
-    await sleep(2000 * attempt);
+    await sleep(2000 * consecutiveFailures);
   }
+  throw new Error('embed-entities → timed out waiting for all embedding batches');
 }
 
 /** Returns {results, leftover}: leftover lists a test user whose delete failed after retries. */
