@@ -15,6 +15,11 @@
 --      which is what auth.admin.deleteUser runs), then assert the user's rows
 --      are gone and the bystander's remain.
 --
+--   1a. (deletion queue) `exempt` lists public tables that are keyed by
+--      user_id but must OUTLIVE the account on purpose. Each is excluded from
+--      checks 1 and 2 and its columns are pinned so it cannot grow personal
+--      data unnoticed.
+--
 --   4. (LM-117) the same for the auth schema, which holds device sessions:
 --      every auth table with a user_id column must be in `auth_inventory`
 --      and must cascade from auth.users (directly or through auth.sessions),
@@ -22,17 +27,24 @@
 --      on_auth_user_deleted trigger. Sessions, refresh tokens, identities,
 --      one-time tokens and flow_state are seeded and checked like section 3.
 --
+--   5. (deletion queue) auth.audit_log_entries has no user_id column (the id
+--      is inside the json payload), so it is not in `auth_inventory`; the
+--      on_auth_user_deleted trigger purges a user's rows by
+--      payload->>'actor_id' and payload->'traits'->>'user_id'. Seeded and
+--      checked separately below.
+--
 -- NOTE: the auth seeds below hard-code GoTrue's column names (sessions,
 -- refresh_tokens, identities, one_time_tokens, flow_state); a GoTrue upgrade
 -- that renames or adds a required column breaks the seed, not the deletion.
 --
 -- To cover a new table: add one `inventory` row, one seed insert, and bump
--- the plan below (2 + 3 per public table, 2 + 3 per seeded auth table).
+-- the plan below (2 + 3 per public table, 2 + 3 per seeded auth table,
+-- 1 per exempt table, 3 for the audit log).
 -- LM-128 (separate branch) must keep notebook_commit_requests in `inventory`.
 create extension if not exists pgtap;
 
 begin;
-select plan(2 + 3 * 19 + 2 + 3 * 5);
+select plan(2 + 3 * 19 + 1 + 2 + 3 * 5 + 3);
 
 -- ── inventory: table → predicate selecting one user's rows ─────────────────
 -- Placeholders: %U% user id, %N% that user's notebook id, %S% runtime session id.
@@ -62,11 +74,25 @@ insert into inventory values
   -- purged by the on_auth_user_deleted trigger
   ('retrieve_rate_limits',         'scope in (''user:%U%'', ''notebook:%N%'')');
 
+-- ── exempt: user_id-keyed tables that must outlive the account ─────────────
+create temp table exempt (tbl text primary key, why text not null) on commit drop;
+insert into exempt values
+  -- the deletion queue itself: the row records that the person asked for
+  -- deletion and when it was carried out, so it must survive the delete it
+  -- triggers (no FK to auth.users). It holds ids, timestamps, a retry count
+  -- and a SQLSTATE code only; the column pin below keeps it that way.
+  ('account_deletion_requests', 'deletion queue: proof of the request, outlives the user');
+
+select columns_are('public', 'account_deletion_requests',
+  array['user_id', 'request_id', 'requested_at', 'completed_at', 'attempts', 'last_error'],
+  'exempt account_deletion_requests holds no personal data columns (pinned)');
+
 -- ── 1. the inventory is the whole of `public` ──────────────────────────────
 select set_eq(
   $$ select c.relname::text from pg_class c
        join pg_namespace n on n.oid = c.relnamespace
-      where n.nspname = 'public' and c.relkind in ('r', 'p') $$,
+      where n.nspname = 'public' and c.relkind in ('r', 'p')
+        and c.relname::text not in (select tbl from exempt) $$,
   $$ select tbl from inventory $$,
   'every public table is in the deletion inventory (add new tables to it and to the deletion path)');
 
@@ -81,7 +107,8 @@ select is_empty(
              or exists (select 1 from pg_constraint k
                          where k.conrelid = c.oid and k.contype = 'f'
                            and k.confrelid in ('auth.users'::regclass, 'public.notebooks'::regclass)))
-        and c.relname::text not in (select tbl from inventory) $$,
+        and c.relname::text not in (select tbl from inventory)
+        and c.relname::text not in (select tbl from exempt) $$,
   'every table with a user_id or a foreign key to auth.users or notebooks is in the inventory');
 
 -- ── 4a. auth tables that carry a user id (device sessions live here) ──────
@@ -180,6 +207,24 @@ insert into auth.one_time_tokens (id, user_id, token_type, token_hash, relates_t
 insert into auth.flow_state (id, user_id, auth_code, code_challenge_method, code_challenge,
                              provider_type, provider_access_token, authentication_method)
   select gen_random_uuid(), uid, 'code-' || name, 's256', 'chal', 'apple', 'tok', 'oauth' from who;
+-- audit log: one row with the user as actor (a login), one where an admin
+-- acted on the user (the id sits in traits.user_id)
+insert into auth.audit_log_entries (id, payload, created_at)
+  select gen_random_uuid(),
+         json_build_object('actor_id', uid::text, 'actor_username', 'x', 'action', 'login', 'log_type', 'account'),
+         now() from who
+  union all
+  select gen_random_uuid(),
+         json_build_object('actor_id', '00000000-0000-0000-0000-000000000000', 'action', 'user_modified',
+                           'log_type', 'user', 'traits', json_build_object('user_id', uid::text)),
+         now() from who;
+
+-- a user's audit rows, by either place their id appears
+create function pg_temp.audit_rows_of(p_who text) returns bigint language sql as $$
+  select count(*) from auth.audit_log_entries a, who
+   where who.name = p_who
+     and (a.payload->>'actor_id' = who.uid::text or a.payload->'traits'->>'user_id' = who.uid::text)
+$$;
 
 -- rows a user has in a table, by the inventory predicate
 create function pg_temp.rows_of(p_tbl text, p_who text) returns bigint
@@ -218,6 +263,8 @@ select ok(pg_temp.rows_of(tbl, 'U') > 0 and pg_temp.rows_of(tbl, 'V') > 0,
 select ok(pg_temp.auth_rows_of(tbl, 'U') > 0 and pg_temp.auth_rows_of(tbl, 'V') > 0,
           'auth.' || tbl || ': seeded for both users')
   from auth_inventory where seeded order by tbl;
+select ok(pg_temp.audit_rows_of('U') = 2 and pg_temp.audit_rows_of('V') = 2,
+          'auth.audit_log_entries: seeded for both users (actor and traits rows)');
 
 delete from auth.users where id = (select uid from who where name = 'U');
 
@@ -232,6 +279,10 @@ select is(pg_temp.auth_rows_of(tbl, 'U'), 0::bigint, 'auth.' || tbl || ': nothin
   from auth_inventory where seeded order by tbl;
 select ok(pg_temp.auth_rows_of(tbl, 'V') > 0, 'auth.' || tbl || ': a bystander''s rows are untouched')
   from auth_inventory where seeded order by tbl;
+
+-- ── 5. the audit log, after the delete ──────────────────────────────────────
+select is(pg_temp.audit_rows_of('U'), 0::bigint, 'auth.audit_log_entries: nothing left for the deleted account');
+select is(pg_temp.audit_rows_of('V'), 2::bigint, 'auth.audit_log_entries: a bystander''s rows are untouched');
 
 select * from finish();
 rollback;
