@@ -1,0 +1,5 @@
+[lumen-timing] {"v":1,"stage":"process_start","phase":"mark","t_ms":1,"mode":"debug"}
+[lumen-timing] {"v":1,"stage":"first_frame","phase":"mark","t_ms":968,"mode":"debug"}
+[lumen-timing] {"v":1,"stage":"opening_prep","phase":"span","t_ms":1246,"dur_ms":496,"mode":"debug","ok":true,"overlap":false}
+[lumen-timing] {"v":1,"stage":"home_interactive","phase":"mark","t_ms":1554,"mode":"debug","count":50,"size":100}
+[lumen-timing] {"v":1,"stage":"launch_to_first_frame_host","phase":"span","t_ms":2363,"dur_ms":2363,"mode":"debug"}
