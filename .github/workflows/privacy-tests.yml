@@ -43,3 +43,21 @@ jobs:
           supabase/functions/retrieve-memory/
           supabase/functions/embed-entities/
           supabase/functions/delete-account/
+
+  # Must start FRESH (no cached volumes or images of a previous stack): GoTrue
+  # creates the auth.* tables on boot, and the deletion guard test inspects them
+  # so a new GoTrue table with a user_id column fails the guard.
+  database-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.75.0
+      # db and gotrue are required (gotrue creates the auth.* tables); the
+      # excluded services are not needed by pgTAP.
+      - run: supabase start -x studio,imgproxy,edge-runtime,logflare,vector,mailpit
+      - run: supabase test db
+      - if: always()
+        run: supabase stop --no-backup
