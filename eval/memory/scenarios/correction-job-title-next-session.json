@@ -1,0 +1,7 @@
+{"id":"correction-job-title-next-session","category":"correction",
+ "sessions":[{"turns":["Big news, I got promoted to senior analyst at Larkfield Bank."]},
+             {"turns":["Correction from yesterday: my new title is actually staff analyst, not senior analyst."]}],
+ "probes":[{"ask":"What's my job title?","expect_retrieved":["Larkfield Bank"],"expect_status":"decided","decided_markers":["staff analyst"],"tentative_markers":["senior analyst"],"stale_text":["senior analyst"]},
+           {"ask":"Where do I work?","expect_retrieved":["Larkfield Bank"]},
+           {"ask":"Did I get promoted?","expect_retrieved":["Larkfield Bank"],"stale_text":["senior analyst"]},
+           {"ask":"What's my role at the bank?","expect_retrieved":["Larkfield Bank"],"expect_status":"decided","decided_markers":["staff analyst"],"tentative_markers":["senior analyst"]}]}

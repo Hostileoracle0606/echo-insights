@@ -1,0 +1,6 @@
+{"id":"correction-city-same-session","category":"correction",
+ "sessions":[{"turns":["My best friend Imogen moved to Dayton last month.","Sorry, I misspoke, Imogen moved to Dalton, not Dayton."]}],
+ "probes":[{"ask":"Where does Imogen live now?","expect_retrieved":["Imogen","Dalton"],"expect_not_retrieved":["Dayton"],"expect_status":"decided","decided_markers":["Dalton"],"tentative_markers":["Dayton"]},
+           {"ask":"Which of my friends moved recently?","expect_retrieved":["Imogen"]},
+           {"ask":"Do I know anyone in Dayton?","expect_not_retrieved":["Dayton"]},
+           {"ask":"Tell me about Imogen.","expect_retrieved":["Imogen"],"stale_text":["Dayton"]}]}

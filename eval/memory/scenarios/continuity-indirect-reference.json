@@ -1,0 +1,7 @@
+{"id":"continuity-indirect-reference","category":"continuity",
+ "sessions":[{"turns":["My sister Maren just opened a pottery studio called Clayhouse in Bellport."]},
+             {"turns":["Went to her studio opening on Saturday, the kiln room was packed all evening."]}],
+ "probes":[{"ask":"How did my sister's opening go?","expect_retrieved":["Maren","Clayhouse"]},
+           {"ask":"What is the pottery place called?","expect_retrieved":["Clayhouse"]},
+           {"ask":"Which town is Maren's studio in?","expect_retrieved":["Bellport"]},
+           {"ask":"Who runs Clayhouse?","expect_retrieved":["Maren"]}]}

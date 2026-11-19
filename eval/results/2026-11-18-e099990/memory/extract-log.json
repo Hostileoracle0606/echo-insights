@@ -1,0 +1,57 @@
+[
+  {
+    "scenario": "continuity-indirect-reference",
+    "outcome": "saved",
+    "providerCalls": 2,
+    "actions": []
+  },
+  {
+    "scenario": "correction-city-same-session",
+    "outcome": "saved",
+    "providerCalls": 2,
+    "actions": []
+  },
+  {
+    "scenario": "deletion-forget-person",
+    "outcome": "saved",
+    "providerCalls": 2,
+    "actions": [
+      {
+        "after_session": 1,
+        "kind": "forget",
+        "name": "Dana Whitfield",
+        "entityId": "dana-whitfield",
+        "outcome": "applied"
+      }
+    ]
+  },
+  {
+    "scenario": "changing-decided-then-reversed",
+    "outcome": "saved",
+    "providerCalls": 2,
+    "actions": []
+  },
+  {
+    "scenario": "continuity-paraphrase",
+    "outcome": "failed: commit rejected invalidChange"
+  },
+  {
+    "scenario": "correction-edit-description",
+    "outcome": "saved",
+    "providerCalls": 2,
+    "actions": [
+      {
+        "after_session": 1,
+        "kind": "correct",
+        "name": "Felix Navarro",
+        "description": "Felix Navarro is a physical therapist at Saint Corin hospital and an old friend from college.",
+        "entityId": "felix-navarro",
+        "outcome": "applied"
+      }
+    ]
+  },
+  {
+    "scenario": "deletion-remove-project",
+    "outcome": "QuotaExhausted"
+  }
+]

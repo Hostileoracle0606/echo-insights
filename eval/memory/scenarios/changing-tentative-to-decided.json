@@ -1,0 +1,7 @@
+{"id":"changing-tentative-to-decided","category":"changing_facts",
+ "sessions":[{"turns":["I might leave Northwind, the commute is killing me."]},
+             {"turns":["Talked it over with Priya. I decided to stay at Northwind."]}],
+ "probes":[{"ask":"What happened with the job thing?","expect_retrieved":["Northwind"],"expect_status":"decided","decided_markers":["stay"],"tentative_markers":["might leave"],"expect_order":["leave","stay"]},
+           {"ask":"Am I leaving my job?","expect_retrieved":["Northwind"],"expect_status":"decided","decided_markers":["stay"],"tentative_markers":["might leave"]},
+           {"ask":"Who did I talk to about work?","expect_retrieved":["Priya"]},
+           {"ask":"Where do I work?","expect_retrieved":["Northwind"]}]}

@@ -1,0 +1,7 @@
+{"id":"continuity-two-sams","category":"continuity",
+ "sessions":[{"turns":["Sam Ortiz from work reviewed my design doc today and liked the caching section."]},
+             {"turns":["Went bouldering with Sam Lee at Granite Hall, and he finally sent the purple route."]}],
+ "probes":[{"ask":"What did Sam think of the doc?","expect_retrieved":["Sam Ortiz"],"expect_ambiguity":true,"ambiguity_token":"Sam"},
+           {"ask":"Who do I go climbing with?","expect_retrieved":["Sam Lee","Granite Hall"]},
+           {"ask":"Which Sam is my coworker?","expect_retrieved":["Sam Ortiz"],"expect_ambiguity":true,"ambiguity_token":"Sam"},
+           {"ask":"Where do I go bouldering?","expect_retrieved":["Granite Hall"]}]}

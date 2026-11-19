@@ -1,0 +1,171 @@
+{
+  "meta": {
+    "scenario": "correction-edit-description",
+    "extractorVersion": "memory-eval/v1",
+    "mode": "wiki",
+    "model": "gemini-2.5-flash",
+    "turns": 2,
+    "providerCalls": 2,
+    "actions": [
+      {
+        "after_session": 1,
+        "kind": "correct",
+        "name": "Felix Navarro",
+        "description": "Felix Navarro is a physical therapist at Saint Corin hospital and an old friend from college.",
+        "entityId": "felix-navarro",
+        "outcome": "applied"
+      }
+    ],
+    "extractedAt": "2026-11-18T18:16:06.093Z",
+    "commit": "e099990"
+  },
+  "digest": "5e307acf047c6f5949a78123a080d2582c80fb22599a33e90e5987ace7d034f0",
+  "snapshot": {
+    "version": 1,
+    "notebook": {
+      "title": "memory eval: correction-edit-description",
+      "title_source": "auto",
+      "started_at": "2026-11-18T18:16:03.132+00:00",
+      "ended_at": null,
+      "duration_seconds": null,
+      "entity_count": 3,
+      "summary": null,
+      "archived_at": null,
+      "revision": 3,
+      "conversation_mode": "just_talk",
+      "mode_context": {},
+      "transcript_forgotten_at": null
+    },
+    "suppressionKey": null,
+    "tables": {
+      "journal_entries": [
+        {
+          "id": "$entry-1",
+          "text": "Had coffee with Felix Navarro, he's a pediatric nurse at Saint Corin hospital.",
+          "created_at": "2026-11-18T18:16:04.654506+00:00",
+          "entity_ids": [
+            "felix-navarro",
+            "saint-corin-hospital"
+          ],
+          "relation_ids": [
+            "felix-navarro__works_at__saint-corin-hospital"
+          ]
+        },
+        {
+          "id": "$entry-2",
+          "text": "Felix invited me to his birthday dinner on Friday.",
+          "created_at": "2026-11-18T18:16:06.069577+00:00",
+          "entity_ids": [
+            "felix-navarro",
+            "birthday-dinner"
+          ],
+          "relation_ids": [
+            "felix-navarro__has_event__birthday-dinner",
+            "birthday-dinner__for_person__felix-navarro"
+          ]
+        }
+      ],
+      "entities": [
+        {
+          "id": "birthday-dinner",
+          "name": "birthday dinner",
+          "type": "event",
+          "description": "Felix Navarro's birthday dinner on Friday.",
+          "metadata": {},
+          "mentions": 1,
+          "first_seen": "2026-11-18T18:16:06.066+00:00",
+          "last_seen": "2026-11-18T18:16:06.066+00:00",
+          "questions": [
+            "What kind of dinner is it?",
+            "Who else is going to be there?",
+            "Are you looking forward to it?"
+          ],
+          "description_source": "extracted"
+        },
+        {
+          "id": "felix-navarro",
+          "name": "Felix Navarro",
+          "type": "person",
+          "description": "Felix Navarro is a physical therapist at Saint Corin hospital and an old friend from college.",
+          "metadata": {},
+          "mentions": 2,
+          "first_seen": "2026-11-18T18:16:04.651+00:00",
+          "last_seen": "2026-11-18T18:16:06.066+00:00",
+          "questions": [
+            "How long have you known Felix?",
+            "What's your relationship like with Felix?",
+            "What do you like about Felix?",
+            "How do you know Felix?",
+            "What's Felix like?",
+            "What do you talk about with Felix?"
+          ],
+          "description_source": "user"
+        },
+        {
+          "id": "saint-corin-hospital",
+          "name": "Saint Corin hospital",
+          "type": "organization",
+          "description": null,
+          "metadata": {},
+          "mentions": 1,
+          "first_seen": "2026-11-18T18:16:04.651+00:00",
+          "last_seen": "2026-11-18T18:16:04.651+00:00",
+          "questions": [
+            "What kind of hospital is Saint Corin?",
+            "Where is Saint Corin hospital located?",
+            "Have you been to Saint Corin hospital?"
+          ],
+          "description_source": "extracted"
+        }
+      ],
+      "relations": [
+        {
+          "id": "birthday-dinner__for_person__felix-navarro",
+          "source_id": "birthday-dinner",
+          "target_id": "felix-navarro",
+          "label": "for_person",
+          "metadata": {},
+          "created_at": "2026-11-18T18:16:06.066+00:00",
+          "superseded_at": null
+        },
+        {
+          "id": "felix-navarro__has_event__birthday-dinner",
+          "source_id": "felix-navarro",
+          "target_id": "birthday-dinner",
+          "label": "has_event",
+          "metadata": {},
+          "created_at": "2026-11-18T18:16:06.066+00:00",
+          "superseded_at": null
+        },
+        {
+          "id": "felix-navarro__works_at__saint-corin-hospital",
+          "source_id": "felix-navarro",
+          "target_id": "saint-corin-hospital",
+          "label": "works_at",
+          "metadata": {},
+          "created_at": "2026-11-18T18:16:04.651+00:00",
+          "superseded_at": null
+        }
+      ],
+      "entity_suppressions": [],
+      "conversation_turns": [
+        {
+          "turn_id": "correction-edit-description-s1-t1",
+          "speaker": "user",
+          "text": "Had coffee with Felix Navarro, he's a pediatric nurse at Saint Corin hospital.",
+          "spoken_at": "2026-11-18T18:16:03.141+00:00",
+          "created_at": "2026-11-18T18:16:03.141438+00:00",
+          "input": "typed"
+        },
+        {
+          "turn_id": "correction-edit-description-s2-t1",
+          "speaker": "user",
+          "text": "Felix invited me to his birthday dinner on Friday.",
+          "spoken_at": "2026-11-18T18:16:04.679+00:00",
+          "created_at": "2026-11-18T18:16:04.680357+00:00",
+          "input": "typed"
+        }
+      ]
+    }
+  }
+}
