@@ -107,4 +107,115 @@ void main() {
     expect(DateTime.parse(sent).microsecondsSinceEpoch,
         parsed.microsecondsSinceEpoch);
   });
+
+  group('LM-102: ask before spending a model call', () {
+    SessionBriefService build(
+      Future<http.Response> Function(http.Request) handler,
+      BriefRpc rpc,
+    ) =>
+        SessionBriefService(
+          baseUrl: 'https://runtime.test',
+          accessTokenProvider: () async => 'tok',
+          client: MockClient(handler),
+          rpc: rpc,
+          inputs: FixedInputs(),
+          pseudonyms: testPseudonyms(),
+        );
+
+    test('briefStatus reads get_brief_status for the notebook and revision',
+        () async {
+      String? fn;
+      Map<String, dynamic>? sent;
+      final status = await build(
+        (_) async => fail('no runtime call'),
+        (name, [params]) async {
+          fn = name;
+          sent = params;
+          return {
+            'status': 'present',
+            'briefRevision': 7,
+            'currentRevision': 7,
+          };
+        },
+      ).briefStatus('nb-1', 7);
+      expect(fn, 'get_brief_status');
+      expect(sent, {'p_notebook_id': 'nb-1', 'p_revision': 7});
+      expect(status.isPresent, isTrue);
+      expect(status.briefRevision, 7);
+    });
+
+    test('a brief already stored at the current revision: nothing is sent',
+        () async {
+      var posts = 0;
+      await build(
+        (_) async {
+          posts += 1;
+          return http.Response('{"status":"unchanged"}', 200);
+        },
+        (fn, [_]) async =>
+            {'status': 'present', 'briefRevision': 7, 'currentRevision': 7},
+      ).requestBrief('nb-1');
+      expect(posts, 0);
+    });
+
+    test('asking twice for the same revision makes one model call', () async {
+      var posts = 0;
+      var stored = false;
+      final service = build(
+        (_) async {
+          posts += 1;
+          stored = true;
+          return http.Response('{"status":"unchanged"}', 200);
+        },
+        (fn, [_]) async => {
+          'status': stored ? 'present' : 'absent',
+          'currentRevision': 7,
+        },
+      );
+      await service.requestBrief('nb-1');
+      await service.requestBrief('nb-1');
+      expect(posts, 1);
+    });
+
+    test('keyReused on the save is already done, not an error', () async {
+      final calls = <String>[];
+      await build(
+        (request) async {
+          final body = jsonDecode(request.body) as Map;
+          if (body['speak'] != null) {
+            return http.Response(
+              jsonEncode({
+                'status': 'ready',
+                'audioBase64': 'AQID',
+                'sampleRate': 24000,
+                'openingLine': 'Hi',
+                'sourceRevision': 7,
+              }),
+              200,
+            );
+          }
+          return http.Response(
+            jsonEncode({
+              'status': 'ready',
+              'brief': {
+                'focus': <String>[],
+                'openingThread': '',
+                'openingLine': 'Hi',
+              },
+              'speakToken': 'tkn',
+              'sourceRevision': 7,
+            }),
+            200,
+          );
+        },
+        (fn, [_]) async {
+          calls.add(fn);
+          return fn == 'get_brief_status'
+              ? {'status': 'absent', 'currentRevision': 7}
+              : {'status': 'rejected', 'code': 'keyReused'};
+        },
+      ).requestBrief('nb-1');
+      expect(calls, ['get_brief_status', 'save_session_brief']);
+    });
+  });
 }

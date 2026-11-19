@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../services/memory_control_service.dart';
 import 'journal_provider.dart';
 import 'supabase_provider.dart';
 
@@ -67,8 +68,24 @@ class TranscriptEraseNotifier extends Notifier<EraseRun?> {
     final service = ref.read(memoryControlServiceProvider);
     state = EraseRun(jobId: jobId, status: EraseStatus.running);
     try {
+      var next = await _nextBatch(service, jobId);
+      var refused = 0;
       while (true) {
-        final step = await service.eraseStep(jobId, batch: batch);
+        final EraseStep step;
+        if (next == null) {
+          // An older server: no batch numbers.
+          step = await service.eraseStep(jobId, batch: batch);
+        } else {
+          step = await service.eraseBatch(jobId, next, batch: batch);
+          if (step.rejected) {
+            // Nothing was rewritten: read where the server is and go on.
+            if (++refused >= 3) throw StateError('erase batch refused');
+            next = step.nextBatch ?? await _nextBatch(service, jobId);
+            continue;
+          }
+          refused = 0;
+          next += 1;
+        }
         state = state!.copyWith(
           total: step.total,
           remaining: step.finished ? 0 : step.remaining,
@@ -88,6 +105,16 @@ class TranscriptEraseNotifier extends Notifier<EraseRun?> {
       debugPrint('Reload after erase failed: ${error.runtimeType}');
     }
     return true;
+  }
+
+  /// The batch number the server expects for [jobId]; null when it does not
+  /// number batches (or no longer holds the job, which then comes back
+  /// finished from the plain step).
+  Future<int?> _nextBatch(MemoryControlService service, String jobId) async {
+    for (final job in await service.pendingEraseJobs()) {
+      if (job.id == jobId) return job.nextBatch;
+    }
+    return null;
   }
 
   /// Every erase the server still holds for this account, one after another.
