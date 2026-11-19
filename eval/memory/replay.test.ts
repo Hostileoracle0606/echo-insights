@@ -109,10 +109,12 @@ describe("replayScenario", () => {
       takeSnapshot: async () => { snapshotted += 1; return {} as never; } });
     expect(snapshotted).toBe(1);
     expect(backend.events.filter((e) => e === "extract")).toHaveLength(2);
-    expect(result.meta.lostTurns).toEqual([
+    expect(result.meta.lostTurns.map(({ patch: _p, ...rest }: { patch: unknown }) => rest)).toEqual([
       { turnId: "job-change-decided-s1-t1", reason: "commit invalidChange", undeclaredEndpoints: ["harbor-street"] },
       { turnId: "job-change-decided-s2-t1", reason: "commit invalidChange", undeclaredEndpoints: ["harbor-street"] },
     ]);
+    // The model's patch is kept so the loss can be reproduced without spending quota.
+    expect(result.meta.lostTurns[0].patch.relations).toEqual([{ source: "Northwind", target: "Harbor Street", label: "near" }]);
     expect(result.meta.actions[0].outcome).toBe("not_extracted");
   });
 });

@@ -188,7 +188,7 @@ export async function replayScenario({
   const extract = createExtractGraphHandler({ ...deps, ...memoryClaimStore(), sleep: async () => {} });
 
   const actions: Array<Action & { entityId: string | null; outcome: string }> = [];
-  const lostTurns: Array<{ turnId: string; reason: string; undeclaredEndpoints: string[] }> = [];
+  const lostTurns: Array<{ turnId: string; reason: string; undeclaredEndpoints: string[]; patch?: unknown }> = [];
   let turns = 0;
   for (const [index, session] of scenario.sessions.entries()) {
     const sessionNumber = index + 1;
@@ -249,7 +249,8 @@ export async function replayScenario({
       if (outcome?.status !== "committed") {
         const known = new Set([...Object.keys(state.entities), ...change.entities.map((e) => e.id)]);
         const undeclared = change.relations.flatMap((r) => [r.source, r.target]).filter((id) => !known.has(id));
-        lostTurns.push({ turnId, reason: `commit ${outcome?.code ?? outcome?.status ?? "unknown"}`, undeclaredEndpoints: [...new Set(undeclared)] });
+        lostTurns.push({ turnId, reason: `commit ${outcome?.code ?? outcome?.status ?? "unknown"}`,
+          undeclaredEndpoints: [...new Set(undeclared)], patch: parsed.patch });
       }
     }
     for (const action of (scenario.actions ?? []).filter((a) => a.after_session === sessionNumber)) {
