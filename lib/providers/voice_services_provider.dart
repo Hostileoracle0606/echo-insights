@@ -54,6 +54,15 @@ final signedOutCleanupProvider = Provider<void Function()>((ref) {
         debugPrint('Clearing the shared log failed: ${error.runtimeType}');
       }),
     );
+    // A deletion still pending for the account that left is never resent
+    // under the next sign-in (the server queues the JWT's user).
+    unawaited(
+      Future.sync(() => ref.read(deletionPendingStoreProvider).clear())
+          .catchError((Object error) {
+        debugPrint('Clearing the deletion marker failed: '
+            '${error.runtimeType}');
+      }),
+    );
   };
 });
 

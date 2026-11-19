@@ -16,9 +16,12 @@ enum DeleteAccountExit { cancelled, export }
 /// LM-116: the confirmation for "Delete my account", opened from the privacy
 /// sheet after Face ID or the passcode. Says what goes and that it cannot be
 /// undone, offers "Export my journal" first, and deletes only on the
-/// destructive button. On success it erases what the account left on the
-/// phone and returns to the first route; the router shows login with a
-/// notice. A failure keeps the person signed in with everything in place.
+/// destructive button. Only once the server answers that the deletion is
+/// queued (the service has then cleared the "deletion pending" marker and
+/// signed out) does it erase what the account left on the phone and return
+/// to the first route; the router shows login with a notice. A failure, a
+/// lost reply included, keeps the person signed in with everything in place;
+/// "Try again" resends the same request id.
 class DeleteAccountScreen extends ConsumerStatefulWidget {
   const DeleteAccountScreen({super.key});
 
