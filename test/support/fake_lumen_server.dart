@@ -45,6 +45,9 @@ class FakeNotebook {
   final String mode;
   int revision = 0;
 
+  /// Older than the 14-day catch-up window (20261118000500): never listed.
+  bool outsideWindow = false;
+
   /// For "newest first" (get_unfinished_work orders by activity).
   int touched;
   final entries = <JournalEntry>[];
@@ -144,8 +147,10 @@ class FakeLumenServer {
     bool vectorsBuilt = true,
     int? cardAt,
     int? briefAt,
+    bool outsideWindow = false,
   }) {
-    final nb = notebooks[id] = FakeNotebook(id, touched: ++_clock);
+    final nb = notebooks[id] = FakeNotebook(id, touched: ++_clock)
+      ..outsideWindow = outsideWindow;
     for (final text in userTurns) {
       nb.revision++;
       transcripts.putIfAbsent(id, () => {})['seed-${nb.revision}'] = text;
@@ -275,11 +280,12 @@ class FakeLumenServer {
     throw StateError('unexpected rpc $fn');
   }
 
-  /// 20261116000200_unfinished_work.sql, computed from this state.
+  /// 20261118000500_unfinished_work_window.sql, computed from this state.
   Map<String, dynamic> unfinishedWork() {
     final newest = notebooks.values.toList()
       ..sort((a, b) => b.touched.compareTo(a.touched));
     bool eligible(FakeNotebook nb) =>
+        !nb.outsideWindow &&
         nb.mode == 'just_talk' &&
         nb.revision > 0 &&
         (nb.entries.isNotEmpty || nb.entities.isNotEmpty);

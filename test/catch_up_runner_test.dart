@@ -514,7 +514,7 @@ void main() {
         ..journalIds = ['live']
         ..live.add('live');
       await rig.runner().run();
-      expect(rig.pendingSeen.first, {'b'});
+      expect(rig.pendingSeen, contains(equals({'b'})));
       expect(rig.pendingSeen.every((ids) => !ids.contains('live')), isTrue);
     });
 
@@ -540,8 +540,27 @@ void main() {
       ])
         ..journalIds = ['a'];
       await rig.runner().run();
-      expect(rig.pendingSeen.first, {'a', 'b'});
+      expect(rig.pendingSeen, contains(equals({'a'})));
       expect(rig.pendingSeen, contains(equals({'b'})));
+      expect(rig.pendingSeen.last, isEmpty);
+    });
+
+    test(
+        'the line shows only the notebook whose step is running, never a '
+        'whole waiting list', () async {
+      final rig = Rig(work: [
+        work(cards: [card('a', 1), card('b', 1), card('c', 1)]),
+      ]);
+      rig.hold['card:a'] = Completer<void>();
+      final running = rig.runner().run();
+      await pumpEventQueue();
+      // Only 'a' is being worked on; 'b' and 'c' merely wait.
+      expect(rig.pendingSeen.last, {'a'});
+      rig.hold['card:a']!.complete();
+      await running;
+      for (final ids in rig.pendingSeen) {
+        expect(ids.length, lessThanOrEqualTo(1));
+      }
       expect(rig.pendingSeen.last, isEmpty);
     });
   });

@@ -2598,6 +2598,10 @@ class JournalNotifier extends Notifier<JournalState> {
   /// card. A card that isn't written now is written the next time the
   /// notebook is left, or when the closing screen (LM-16) retries.
   void _writeSessionCard(String notebookId) {
+    // "Latest" for the brief is the notebook that ENDED most recently, here
+    // and in get_unfinished_work (20261118000500): this notebook's ended_at
+    // was just set, so it is the latest, and catch-up never replaces the
+    // brief written for it (nor clears its played_at).
     // The next session's brief is written from this notebook, in parallel
     // with the card; it never blocks or fails leaving. OpeningPrep reloads
     // the opening state either way, and keeps retrying a brief that failed
