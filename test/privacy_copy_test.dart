@@ -181,6 +181,20 @@ void main() {
       }
     });
 
+    test('carries the sign-in records and account deletion lines', () {
+      expect(
+        page,
+        contains("Sign-in records in our provider's logs are kept for a "
+            'limited time set by the provider, then removed.'),
+      );
+      expect(page, contains('Delete my account: Privacy has'));
+      expect(page, contains('This cannot be undone.'));
+      // What the deletion screen promises and no more: no instant-erasure or
+      // "nothing is kept anywhere" claim, since backups can outlive a delete.
+      expect(page.toLowerCase(), isNot(contains('immediately')));
+      expect(page, contains(reachClaim));
+    });
+
     test('does not claim what is unverified', () {
       expect(paidTierVerified, isFalse);
       expect(supabaseEncryptionVerified, isFalse);
@@ -192,7 +206,9 @@ void main() {
     test('says Forget is a beta and names ElevenLabs as web only', () {
       expect(page, contains('"Forget (beta): you can forget'));
       expect(page, contains('ElevenLabs (web app only)'));
-      expect(page, contains('href="/security"'));
+      // Release 1 deploys only /privacy and the passkey file, not /security.
+      expect(page, isNot(contains('href="/security"')));
+      expect(page, isNot(contains('security.txt')));
     });
   });
 }

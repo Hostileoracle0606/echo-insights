@@ -35,6 +35,7 @@ const PARTIES: { name: string; lines: string[] }[] = [
     lines: [
       "Supabase stores your journal: your conversations, cards and the map of people and places. It isn't encrypted with a key only you hold, so the people with admin access to the database could technically read it. A written rule limits that access.",
       "The database is set up so that one account can't see another account's journal.",
+      "Sign-in records in our provider's logs are kept for a limited time set by the provider, then removed.",
     ],
   },
   {
@@ -69,6 +70,7 @@ const IPHONE_CONTROLS: string[] = [
   "Forget (beta): you can forget a person from their page. Lumen won't bring them up again, and they're gone from your maps. Their name is replaced with “someone” in everything Lumen reads: your past conversations, your cards and what it remembers about others. Mentioning that name later doesn't bring them back. Lumen matches the name they were saved under, so a nickname or a first name alone can slip through. Your saved transcripts keep your words for you to read. For a name of two or more words you can also erase it, as it was saved, from what you and Lumen said there, which replaces it with “someone” for good.",
   "Off the record: Lumen doesn't save what you say while it is on, and writes no card from it. Your voice still goes to Google so Lumen can answer.",
   "You can have old transcripts deleted automatically after 7, 30 or 90 days. Cards and what Lumen remembers stay.",
+  'Delete my account: Privacy has "Delete my account". It erases everything Lumen keeps for you: your conversations and their transcripts, your cards, your map of people and places, your briefs and what Lumen remembers. This cannot be undone. If you signed in with Apple, Lumen also asks Apple to end that sign-in.',
 ];
 
 function PrivacyPage() {
@@ -77,11 +79,7 @@ function PrivacyPage() {
       <h1 className="text-4xl font-display text-foreground">Privacy policy</h1>
       <p className="mt-4 text-base text-muted-foreground">
         Your journal is yours. Here are the services that handle it, what each one sees, and the
-        controls you have. This page says only what is true today. For the fuller list, see{" "}
-        <a className="underline" href="/security">
-          Security and privacy
-        </a>
-        .
+        controls you have. This page says only what is true today.
       </p>
       <p className="mt-4 text-base text-foreground">{REACH}</p>
 
@@ -118,10 +116,6 @@ function PrivacyPage() {
           href="https://github.com/Hostileoracle0606/echo-insights/security/advisories/new"
         >
           GitHub security advisory form
-        </a>
-        . The same details are in{" "}
-        <a className="underline" href="/.well-known/security.txt">
-          security.txt
         </a>
         .
       </p>

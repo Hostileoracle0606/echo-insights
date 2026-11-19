@@ -2,6 +2,8 @@
 
 One page, the same order twice. Run it on **staging** first (LM-120). Run it again on **production** (LM-125) only after LM-120 to LM-124 pass. It is built from `launch-checklist.md` section 2 plus the release 1 changes: the new `delete-account` function, the deleted `extract-graph` edge function, the LM-102/103 migration, and passkeys.
 
+**Scope decision (2026-11-17):** only the iOS release matters for release 1. The web app is out of scope except two files that go out early, before iOS submission: `/privacy` (the App Store privacy policy URL) and `/.well-known/apple-app-site-association` (passkeys). `/security` and the rest of the web app are **not** deployed for release 1 (section 5). **No penetration test in release 1:** it is deferred to after release 1, not dropped (LM-68).
+
 Nothing here has been run by an agent. Every command is yours to type. Items marked **(unverified)** are not established from this repo; check them before relying on them.
 
 ## 0. Before you type anything
@@ -68,10 +70,17 @@ If a file sorts before one already applied remotely, `db push` refuses; do not f
 | 16 | `20261112100100_context_text_backfill.sql` | LM-63 |
 | 17 | `20261112200000_forgotten_marker.sql` | Phase 2 fix wave |
 | 18 | `20261112300000_forget_erase_transcripts.sql` | Forget: opt-in erase |
-| 19 | **`<FILL IN AFTER LM-128 MERGES>`** (the LM-102 migration; run `ls supabase/migrations` and copy the new file name here, in file-name order, which may be after #18) | LM-102/103 |
-| 20 | **`<FILL IN IF ANY>`** any other migration that LM-114 to LM-117 or LM-127 added (none expected; confirm with `ls supabase/migrations`) | |
+| 19 | `20261116000000_card_brief_idempotency.sql` | LM-102/103 |
+| 20 | `20261116000050_card_draft_key.sql` | LM-102/103 |
+| 21 | `20261116000060_brief_status_shape.sql` | LM-102/103 |
+| 22 | `20261116000100_erase_batch_keys.sql` | LM-102/103 |
+| 23 | `20261116000200_unfinished_work.sql` | LM-102/103 |
+| 24 | `20261117000000_account_deletion_flow_state.sql` (purges `auth.flow_state` on account deletion; best-effort, a failed purge is only a Postgres warning) | LM-117 |
+| 25 | **`<ADD NEW 20261118… FILES HERE, IN FILE-NAME ORDER>`** Two sessions are still adding migrations (timestamps `20261118000100` to `20261118000900`). Run `ls supabase/migrations` on the final release branch and copy every file that is newer than row 24 into this table before the rehearsal. | account deletion worker and others |
 
-Why this order: `…300` drops LM-46's caps and `…700` restores them, so a partial run leaves the caps off. `…200000` must be live before the iOS build ships. The new `close-session` code calls an RPC from `…300`, so migrations go before the Lambda or every session close returns 503.
+The list above is the whole set on `feat/release-beta-forget` as of 2026-11-18 plus the open row. The count in `launch-checklist.md` ("18") is out of date for release 1.
+
+Why this order: `…300` drops LM-46's caps and `…700` restores them, so a partial run leaves the caps off. `…200000` must be live before the iOS build ships. The new `close-session` code calls an RPC from `…300` and selects `is_draft` (added by the LM-102 migrations), so the `close-session` Lambda deploys only after **all** migrations, including every `20261118…` file; otherwise every session close returns 503.
 
 ### Post-migration check (do not go on if either fails)
 
@@ -81,6 +90,15 @@ On the target project, as a test user (never a real one):
 2. A card naming a forgotten person is stored **redacted**.
 3. A card mentioning a merely removed word is stored **unchanged**.
 4. `supabase migration list` shows every file in the table as applied on the Remote side.
+
+### Sign-in audit log (dashboard, staging first, then production)
+
+Standard practice for this release: Supabase writes a sign-in audit log into the database by default, and those rows hold the user id and email. Turn it off:
+
+1. Supabase dashboard, the target project, Authentication, Audit Logs: switch **"Write audit logs to the database" off**. Save.
+2. Write the date down. **(unverified: the exact label and where the toggle lives may differ on your dashboard; if it is not there, record what you see and stop.)**
+3. The account deletion worker (built by another session) purges a deleted user's `auth.audit_log_entries` and `auth.flow_state` rows. After a staging test deletion, check both tables for the deleted user's id and expect no rows. The only record kept is the user id and timestamps in `account_deletion_requests`. **<CONFIRM the table and the check query once the worker merges.>**
+4. Sign-in records that remain in the provider's own logs are kept for a limited time set by the provider, then removed. That sentence is on `/privacy`; do not say more than that.
 
 ## 3. Edge functions
 
@@ -93,7 +111,18 @@ supabase functions deploy speak-agent     --project-ref "$REF"
 supabase functions deploy delete-account  --project-ref "$REF"
 ```
 
-- `delete-account` is new in release 1 (LM-114). Its secrets (the Supabase service key it reads from its environment, and the Sign in with Apple key, key id and team id from LM-115) are set in the dashboard or with `supabase secrets set`, never in the repo or on a command line you keep in shell history. **<FILL IN the exact secret names once LM-115 merges>**.
+- `delete-account` is new in release 1 (LM-114). Deploy it **without** `--no-verify-jwt`, so the platform also checks the JWT. Before the first test deletion, set its Sign in with Apple secrets from an **untracked** env file (never commit it, never pass values inline; delete the file afterwards):
+
+  ```bash
+  # apple.env (untracked, in a folder outside the repo)
+  #   APPLE_TEAM_ID=...      Apple Developer, Membership details
+  #   APPLE_KEY_ID=...       Keys, a key with Sign in with Apple enabled
+  #   APPLE_PRIVATE_KEY=...  the .p8 PEM, downloaded once
+  #   APPLE_CLIENT_ID=com.echoinsights.lumen
+  supabase secrets set --env-file /path/outside/repo/apple.env --project-ref "$REF"
+  ```
+
+  Without these the function still deletes the account and answers `apple_revoked:false`.
 - If you retire `speak-agent` (checklist section 4), leave its line out and run `supabase functions delete speak-agent --project-ref "$REF"`.
 
 Delete the legacy Groq function. Its source is gone from the repo (LM-118), so nothing redeploys it, but a copy deployed earlier keeps running with no forget redaction.
@@ -121,15 +150,46 @@ Then:
 1. Click the confirmation link in the email AWS sends. Unconfirmed means no alerts.
 2. Only after the deploy, delete the old auto-created `/aws/lambda/*` log groups for the functions (they never expire).
 
-## 5. Point a build at the target
+## 5. Passkeys console steps and the early web files (LM-127, LM-119)
+
+The relying-party domain is `lumen.trigo.workers.dev` (already in `ios/Runner/Runner.entitlements`). It cannot change after people enroll passkeys.
+
+1. **Apple Team ID:** put your 10-character Team ID in `public/.well-known/apple-app-site-association` in place of `REPLACE_WITH_APPLE_TEAM_ID` (Apple Developer, Membership details). It is still a placeholder. Commit that change.
+2. **Apple Developer, Identifiers, `com.echoinsights.lumen`:** turn on Associated Domains and regenerate the provisioning profile.
+3. **Supabase dashboard, staging then production:** Authentication, Passkeys, enable; Relying Party Display Name `Lumen`; Relying Party ID `lumen.trigo.workers.dev`; Origins `https://lumen.trigo.workers.dev`.
+4. **Deploy the two early web pieces**, before iOS submission, from the same checkout:
+
+   ```bash
+   npm ci
+   npm run build                                   # produces the stylesheet the page uses
+   npx vite-node scripts/build-release1-site.tsx   # writes dist-release1/ (not committed)
+   cd dist-release1
+   npx wrangler deploy --dry-run                   # read what it says it will upload
+   npx wrangler deploy
+   ```
+
+   `dist-release1/` holds a Worker named `lumen` whose only content is static: `/privacy`, `/.well-known/apple-app-site-association` with `_headers` (so it is served as `application/json`), and one stylesheet. Every other path, including `/` and `/security`, returns 404. It does not include the web app, its server code or any Supabase call. Checked locally with `wrangler dev` on 2026-11-18: `/privacy` 200, the AASA file 200 `application/json`, `/security` and `/` 404.
+   - The deploy name `lumen` is what makes the host `lumen.trigo.workers.dev` **(unverified: it assumes your Workers subdomain is `trigo` and the name `lumen` is free; `wrangler deploy --dry-run` and the Cloudflare dashboard show the final URL)**.
+   - The main app's `wrangler.jsonc` is named `tanstack-start-app`. If you later deploy the full web app to the same host, give it `--name lumen` on purpose, since that replaces this static site.
+5. **Check the deployed host** (Apple's CDN caches the AASA file, so fix it before submitting):
+
+   ```bash
+   curl -sSI https://lumen.trigo.workers.dev/.well-known/apple-app-site-association   # 200, application/json, no redirect
+   curl -sSI https://lumen.trigo.workers.dev/privacy                                  # 200
+   curl -sSI https://lumen.trigo.workers.dev/security                                 # 404 for release 1
+   ```
+
+6. **Passkey builds** pass `--dart-define=PASSKEYS_ENABLED=true` (CI release build already does; a hand-built archive needs it).
+
+## 5b. Point a build at the target
 
 - **Staging (LM-120):** a TestFlight or simulator build pointed at staging.
-- **Done when:** the post-migration check passes, a session closes without a 503, and a test account can sign up, talk, forget someone (beta) and delete itself, with a second account untouched.
-- **Production (LM-125):** iOS ships after steps 1 to 4 are live on production. The web app (with `/privacy` and `/security`) ships only after the iOS release, except `/.well-known/apple-app-site-association` for passkeys (LM-127), which must be served before the iOS build.
+- **Done when:** the post-migration check passes, a session closes without a 503, and a test account can sign up, talk, forget someone (beta), add and use a passkey, and delete itself, with a second account untouched.
+- **Production (LM-125):** iOS ships after the migrations, edge functions and `cdk deploy` are live on production. The full web app is not part of release 1.
 
 ## 6. Production: repeat
 
-Run sections 0 to 4 again with:
+Run sections 0 to 4 again (section 5 steps 3 to 5 for production Passkeys; the early site is one deploy, not per project) with:
 
 ```bash
 export REF=bjoevzvsdlhlcjywpyfx

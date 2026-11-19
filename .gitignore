@@ -55,3 +55,6 @@ supabase/.temp/
 *.njsproj
 *.sln
 *.sw?
+
+# Release 1 early static site (scripts/build-release1-site.tsx)
+dist-release1/
