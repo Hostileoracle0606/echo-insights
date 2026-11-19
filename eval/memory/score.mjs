@@ -9,6 +9,32 @@ const hasWords = (hay, needle) => norm(needle).trim() !== '' && norm(hay).includ
 // "Ridgeline Half Marathon" answers "Ridgeline"; "Sam" does not answer "Sam Ortiz".
 const answers = (name, expected) => hasWords(name, expected);
 
+// A stale term counts only where the text asserts it. Per occurrence, within
+// its sentence: excused right after "not"/"never" (up to 3 words before),
+// after "instead of"/"rather than"/"no longer", or anywhere in a sentence
+// that says it is a correction ("misspoke", "corrected", "correction").
+// "Dalton, not Dayton" denies Dayton; "Dayton, not Dalton" asserts it.
+const CORRECTION_SENTENCE = /\b(misspoke|misspoken|corrected|correction|mistakenly)\b/;
+const NEGATORS = new Set(['not', 'never']);
+const PHRASES = ['instead of', 'rather than', 'no longer'];
+export function asserts(hay, term) {
+  const target = norm(term).trim().split(' ').filter(Boolean);
+  if (!target.length) return false;
+  for (const sentence of String(hay ?? '').split(/[.!?;\n]+/)) {
+    const words = norm(sentence).trim().split(' ').filter(Boolean);
+    const excusedSentence = CORRECTION_SENTENCE.test(words.join(' '));
+    for (let i = 0; i + target.length <= words.length; i += 1) {
+      if (!target.every((w, j) => words[i + j] === w)) continue;
+      if (excusedSentence) continue;
+      const before = words.slice(Math.max(0, i - 3), i);
+      const lastTwo = words.slice(Math.max(0, i - 2), i).join(' ');
+      if (before.some((w) => NEGATORS.has(w)) || PHRASES.includes(lastTwo)) continue;
+      return true;
+    }
+  }
+  return false;
+}
+
 /**
  * context.actionsApplied: undefined when the scenario has no scripted action,
  * else whether every action applied (a stale check after an action that never
@@ -53,10 +79,10 @@ export function scoreProbe(probe, result, { actionsApplied } = {}) {
   const staleIn = [];
   if (checksStale) {
     const inRetrieval = flagged > 0 ||
-      unwanted.some((name) => hasWords(context, name)) ||
-      staleText.some((t) => hasWords(activeText, t) || hasWords(context, t));
+      unwanted.some((name) => asserts(context, name)) ||
+      staleText.some((t) => asserts(activeText, t) || asserts(context, t));
     const inBrief = briefText != null &&
-      [...unwanted, ...staleText].some((t) => hasWords(briefText, t));
+      [...unwanted, ...staleText].some((t) => asserts(briefText, t));
     if (inRetrieval) staleIn.push(retrieved[0]?.path ?? 'combined');
     if (inBrief) staleIn.push('brief');
   }

@@ -146,3 +146,39 @@ test('summarize: the brief is tallied once per scenario, and rank and confusion 
   assert.deepEqual(out.total.coversGraph, { probes: 5, of: 5 });
   assert.deepEqual(out.total.distractors, { confused: 1, of: 1 });
 });
+
+// ── Negation-aware staleness (2026-11-19) ──────────────────────────────────
+
+const IMOGEN_BRIEF = 'Best friend Imogen moved to Dalton last month.\nHey, good to hear from you. How are things with Imogen\'s move to Dalton?\nThe person misspoke and corrected themselves, saying their best friend Imogen moved to Dalton, not Dayton. This is a good opportunity to acknowledge the correction and ask about Imogen\'s move.';
+const FELIX_BRIEF = 'Felix Navarro is a pediatric nurse at Saint Corin hospital.\nFelix invited them to his birthday dinner on Friday.';
+
+test('a brief that names the old fact only to deny it is not stale (Imogen: "Dalton, not Dayton")', () => {
+  const s = scoreProbe({ expect_retrieved: ['Imogen'], stale_text: ['Dayton'] },
+    result({ retrieved: [item('Imogen')], extracted: ['Imogen'], brief: { text: IMOGEN_BRIEF } }));
+  assert.deepEqual(s.staleIn, []);
+});
+
+test('a brief that states the old fact is stale (Felix: "pediatric nurse")', () => {
+  const s = scoreProbe({ expect_retrieved: ['Felix Navarro'], stale_text: ['pediatric nurse'] },
+    result({ retrieved: [item('Felix Navarro')], extracted: ['Felix Navarro'], brief: { text: FELIX_BRIEF } }));
+  assert.deepEqual(s.staleIn, ['brief']);
+});
+
+test('negation is per occurrence: the denied term is excused, the asserted one is not', () => {
+  const brief = (text) => scoreProbe({ expect_retrieved: ['Imogen'], stale_text: ['Dayton'] },
+    result({ retrieved: [item('Imogen')], extracted: ['Imogen'], brief: { text } })).staleIn;
+  assert.deepEqual(brief('Imogen moved to Dayton, not Dalton.'), ['brief']);
+  assert.deepEqual(brief('She lives in Dalton instead of Dayton.'), []);
+  assert.deepEqual(brief('I said Dayton earlier but I misspoke.'), []);
+  assert.deepEqual(brief('Imogen moved to Dayton. Not sure when she started the new job.'), ['brief'],
+    'a "not" in another sentence excuses nothing');
+});
+
+test('negation applies to retrieval text too: a description that records the correction is not stale', () => {
+  const s = scoreProbe({ expect_retrieved: ['Imogen'], stale_text: ['Dayton'] },
+    result({ retrieved: [item('Imogen', 'Moved to Dalton (not Dayton) last month.')], extracted: ['Imogen'] }));
+  assert.deepEqual(s.staleIn, []);
+  const still = scoreProbe({ expect_retrieved: ['Imogen'], stale_text: ['Dayton'] },
+    result({ retrieved: [item('Imogen', 'My best friend Imogen moved to Dayton last month.')], extracted: ['Imogen'] }));
+  assert.deepEqual(still.staleIn, ['combined']);
+});
