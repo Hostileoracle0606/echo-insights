@@ -568,18 +568,8 @@ class CatchUpRunner {
       plans++;
       final skips = await _readSkips();
 
-      // A live notebook's card is the session's, not ours: no "Finishing
-      // up" line on it.
-      pending.addAll([
-        for (final step in plan.steps)
-          if (!_isNotebookLive(step.notebookId ?? '') &&
-              ((step is CardStep && !_isSkipped(skips, step)) ||
-                  (step is FinishTurnsStep &&
-                      _openNotebookId() != step.notebookId &&
-                      !_turnsStillRunning.contains(step.notebookId))))
-            step.notebookId!,
-      ]);
-      publish();
+      // "Finishing up" shows on a notebook only while a step for it is
+      // really running (below), never for work merely waiting in the list.
 
       // Turns first: their words exist only on this phone.
       final finish = _newTurnFinisher();
@@ -595,8 +585,6 @@ class CatchUpRunner {
         final id = step.notebookId;
         if (_isNotebookLive(id) || _openNotebookId() == id) {
           stillJournalled.add(id);
-          pending.remove(id);
-          publish();
           records.add(CatchUpStepRecord(step, CatchUpOutcome.skippedLive));
           continue;
         }
@@ -606,7 +594,11 @@ class CatchUpRunner {
           continue;
         }
         final work = finish(id);
+        pending.add(id);
+        publish();
         final raced = await _race(work, left, token);
+        pending.remove(id);
+        publish();
         final CatchUpOutcome outcome;
         switch (raced) {
           case _Value(:final value):
@@ -660,18 +652,6 @@ class CatchUpRunner {
         for (final step in plan.steps)
           if (step is! FinishTurnsStep) step,
       ];
-      pending
-        ..clear()
-        ..addAll([
-          for (final step in rest)
-            if (step is CardStep &&
-                !_isSkipped(skips, step) &&
-                !stillJournalled.contains(step.notebookId) &&
-                !_isNotebookLive(step.notebookId))
-              step.notebookId,
-        ]);
-      publish();
-
       for (final step in rest) {
         if (token.isCancelled) return report();
         final left = remaining();
@@ -679,10 +659,21 @@ class CatchUpRunner {
           budgetExhausted = true;
           return report();
         }
+        final showing = step is CardStep &&
+            !_isSkipped(skips, step) &&
+            !stillJournalled.contains(step.notebookId) &&
+            !_isNotebookLive(step.notebookId);
+        if (showing) {
+          pending.add(step.notebookId);
+          publish();
+        }
         final outcome =
             await _runStep(step, skips, stillJournalled, left, token);
         records.add(CatchUpStepRecord(step, outcome));
-        if (step is CardStep && pending.remove(step.notebookId)) publish();
+        if (showing) {
+          pending.remove(step.notebookId);
+          publish();
+        }
         if (outcome == CatchUpOutcome.cancelled) return report();
       }
       return report();

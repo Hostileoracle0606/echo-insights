@@ -548,4 +548,28 @@ void main() {
       expect(_tally(server), before);
     });
   });
+
+  group('LM-128: only the last 14 days are caught up', () {
+    test('an old notebook is never listed, run or shown as finishing up',
+        () async {
+      // Old history with no card, and one recent notebook with none either.
+      server.seedNotebook('old-1',
+          userTurns: ['Long ago.'], outsideWindow: true);
+      server.seedNotebook('old-2',
+          userTurns: ['Longer ago.'], outsideWindow: true);
+      server.seedNotebook('recent', userTurns: ['This week.']);
+      final device = await phone('window');
+
+      final report = await device.runner().run();
+
+      expect(server.cards.keys, ['recent']);
+      expect(server.cardModelCalls, 1, reason: 'no model call for old ones');
+      final touched = [
+        for (final r in report.records)
+          if (r.step.notebookId != null) r.step.notebookId,
+      ];
+      expect(touched, everyElement('recent'));
+      expect(server.notebooks['old-1']!.revision, 1);
+    });
+  });
 }
