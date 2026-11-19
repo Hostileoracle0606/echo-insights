@@ -21,6 +21,7 @@ import '../services/transcript_store.dart';
 import 'forget_redactor_provider.dart';
 import 'pseudonym_provider.dart';
 import 'shared_log_provider.dart';
+import 'voice_services_provider.dart' show deletedAccountCleanupProvider;
 
 final supabaseClientProvider = Provider<SupabaseClient>((ref) {
   return Supabase.instance.client;
@@ -61,6 +62,7 @@ final accountDeletionServiceProvider = Provider<AccountDeletionService>((ref) {
     auth: ref.watch(accountAuthServiceProvider),
     gateway: SupabaseDeleteAccountGateway(ref.watch(supabaseClientProvider)),
     store: ref.watch(deletionPendingStoreProvider),
+    cleanup: ref.watch(deletedAccountCleanupProvider),
   );
 });
 

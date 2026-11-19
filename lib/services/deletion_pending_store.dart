@@ -1,15 +1,18 @@
+import 'dart:convert';
+
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
-/// The "deletion pending" marker: the request id of an account deletion the
-/// server has not yet confirmed as queued. Written before the call to
-/// `delete-account`, cleared once the server answers "queued", so a lost
-/// reply is resent (with the same id) on the next try or launch. Holds the
-/// request id only: no user id, token or code.
+typedef PendingAccountDeletion = ({
+  String userId,
+  String requestId,
+  bool isApple,
+});
+
+/// The Keychain marker binds a retry to the account that requested it.
+/// It survives until the phone's cleanup completes.
 abstract interface class DeletionPendingStore {
-  /// The pending request id, or null when none. Throws when the storage
-  /// can't be read.
-  Future<String?> read();
-  Future<void> write(String requestId);
+  Future<PendingAccountDeletion?> read();
+  Future<void> write(PendingAccountDeletion request);
   Future<void> clear();
 }
 
@@ -31,14 +34,35 @@ class KeychainDeletionPendingStore implements DeletionPendingStore {
   static const key = 'account.deletion_pending';
 
   @override
-  Future<String?> read() async {
+  Future<PendingAccountDeletion?> read() async {
     final value = await _storage.read(key: key);
-    return (value == null || value.isEmpty) ? null : value;
+    if (value == null) return null;
+    try {
+      return switch (jsonDecode(value)) {
+        {
+          'userId': final String userId,
+          'requestId': final String requestId,
+          'isApple': final bool isApple,
+        }
+            when userId.isNotEmpty && requestId.isNotEmpty =>
+          (userId: userId, requestId: requestId, isApple: isApple),
+        _ => null,
+      };
+    } on FormatException {
+      // A marker without an account cannot be safely replayed.
+      return null;
+    }
   }
 
   @override
-  Future<void> write(String requestId) =>
-      _storage.write(key: key, value: requestId);
+  Future<void> write(PendingAccountDeletion request) => _storage.write(
+        key: key,
+        value: jsonEncode({
+          'userId': request.userId,
+          'requestId': request.requestId,
+          'isApple': request.isApple,
+        }),
+      );
 
   @override
   Future<void> clear() => _storage.delete(key: key);

@@ -10,7 +10,6 @@ import 'package:lumen/providers/auth_provider.dart';
 import 'package:lumen/providers/export_provider.dart';
 import 'package:lumen/providers/login_notice_provider.dart';
 import 'package:lumen/providers/supabase_provider.dart';
-import 'package:lumen/providers/voice_services_provider.dart';
 import 'package:lumen/screens/auth/login_screen.dart';
 import 'package:lumen/screens/dashboard/delete_account_screen.dart';
 import 'package:lumen/screens/dashboard/privacy_sheet.dart';
@@ -128,12 +127,15 @@ void main() {
           accountAuthServiceProvider.overrideWithValue(authService),
           accountDeletionServiceProvider.overrideWithValue(
             AccountDeletionService(
-                auth: authService, gateway: gateway, store: store),
+              auth: authService,
+              gateway: gateway,
+              store: store,
+              cleanup: () async => cleanups += 1,
+            ),
           ),
           lockAuthenticatorProvider.overrideWithValue(lock),
           privacyCoverProvider.overrideWithValue(_Cover()),
           privacyPreferenceStoreProvider.overrideWithValue(_Store()),
-          signedOutCleanupProvider.overrideWithValue(() => cleanups += 1),
           shareVaultProvider
               .overrideWithValue((vault, {Rect? origin}) async {}),
           journalExportServiceProvider.overrideWithValue(
@@ -273,8 +275,7 @@ void main() {
       'Apple user success without revocation shows how to remove Lumen under '
       'Settings, Apple ID, Sign in with Apple', (t) async {
     auth.identityList = [_identity('apple')];
-    gateway.result =
-        (queued: true, alreadyQueued: false, appleRevoked: false);
+    gateway.result = (queued: true, alreadyQueued: false, appleRevoked: false);
     await pump(t);
     await openConfirmation(t);
     await t.tap(confirm);

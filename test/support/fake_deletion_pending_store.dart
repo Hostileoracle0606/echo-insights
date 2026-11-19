@@ -4,25 +4,33 @@ import 'package:lumen/services/deletion_pending_store.dart';
 /// 'markerClear' into [events] (shared with the gateway fake) so tests can
 /// check the order against the function call.
 class FakeDeletionPendingStore implements DeletionPendingStore {
-  FakeDeletionPendingStore({List<String>? events, this.value})
-      : events = events ?? [];
+  FakeDeletionPendingStore({List<String>? events, String? value})
+      : events = events ?? [] {
+    this.value = value;
+  }
 
   final List<String> events;
-  String? value;
+  PendingAccountDeletion? _request;
+  String? get value => _request?.requestId;
+  set value(String? id) {
+    _request =
+        id == null ? null : (userId: 'user-1', requestId: id, isApple: false);
+  }
+
   Object? readError;
   Object? writeError;
 
   @override
-  Future<String?> read() async {
+  Future<PendingAccountDeletion?> read() async {
     if (readError != null) throw readError!;
-    return value;
+    return _request;
   }
 
   @override
-  Future<void> write(String requestId) async {
+  Future<void> write(PendingAccountDeletion request) async {
     events.add('markerWrite');
     if (writeError != null) throw writeError!;
-    value = requestId;
+    _request = request;
   }
 
   @override

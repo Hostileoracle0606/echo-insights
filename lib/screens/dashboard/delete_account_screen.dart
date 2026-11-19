@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../providers/login_notice_provider.dart';
 import '../../providers/supabase_provider.dart';
-import '../../providers/voice_services_provider.dart';
 import '../../services/account_auth_service.dart';
 import '../../services/account_deletion_service.dart';
 import '../../theme/lumen_colors.dart';
@@ -17,9 +16,8 @@ enum DeleteAccountExit { cancelled, export }
 /// sheet after Face ID or the passcode. Says what goes and that it cannot be
 /// undone, offers "Export my journal" first, and deletes only on the
 /// destructive button. Only once the server answers that the deletion is
-/// queued (the service has then cleared the "deletion pending" marker and
-/// signed out) does it erase what the account left on the phone and return
-/// to the first route; the router shows login with a notice. A failure, a
+/// queued does the service clear local account data, release the pending
+/// marker, and sign out. The router then shows login with a notice. A failure, a
 /// lost reply included, keeps the person signed in with everything in place;
 /// "Try again" resends the same request id.
 class DeleteAccountScreen extends ConsumerStatefulWidget {
@@ -40,7 +38,6 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
     // Read before any await: signing out rebuilds the router, and this
     // screen may be gone by the time the call returns.
     final service = ref.read(accountDeletionServiceProvider);
-    final cleanup = ref.read(signedOutCleanupProvider);
     final notice = ref.read(loginNoticeProvider.notifier);
     final navigator = Navigator.of(context);
     setState(() {
@@ -78,7 +75,6 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
           ? deletedAppleNotRevokedNotice
           : deletedNotice,
     );
-    cleanup();
     if (navigator.mounted) navigator.popUntil((route) => route.isFirst);
   }
 
@@ -108,8 +104,8 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Text(
-                  'Deleting your account erases everything Lumen keeps for '
-                  'you: your conversations and their transcripts, your cards, '
+                  'Deleting your account removes your conversations and '
+                  'their transcripts, your cards, '
                   'your map of people and places, your briefs and what Lumen '
                   'remembers. What Lumen shared, the log kept on this phone, '
                   'is erased too.',
@@ -134,8 +130,8 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
                     style: TextButton.styleFrom(padding: EdgeInsets.zero),
                     onPressed: _deleting
                         ? null
-                        : () => Navigator.of(context)
-                            .pop(DeleteAccountExit.export),
+                        : () =>
+                            Navigator.of(context).pop(DeleteAccountExit.export),
                     child: const Text('Export my journal first'),
                   ),
                 ),
@@ -164,9 +160,8 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
                             color: colors.destructiveForeground,
                           ),
                         )
-                      : Text(_problem == null
-                          ? 'Delete my account'
-                          : 'Try again'),
+                      : Text(
+                          _problem == null ? 'Delete my account' : 'Try again'),
                 ),
                 const SizedBox(height: 8),
                 TextButton(

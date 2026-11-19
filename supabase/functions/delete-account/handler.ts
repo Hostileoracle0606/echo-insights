@@ -135,14 +135,17 @@ export function createHandler(deps: Deps): (req: Request) => Promise<Response> {
         return json(400, { error: "bad_request" });
       }
 
-      // Already queued (a retry after a lost reply): never revoke Apple twice.
+      const isApple = user.identities?.some((i) => i.provider === "apple") ?? false;
+      // A retry does not redo Apple revocation. Its outcome is unknown, so give
+      // Apple users the manual removal steps if they still need them.
+      const replay = { queued: true, already_queued: true, apple_revoked: isApple ? false : null };
       if (await deps.queue.find(user.id, requestId)) {
         deps.log({ ok: true, event: "delete_account", stage: "already_queued" });
-        return json(200, { queued: true, already_queued: true, apple_revoked: null });
+        return json(200, replay);
       }
 
       let appleRevoked: boolean | null = null;
-      if (user.identities?.some((i) => i.provider === "apple")) {
+      if (isApple) {
         const r = await tryRevokeApple(deps, code);
         appleRevoked = r.revoked;
         // `stage` is on safeLog's string allowlist; `reason` would be dropped.
@@ -152,7 +155,7 @@ export function createHandler(deps: Deps): (req: Request) => Promise<Response> {
       const res = await deps.queue.insert(user.id, requestId);
       if (res === "exists") {
         deps.log({ ok: true, event: "delete_account", stage: "already_queued" });
-        return json(200, { queued: true, already_queued: true, apple_revoked: null });
+        return json(200, replay);
       }
       deps.log({ ok: true, event: "delete_account", stage: "queued" });
       return json(200, { queued: true, already_queued: false, apple_revoked: appleRevoked });

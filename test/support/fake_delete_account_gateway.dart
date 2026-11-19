@@ -11,6 +11,9 @@ class FakeDeleteAccountGateway implements DeleteAccountGateway {
   final sentCodes = <String?>[];
   final sentRequestIds = <String>[];
 
+  @override
+  String? userId = 'user-1';
+
   DeleteReply result = (queued: true, alreadyQueued: false, appleRevoked: null);
 
   /// When set, used instead of [result] for each call in turn (the last one
@@ -24,7 +27,7 @@ class FakeDeleteAccountGateway implements DeleteAccountGateway {
   Future<void>? callGate;
 
   @override
-  Future<void> refreshSession() async {
+  Future<void> refreshSession({String? expectedUserId}) async {
     events.add('refreshSession');
     if (refreshError != null) throw refreshError!;
   }

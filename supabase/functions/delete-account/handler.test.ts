@@ -165,7 +165,7 @@ Deno.test("same request_id again -> already_queued:true, Apple not called again,
   assertEquals(first.body, { queued: true, already_queued: false, apple_revoked: true });
   const second = await h.ok({ apple_authorization_code: "CODE-Y" });
   assertEquals(second.status, 200);
-  assertEquals(second.body, { queued: true, already_queued: true, apple_revoked: null });
+  assertEquals(second.body, { queued: true, already_queued: true, apple_revoked: false });
   assertEquals(h.codes, ["CODE-X"]);
   assertEquals(h.inserts.length, 1);
 });
@@ -173,7 +173,7 @@ Deno.test("same request_id again -> already_queued:true, Apple not called again,
 Deno.test("a request already queued is found BEFORE Apple is called", async () => {
   const h = harness({ ...appleUser, preQueued: [`${USER_ID}|${REQ}`] });
   const r = await h.ok({ apple_authorization_code: "CODE-X" });
-  assertEquals(r.body, { queued: true, already_queued: true, apple_revoked: null });
+  assertEquals(r.body, { queued: true, already_queued: true, apple_revoked: false });
   assertEquals(h.order, ["find"]);
 });
 
@@ -206,6 +206,15 @@ Deno.test("Apple failure still queues with apple_revoked:false (handler never re
   assertEquals(r.body, { queued: true, already_queued: false, apple_revoked: false });
   assertEquals(h.order, ["find", "revoke", "insert"]);
   assertEquals(h.logs.some((l) => l.event === "apple_revoke" && l.stage === "failed"), true);
+});
+
+Deno.test("Apple retry after a lost failure reply still prompts manual removal", async () => {
+  const h = harness({ ...appleUser, revoke: () => Promise.resolve(false) });
+  await h.ok({ apple_authorization_code: "CODE-X" });
+  const retry = await h.ok();
+  assertEquals(retry.body, { queued: true, already_queued: true, apple_revoked: false });
+  assertEquals(h.codes, ["CODE-X"]);
+  assertEquals(h.inserts.length, 1);
 });
 
 Deno.test("missing code / missing apple config -> queued, apple_revoked:false", async () => {

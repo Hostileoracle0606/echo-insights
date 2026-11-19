@@ -36,6 +36,7 @@ void main() {
   late FakeDeleteAccountGateway gateway;
   late FakeDeletionPendingStore store;
   late int cleanups;
+  Future<void>? cleanupGate;
 
   ProviderContainer launch() {
     final container = ProviderContainer(overrides: [
@@ -43,9 +44,13 @@ void main() {
         auth: AccountAuthService(FakeAuthGateway()),
         gateway: gateway,
         store: store,
+        cleanup: () async {
+          events.add('cleanup');
+          await cleanupGate;
+          cleanups += 1;
+        },
         timeout: const Duration(milliseconds: 50),
       )),
-      signedOutCleanupProvider.overrideWithValue(() => cleanups += 1),
     ]);
     addTearDown(container.dispose);
     // The login screen listens for the whole run.
@@ -59,6 +64,7 @@ void main() {
     gateway = FakeDeleteAccountGateway(events: events);
     store = FakeDeletionPendingStore(events: events);
     cleanups = 0;
+    cleanupGate = null;
   });
 
   test('on launch with no marker nothing is called', () async {
@@ -70,7 +76,8 @@ void main() {
     expect(container.read(loginNoticeProvider), isNull);
   });
 
-  test('marker is resent on launch and wipes only after the server answers '
+  test(
+      'marker is resent on launch and wipes only after the server answers '
       'queued', () async {
     store.value = 'stored-id';
     final gate = Completer<void>();
@@ -82,23 +89,33 @@ void main() {
     await pumpEventQueue();
     expect(events, ['refreshSession', 'call']);
     expect(cleanups, 0, reason: 'nothing wiped before the answer');
+    final localWipe = Completer<void>();
+    cleanupGate = localWipe.future;
     gate.complete();
+    await pumpEventQueue();
+    expect(events, ['refreshSession', 'call', 'cleanup']);
+    expect(store.value, 'stored-id',
+        reason: 'the retry marker survives an interrupted wipe');
+    localWipe.complete();
 
     expect(await run, DeleteOutcome.deleted);
     expect(gateway.sentRequestIds, ['stored-id']);
-    expect(events, ['refreshSession', 'call', 'markerClear', 'signOutLocal']);
+    expect(events,
+        ['refreshSession', 'call', 'cleanup', 'markerClear', 'signOutLocal']);
     expect(cleanups, 1);
     expect(container.read(loginNoticeProvider), deletedNotice);
   });
 
-  test('on launch with a marker and a dead session the app wipes and signs '
+  test(
+      'on launch with a marker and a dead session the app wipes and signs '
       'out', () async {
     store.value = 'stored-id';
     gateway.refreshError = const DeletionSessionGone();
     final container = launch();
 
     expect(await resumePendingDeletion(container), DeleteOutcome.deleted);
-    expect(events, ['refreshSession', 'markerClear', 'signOutLocal']);
+    expect(
+        events, ['refreshSession', 'cleanup', 'markerClear', 'signOutLocal']);
     expect(store.value, isNull);
     expect(cleanups, 1);
     expect(container.read(loginNoticeProvider), deletedNotice);
@@ -112,6 +129,36 @@ void main() {
     expect(await resumePendingDeletion(container),
         DeleteOutcome.deletedAppleNotRevoked);
     expect(container.read(loginNoticeProvider), deletedAppleNotRevokedNotice);
+  });
+
+  test('an outstanding deletion is not sent for a different user', () async {
+    store.value = 'stored-id';
+    gateway.userId = 'another-user';
+    final container = launch();
+
+    expect(await resumePendingDeletion(container), isNull);
+    expect(gateway.sentRequestIds, isEmpty);
+    expect(cleanups, 0);
+  });
+
+  test('a failed local wipe keeps the marker and retries on the next launch',
+      () async {
+    store.value = 'stored-id';
+    final wipe = Completer<void>();
+    cleanupGate = wipe.future;
+    final first = launch();
+    final run = resumePendingDeletion(first);
+    await pumpEventQueue();
+    wipe.completeError(StateError('storage unavailable'));
+
+    expect(await run, isNull);
+    expect(store.value, 'stored-id');
+    expect(events, isNot(contains('signOutLocal')));
+    cleanupGate = null;
+    expect(await resumePendingDeletion(launch()), DeleteOutcome.deleted);
+    expect(gateway.sentRequestIds, ['stored-id', 'stored-id']);
+    expect(store.value, isNull);
+    expect(cleanups, 1);
   });
 
   test('a network error on launch keeps the marker and local data', () async {
@@ -136,19 +183,20 @@ void main() {
     expect(await resumePendingDeletion(container), isNull);
   });
 
-  test('signing out (or switching account) drops a pending marker', () async {
+  test('an auth sign-out leaves the marker for the deletion wipe', () async {
     store.value = 'stored-id';
     final container = ProviderContainer(overrides: [
       openingPrepProvider.overrideWithValue(OpeningPrep(_NoBriefs())),
       deletionPendingStoreProvider.overrideWithValue(store),
+      accountLocalCleanupProvider.overrideWithValue(() async {}),
     ]);
     addTearDown(container.dispose);
 
     container.read(signedOutCleanupProvider)();
     await pumpEventQueue();
 
-    expect(store.value, isNull,
-        reason: 'a later account must never be sent the old request id');
+    expect(store.value, 'stored-id',
+        reason: 'sign-out can occur before deletion has wiped its journal');
   });
 
   test('the marker lives in the Keychain and a reinstall wipes it', () {

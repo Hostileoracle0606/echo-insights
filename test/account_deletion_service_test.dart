@@ -42,6 +42,7 @@ void main() {
         ),
         gateway: gateway,
         store: store,
+        cleanup: () async {},
         newRequestId: () => 'request-${++ids}',
       );
 
@@ -158,6 +159,7 @@ void main() {
       auth: AccountAuthService(auth),
       gateway: gateway,
       store: store,
+      cleanup: () async {},
       timeout: const Duration(milliseconds: 20),
     );
 
@@ -177,6 +179,19 @@ void main() {
     expect(await service().deleteAccount(), DeleteOutcome.deleted);
   });
   group('the deletion pending marker', () {
+    test('an Apple reply lost until the session is gone offers manual removal',
+        () async {
+      auth.identityList = [_identity('apple')];
+      gateway.callError = TimeoutException('reply lost');
+      await expectLater(
+          service().deleteAccount(), throwsA(isA<AccountAuthException>()));
+      gateway.refreshError = const DeletionSessionGone();
+
+      expect(await service().resumePending(),
+          DeleteOutcome.deletedAppleNotRevoked);
+      expect(store.value, isNull);
+    });
+
     test('request id is generated once and the same id is resent on retry',
         () async {
       gateway.callError = StateError('offline');
@@ -191,7 +206,8 @@ void main() {
       expect(store.value, isNull);
     });
 
-    test('reply lost, retry with the same id gets already_queued and the app '
+    test(
+        'reply lost, retry with the same id gets already_queued and the app '
         'wipes', () async {
       gateway.replies = <Object>[
         TimeoutException('reply lost'),
@@ -237,16 +253,18 @@ void main() {
       expect(events, isNot(contains('signOutLocal')));
     });
 
-    test('a marker that cannot be written stops before the call, and says '
+    test(
+        'a marker that cannot be written stops before the call, and says '
         'nothing was started', () async {
       store.writeError = StateError('keychain');
       await expectLater(
         service().deleteAccount(),
-        throwsA(isA<AccountAuthException>().having((e) => e.message,
-            'message', AccountDeletionService.notStarted.message)),
+        throwsA(isA<AccountAuthException>().having((e) => e.message, 'message',
+            AccountDeletionService.notStarted.message)),
       );
       expect(events, isNot(contains('call')));
-      expect(AccountDeletionService.notStarted.message,
+      expect(
+          AccountDeletionService.notStarted.message,
           'Could not delete your account. Check your connection and try '
           'again.');
     });
@@ -264,8 +282,7 @@ void main() {
       gateway.result = (queued: true, alreadyQueued: true, appleRevoked: null);
 
       expect(await service().resumePending(), DeleteOutcome.deleted);
-      expect(events,
-          ['refreshSession', 'call', 'markerClear', 'signOutLocal']);
+      expect(events, ['refreshSession', 'call', 'markerClear', 'signOutLocal']);
       expect(gateway.sentRequestIds, ['stored-id']);
       expect(gateway.sentCodes, [null], reason: 'Apple codes are single-use');
       expect(ids, 0);
@@ -273,7 +290,8 @@ void main() {
 
     test('Apple not revoked on the resend is reported', () async {
       store.value = 'stored-id';
-      gateway.result = (queued: true, alreadyQueued: false, appleRevoked: false);
+      gateway.result =
+          (queued: true, alreadyQueued: false, appleRevoked: false);
       expect(await service().resumePending(),
           DeleteOutcome.deletedAppleNotRevoked);
     });
@@ -322,6 +340,7 @@ void main() {
           auth: AccountAuthService(auth),
           gateway: gateway,
           store: store,
+          cleanup: () async {},
           timeout: const Duration(milliseconds: 20),
         );
 

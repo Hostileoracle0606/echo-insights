@@ -11,7 +11,7 @@ enum DeleteOutcome { deleted, deletedAppleNotRevoked, cancelled }
 
 /// The server's answer: [queued] when the deletion is queued (new, or
 /// [alreadyQueued] under the same request id). [appleRevoked] is null when
-/// there was no Apple account or the request was already queued.
+/// there was no Apple account, and false when revocation is unconfirmed.
 typedef DeleteReply = ({bool queued, bool alreadyQueued, bool? appleRevoked});
 
 /// The session cannot be refreshed because it, or its user, no longer
@@ -34,10 +34,12 @@ const _sessionGoneCodes = {
 /// The calls around the `delete-account` edge function (LM-114/115), so the
 /// flow can be tested without a network.
 abstract interface class DeleteAccountGateway {
+  String? get userId;
+
   /// A new access token: the function refuses one older than 5 minutes.
   /// Throws [DeletionSessionGone] only when the session or user is proven
   /// gone; any other failure (network, rate limit, 5xx) is thrown as is.
-  Future<void> refreshSession();
+  Future<void> refreshSession({String? expectedUserId});
 
   /// Queues the deletion under [requestId] (the same id on every resend).
   /// Any failure here (a 401 included) is transient: it never proves the
@@ -58,7 +60,11 @@ class SupabaseDeleteAccountGateway implements DeleteAccountGateway {
   String? _accessToken;
 
   @override
-  Future<void> refreshSession() async {
+  String? get userId => _client.auth.currentUser?.id;
+
+  @override
+  Future<void> refreshSession({String? expectedUserId}) async {
+    _accessToken = null;
     final Session? session;
     try {
       session = (await _client.auth.refreshSession()).session;
@@ -72,6 +78,9 @@ class SupabaseDeleteAccountGateway implements DeleteAccountGateway {
     }
     final token = session?.accessToken;
     if (token == null || token.isEmpty) throw const DeletionSessionGone();
+    if (expectedUserId != null && session?.user.id != expectedUserId) {
+      throw StateError('The account changed during deletion.');
+    }
     _accessToken = token;
   }
 
@@ -116,8 +125,8 @@ class SupabaseDeleteAccountGateway implements DeleteAccountGateway {
 /// Apple accounts (a fresh single-use code, right before the call), writes
 /// the "deletion pending" marker, refreshes the session and asks the server
 /// to queue the deletion. Only once the server answers "queued" (new or
-/// already) is the marker cleared and this phone signed out; the caller then
-/// erases what is left on the phone. A lost reply keeps the marker, and the
+/// already) does this phone start cleanup. The marker survives until cleanup
+/// finishes, then this phone signs out. A lost reply keeps the marker, and the
 /// same request id is resent on the next try or the next launch
 /// ([resumePending]). Nothing here logs or surfaces a token, a code, the
 /// request id or server text.
@@ -126,17 +135,20 @@ class AccountDeletionService {
     required AccountAuthService auth,
     required DeleteAccountGateway gateway,
     required DeletionPendingStore store,
+    required Future<void> Function() cleanup,
     String Function()? newRequestId,
     Duration timeout = const Duration(seconds: 45),
   })  : _auth = auth,
         _gateway = gateway,
         _store = store,
+        _cleanup = cleanup,
         _newRequestId = newRequestId ?? (() => const Uuid().v4()),
         _timeout = timeout;
 
   final AccountAuthService _auth;
   final DeleteAccountGateway _gateway;
   final DeletionPendingStore _store;
+  final Future<void> Function() _cleanup;
   final String Function() _newRequestId;
 
   /// For each network step, not Apple's sheet (the person may take their
@@ -156,16 +168,24 @@ class AccountDeletionService {
     'Could not delete your account. Check your connection and try again.',
   );
 
+  static const cleanupPending = AccountAuthException(
+    'Your deletion request was received. Close and reopen Lumen to finish '
+    'removing account data from this phone.',
+  );
+
   /// Throws [failure] when the server did not answer "queued" (the marker is
   /// kept, so a retry or the next launch resends the same request id), or
   /// [notStarted] when it failed before any marker existed. Either way the
   /// person is still signed in and nothing on the phone has been touched.
   Future<DeleteOutcome> deleteAccount() async {
+    final userId = _gateway.userId;
+    if (userId == null) throw notStarted;
     final DeleteReply result;
     var markerSet = false;
     try {
       String? code;
-      if (await _auth.hasAppleLinked().timeout(_timeout)) {
+      final isApple = await _auth.hasAppleLinked().timeout(_timeout);
+      if (isApple) {
         final credential = await _auth.reauthenticateWithApple();
         if (credential == null) return DeleteOutcome.cancelled;
         // A missing code still deletes: the server reports Apple as not
@@ -175,15 +195,16 @@ class AccountDeletionService {
       }
       // One id for the whole deletion: a retry after a lost reply resends
       // it, and the server answers "already queued".
-      var requestId = await _store.read().timeout(_timeout);
-      if (requestId == null) {
-        requestId = _newRequestId();
-        await _store.write(requestId).timeout(_timeout);
+      var request = await _store.read().timeout(_timeout);
+      if (request == null || request.userId != userId) {
+        request =
+            (userId: userId, requestId: _newRequestId(), isApple: isApple);
+        await _store.write(request).timeout(_timeout);
       }
       markerSet = true;
-      await _gateway.refreshSession().timeout(_timeout);
+      await _gateway.refreshSession(expectedUserId: userId).timeout(_timeout);
       result = await _gateway
-          .call(requestId: requestId, appleAuthorizationCode: code)
+          .call(requestId: request.requestId, appleAuthorizationCode: code)
           .timeout(_timeout);
     } catch (_) {
       // Never pass the error on: it can carry a token or server text.
@@ -191,7 +212,7 @@ class AccountDeletionService {
     }
     if (!result.queued) throw failure;
 
-    await _finish();
+    if (!await _finish(userId)) throw cleanupPending;
     return result.appleRevoked == false
         ? DeleteOutcome.deletedAppleNotRevoked
         : DeleteOutcome.deleted;
@@ -202,54 +223,69 @@ class AccountDeletionService {
   /// (the marker is kept for the next launch). Once the server answers
   /// "queued", or the refresh proves the session is gone (the account was
   /// already deleted, or the person asked for it and can no longer reach it),
-  /// the marker is cleared, this phone is signed out and the outcome returned so
-  /// the caller wipes the phone. The resend carries no Apple code (it is
-  /// single-use). Never throws.
+  /// cleanup finishes before the marker is cleared and the phone signs out.
+  /// The resend carries no Apple code because it is single-use. Never throws.
   Future<DeleteOutcome?> resumePending() async {
-    final String? requestId;
+    final PendingAccountDeletion? request;
     try {
-      requestId = await _store.read().timeout(_timeout);
+      request = await _store.read().timeout(_timeout);
     } catch (_) {
       return null;
     }
-    if (requestId == null) return null;
+    if (request == null || !_ownsSession(request.userId)) return null;
 
     try {
-      await _gateway.refreshSession().timeout(_timeout);
+      await _gateway
+          .refreshSession(expectedUserId: request.userId)
+          .timeout(_timeout);
     } on DeletionSessionGone {
-      await _finish();
-      return DeleteOutcome.deleted;
+      if (!await _finish(request.userId)) return null;
+      return request.isApple
+          ? DeleteOutcome.deletedAppleNotRevoked
+          : DeleteOutcome.deleted;
     } catch (_) {
       return null;
     }
     final DeleteReply result;
     try {
-      result = await _gateway.call(requestId: requestId).timeout(_timeout);
+      result =
+          await _gateway.call(requestId: request.requestId).timeout(_timeout);
     } catch (_) {
       // A 401 included: the refresh just worked, so it proves nothing.
       return null;
     }
     if (!result.queued) return null;
 
-    await _finish();
+    if (!await _finish(request.userId)) return null;
     return result.appleRevoked == false
         ? DeleteOutcome.deletedAppleNotRevoked
         : DeleteOutcome.deleted;
   }
 
-  /// The deletion is queued (or the account is out of reach): the marker
-  /// goes, then the session.
-  Future<void> _finish() async {
+  bool _ownsSession(String userId) {
+    final currentUser = _gateway.userId;
+    return currentUser == null || currentUser == userId;
+  }
+
+  /// Keep the marker while cleanup runs so an interrupted wipe is retried.
+  Future<bool> _finish(String userId) async {
+    if (!_ownsSession(userId)) return false;
+    try {
+      await _cleanup();
+    } catch (_) {
+      return false;
+    }
+    if (!_ownsSession(userId)) return false;
     try {
       await _store.clear();
     } catch (_) {
-      // A marker left behind is resent next launch and finds the session
-      // gone: the same wipe, nothing more.
+      // A marker left behind allows the same cleanup to run again on launch.
     }
     try {
       await _gateway.signOutLocal();
     } catch (_) {
       // The account is going; its session cannot be used again.
     }
+    return true;
   }
 }
