@@ -1,5 +1,25 @@
 # Account deletion (LM-114..117): results
 
+## Queued deletion follow-up (2026-11-19)
+
+The edge function now answers `queued` after persisting the request. Apple revocation runs in the request, before the queue insert. The phone retains the request ID across a transient failure and resends it on launch. It cleans up after queue acknowledgement or when the pending flow's session refresh confirms the session is gone. The cron job runs every minute and retries requests once they are at least five minutes old.
+
+Apply `20261117000000_account_deletion_flow_state.sql`, then `20261118000100_account_deletion_requests.sql`, `20261118000200_account_deletion_worker.sql`, and `20261118000300_account_deletion_worker_locking.sql` before deploying `delete-account`. The queue retains user and request IDs, request and completion timestamps, the attempt count, and the last failure's SQLSTATE. The migrations set no expiry. The worker attempts to purge `auth.audit_log_entries` and `auth.flow_state` during deletion. Verify both on staging because a failure to purge either table produces a warning and leaves the account deletion committed. Disable database audit writes and verify a new sign-in creates no database audit row.
+
+| Local check | Result |
+|---|---|
+| Full pgTAP on Supabase CLI 2.75.0, PostgreSQL 17.6, GoTrue 2.186.0 | 34 files, 1,284 tests passed |
+| Full pgTAP after starting GoTrue 2.191.0 on the isolated stack | 34 files, 1,284 tests passed, with both WebAuthn tables present |
+| Two independent database sessions processing two due requests for one user | Previous worker reproduced SQLSTATE `40P01`. Updated worker skipped the claimed user while the first transaction held the lock, completed both rows once, and did no work on the next tick. |
+| Deno CI suite | 98 passed, including 37 deletion and Apple tests |
+| Focused Flutter deletion and fresh-install suite | 61 passed |
+
+GitHub Actions and the hosted staging rehearsal are tracked in `2026-11-19-account-deletion-closeout.md`. Verify Apple revocation on a real device. A launch retry carries no Apple authorization code because the code is single-use. If the original request never reached the server, the retry still queues the deletion and the app provides the manual Apple removal steps.
+
+## Original synchronous flow (2026-11-17)
+
+The rest of this report records the earlier synchronous flow and its test results.
+
 ## Apple REST API, confirmed
 
 Confirmed 2026-11-17 by reading Apple's live pages in the in-app browser (the pages are client-rendered, so plain fetch returns only titles):

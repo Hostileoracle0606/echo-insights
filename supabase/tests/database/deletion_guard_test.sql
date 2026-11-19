@@ -25,7 +25,13 @@
 --      and must cascade from auth.users (directly or through auth.sessions),
 --      except flow_state, which has no foreign key and is purged by the
 --      on_auth_user_deleted trigger. Sessions, refresh tokens, identities,
---      one-time tokens and flow_state are seeded and checked like section 3.
+--      one-time tokens, flow_state and the passkey tables are seeded and
+--      checked like section 3.
+--      GoTrue versions differ: rows marked `optional` (webauthn_*, the
+--      passkey tables, absent from GoTrue 2.186 that CLI 2.75 starts but
+--      present from 2.19x and on the hosted project) may be missing; when
+--      missing their assertions pass as "absent". Any auth table with a
+--      user_id that is NOT listed always fails, whatever the version.
 --
 --   5. (deletion queue) auth.audit_log_entries has no user_id column (the id
 --      is inside the json payload), so it is not in `auth_inventory`; the
@@ -36,6 +42,8 @@
 -- NOTE: the auth seeds below hard-code GoTrue's column names (sessions,
 -- refresh_tokens, identities, one_time_tokens, flow_state); a GoTrue upgrade
 -- that renames or adds a required column breaks the seed, not the deletion.
+-- The passkey tables are seeded from the catalog instead (pg_temp.seed_auth:
+-- user_id plus every NOT NULL column without a default, filled by type).
 --
 -- To cover a new table: add one `inventory` row, one seed insert, and bump
 -- the plan below (2 + 3 per public table, 2 + 3 per seeded auth table,
@@ -44,7 +52,7 @@
 create extension if not exists pgtap;
 
 begin;
-select plan(2 + 3 * 19 + 1 + 2 + 3 * 5 + 3);
+select plan(2 + 3 * 19 + 1 + 2 + 3 * 7 + 3);
 
 -- ── inventory: table → predicate selecting one user's rows ─────────────────
 -- Placeholders: %U% user id, %N% that user's notebook id, %S% runtime session id.
@@ -112,25 +120,34 @@ select is_empty(
   'every table with a user_id or a foreign key to auth.users or notebooks is in the inventory');
 
 -- ── 4a. auth tables that carry a user id (device sessions live here) ──────
-create temp table auth_inventory (tbl text primary key, pred text not null, seeded bool not null) on commit drop;
+create temp table auth_inventory (tbl text primary key, pred text not null, seeded bool not null,
+                                   optional bool not null default false) on commit drop;
 insert into auth_inventory values
-  ('sessions',            'user_id = ''%U%''', true),   -- what list_my_sessions reads
-  ('refresh_tokens',      'user_id = ''%U%''', true),   -- varchar user_id; cascades from sessions
-  ('identities',          'user_id = ''%U%''', true),
-  ('one_time_tokens',     'user_id = ''%U%''', true),
-  ('flow_state',          'user_id = ''%U%''', true),   -- no FK: purged by trigger
-  ('mfa_factors',         'user_id = ''%U%''', false),  -- FK cascade, checked in the catalog
-  ('oauth_authorizations','user_id = ''%U%''', false),
-  ('oauth_consents',      'user_id = ''%U%''', false),
-  ('webauthn_challenges', 'user_id = ''%U%''', false),
-  ('webauthn_credentials','user_id = ''%U%''', false);
+  ('sessions',            'user_id = ''%U%''', true,  false),  -- what list_my_sessions reads
+  ('refresh_tokens',      'user_id = ''%U%''', true,  false),  -- varchar user_id; cascades from sessions
+  ('identities',          'user_id = ''%U%''', true,  false),
+  ('one_time_tokens',     'user_id = ''%U%''', true,  false),
+  ('flow_state',          'user_id = ''%U%''', true,  false),  -- no FK: purged by trigger
+  ('mfa_factors',         'user_id = ''%U%''', false, false),  -- FK cascade, checked in the catalog
+  ('oauth_authorizations','user_id = ''%U%''', false, false),
+  ('oauth_consents',      'user_id = ''%U%''', false, false),
+  -- passkeys (LM-127): FK to auth.users ON DELETE CASCADE in GoTrue 2.191;
+  -- not present in older GoTrue images, hence optional
+  ('webauthn_challenges', 'user_id = ''%U%''', true,  true),
+  ('webauthn_credentials','user_id = ''%U%''', true,  true);
 
+create function pg_temp.auth_present(p_tbl text) returns boolean language sql stable as
+  $$ select to_regclass(format('auth.%I', p_tbl)) is not null $$;
+
+-- Exactly the listed tables, minus optional ones this GoTrue version lacks:
+-- an unlisted auth table with a user_id fails, and so does a missing
+-- required one; the result does not depend on which GoTrue image is running.
 select set_eq(
   $$ select c.relname::text from pg_class c
        join pg_attribute a on a.attrelid = c.oid
       where c.relnamespace = 'auth'::regnamespace and c.relkind in ('r', 'p')
         and a.attname = 'user_id' and a.attnum > 0 and not a.attisdropped $$,
-  $$ select tbl from auth_inventory $$,
+  $$ select tbl from auth_inventory where not optional or pg_temp.auth_present(tbl) $$,
   'every auth table with a user_id column is in the auth deletion inventory (a new GoTrue table must be added here)');
 
 select is_empty(
@@ -207,6 +224,58 @@ insert into auth.one_time_tokens (id, user_id, token_type, token_hash, relates_t
 insert into auth.flow_state (id, user_id, auth_code, code_challenge_method, code_challenge,
                              provider_type, provider_access_token, authentication_method)
   select gen_random_uuid(), uid, 'code-' || name, 's256', 'chal', 'apple', 'tok', 'oauth' from who;
+-- passkey tables (when this GoTrue has them), seeded from the catalog so a
+-- new required column does not break the seed: user_id plus every NOT NULL
+-- column without a default, filled by type; p_over gives literal values for
+-- columns with a CHECK or other meaning.
+create function pg_temp.seed_auth(p_tbl text, p_uid uuid, p_over jsonb default '{}') returns void
+language plpgsql as $$
+declare
+  cols text[] := array['user_id'];
+  vals text[] := array[quote_literal(p_uid) || '::uuid'];
+  c record;
+  v text;
+begin
+  for c in
+    select a.attname::text as col, format_type(a.atttypid, a.atttypmod) as typ
+      from pg_attribute a
+     where a.attrelid = format('auth.%I', p_tbl)::regclass
+       and a.attnum > 0 and not a.attisdropped and a.attnotnull and not a.atthasdef
+       and a.attidentity = '' and a.attgenerated = '' and a.attname <> 'user_id'
+     order by a.attnum
+  loop
+    if p_over ? c.col then
+      v := quote_literal(p_over->>c.col) || '::' || c.typ;
+    else
+      v := case
+        when c.typ = 'uuid' then 'gen_random_uuid()'
+        when c.typ in ('text', 'character varying') or c.typ like 'character varying(%' then 'gen_random_uuid()::text'
+        when c.typ = 'bytea' then 'convert_to(gen_random_uuid()::text, ''UTF8'')'
+        when c.typ in ('jsonb', 'json') then '''{}''::' || c.typ
+        when c.typ like 'timestamp%' then 'now() + interval ''1 hour'''
+        when c.typ = 'boolean' then 'false'
+        when c.typ in ('smallint', 'integer', 'bigint', 'numeric') then '0'
+      end;
+      if v is null then
+        raise exception 'seed_auth: no filler for %.% (%)', p_tbl, c.col, c.typ;
+      end if;
+    end if;
+    cols := cols || quote_ident(c.col);
+    vals := vals || v;
+  end loop;
+  execute format('insert into auth.%I (%s) values (%s)', p_tbl,
+                 array_to_string(cols, ', '), array_to_string(vals, ', '));
+end $$;
+
+do $$
+begin
+  perform pg_temp.seed_auth(t.tbl, who.uid, t.over)
+     from who,
+          (values ('webauthn_credentials', '{}'::jsonb),
+                  ('webauthn_challenges',  '{"challenge_type": "authentication"}'::jsonb)) t(tbl, over)
+    where pg_temp.auth_present(t.tbl);
+end $$;
+
 -- audit log: one row with the user as actor (a login), one where an admin
 -- acted on the user (the id sits in traits.user_id)
 insert into auth.audit_log_entries (id, payload, created_at)
@@ -249,6 +318,9 @@ declare
   p text;
   n bigint;
 begin
+  if not pg_temp.auth_present(p_tbl) then
+    return null;                       -- optional table absent in this GoTrue version
+  end if;
   select * into w from who where name = p_who;
   select replace(pred, '%U%', w.uid::text) into p from auth_inventory where tbl = p_tbl;
   execute format('select count(*) from auth.%I where %s', p_tbl, p) into n;
@@ -260,8 +332,12 @@ select ok(pg_temp.rows_of(tbl, 'U') > 0 and pg_temp.rows_of(tbl, 'V') > 0,
           tbl || ': seeded for both users')
   from inventory order by tbl;
 
-select ok(pg_temp.auth_rows_of(tbl, 'U') > 0 and pg_temp.auth_rows_of(tbl, 'V') > 0,
-          'auth.' || tbl || ': seeded for both users')
+-- (an absent optional table yields null -> coalesce -> pass, labelled "absent")
+create function pg_temp.absent(p_tbl text) returns text language sql stable as
+  $$ select case when pg_temp.auth_present(p_tbl) then '' else ' (absent in this GoTrue version)' end $$;
+
+select ok(coalesce(pg_temp.auth_rows_of(tbl, 'U') > 0 and pg_temp.auth_rows_of(tbl, 'V') > 0, true),
+          'auth.' || tbl || ': seeded for both users' || pg_temp.absent(tbl))
   from auth_inventory where seeded order by tbl;
 select ok(pg_temp.audit_rows_of('U') = 2 and pg_temp.audit_rows_of('V') = 2,
           'auth.audit_log_entries: seeded for both users (actor and traits rows)');
@@ -275,9 +351,11 @@ select ok(pg_temp.rows_of(tbl, 'V') > 0, tbl || ': a bystander''s rows are untou
   from inventory order by tbl;
 
 -- ── 4b. the seeded auth tables, after the delete ────────────────────────────
-select is(pg_temp.auth_rows_of(tbl, 'U'), 0::bigint, 'auth.' || tbl || ': nothing left for the deleted account')
+select is(coalesce(pg_temp.auth_rows_of(tbl, 'U'), 0), 0::bigint,
+          'auth.' || tbl || ': nothing left for the deleted account' || pg_temp.absent(tbl))
   from auth_inventory where seeded order by tbl;
-select ok(pg_temp.auth_rows_of(tbl, 'V') > 0, 'auth.' || tbl || ': a bystander''s rows are untouched')
+select ok(coalesce(pg_temp.auth_rows_of(tbl, 'V') > 0, true),
+          'auth.' || tbl || ': a bystander''s rows are untouched' || pg_temp.absent(tbl))
   from auth_inventory where seeded order by tbl;
 
 -- ── 5. the audit log, after the delete ──────────────────────────────────────

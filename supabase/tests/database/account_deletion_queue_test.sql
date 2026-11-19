@@ -11,7 +11,7 @@
 create extension if not exists pgtap;
 
 begin;
-select plan(48);
+select plan(52);
 
 create temp table who (name text primary key, uid uuid, nid uuid) on commit drop;
 insert into who values
@@ -45,6 +45,15 @@ select ok((select prosecdef from pg_proc where oid = 'public.process_account_del
 select ok(not has_function_privilege('authenticated', 'public.process_account_deletions(interval,int)', 'execute')
       and not has_function_privilege('anon', 'public.process_account_deletions(interval,int)', 'execute'),
   'app roles cannot run the worker');
+select ok(not has_function_privilege('service_role', 'public.process_account_deletions(interval,int)', 'execute'),
+  'service_role cannot run the worker (only the cron job, as the owner)');
+-- Overlapping runs: each user is claimed with a non-blocking per-user
+-- advisory lock and no request rows are held across users, so two runs
+-- cannot deadlock (a concurrent run skips a user another run holds).
+-- Exercised with two real sessions in the task report; pinned here.
+select ok((select prosrc ~ 'pg_try_advisory_xact_lock' and prosrc !~* 'for\s+update'
+             from pg_proc where oid = 'public.process_account_deletions(interval,int)'::regprocedure),
+  'worker claims users with a try-advisory lock and holds no row locks across users');
 
 -- cron job, only where pg_cron is installed
 create function pg_temp.cron_ok() returns boolean language plpgsql as $$
@@ -204,6 +213,16 @@ select is(public.process_account_deletions(interval '30 seconds'), 1, 'the next 
 select is((select count(*) from auth.users where id in (pg_temp.uid('B'), 'f0000000-0000-0000-0000-00000000000f')),
   0::bigint, 'B and F are gone once due');
 select is(pg_temp.rows_of('E'), 7::bigint, 'E: still untouched at the end');
+
+-- ── a clean run over a fully processed queue changes nothing ───────────────
+create temp table before_run on commit drop as
+  select user_id, request_id, ctid::text as row_ctid, completed_at, attempts, last_error
+    from public.account_deletion_requests;
+select is(public.process_account_deletions(interval '0 seconds'), 0, 'clean run over a processed queue returns 0');
+select set_eq(
+  $$ select user_id, request_id, ctid::text as row_ctid, completed_at, attempts, last_error from public.account_deletion_requests $$,
+  $$ select user_id, request_id, row_ctid, completed_at, attempts, last_error from before_run $$,
+  'clean run leaves every row as it was (completed_at, attempts, not even rewritten)');
 
 select * from finish();
 rollback;
