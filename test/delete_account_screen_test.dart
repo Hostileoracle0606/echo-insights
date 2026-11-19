@@ -304,8 +304,9 @@ void main() {
     expect(find.byType(DeleteAccountScreen), findsOneWidget);
     expect(find.byKey(const Key('deleteAccountProblem')), findsOneWidget);
     expect(
-      find.text('Could not delete your account. Check your connection and '
-          'try again.'),
+      find.text('We could not confirm that your account is being deleted. '
+          'Check your connection and try again. If you close Lumen now, it '
+          'will try again the next time you open it.'),
       findsOneWidget,
     );
     expect(find.textContaining('secret'), findsNothing);

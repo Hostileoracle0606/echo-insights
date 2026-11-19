@@ -138,8 +138,10 @@ void main() {
               .having(
                   (e) => e.message,
                   'message',
-                  'Could not delete your account. Check your connection and '
-                      'try again.')
+                  'We could not confirm that your account is being deleted. '
+                      'Check your connection and try again. If you close '
+                      'Lumen now, it will try again the next time you open '
+                      'it.')
               .having((e) => e.message, 'no server text',
                   isNot(contains('secret'))),
         ),
@@ -235,11 +237,18 @@ void main() {
       expect(events, isNot(contains('signOutLocal')));
     });
 
-    test('a marker that cannot be written stops before the call', () async {
+    test('a marker that cannot be written stops before the call, and says '
+        'nothing was started', () async {
       store.writeError = StateError('keychain');
       await expectLater(
-          service().deleteAccount(), throwsA(isA<AccountAuthException>()));
+        service().deleteAccount(),
+        throwsA(isA<AccountAuthException>().having((e) => e.message,
+            'message', AccountDeletionService.notStarted.message)),
+      );
       expect(events, isNot(contains('call')));
+      expect(AccountDeletionService.notStarted.message,
+          'Could not delete your account. Check your connection and try '
+          'again.');
     });
   });
 
@@ -278,14 +287,22 @@ void main() {
       expect(store.value, isNull);
     });
 
-    test('a dead session (the function says 401) is treated as deleted',
+    test('a 401 from the function (the refresh just worked) keeps the marker',
         () async {
-      store.value = 'stored-id';
-      gateway.callError = const DeletionSessionGone();
+      for (final error in <Object>[
+        const FunctionException(status: 401),
+        // Whatever the call throws, it never proves the session is gone.
+        const DeletionSessionGone(),
+        const FunctionException(status: 500),
+      ]) {
+        events.clear();
+        store.value = 'stored-id';
+        gateway.callError = error;
 
-      expect(await service().resumePending(), DeleteOutcome.deleted);
-      expect(store.value, isNull);
-      expect(events.last, 'signOutLocal');
+        expect(await service().resumePending(), isNull);
+        expect(store.value, 'stored-id');
+        expect(events, ['refreshSession', 'call']);
+      }
     });
 
     test('network error, timeout or not queued keeps the marker, null',
