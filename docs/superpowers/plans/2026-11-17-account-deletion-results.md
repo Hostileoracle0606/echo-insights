@@ -21,6 +21,7 @@ GitHub Actions and the hosted staging rehearsal are tracked in `2026-11-19-accou
 - The phone keeps the pending marker until the persistent wipes finish, including the phone's turn journal and temporary checkpoints. A storage failure preserves the marker for the next launch. The Keychain marker binds the request to its owner so a new account cannot resend it under its own credentials.
 - The original Apple request still attempts revocation before writing the queue row. If its result is unavailable after retry, the app offers manual Apple removal steps. The queue stores no Apple token or revocation result.
 - On the merged release tree, 35 database files passed 1,295 pgTAP tests with both WebAuthn tables present, and the Deno CI command passed 99 tests. The runbook's 28 migration entries match the Release 1 migration files in order.
+- In the isolated stack, a scheduled cron run completed a due request, removed both matching audit-row types, and preserved the bystander account and audit row. The hosted staging rehearsal remains pending.
 
 ## Original synchronous flow (2026-11-17)
 

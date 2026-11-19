@@ -101,6 +101,20 @@ void main() {
     await expectEverythingGone();
   });
 
+  test('account cleanup awaits a failed log wipe and sign-out handles it',
+      () async {
+    // The log has already cached this path. Removing it makes its next wipe
+    // fail when it tries to list the directory.
+    await Directory('${dir.path}/shared-log-v1').delete(recursive: true);
+    await expectLater(
+      container.read(accountLocalCleanupProvider)(),
+      throwsA(isA<FileSystemException>()),
+    );
+
+    container.read(signedOutCleanupProvider)();
+    await pumpEventQueue();
+  });
+
   test('a different account arriving with no sign-out in between cleans up',
       () async {
     final binding = VoiceServicesBinding(

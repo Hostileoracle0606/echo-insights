@@ -303,16 +303,7 @@ void main() {
       expect(files().map((f) => f.path), [endsWith('keep.json')]);
     });
 
-    test('the callers handle a failed deletion', () {
-      for (final path in [
-        'lib/providers/journal_provider.dart',
-        'lib/providers/voice_services_provider.dart',
-      ]) {
-        final text = File(path).readAsStringSync();
-        final at = text.indexOf('sharedLogProvider');
-        expect(at, greaterThan(0));
-        expect(text, contains('catchError'), reason: path);
-      }
+    test('journal forget handles a failed shared-log deletion', () {
       final journal =
           File('lib/providers/journal_provider.dart').readAsStringSync();
       expect(
@@ -320,10 +311,6 @@ void main() {
             .allMatches(journal),
         hasLength(1),
         reason: 'the one helper, which handles the failure',
-      );
-      expect(
-        File('lib/providers/voice_services_provider.dart').readAsStringSync(),
-        matches(RegExp(r'clearAll\(\)\s*\.catchError')),
       );
     });
 
