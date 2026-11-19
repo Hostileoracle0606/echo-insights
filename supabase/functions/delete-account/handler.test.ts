@@ -1,8 +1,9 @@
 import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { createHandler, type AdminClient } from "./handler.ts";
+import { createHandler, type AdminClient, type Deps } from "./handler.ts";
 
 const NOW_MS = 1_800_000_000_000;
 const USER_ID = "user-1";
+const REQ = "7b0f6c0e-3f4a-4a52-9d5e-1c2b3a4d5e6f";
 
 const b64url = (o: unknown) =>
   btoa(JSON.stringify(o)).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
@@ -10,190 +11,57 @@ const jwt = (payload: Record<string, unknown>) =>
   `${b64url({ alg: "HS256", typ: "JWT" })}.${b64url(payload)}.sig-secret-part`;
 const freshJwt = (ageSec = 10) => jwt({ sub: USER_ID, iat: NOW_MS / 1000 - ageSec });
 
-function harness(opts: { getUserError?: boolean; deleteError?: boolean } = {}) {
-  const deleted: string[] = [];
+type Queue = Deps["queue"];
+
+interface Opts {
+  getUserError?: boolean;
+  identities?: { provider: string }[];
+  insertResult?: "inserted" | "exists";
+  insertThrows?: boolean;
+  findThrows?: boolean;
+  /** request ids already queued, as "user|request" keys */
+  preQueued?: string[];
+  revoke?: (p: { code: string | undefined }) => Promise<boolean>;
+  noRevokeDep?: boolean;
+}
+
+function harness(opts: Opts = {}) {
+  const order: string[] = [];
+  const inserts: string[] = [];
+  const finds: string[] = [];
+  const codes: (string | undefined)[] = [];
   const logs: Record<string, unknown>[] = [];
-  const client: AdminClient = {
+  const stored = new Set(opts.preQueued ?? []);
+  // No admin.deleteUser on purpose: the handler must never need it.
+  const client = {
     auth: {
       getUser: () =>
         Promise.resolve(
           opts.getUserError
             ? { data: { user: null }, error: { message: "invalid JWT" } }
-            : { data: { user: { id: USER_ID } }, error: null },
+            : { data: { user: { id: USER_ID, identities: opts.identities } }, error: null },
         ),
-      admin: {
-        deleteUser: (id: string) => {
-          deleted.push(id);
-          return Promise.resolve({ error: opts.deleteError ? { message: "boom" } : null });
-        },
-      },
+    },
+  } as unknown as AdminClient;
+  const queue: Queue = {
+    find: (u, r) => {
+      order.push("find");
+      finds.push(`${u}|${r}`);
+      if (opts.findThrows) return Promise.reject(new Error("db"));
+      return Promise.resolve(stored.has(`${u}|${r}`));
+    },
+    insert: (u, r) => {
+      order.push("insert");
+      inserts.push(`${u}|${r}`);
+      if (opts.insertThrows) return Promise.reject(new Error("db"));
+      const res = opts.insertResult ?? (stored.has(`${u}|${r}`) ? "exists" : "inserted");
+      if (res === "inserted") stored.add(`${u}|${r}`);
+      return Promise.resolve(res);
     },
   };
   const handler = createHandler({
     admin: () => client,
-    now: () => NOW_MS,
-    log: (f) => logs.push(f),
-  });
-  const call = async (init: { method?: string; auth?: string; body?: unknown } = {}) => {
-    const headers: Record<string, string> = {};
-    if (init.auth) headers.Authorization = `Bearer ${init.auth}`;
-    const method = init.method ?? "POST";
-    const res = await handler(
-      new Request("http://local/delete-account", {
-        method,
-        headers,
-        body: method === "GET" ? undefined : JSON.stringify(init.body ?? {}),
-      }),
-    );
-    return { status: res.status, body: await res.json().catch(() => null) };
-  };
-  return { call, deleted, logs };
-}
-
-Deno.test("no Authorization header -> 401, deleteUser not called", async () => {
-  const h = harness();
-  const r = await h.call();
-  assertEquals(r.status, 401);
-  assertEquals(r.body, { error: "unauthorized" });
-  assertEquals(h.deleted, []);
-});
-
-Deno.test("forged JWT (getUser returns error) -> 401, not called", async () => {
-  const h = harness({ getUserError: true });
-  const r = await h.call({ auth: freshJwt() });
-  assertEquals(r.status, 401);
-  assertEquals(h.deleted, []);
-});
-
-Deno.test("stale JWT (iat 6 min old, validly accepted by getUser) -> 401", async () => {
-  const h = harness();
-  const r = await h.call({ auth: freshJwt(6 * 60) });
-  assertEquals(r.status, 401);
-  assertEquals(r.body, { error: "unauthorized" });
-  assertEquals(h.deleted, []);
-});
-
-Deno.test("malformed JWT payload -> 401, not called", async () => {
-  const h = harness();
-  const r = await h.call({ auth: "not.a-jwt.x" });
-  assertEquals(r.status, 401);
-  assertEquals(h.deleted, []);
-});
-
-Deno.test("happy path deletes exactly the JWT's user and returns 200", async () => {
-  const h = harness();
-  const r = await h.call({ auth: freshJwt() });
-  assertEquals(r.status, 200);
-  assertEquals(r.body, { deleted: true, apple_revoked: null });
-  assertEquals(h.deleted, [USER_ID]);
-});
-
-Deno.test("body naming another user id is ignored", async () => {
-  const h = harness();
-  const r = await h.call({
-    auth: freshJwt(),
-    body: { user_id: "victim", userId: "victim", id: "victim" },
-  });
-  assertEquals(r.status, 200);
-  assertEquals(h.deleted, [USER_ID]);
-});
-
-Deno.test("deleteUser error -> 500 and deleted:false", async () => {
-  const h = harness({ deleteError: true });
-  const r = await h.call({ auth: freshJwt() });
-  assertEquals(r.status, 500);
-  assertEquals(r.body, { deleted: false });
-});
-
-Deno.test("non-POST -> 405", async () => {
-  const h = harness();
-  const r = await h.call({ method: "GET", auth: freshJwt() });
-  assertEquals(r.status, 405);
-  assertEquals(h.deleted, []);
-});
-
-Deno.test("logs contain no token", async () => {
-  const h = harness();
-  const token = freshJwt();
-  await h.call({ auth: token });
-  await h.call({ auth: freshJwt(6 * 60) });
-  const dump = JSON.stringify(h.logs);
-  assert(h.logs.length > 0);
-  assert(!dump.includes(token));
-  assert(!dump.includes("sig-secret-part"));
-  assert(!dump.includes("Bearer"));
-});
-
-// ---- Task 1 reviewer extras ----
-
-Deno.test("iat exactly 300s old accepted, 301s old rejected", async () => {
-  const ok = harness();
-  assertEquals((await ok.call({ auth: freshJwt(300) })).status, 200);
-  const stale = harness();
-  assertEquals((await stale.call({ auth: freshJwt(301) })).status, 401);
-  assertEquals(stale.deleted, []);
-});
-
-function customHarness(client: AdminClient) {
-  return createHandler({ admin: () => client, now: () => NOW_MS, log: () => {} });
-}
-const post = (h: (r: Request) => Promise<Response>, token: string, body: unknown = {}) =>
-  h(new Request("http://local/delete-account", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}` },
-    body: JSON.stringify(body),
-  }));
-
-Deno.test("getUser throwing -> 500, nothing deleted", async () => {
-  const deleted: string[] = [];
-  const h = customHarness({
-    auth: {
-      getUser: () => Promise.reject(new Error("net")),
-      admin: { deleteUser: (id) => { deleted.push(id); return Promise.resolve({ error: null }); } },
-    },
-  });
-  const res = await post(h, freshJwt());
-  assertEquals(res.status, 500);
-  assertEquals(await res.json(), { deleted: false });
-  assertEquals(deleted, []);
-});
-
-Deno.test("id is derived from the token's sub: other token deletes the other id", async () => {
-  const deleted: string[] = [];
-  const subOf = (t: string) => JSON.parse(atob(t.split(".")[1].replaceAll("-", "+").replaceAll("_", "/"))).sub;
-  const h = customHarness({
-    auth: {
-      getUser: (t) => Promise.resolve({ data: { user: { id: subOf(t) } }, error: null }),
-      admin: { deleteUser: (id) => { deleted.push(id); return Promise.resolve({ error: null }); } },
-    },
-  });
-  await post(h, freshJwt());
-  await post(h, jwt({ sub: "user-2", iat: NOW_MS / 1000 - 5 }), { user_id: "user-1" });
-  assertEquals(deleted, [USER_ID, "user-2"]);
-});
-
-// ---- Task 2: Apple ----
-
-function appleHarness(opts: {
-  apple?: boolean;
-  revoke?: (p: { code: string | undefined }) => Promise<boolean>;
-  noRevokeDep?: boolean;
-} = {}) {
-  const order: string[] = [];
-  const codes: (string | undefined)[] = [];
-  const logs: Record<string, unknown>[] = [];
-  const client: AdminClient = {
-    auth: {
-      getUser: () =>
-        Promise.resolve({
-          data: { user: { id: USER_ID, identities: opts.apple === false ? [{ provider: "email" }] : [{ provider: "apple" }] } },
-          error: null,
-        }),
-      admin: { deleteUser: () => { order.push("delete"); return Promise.resolve({ error: null }); } },
-    },
-  };
-  const handler = createHandler({
-    admin: () => client,
+    queue,
     now: () => NOW_MS,
     log: (f) => logs.push(f),
     revokeApple: opts.noRevokeDep ? undefined : (p) => {
@@ -202,66 +70,243 @@ function appleHarness(opts: {
       return opts.revoke ? opts.revoke(p) : Promise.resolve(true);
     },
   });
-  const run = async (body: unknown = { apple_authorization_code: "CODE-X" }) => {
-    const res = await post(handler, freshJwt(), body);
-    return { status: res.status, body: await res.json() };
+  const call = async (
+    init: { method?: string; auth?: string; body?: unknown; raw?: string } = {},
+  ) => {
+    const headers: Record<string, string> = {};
+    if (init.auth) headers.Authorization = `Bearer ${init.auth}`;
+    const method = init.method ?? "POST";
+    const res = await handler(
+      new Request("http://local/delete-account", {
+        method,
+        headers,
+        body: method === "GET" ? undefined : (init.raw ?? JSON.stringify(init.body ?? {})),
+      }),
+    );
+    return { status: res.status, body: await res.json().catch(() => null) };
   };
-  return { run, order, codes, logs };
+  const ok = (body: Record<string, unknown> = {}) =>
+    call({ auth: freshJwt(), body: { request_id: REQ, ...body } });
+  return { call, ok, order, inserts, finds, codes, logs, stored };
 }
 
-Deno.test("apple user: revoke called before deleteUser, with the body's code", async () => {
-  const h = appleHarness();
-  const r = await h.run();
-  assertEquals(r.body, { deleted: true, apple_revoked: true });
-  assertEquals(h.order, ["revoke", "delete"]);
+const appleUser = { identities: [{ provider: "apple" }] };
+
+Deno.test("no Authorization header -> 401, nothing queued", async () => {
+  const h = harness();
+  const r = await h.call({ body: { request_id: REQ } });
+  assertEquals(r.status, 401);
+  assertEquals(r.body, { error: "unauthorized" });
+  assertEquals(h.order, []);
+});
+
+Deno.test("forged JWT (getUser returns error) -> 401, nothing queued", async () => {
+  const h = harness({ getUserError: true });
+  const r = await h.ok();
+  assertEquals(r.status, 401);
+  assertEquals(h.order, []);
+});
+
+Deno.test("stale JWT (iat 6 min old, validly accepted by getUser) -> 401", async () => {
+  const h = harness();
+  const r = await h.call({ auth: freshJwt(6 * 60), body: { request_id: REQ } });
+  assertEquals(r.status, 401);
+  assertEquals(r.body, { error: "unauthorized" });
+  assertEquals(h.order, []);
+});
+
+Deno.test("malformed JWT payload -> 401, nothing queued", async () => {
+  const h = harness();
+  const r = await h.call({ auth: "not.a-jwt.x", body: { request_id: REQ } });
+  assertEquals(r.status, 401);
+  assertEquals(h.order, []);
+});
+
+Deno.test("iat exactly 300s old accepted, 301s old rejected", async () => {
+  const ok = harness();
+  assertEquals((await ok.call({ auth: freshJwt(300), body: { request_id: REQ } })).status, 200);
+  const stale = harness();
+  assertEquals((await stale.call({ auth: freshJwt(301), body: { request_id: REQ } })).status, 401);
+  assertEquals(stale.inserts, []);
+});
+
+Deno.test("non-POST -> 405", async () => {
+  const h = harness();
+  const r = await h.call({ method: "GET", auth: freshJwt() });
+  assertEquals(r.status, 405);
+  assertEquals(h.order, []);
+});
+
+Deno.test("valid JWT + request_id queues exactly the JWT's user (body user_id ignored)", async () => {
+  const h = harness();
+  const r = await h.ok({ user_id: "victim", userId: "victim", id: "victim" });
+  assertEquals(r.status, 200);
+  assertEquals(r.body, { queued: true, already_queued: false, apple_revoked: null });
+  assertEquals(h.inserts, [`${USER_ID}|${REQ}`]);
+});
+
+Deno.test("missing or non-uuid request_id -> 400, nothing queued, no Apple call", async () => {
+  for (const body of [{}, { request_id: 5 }, { request_id: "nope" }, { request_id: "" }]) {
+    const h = harness(appleUser);
+    const r = await h.call({ auth: freshJwt(), body: { ...body, apple_authorization_code: "C" } });
+    assertEquals(r.status, 400);
+    assertEquals(r.body, { error: "bad_request" });
+    assertEquals(h.order, []);
+  }
+  const h = harness();
+  const r = await h.call({ auth: freshJwt(), raw: "not json" });
+  assertEquals(r.status, 400);
+  assertEquals(h.order, []);
+});
+
+Deno.test("same request_id again -> already_queued:true, Apple not called again, no second insert", async () => {
+  const h = harness(appleUser);
+  const first = await h.ok({ apple_authorization_code: "CODE-X" });
+  assertEquals(first.body, { queued: true, already_queued: false, apple_revoked: true });
+  const second = await h.ok({ apple_authorization_code: "CODE-Y" });
+  assertEquals(second.status, 200);
+  assertEquals(second.body, { queued: true, already_queued: true, apple_revoked: null });
+  assertEquals(h.codes, ["CODE-X"]);
+  assertEquals(h.inserts.length, 1);
+});
+
+Deno.test("a request already queued is found BEFORE Apple is called", async () => {
+  const h = harness({ ...appleUser, preQueued: [`${USER_ID}|${REQ}`] });
+  const r = await h.ok({ apple_authorization_code: "CODE-X" });
+  assertEquals(r.body, { queued: true, already_queued: true, apple_revoked: null });
+  assertEquals(h.order, ["find"]);
+});
+
+Deno.test("insert race returning exists -> already_queued:true", async () => {
+  const h = harness({ insertResult: "exists" });
+  const r = await h.ok();
+  assertEquals(r.status, 200);
+  assertEquals(r.body, { queued: true, already_queued: true, apple_revoked: null });
+});
+
+Deno.test("apple user: revoke runs before the insert, once, with the body's code", async () => {
+  const h = harness(appleUser);
+  const r = await h.ok({ apple_authorization_code: "CODE-X" });
+  assertEquals(r.body, { queued: true, already_queued: false, apple_revoked: true });
+  assertEquals(h.order, ["find", "revoke", "insert"]);
   assertEquals(h.codes, ["CODE-X"]);
 });
 
 Deno.test("non-apple user: revoke never called, apple_revoked null", async () => {
-  const h = appleHarness({ apple: false });
-  const r = await h.run();
-  assertEquals(r.body, { deleted: true, apple_revoked: null });
-  assertEquals(h.order, ["delete"]);
+  const h = harness({ identities: [{ provider: "email" }] });
+  const r = await h.ok({ apple_authorization_code: "CODE-X" });
+  assertEquals(r.body, { queued: true, already_queued: false, apple_revoked: null });
+  assertEquals(h.order, ["find", "insert"]);
 });
 
-Deno.test("apple failure (retries live inside apple.ts) deletes anyway with apple_revoked:false", async () => {
-  const h = appleHarness({ revoke: () => Promise.resolve(false) });
-  const r = await h.run();
+Deno.test("Apple failure still queues with apple_revoked:false (handler never re-calls)", async () => {
+  const h = harness({ ...appleUser, revoke: () => Promise.resolve(false) });
+  const r = await h.ok({ apple_authorization_code: "CODE-X" });
   assertEquals(r.status, 200);
-  assertEquals(r.body, { deleted: true, apple_revoked: false });
-  assertEquals(h.order, ["revoke", "delete"]); // handler never re-calls: the code is single-use
+  assertEquals(r.body, { queued: true, already_queued: false, apple_revoked: false });
+  assertEquals(h.order, ["find", "revoke", "insert"]);
   assertEquals(h.logs.some((l) => l.event === "apple_revoke" && l.stage === "failed"), true);
 });
 
-Deno.test("missing code -> delete proceeds, apple_revoked:false", async () => {
-  const h = appleHarness({ revoke: (p) => Promise.resolve(p.code !== undefined) });
-  const r = await h.run({});
-  assertEquals(r.body, { deleted: true, apple_revoked: false });
-  assertEquals(h.order.at(-1), "delete");
-  assertEquals(h.logs.some((l) => l.event === "apple_revoke" && l.stage === "no_code"), true);
+Deno.test("missing code / missing apple config -> queued, apple_revoked:false", async () => {
+  const a = harness({ ...appleUser, revoke: (p) => Promise.resolve(p.code !== undefined) });
+  const ra = await a.ok();
+  assertEquals(ra.body, { queued: true, already_queued: false, apple_revoked: false });
+  assertEquals(a.logs.some((l) => l.event === "apple_revoke" && l.stage === "no_code"), true);
+  const b = harness({ ...appleUser, noRevokeDep: true });
+  const rb = await b.ok({ apple_authorization_code: "C" });
+  assertEquals(rb.body, { queued: true, already_queued: false, apple_revoked: false });
+  assertEquals(b.logs.some((l) => l.event === "apple_revoke" && l.stage === "no_config"), true);
 });
 
-Deno.test("missing apple config (no revokeApple dep) -> delete proceeds, apple_revoked:false", async () => {
-  const h = appleHarness({ noRevokeDep: true });
-  const r = await h.run();
-  assertEquals(r.body, { deleted: true, apple_revoked: false });
-  assertEquals(h.order, ["delete"]);
-  assertEquals(h.logs.some((l) => l.event === "apple_revoke" && l.stage === "no_config"), true);
-});
-
-Deno.test("a thrown revoke does not block deletion and is not logged verbatim", async () => {
-  const h = appleHarness({ revoke: () => Promise.reject(new Error("secret-body CODE-X")) });
-  const r = await h.run();
-  assertEquals(r.body, { deleted: true, apple_revoked: false });
-  assertEquals(h.order, ["revoke", "delete"]);
+Deno.test("a thrown revoke still queues and is not logged verbatim", async () => {
+  const h = harness({ ...appleUser, revoke: () => Promise.reject(new Error("secret-body CODE-X")) });
+  const r = await h.ok({ apple_authorization_code: "CODE-X" });
+  assertEquals(r.body, { queued: true, already_queued: false, apple_revoked: false });
   const dump = JSON.stringify(h.logs);
   assert(!dump.includes("CODE-X") && !dump.includes("secret-body"));
 });
 
-Deno.test("body is read only for apple_authorization_code (non-string ignored)", async () => {
-  const h = appleHarness();
-  await h.run({ apple_authorization_code: 123, user_id: "victim" });
-  assertEquals(h.codes, []); // no usable code: revoke not attempted
+Deno.test("non-string apple code is ignored", async () => {
+  const h = harness(appleUser);
+  await h.ok({ apple_authorization_code: 123 });
+  assertEquals(h.codes, []);
+});
+
+Deno.test("queue insert error -> 500 queued:false", async () => {
+  const h = harness({ insertThrows: true });
+  const r = await h.ok();
+  assertEquals(r.status, 500);
+  assertEquals(r.body, { queued: false });
+});
+
+Deno.test("queue find error -> 500 queued:false, Apple not called", async () => {
+  const h = harness({ ...appleUser, findThrows: true });
+  const r = await h.ok({ apple_authorization_code: "C" });
+  assertEquals(r.status, 500);
+  assertEquals(r.body, { queued: false });
+  assertEquals(h.codes, []);
+});
+
+Deno.test("getUser throwing -> 500, nothing queued", async () => {
+  const order: string[] = [];
+  const h = createHandler({
+    admin: () => ({ auth: { getUser: () => Promise.reject(new Error("net")) } }) as unknown as AdminClient,
+    queue: {
+      find: () => { order.push("find"); return Promise.resolve(false); },
+      insert: () => { order.push("insert"); return Promise.resolve("inserted"); },
+    },
+    now: () => NOW_MS,
+    log: () => {},
+  });
+  const res = await h(new Request("http://local/x", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${freshJwt()}` },
+    body: JSON.stringify({ request_id: REQ }),
+  }));
+  assertEquals(res.status, 500);
+  assertEquals(await res.json(), { queued: false });
+  assertEquals(order, []);
+});
+
+Deno.test("id is derived from the token's sub", async () => {
+  const inserts: string[] = [];
+  const subOf = (t: string) =>
+    JSON.parse(atob(t.split(".")[1].replaceAll("-", "+").replaceAll("_", "/"))).sub;
+  const h = createHandler({
+    admin: () => ({
+      auth: { getUser: (t: string) => Promise.resolve({ data: { user: { id: subOf(t) } }, error: null }) },
+    }) as unknown as AdminClient,
+    queue: {
+      find: () => Promise.resolve(false),
+      insert: (u, r) => { inserts.push(`${u}|${r}`); return Promise.resolve("inserted"); },
+    },
+    now: () => NOW_MS,
+    log: () => {},
+  });
+  const send = (t: string, body: unknown) =>
+    h(new Request("http://local/x", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${t}` },
+      body: JSON.stringify(body),
+    }));
+  await send(freshJwt(), { request_id: REQ });
+  await send(jwt({ sub: "user-2", iat: NOW_MS / 1000 - 5 }), { request_id: REQ, user_id: "user-1" });
+  assertEquals(inserts, [`user-1|${REQ}`, `user-2|${REQ}`]);
+});
+
+Deno.test("logs contain no token, user id or request id; stages are allowlisted", async () => {
+  const h = harness(appleUser);
+  const token = freshJwt();
+  await h.call({ auth: token, body: { request_id: REQ, apple_authorization_code: "CODE-X" } });
+  await h.call({ auth: token, body: { request_id: REQ } }); // already_queued
+  await h.call({ auth: freshJwt(6 * 60), body: { request_id: REQ } });
+  const dump = JSON.stringify(h.logs);
+  assert(h.logs.length > 0);
+  assert(!dump.includes(token) && !dump.includes("sig-secret-part") && !dump.includes("Bearer"));
+  assert(!dump.includes(REQ) && !dump.includes(USER_ID) && !dump.includes("CODE-X"));
+  assertEquals(h.logs.some((l) => l.stage === "queued"), true);
+  assertEquals(h.logs.some((l) => l.stage === "already_queued"), true);
 });
 
 Deno.test("apple log reason survives safeLog's allowlist", async () => {
@@ -270,5 +315,10 @@ Deno.test("apple log reason survives safeLog's allowlist", async () => {
     event: "apple_revoke",
     stage: "no_config",
     ok: false,
+  });
+  assertEquals(sanitizeLogFields({ event: "delete_account", stage: "already_queued", ok: true }), {
+    event: "delete_account",
+    stage: "already_queued",
+    ok: true,
   });
 });
