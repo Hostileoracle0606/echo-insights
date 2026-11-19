@@ -66,8 +66,13 @@ class TimingMarks {
   final Set<String> _once = {};
 
   /// Whether a live session is active now. Background work that ends while
-  /// it is records `overlap`.
-  bool turnActive = false;
+  /// it is records `overlap`. A disabled recorder keeps no state.
+  bool get turnActive => _turnActive;
+  set turnActive(bool value) {
+    if (enabled) _turnActive = value;
+  }
+
+  bool _turnActive = false;
 
   // `print`, not `debugPrint`: it must reach the console in profile builds.
   // ignore: avoid_print
@@ -101,8 +106,8 @@ class TimingMarks {
   void end(String stage, {Map<String, Object> fields = const {}}) {
     if (!enabled) return;
     final began = _open.remove(stage);
-    _emit(stage, 'end', began: began, incomplete: began == null,
-        fields: fields);
+    _emit(stage, 'end',
+        began: began, incomplete: began == null, fields: fields);
   }
 
   /// The clock now, for a later [span].
@@ -121,7 +126,9 @@ class TimingMarks {
   bool isOpen(String stage) => _open.containsKey(stage);
 
   void _emit(String stage, String phase,
-      {int? began, bool incomplete = false, Map<String, Object> fields = const {}}) {
+      {int? began,
+      bool incomplete = false,
+      Map<String, Object> fields = const {}}) {
     final safe = _checked(fields);
     final now = _clock.elapsedMilliseconds;
     final line = <String, Object>{
@@ -150,7 +157,7 @@ class TimingMarks {
             okKey ? value.runtimeType : entry.key,
             okKey ? 'timing field value' : 'timing field key',
             'timing marks carry allow-listed keys with number or boolean '
-                'values only');
+            'values only');
       }
     }
     return safe;

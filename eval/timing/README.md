@@ -26,15 +26,25 @@ started at the top of `main()`.
 | `launch_to_first_frame_host` | span | dur_ms | `simctl launch` on the host → first_frame line arrives (simulator only; includes native/engine start that `main()` can't see, plus a few ms of pty latency) |
 | `notebook_open` | begin/end | dur_ms | open a notebook → snapshot, saved turns and turn journal loaded (`size`, `overlap`) |
 | `tap_to_mic_open` | begin/end | dur_ms | mic tap from idle → microphone capturing |
-| `user_turn_end_to_first_audio` | begin/end | dur_ms | user transcript finalized → first assistant audio chunk (once per turn) |
-| `retrieval` | span | dur_ms | in-app retrieve-memory call (`scope`: 0 notebook, 1 user; `count` entities) |
+| `user_turn_end_to_first_audio` | span | dur_ms | last user transcript chunk while no reply plays → first audio chunk of the reply (once per turn; a turn answered without audio is an `incomplete` end) |
+| `retrieval` | span | dur_ms | in-app retrieve-memory call (`scope`: 0 notebook, 1 user; `count` entities; `ok`: false on timeout, error or contract mismatch) |
 | `extraction` | span | dur_ms | retrieval + extraction model call for a turn (`ok`) |
 | `commit` | span | dur_ms | notebook commit RPC (`ok`, `retry`) |
 | `opening_prep` | span | dur_ms | session-brief state reload (`ok`, `overlap` = a live session was active) |
+| `snapshot_reload` | span | dur_ms | notebook snapshot reload after a failed edit, forget or rejected commit (`ok`, `overlap`) |
 | `retrieval_server` | span | dur_ms | Node → local `retrieve-memory`, user scope (`count`, `ok`) |
 
 `size` is the entity count as an order-of-magnitude bucket: 0, 1, 10, 100,
-1000+. The seeded histories 0 / 50 / 500 report as 0 / 10 / 100.
+1000+. On `home_interactive` it is the whole history (seeded 0 / 50 / 500
+report as 0 / 10 / 100); on `notebook_open` it is the open notebook only.
+
+The voice wait starts at the user's *last transcribed words* rather than a
+"final" flag, because Gemini's input transcription has no ordering guarantee
+against the reply: a final chunk can land mid-reply or only with
+`turnComplete`. Transcription lag means the true end of speech is a little
+earlier, so the figure slightly understates the wait.
+
+`overlapRate` in `timing.json` is per stage: `[overlapping, of]`.
 
 **Incomplete** = a begin with no end (crash, cancel, superseded) or an end
 with no begin. It is counted per stage, never dropped. **Failed** = a span
@@ -101,6 +111,8 @@ node eval/timing/seed.mjs --cleanup        # delete every timing-eval user
   than with real memories.
 - Local edge functions may be shared with other eval runs on the same stack;
   `meta.json` says so when they were.
-- Spans (`retrieval`, `extraction`, `commit`, `opening_prep`) are emitted when
+- No warm-start figure: marks are per process, so a warm relaunch emits
+  nothing new. Only cold launches are reported.
+- Spans (`retrieval`, `extraction`, `commit`, `opening_prep`, `snapshot_reload`) are emitted when
   the stage finishes; a crash mid-span leaves no line, so those stages cannot
   show `incomplete`.

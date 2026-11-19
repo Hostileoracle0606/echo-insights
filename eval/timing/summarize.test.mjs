@@ -73,7 +73,8 @@ test('overlap rate: how often background work ran during a live session', () => 
     m({ run: 1, stage: 'opening_prep', phase: 'span', t_ms: 2, dur_ms: 5, overlap: false }),
     m({ run: 1, stage: 'notebook_open', phase: 'end', t_ms: 3, dur_ms: 5, overlap: false, incomplete: true }),
   ];
-  assert.deepEqual(summarize(marks, meta).overlapRate, [1, 3]);
+  // Per stage: pooling notebook_open with opening_prep would dilute the rate.
+  assert.deepEqual(summarize(marks, meta).overlapRate, { opening_prep: [1, 2], notebook_open: [0, 1] });
 });
 
 test('simulator and device inputs refuse to merge', () => {

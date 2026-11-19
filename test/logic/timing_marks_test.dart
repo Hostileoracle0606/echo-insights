@@ -154,6 +154,12 @@ void main() {
         .toList(), [0, 1, 1, 10, 10, 10, 100, 100, 100, 1000, 1000]);
   });
 
+  test('a disabled recorder keeps no state: turnActive stays false', () {
+    final m = marks(enabled: false);
+    m.turnActive = true;
+    expect(m.turnActive, isFalse);
+  });
+
   test('turnActive starts false and is settable for overlap checks', () {
     final m = marks();
     expect(m.turnActive, isFalse);

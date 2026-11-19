@@ -93,12 +93,14 @@ class DashboardScreen extends ConsumerWidget {
                 list.fold<int>(0, (sum, nb) => sum + nb.entityCount);
             // The first time notebooks show, the home screen is usable.
             final timing = ref.read(timingMarksProvider);
-            WidgetsBinding.instance.addPostFrameCallback(
-              (_) => timing.markOnce('home_interactive', fields: {
-                'count': list.length,
-                'size': entityCountBucket(totalEntities),
-              }),
-            );
+            if (timing.enabled) {
+              WidgetsBinding.instance.addPostFrameCallback(
+                (_) => timing.markOnce('home_interactive', fields: {
+                  'count': list.length,
+                  'size': entityCountBucket(totalEntities),
+                }),
+              );
+            }
             final subtitle = isEmpty
                 ? null
                 : '${list.length} ${list.length == 1 ? 'session' : 'sessions'}'

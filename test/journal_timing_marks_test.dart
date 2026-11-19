@@ -1,6 +1,7 @@
 // Timing marks at the points where the person waits, through the real
 // JournalNotifier and GeminiLiveClient. Only the socket, the microphone, the
 // speaker and the token source are fakes; the marks go to a recording sink.
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -27,7 +28,9 @@ import 'package:lumen/services/gemini_live_client.dart';
 import 'package:lumen/services/live_credentials.dart';
 import 'package:lumen/services/notebook_commit_service.dart';
 import 'package:lumen/screens/dashboard/dashboard_screen.dart';
+import 'package:lumen/services/memory_control_service.dart';
 import 'package:lumen/services/notebook_runtime_service.dart';
+import 'package:lumen/services/retrieve_memory_service.dart';
 import 'package:lumen/services/session_brief_service.dart';
 import 'package:lumen/theme/lumen_theme.dart';
 import 'package:lumen/services/supabase_service.dart';
@@ -131,6 +134,15 @@ class _NoNotebookInserts implements SupabaseService {
       fail('unexpected Supabase call: ${invocation.memberName}');
 }
 
+/// Every description edit fails, so the notebook reloads its snapshot.
+class _FailingMemoryControl implements MemoryControlService {
+  @override
+  Future<int> editDescription(String entityId, String text) async =>
+      throw Exception('offline');
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
 class _Harness {
   _Harness({int entities = 50}) {
     credentials = LiveCredentials(fetch: () async {
@@ -144,6 +156,7 @@ class _Harness {
     });
     container = ProviderContainer(overrides: [
       timingMarksProvider.overrideWithValue(marks),
+      memoryControlServiceProvider.overrideWithValue(_FailingMemoryControl()),
       notebookCommitServiceProvider.overrideWithValue(_FakeCommits(entities)),
       turnJournalServiceProvider.overrideWithValue(_FakeTurnJournal()),
       transcriptStoreProvider.overrideWithValue(_FakeTranscripts()),
@@ -222,6 +235,12 @@ Map<String, dynamic> _userFinished() => {
       },
     };
 
+Map<String, dynamic> _userSays(String text) => {
+      'serverContent': {
+        'inputTranscription': {'text': text},
+      },
+    };
+
 Map<String, dynamic> _lumenAudio() => {
       'serverContent': {
         'modelTurn': {
@@ -253,6 +272,54 @@ List<Map<String, dynamic>> _decode(List<String> lines) => [
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  group('retrieval', () {
+    late List<String> lines;
+    late TimingMarks marks;
+    setUp(() {
+      lines = [];
+      marks = TimingMarks(enabled: true, mode: 'profile', sink: lines.add)
+        ..start();
+    });
+
+    Future<Map<String, dynamic>> spanFor(RetrieveMemoryInvoker invoke,
+        {Duration? timeout}) async {
+      await RetrieveMemoryService.withInvoker(invoke, timing: marks)
+          .retrieveResult(
+        query: 'the move',
+        notebookId: 'nb',
+        scope: RetrievalScope.user,
+        timeout: timeout,
+      );
+      return _decode(lines).single;
+    }
+
+    test('a retrieval that answers is ok, with its entity count', () async {
+      final span = await spanFor((_) async => {
+            'version': 2,
+            'context': 'ctx',
+            'entityIds': ['a', 'b'],
+            'quotes': <Object>[],
+          });
+      expect(span['stage'], 'retrieval');
+      expect(span['phase'], 'span');
+      expect(span['ok'], isTrue);
+      expect(span['count'], 2);
+      expect(span['scope'], RetrievalScope.user.index);
+    });
+
+    test('an error is not ok: it never passes for a fast answer', () async {
+      final span = await spanFor((_) async => throw Exception('network'));
+      expect(span['ok'], isFalse);
+      expect(span['count'], 0);
+    });
+
+    test('a timeout is not ok: it never passes for a slow answer', () async {
+      final span = await spanFor((_) => Completer<dynamic>().future,
+          timeout: const Duration(milliseconds: 10));
+      expect(span['ok'], isFalse);
+    });
+  });
 
   group('opening_prep', () {
     test('records overlap only when it ran during a live session', () async {
@@ -357,8 +424,90 @@ void main() {
       }
 
       final waits = h.stage('user_turn_end_to_first_audio');
-      expect(waits.map((m) => m['phase']), ['begin', 'end', 'begin', 'end']);
+      expect(waits.map((m) => m['phase']), ['span', 'span']);
+      expect(waits.every((m) => m['dur_ms'] is int), isTrue);
+    });
+
+    // Gemini's input transcription has no ordering guarantee against the
+    // reply: the final chunk can land after the reply's audio started, or
+    // only with turnComplete. Neither may start a wait of its own.
+    test('a final transcript arriving mid-reply does not start a new wait',
+        () async {
+      h = _Harness();
+      await h.startLive();
+
+      h.socket.serverSends(_userSays('I went for'));
+      await h.settle();
+      h.socket.serverSends(_lumenAudio());
+      await h.settle();
+      h.socket
+        ..serverSends(_userFinished())
+        ..serverSends(_lumenAudio())
+        ..serverSends({
+          'serverContent': {'turnComplete': true},
+        });
+      await h.settle();
+
+      final waits = h.stage('user_turn_end_to_first_audio');
+      expect(waits.map((m) => m['phase']), ['span']);
+    });
+
+    test('a final transcript that comes with turnComplete is not a new turn',
+        () async {
+      h = _Harness();
+      await h.startLive();
+
+      h.socket.serverSends(_userSays('I went for'));
+      await h.settle();
+      h.socket.serverSends(_lumenAudio());
+      await h.settle();
+      h.socket
+        ..serverSends(_userFinished())
+        ..serverSends({
+          'serverContent': {'turnComplete': true},
+        });
+      await h.settle();
+      // The next turn: its wait is measured from its own speech.
+      h.socket.serverSends(_userSays('Then I slept'));
+      await h.settle();
+      h.socket.serverSends(_lumenAudio());
+      await h.settle();
+
+      final waits = h.stage('user_turn_end_to_first_audio');
+      expect(waits.map((m) => m['phase']), ['span', 'span']);
       expect(waits.where((m) => m['incomplete'] == true), isEmpty);
+    });
+
+    test('a turn Lumen never answers with audio counts as incomplete',
+        () async {
+      h = _Harness();
+      await h.startLive();
+
+      h.socket.serverSends(_userFinished());
+      await h.settle();
+      h.socket.serverSends({
+        'serverContent': {'turnComplete': true},
+      });
+      await h.settle();
+
+      final waits = h.stage('user_turn_end_to_first_audio');
+      expect(waits.map((m) => m['incomplete']), [true]);
+    });
+
+    test('a snapshot reload is a span that records overlap with a session',
+        () async {
+      h = _Harness();
+      await h.journal.enterNotebook(_notebookId);
+      await expectLater(
+          h.journal.editEntityDescription('e1', 'new words'), throwsException);
+      await h.startLive();
+      await expectLater(
+          h.journal.editEntityDescription('e1', 'more words'), throwsException);
+
+      final reloads = h.stage('snapshot_reload');
+      expect(reloads.map((m) => m['phase']), ['span', 'span']);
+      expect(reloads.map((m) => m['overlap']), [false, true]);
+      expect(reloads.map((m) => m['ok']), [true, true]);
     });
 
     test('no line carries transcript text', () async {

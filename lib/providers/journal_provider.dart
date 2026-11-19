@@ -143,8 +143,14 @@ class JournalNotifier extends Notifier<JournalState> {
   /// request id is safe only when the expected revision and change are also
   /// reused byte-for-byte/logically unchanged.
   final Map<String, PreparedTurnCommit> _preparedCommits = {};
+
   /// Turns whose commit RPC threw once: the next send is a retry (timing).
   final Set<String> _commitRetried = {};
+
+  /// Timing only: when the user last spoke with no reply playing, and
+  /// whether a reply's audio has started.
+  int? _userSpokeAt;
+  bool _timingReplying = false;
   final Set<String> _restoredPreparedCommitIds = {};
   late final TurnEffectQueue _effectQueue = TurnEffectQueue(
     onFailure: (error, stackTrace) {
@@ -806,7 +812,6 @@ class JournalNotifier extends Notifier<JournalState> {
     final extractStart = _timing.now;
     try {
       await _redactor.ensureLoaded();
-      final retrieveStart = _timing.now;
       final retrieval =
           await ref.read(retrieveMemoryServiceProvider).retrieveResult(
                 query: _redactor.redact(effect.transcript),
@@ -814,10 +819,6 @@ class JournalNotifier extends Notifier<JournalState> {
                 state: state,
               );
       vlog('timing', 'extract retrieve +${clock.elapsedMilliseconds}ms');
-      _timing.span('retrieval', since: retrieveStart, fields: {
-        'scope': RetrievalScope.notebook.index,
-        'count': retrieval.entityIds.length,
-      });
       final openFollowUps = state.followUps.where((item) => !item.answered);
       final patch = await extractService.extract(
         notebookId: effect.key.notebookId,
@@ -922,7 +923,7 @@ class JournalNotifier extends Notifier<JournalState> {
         'ok': false,
         'retry': _commitRetried.contains(turn.turnId),
       });
-      _commitRetried.add(turn.turnId);
+      if (_timing.enabled) _commitRetried.add(turn.turnId);
       // Unknown outcome: retry the identical request with the same id. The
       // server ledger replays it if it already committed.
       vlog('session', 'commit RPC threw, retrying same requestId: $error');
@@ -1005,9 +1006,13 @@ class JournalNotifier extends Notifier<JournalState> {
   Future<void> _reloadSnapshot() async {
     final notebookId = _activeNotebookId;
     if (notebookId == null) return;
+    final started = _timing.now;
+    final overlapAtStart = _timing.turnActive;
+    var ok = false;
     try {
       final commitService = ref.read(notebookCommitServiceProvider);
       final snapshot = await commitService.getNotebookSnapshot(notebookId);
+      ok = true;
       if (snapshot == null) return;
       _revision = snapshot.revision;
       state = _adoptSnapshot(snapshot);
@@ -1016,6 +1021,11 @@ class JournalNotifier extends Notifier<JournalState> {
       _dispatchTurn(SnapshotReloaded(revision: snapshot.revision));
     } catch (error) {
       vlog('session', 'snapshot reload failed: $error');
+    } finally {
+      _timing.span('snapshot_reload', since: started, fields: {
+        'ok': ok,
+        'overlap': overlapAtStart || _timing.turnActive,
+      });
     }
   }
 
@@ -1323,17 +1333,12 @@ class JournalNotifier extends Notifier<JournalState> {
     _memoryCallsThisTurn++;
     _lastMemoryQuery = query;
     final service = ref.read(retrieveMemoryServiceProvider);
-    final retrieveStart = _timing.now;
     // User scope: every conversation the user has had, not just this one.
     final retrieval = await service.retrieveResult(
       query: query,
       notebookId: notebookId,
       scope: RetrievalScope.user,
     );
-    _timing.span('retrieval', since: retrieveStart, fields: {
-      'scope': RetrievalScope.user.index,
-      'count': retrieval.entityIds.length,
-    });
     if (retrieval.entityIds.isNotEmpty && isCurrent()) {
       _recall = RecallActivity(
         seq: ++_recallSeq,
@@ -2275,9 +2280,13 @@ class JournalNotifier extends Notifier<JournalState> {
       case UserTranscript(:final text, :final isFinal):
         if (text.isEmpty && !isFinal) return;
         if (text.trim().isNotEmpty) _userStillSpeaking();
-        // A new begin replaces an unanswered one, which then counts as
-        // incomplete.
-        if (isFinal) _timing.begin('user_turn_end_to_first_audio');
+        // The wait starts at the user's last transcribed words while no
+        // reply plays (ReplyTimer's rule): transcription has no ordering
+        // guarantee against the reply, so `isFinal` can land mid-reply or
+        // only with turnComplete.
+        if (text.trim().isNotEmpty && !_timingReplying) {
+          _userSpokeAt = _timing.now;
+        }
         final events =
             isFinal ? _assembler.userFinal(text) : _assembler.userChunk(text);
         for (final event in events) {
@@ -2298,8 +2307,13 @@ class JournalNotifier extends Notifier<JournalState> {
         }
       case AgentAudio(:final pcm, :final sampleRate):
         if (_droppingCutOffReply) return;
-        if (_timing.isOpen('user_turn_end_to_first_audio')) {
-          _timing.end('user_turn_end_to_first_audio');
+        if (!_timingReplying) {
+          _timingReplying = true;
+          final spokeAt = _userSpokeAt;
+          _userSpokeAt = null;
+          if (spokeAt != null) {
+            _timing.span('user_turn_end_to_first_audio', since: spokeAt);
+          }
         }
         // Muted audio still runs the playback clock, so the dock keeps
         // showing that Lumen has the floor.
@@ -2311,6 +2325,7 @@ class JournalNotifier extends Notifier<JournalState> {
             false;
         if (!fed) _markAgentSpeaking();
       case InterruptedSignal():
+        _timingReplying = false;
         // Gemini supplies audio and transcription without a trustworthy
         // word-level alignment. Queuing PCM therefore cannot prove any text
         // was physically heard. The null boundary safely skips durable
@@ -2320,6 +2335,12 @@ class JournalNotifier extends Notifier<JournalState> {
           _dispatchTurn(event);
         }
       case TurnCompleteSignal():
+        // Spoken to and answered without audio: the wait never ended.
+        if (_userSpokeAt != null && !_timingReplying) {
+          _timing.end('user_turn_end_to_first_audio');
+        }
+        _userSpokeAt = null;
+        _timingReplying = false;
         // Lumen may end a turn without speaking; that ends the wait too,
         // unless it is the cut-off reply's own completion.
         if (!_droppingCutOffReply) _setAwaitingReply(false);

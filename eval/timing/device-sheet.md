@@ -79,7 +79,8 @@ Conditioner" under Developer if it's missing):
      --dart-define=LUMEN_TIMING=1 \
      --dart-define=SUPABASE_URL=http://$MAC_IP:55321 \
      --dart-define=SUPABASE_ANON_KEY="$SUPABASE_ANON_KEY" \
-     --dart-define=NOTEBOOK_RUNTIME_URL=http://$MAC_IP:8787 2>&1 | tee "$DIR/$1.jsonl"; }
+     --dart-define=NOTEBOOK_RUNTIME_URL=http://$MAC_IP:8787 2>&1 |
+     grep --line-buffered '\[lumen-timing\]' | tee "$DIR/$1.jsonl"; }
    RUN device-wifi-1        # label + n per the table
    ```
 3. Wait for the notebooks list.
@@ -94,6 +95,11 @@ Conditioner" under Developer if it's missing):
 7. End the session. Wait 10 s (commit and brief work finish), then press
    `q` in the `flutter run` terminal.
 8. Fill in a row below.
+
+Only `[lumen-timing]` lines reach the results file: the rest of the
+`flutter run` console (device name, UDID, paths, app error text) is filtered
+out before anything is written, because `eval/results` is committed. You see
+only timing lines in the terminal while it runs; that's expected.
 
 Each file is one process from cold start (launched by `flutter run`, not
 an icon tap: say so in the report), and `parse.mjs` ignores everything except `[lumen-timing]`

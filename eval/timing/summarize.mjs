@@ -43,14 +43,14 @@ export function summarize(marks, meta) {
     return byStage.get(name);
   };
   const open = new Map(); // `${run}/${stage}` → begun and not yet ended
-  let overlaps = 0;
-  let overlapOf = 0;
+  const overlap = {}; // stage → [overlaps, of]
 
   for (const mark of marks) {
     const s = stage(mark.stage);
     if (typeof mark.overlap === 'boolean') {
-      overlapOf += 1;
-      if (mark.overlap) overlaps += 1;
+      const rate = (overlap[mark.stage] ??= [0, 0]);
+      rate[1] += 1;
+      if (mark.overlap) rate[0] += 1;
     }
     const key = `${mark.run ?? 0}/${mark.stage}`;
     if (mark.phase === 'begin') {
@@ -83,7 +83,7 @@ export function summarize(marks, meta) {
       incomplete: s.incomplete, failed: s.failed,
     };
   }
-  return { stages, overlapRate: [overlaps, overlapOf], meta };
+  return { stages, overlapRate: overlap, meta };
 }
 
 /** Summarizes every group of run files in [dir] using its meta.json. */
