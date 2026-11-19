@@ -57,3 +57,9 @@ test('retrieved items carry superseded relations separately as history, never as
   assert.equal(northwind.history, 'user might leave Northwind');
   assert.doesNotMatch(northwind.text, /might leave/);
 });
+
+test('retrieved background items are flagged as background', () => {
+  const withBg = { ...state, entities: { ...state.entities, 'bg-jupiter': { id: 'bg-jupiter', name: 'Jupiter', description: 'Gas giant.' } } };
+  const items = retrievedItems(withBg, ['bg-jupiter', 'northwind']);
+  assert.deepEqual(items.map((i) => [i.name, i.background]), [['Jupiter', true], ['Northwind', false]]);
+});

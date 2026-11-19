@@ -60,7 +60,6 @@ export function scoreProbe(probe, result, { actionsApplied } = {}) {
     if (retrieved.some((i) => answers(i.name, name))) hit += 1;
     else misses.push({ name, why: 'not_retrieved' });
   }
-  const relevant = retrieved.filter((i) => expected.some((name) => answers(i.name, name))).length;
   const unwanted = probe.expect_not_retrieved ?? [];
   const flagged = retrieved.filter((i) => unwanted.some((name) => answers(i.name, name))).length;
   const distractors = probe.distractors ?? [];
@@ -68,6 +67,20 @@ export function scoreProbe(probe, result, { actionsApplied } = {}) {
 
   // Ranking: small graphs mean k=8 often returns everything, so recall@8 alone
   // can't miss. recall@1/@3 and the first relevant rank use the order.
+  // Precision over the top k, leaving out names the probe lists as related
+  // (on-topic neighbours that are neither hits nor noise).
+  const related = probe.related ?? [];
+  const isHit = (i) => expected.some((name) => answers(i.name, name));
+  const isRelated = (i) => !isHit(i) && related.some((name) => answers(i.name, name));
+  const precisionAt = (k) => {
+    const top = retrieved.slice(0, k);
+    return [top.filter(isHit).length, top.filter((i) => !isRelated(i)).length];
+  };
+  // Unrelated insertions are background items (unrelated by construction);
+  // anything else from the scenario's own graph is the same story.
+  const background = retrieved.filter((i) => i.background).length;
+  const sameStory = retrieved.filter((i) => !i.background && !isHit(i) && !isRelated(i) &&
+    !unwanted.some((name) => answers(i.name, name)) && !distractors.some((name) => answers(i.name, name))).length;
   const findable = expected.filter((name) => extracted.some((e) => answers(e, name)));
   const foundWithin = (n) => findable.filter((name) => retrieved.slice(0, n).some((i) => answers(i.name, name))).length;
   const firstIndex = retrieved.findIndex((i) => expected.some((name) => answers(i.name, name)));
@@ -124,9 +137,11 @@ export function scoreProbe(probe, result, { actionsApplied } = {}) {
     recallAt1: [foundWithin(1), findable.length],
     recallAt3: [foundWithin(3), findable.length],
     firstRank: firstIndex >= 0 ? firstIndex + 1 : null,
-    coversGraph: retrieved.length >= extracted.length,
-    precision: [relevant, retrieved.length],
-    inserted: retrieved.length - relevant - flagged - confusedItems,
+    coversGraph: retrieved.length >= (result.notebookSize ?? extracted.length),
+    precision: precisionAt(retrieved.length),
+    precisionAt3: precisionAt(3),
+    inserted: background,
+    sameStory,
     confused: distractors.length ? confusedItems > 0 : null,
     stale: checksStale && !staleVacuous ? staleIn.length > 0 : null,
     staleVacuous,
@@ -153,6 +168,9 @@ function emptyTally() {
     extractionMisses: { count: 0, ofExpected: 0 },
     precision: { hit: 0, of: 0 },
     inserted: { items: 0, probes: 0 },
+    precisionAt3: { hit: 0, of: 0 },
+    sameStory: 0,
+    firstRank: { at1: 0, at2to3: 0, later: 0, none: 0 },
     stale: { probes: 0, of: 0, retrieval: 0, brief: 0, briefChecked: 0 },
     status: { correct: 0, of: 0 },
     order: { kept: 0, of: 0 },
@@ -177,6 +195,13 @@ function add(t, s) {
   t.precision.hit += s.precision[0];
   t.precision.of += s.precision[1];
   t.inserted.items += s.inserted;
+  t.precisionAt3.hit += s.precisionAt3[0];
+  t.precisionAt3.of += s.precisionAt3[1];
+  t.sameStory += s.sameStory;
+  if (s.expectedCount > 0) {
+    const r = s.firstRank;
+    t.firstRank[r === null ? 'none' : r === 1 ? 'at1' : r <= 3 ? 'at2to3' : 'later'] += 1;
+  }
   t.inserted.probes += 1;
   if (s.stale !== null) {
     t.stale.of += 1;

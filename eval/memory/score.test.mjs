@@ -15,7 +15,8 @@ test('recall counts expected names found in retrieval, matching whole words of a
   assert.deepEqual(s.recall, [1, 2]);
   assert.deepEqual(s.misses, [{ name: 'Tobias Wren', why: 'not_retrieved' }]);
   assert.deepEqual(s.precision, [1, 2]);
-  assert.equal(s.inserted, 1);
+  assert.equal(s.inserted, 0, 'Knee is from the scenario itself: same story, not an unrelated insertion');
+  assert.equal(s.sameStory, 1);
 });
 
 test('a name never extracted is an extraction miss and is left out of the recall denominator', () => {
@@ -85,7 +86,7 @@ test('summarize: counts per category and in total, never percentages alone', () 
   assert.deepEqual(out.total.recall, { hit: 2, of: 2 });
   assert.deepEqual(out.total.extractionMisses, { count: 1, ofExpected: 3 });
   assert.deepEqual(out.total.precision, { hit: 2, of: 3 });
-  assert.deepEqual(out.total.inserted, { items: 1, probes: 3 });
+  assert.deepEqual(out.total.inserted, { items: 0, probes: 3 });
   assert.deepEqual(out.total.stale, { probes: 1, of: 1, retrieval: 0, brief: 1, briefChecked: 1 });
   assert.deepEqual(out.byCategory.deletion.stale, { probes: 1, of: 1, retrieval: 0, brief: 1, briefChecked: 1 });
   assert.deepEqual(out.byCategory.continuity.recall, { hit: 1, of: 1 });
@@ -181,4 +182,47 @@ test('negation applies to retrieval text too: a description that records the cor
   const still = scoreProbe({ expect_retrieved: ['Imogen'], stale_text: ['Dayton'] },
     result({ retrieved: [item('Imogen', 'My best friend Imogen moved to Dayton last month.')], extracted: ['Imogen'] }));
   assert.deepEqual(still.staleIn, ['combined']);
+});
+
+
+// ── Background distractors, precision@3, related names (2026-11-19) ────────
+
+const bg = (name) => ({ ...item(name), background: true });
+
+test('precision@3 and @8 count hits over the top k, leaving out names the probe lists as related', () => {
+  const probe = { expect_retrieved: ['Maren', 'Clayhouse'], related: ['Bellport'] };
+  const s = scoreProbe(probe, result({
+    retrieved: [item('Maren'), item('Bellport'), bg('Sourdough Starter'), item('Clayhouse'), bg('Chess Club')],
+    extracted: ['Maren', 'Bellport', 'Clayhouse'],
+  }));
+  assert.deepEqual(s.precisionAt3, [1, 2]);
+  assert.deepEqual(s.precision, [2, 4]);
+  assert.equal(s.inserted, 2, 'only background items are unrelated insertions');
+  assert.equal(s.sameStory, 0);
+  assert.equal(s.firstRank, 1);
+});
+
+test('the rank of the first expected item counts background items above it', () => {
+  const s = scoreProbe({ expect_retrieved: ['Clayhouse'] },
+    result({ retrieved: [bg('Jupiter'), bg('Pickle'), item('Clayhouse')], extracted: ['Clayhouse'] }));
+  assert.equal(s.firstRank, 3);
+  assert.deepEqual(s.precisionAt3, [1, 3]);
+  assert.equal(s.inserted, 2);
+});
+
+test('k covers the notebook only when it is at least the notebook size, background included', () => {
+  const s = scoreProbe({ expect_retrieved: ['Maren'] },
+    result({ retrieved: [item('Maren')], extracted: ['Maren'], notebookSize: 53 }));
+  assert.equal(s.coversGraph, false);
+});
+
+test('summarize sums precision@3 and background insertions', () => {
+  const row = (r) => ({ scenario: 'a', category: 'continuity', probeIndex: 0, ...scoreProbe({ expect_retrieved: ['Maren'] }, result(r)) });
+  const out = summarize([
+    row({ retrieved: [item('Maren'), bg('Jupiter'), bg('Pickle')], extracted: ['Maren'], notebookSize: 51 }),
+    row({ retrieved: [bg('Jupiter'), item('Maren')], extracted: ['Maren'], notebookSize: 51 }),
+  ]);
+  assert.deepEqual(out.total.precisionAt3, { hit: 2, of: 5 });
+  assert.deepEqual(out.total.inserted, { items: 3, probes: 2 });
+  assert.deepEqual(out.total.firstRank, { at1: 1, at2to3: 1, later: 0, none: 0 });
 });

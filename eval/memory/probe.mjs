@@ -8,6 +8,7 @@ import { createSessionBriefHandler } from '../../infra/lambda/close-session/brie
 import { gatewayInvoke } from '../privacy/probes/lambdas.mjs';
 import { restoreSnapshot } from './snapshot.mjs';
 import { withUser } from './stack.mjs';
+import { backgroundRows, isBackground } from './background.mjs';
 
 export const RETRIEVE_K = 8;
 
@@ -26,7 +27,7 @@ export function retrievedItems(state, entityIds) {
     // Superseded relations: what the graph remembers as earlier, kept apart
     // from current text (scored only for sequence preservation).
     const history = linesFor(id, true).join('\n');
-    return { name: entities[id].name, text, history, path: 'combined' };
+    return { name: entities[id].name, text, history, path: 'combined', background: isBackground(id) };
   });
 }
 
@@ -95,6 +96,13 @@ export async function embedNotebook({ url, secret, notebookId, fetchImpl = fetch
 export async function probeScenario({ snapshot, scenario, stack, embedSecret, brief }) {
   const { value: results, leftover } = await withUser(stack, async (user) => {
     const { notebookId } = await restoreSnapshot({ ...stack.admin, userId: user.id, snapshot });
+    // The brief is written from the scenario alone, before the background is
+    // added: it is scored for what the conversation left behind.
+    const briefResult = typeof brief === 'function' ? await brief({ user, notebookId }) : brief ?? null;
+    // ~50 unrelated background entities, so retrieval ranks among distractors.
+    const rows = backgroundRows({ userId: user.id, notebookId });
+    await stack.call('/rest/v1/entities', { method: 'POST', body: rows.entities });
+    await stack.call('/rest/v1/relations', { method: 'POST', body: rows.relations });
     await embedNotebook({ url: stack.url, secret: embedSecret, notebookId });
 
     const userHeaders = { apikey: stack.anonKey, authorization: `Bearer ${user.token}`, 'content-type': 'application/json' };
@@ -102,9 +110,9 @@ export async function probeScenario({ snapshot, scenario, stack, embedSecret, br
       method: 'POST', headers: userHeaders, body: JSON.stringify({ p_notebook_id: notebookId }),
     })).json();
     const state = snap.state;
-    const extracted = Object.values(state.entities ?? {}).map((e) => e.name);
-
-    const briefResult = typeof brief === 'function' ? await brief({ user, notebookId }) : brief ?? null;
+    // What extraction produced: the scenario's own entities, not the background.
+    const extracted = snapshot.tables.entities.map((e) => e.name);
+    const notebookSize = Object.keys(state.entities ?? {}).length;
     const results = [];
     for (const [probeIndex, probe] of scenario.probes.entries()) {
       const response = await fetch(`${stack.url}/functions/v1/retrieve-memory`, {
@@ -126,6 +134,7 @@ export async function probeScenario({ snapshot, scenario, stack, embedSecret, br
         brief: briefResult?.brief ? { text: briefText(briefResult.brief) } : null,
         briefOutcome: briefResult?.outcome ?? 'not_run',
         extracted,
+        notebookSize,
       });
     }
     return results;

@@ -31,7 +31,7 @@ function check(s) {
   for (const [i, p] of s.probes.entries()) {
     const at = `probes[${i}]`;
     if (typeof p?.ask !== 'string' || !p.ask.trim()) return `${at}.ask`;
-    for (const key of ['expect_retrieved', 'expect_not_retrieved', 'decided_markers', 'tentative_markers', 'expect_order', 'stale_text', 'distractors']) {
+    for (const key of ['expect_retrieved', 'expect_not_retrieved', 'decided_markers', 'tentative_markers', 'expect_order', 'stale_text', 'distractors', 'related']) {
       if (p[key] !== undefined && !(Array.isArray(p[key]) && (p[key].length === 0 || strings(p[key])))) return `${at}.${key}`;
     }
     if (!p.expect_retrieved?.length && !p.expect_not_retrieved?.length) return `${at}.expect_retrieved`;

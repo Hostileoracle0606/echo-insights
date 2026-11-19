@@ -230,7 +230,9 @@ function score({ results, sources }: { results: unknown[]; sources: Record<strin
     method: {
       extractionRunsPerScenario: 1,
       model: "gemini-2.5-flash (thinking off), extraction Lambda in-process",
-      retrieval: "retrieve-memory, scope notebook, k=8, local gte-small embeddings",
+      retrieval: "retrieve-memory, scope notebook, k=8, local gte-small embeddings; every probe notebook also holds the same 50 synthetic unrelated background entities (eval/memory/fixtures/background.json), so ranking is among distractors",
+      insertions: "unrelated insertion = a retrieved background entity; other scenario entities are counted as sameStory; probe `related` names are left out of precision",
+      staleNegation: "a stale term counts only where asserted: not after not/never/instead of/rather than/no longer, nor in a sentence saying misspoke/corrected/correction",
       pathAttribution: "combined: retrieve-memory returns one ranked list and does not say which path found an item",
       statusRule: "decided is correct when a retrieved entity description or active relation contains a decided marker and none contains a tentative marker; Lumen stores no tentative/decided field, so this scores the stored text",
       limitation: "N=1 extraction per scenario: no run-to-run spread is claimed",
@@ -255,6 +257,7 @@ function score({ results, sources }: { results: unknown[]; sources: Record<strin
   writeJson(join(runDir, "memory.json"), memory);
   const t = memory.summary.total;
   console.log(`scored ${rows.length}/${memory.scenarios.probesTotal} probes from ${memory.scenarios.scored}/${scenarios.length} scenarios`);
+  console.log(`first expected rank: 1st ${t.firstRank.at1} · 2nd–3rd ${t.firstRank.at2to3} · later ${t.firstRank.later} · not retrieved ${t.firstRank.none} · precision@3 ${t.precisionAt3.hit}/${t.precisionAt3.of} · background insertions ${t.inserted.items} in ${t.inserted.probes} probes · same-story items ${t.sameStory}`);
   console.log(`recall@1 ${t.recallAt1.hit}/${t.recallAt1.of} · recall@3 ${t.recallAt3.hit}/${t.recallAt3.of} · recall@8 ${t.recall.hit}/${t.recall.of} (k covered the whole graph in ${t.coversGraph.probes}/${t.coversGraph.of} probes) · extraction misses ${t.extractionMisses.count}/${t.extractionMisses.ofExpected} · precision@8 ${t.precision.hit}/${t.precision.of}`);
   console.log(`stale probes ${t.stale.probes}/${t.stale.of} (retrieval ${t.stale.retrieval}/${t.stale.of}; vacuous ${t.staleVacuous}) · stale briefs ${t.briefs.stale}/${t.briefs.of} · status ${t.status.correct}/${t.status.of} · order ${t.order.kept}/${t.order.of} · ambiguity ${t.ambiguity.acknowledged}/${t.ambiguity.of} · distractor confusion ${t.distractors.confused}/${t.distractors.of}`);
 }

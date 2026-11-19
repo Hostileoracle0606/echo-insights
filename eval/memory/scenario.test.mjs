@@ -80,3 +80,14 @@ test('the similar-names scenario scores its look-alike as a distractor, not as a
   assert.deepEqual(s.probes.map((p) => p.distractors ?? []), [['Priyanka Rao'], [], ['Priya Shah'], []]);
   assert.ok(s.probes.every((p) => !p.expect_not_retrieved?.length));
 });
+
+test('a probe may list related names (neither hits nor insertions); they must be strings', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'memory-scenarios-'));
+  const s = valid();
+  s.probes[0].related = ['Priya Raman'];
+  writeFileSync(join(dir, 'ok.json'), JSON.stringify(s));
+  assert.deepEqual(loadScenarios(dir)[0].probes[0].related, ['Priya Raman']);
+  s.probes[0].related = 'Priya';
+  writeFileSync(join(dir, 'ok.json'), JSON.stringify(s));
+  assert.throws(() => loadScenarios(dir), /ok\.json.*related/);
+});
