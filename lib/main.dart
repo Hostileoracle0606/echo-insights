@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'app.dart';
 import 'env.dart';
+import 'providers/deletion_resume.dart';
 import 'security/fresh_install.dart';
 import 'services/markdown_export.dart';
 import 'services/shared_log.dart';
@@ -33,5 +34,16 @@ Future<void> main() async {
   // Entries in "What Lumen shared" older than 7 days (LM-57).
   unawaited(SharedLog.instance.sweep().catchError((Object _) {}));
 
-  runApp(const ProviderScope(child: LumenApp()));
+  // The app's providers, shared with the launch work below.
+  final container = ProviderContainer();
+  // A deletion whose "queued" answer never arrived is resent; the phone is
+  // wiped only once the server answers (or the session is already gone).
+  if (Env.supabaseUrl.isNotEmpty && Env.supabaseAnonKey.isNotEmpty) {
+    unawaited(resumePendingDeletion(container));
+  }
+
+  runApp(UncontrolledProviderScope(
+    container: container,
+    child: const LumenApp(),
+  ));
 }

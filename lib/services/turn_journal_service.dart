@@ -262,6 +262,19 @@ class TurnJournalService {
     });
   }
 
+  /// Account deletion clears this phone's durable turn checkpoints, including
+  /// any temporary file left by an interrupted write.
+  Future<void> forgetAll() {
+    return _serialized(() async {
+      final directory = await _journalDirectory();
+      try {
+        if (await directory.exists()) await directory.delete(recursive: true);
+      } finally {
+        _directory = null;
+      }
+    });
+  }
+
   Future<T> _serialized<T>(Future<T> Function() operation) {
     final result = _tail.then((_) => operation());
     _tail = result.then<void>(

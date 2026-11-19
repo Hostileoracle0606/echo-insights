@@ -52,6 +52,21 @@ void main() {
     await journal.forgetNotebook('notebook-1'); // nothing to do: no error
   });
 
+  test('account deletion erases the phone journal and interrupted writes',
+      () async {
+    await journal.persistTurn(turn());
+    final journalDirectory = directory.listSync().whereType<Directory>().single;
+    await File('${journalDirectory.path}/interrupted.json.tmp')
+        .writeAsString('interrupted checkpoint');
+
+    await journal.forgetAll();
+
+    expect(directory.listSync(recursive: true).whereType<File>(), isEmpty);
+    expect(await journal.loadTurns('notebook-1'), isEmpty);
+    await journal.persistTurn(turn());
+    expect(await journal.loadTurns('notebook-1'), hasLength(1));
+  });
+
   test('warming up finds the journal folder once, for every later read',
       () async {
     var lookups = 0;

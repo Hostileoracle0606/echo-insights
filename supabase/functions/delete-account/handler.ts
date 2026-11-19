@@ -1,6 +1,8 @@
-// Deletes the caller's own account. The user id comes ONLY from the verified
-// JWT; the request body is never read. The auth.users delete cascades to the
-// user's data (see migration 20260922000000_account_deletion.sql).
+// Queues deletion of the caller's own account. The user id comes ONLY from the
+// verified JWT; the body supplies just `request_id` (idempotency key) and the
+// optional Apple code. This function never deletes: a database worker does,
+// after a delay (see migration 20261118000200_account_deletion_worker.sql), so
+// a lost reply cannot strand the person.
 
 export interface AdminClient {
   auth: {
@@ -11,14 +13,18 @@ export interface AdminClient {
       data: { user: { id: string; identities?: { provider: string }[] } | null };
       error: unknown;
     }>;
-    admin: {
-      deleteUser(id: string): Promise<{ error: { message: string } | null }>;
-    };
   };
+}
+
+export interface DeletionQueue {
+  find(userId: string, requestId: string): Promise<boolean>;
+  /** "exists" when the (user, request) row is already there (unique violation). */
+  insert(userId: string, requestId: string): Promise<"inserted" | "exists">;
 }
 
 export interface Deps {
   admin: () => AdminClient;
+  queue: DeletionQueue;
   now: () => number; // ms
   log: (fields: Record<string, unknown>) => void;
   /** Undefined when Apple secrets are not configured. */
@@ -58,14 +64,22 @@ function issuedAt(token: string): number | undefined {
   }
 }
 
-/** The only body field read. Anything else (including ids) is ignored. */
-async function readCode(req: Request): Promise<string | undefined> {
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** The only body fields read. Anything else (including ids) is ignored. */
+async function readBody(
+  req: Request,
+): Promise<{ requestId: string | undefined; code: string | undefined }> {
   try {
     const body = await req.json();
+    const r = body?.request_id;
     const c = body?.apple_authorization_code;
-    return typeof c === "string" && c ? c : undefined;
+    return {
+      requestId: typeof r === "string" && UUID.test(r) ? r : undefined,
+      code: typeof c === "string" && c ? c : undefined,
+    };
   } catch {
-    return undefined;
+    return { requestId: undefined, code: undefined };
   }
 }
 
@@ -115,26 +129,39 @@ export function createHandler(deps: Deps): (req: Request) => Promise<Response> {
         return unauthorized();
       }
 
+      const { requestId, code } = await readBody(req);
+      if (!requestId) {
+        deps.log({ ok: false, error: "bad_request" });
+        return json(400, { error: "bad_request" });
+      }
+
+      const isApple = user.identities?.some((i) => i.provider === "apple") ?? false;
+      // A retry does not redo Apple revocation. Its outcome is unknown, so give
+      // Apple users the manual removal steps if they still need them.
+      const replay = { queued: true, already_queued: true, apple_revoked: isApple ? false : null };
+      if (await deps.queue.find(user.id, requestId)) {
+        deps.log({ ok: true, event: "delete_account", stage: "already_queued" });
+        return json(200, replay);
+      }
+
       let appleRevoked: boolean | null = null;
-      if (user.identities?.some((i) => i.provider === "apple")) {
-        const r = await tryRevokeApple(deps, await readCode(req));
+      if (isApple) {
+        const r = await tryRevokeApple(deps, code);
         appleRevoked = r.revoked;
         // `stage` is on safeLog's string allowlist; `reason` would be dropped.
         deps.log({ ok: r.revoked, event: "apple_revoke", stage: r.reason });
       }
 
-      const { error: delErr } = await client.auth.admin.deleteUser(user.id);
-      if (delErr) {
-        // Never log the error body: it can echo identifiers.
-        deps.log({ ok: false, error: "delete_failed" });
-        return json(500, { deleted: false });
+      const res = await deps.queue.insert(user.id, requestId);
+      if (res === "exists") {
+        deps.log({ ok: true, event: "delete_account", stage: "already_queued" });
+        return json(200, replay);
       }
-
-      deps.log({ ok: true, event: "deleted" });
-      return json(200, { deleted: true, apple_revoked: appleRevoked });
+      deps.log({ ok: true, event: "delete_account", stage: "queued" });
+      return json(200, { queued: true, already_queued: false, apple_revoked: appleRevoked });
     } catch (e) {
       deps.log({ ok: false, error: e instanceof Error ? e.name : "unknown" });
-      return json(500, { deleted: false });
+      return json(500, { queued: false });
     }
   };
 }

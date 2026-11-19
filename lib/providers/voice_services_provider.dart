@@ -35,26 +35,41 @@ final audioOutputProvider = Provider<AudioOutput>((ref) {
   return output;
 });
 
-/// Follows sign-in and the app lifecycle for the app-level voice services.
-/// What one account leaves behind in memory, dropped when it signs out.
-final signedOutCleanupProvider = Provider<void Function()>((ref) {
-  return () {
-    // Catch-up for the account that left stops here (LM-103).
+/// Clears account data from memory and waits for the persistent wipes.
+final accountLocalCleanupProvider = Provider<Future<void> Function()>((ref) {
+  return () async {
     ref.read(catchUpProvider.notifier).signedOut();
     ref.read(openingPrepProvider).clear();
     ref.read(forgottenThisRunProvider).clear();
-    // The hashes of the people they forgot, in memory and the Keychain.
-    unawaited(ref.read(forgetRedactorProvider).clear());
-    // The on-device name map holds real names: erased with the account.
-    unawaited(ref.read(pseudonymServiceProvider).clear());
-    // What Lumen shared (LM-57) is erased with it.
-    unawaited(
-      ref.read(sharedLogProvider).clearAll().catchError((Object error) {
-        // The type only; the next launch's sweep finishes it.
-        debugPrint('Clearing the shared log failed: ${error.runtimeType}');
-      }),
-    );
+    await Future.wait<void>([
+      Future.sync(
+          () => ref.read(forgetRedactorProvider).clear(requireDiskWipe: true)),
+      Future.sync(() =>
+          ref.read(pseudonymServiceProvider).clear(requireDiskWipe: true)),
+      Future.sync(() => ref.read(sharedLogProvider).clearAll()),
+    ]);
   };
+});
+
+/// Deletion also erases pending speech checkpoints from this phone.
+final deletedAccountCleanupProvider = Provider<Future<void> Function()>((ref) {
+  final cleanup = ref.watch(accountLocalCleanupProvider);
+  return () async {
+    await Future.wait<void>([
+      cleanup(),
+      Future.sync(() => ref.read(turnJournalServiceProvider).forgetAll()),
+    ]);
+  };
+});
+
+/// Drops the local state for an ordinary sign-out or account switch.
+final signedOutCleanupProvider = Provider<void Function()>((ref) {
+  final cleanup = ref.watch(accountLocalCleanupProvider);
+  // Auth can emit signedOut during deletion recovery. Only the deletion flow
+  // may clear its marker, after including the phone's durable turn journal.
+  return () => unawaited(cleanup().catchError((Object error) {
+        debugPrint('Local sign-out cleanup failed: ${error.runtimeType}');
+      }));
 });
 
 class VoiceServicesBinding {

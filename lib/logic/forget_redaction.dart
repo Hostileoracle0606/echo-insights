@@ -146,13 +146,15 @@ class ForgetRedactor {
   Future<void> flush() => _saving;
 
   /// Sign-out: memory and the store.
-  Future<void> clear() async {
+  Future<void> clear({bool requireDiskWipe = false}) async {
     _forgetMemory();
     _loadedOwner = null;
     await _saving;
     try {
       await _store?.delete();
-    } catch (_) {}
+    } catch (_) {
+      if (requireDiskWipe) rethrow;
+    }
   }
 
   void _forgetMemory() {

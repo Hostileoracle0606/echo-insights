@@ -10,7 +10,6 @@ import 'package:lumen/providers/auth_provider.dart';
 import 'package:lumen/providers/export_provider.dart';
 import 'package:lumen/providers/login_notice_provider.dart';
 import 'package:lumen/providers/supabase_provider.dart';
-import 'package:lumen/providers/voice_services_provider.dart';
 import 'package:lumen/screens/auth/login_screen.dart';
 import 'package:lumen/screens/dashboard/delete_account_screen.dart';
 import 'package:lumen/screens/dashboard/privacy_sheet.dart';
@@ -25,6 +24,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'support/fake_auth_gateway.dart';
 import 'support/fake_delete_account_gateway.dart';
+import 'support/fake_deletion_pending_store.dart';
 
 class _Lock implements LockAuthenticator {
   bool passes = true;
@@ -94,6 +94,7 @@ void main() {
   late _Lock lock;
   late FakeAuthGateway auth;
   late FakeDeleteAccountGateway gateway;
+  late FakeDeletionPendingStore store;
   late int cleanups;
   late int exportFetches;
   late AppleCredential? apple;
@@ -107,6 +108,7 @@ void main() {
     lock = _Lock();
     auth = FakeAuthGateway();
     gateway = FakeDeleteAccountGateway();
+    store = FakeDeletionPendingStore();
     cleanups = 0;
   });
 
@@ -124,12 +126,16 @@ void main() {
         overrides: [
           accountAuthServiceProvider.overrideWithValue(authService),
           accountDeletionServiceProvider.overrideWithValue(
-            AccountDeletionService(auth: authService, gateway: gateway),
+            AccountDeletionService(
+              auth: authService,
+              gateway: gateway,
+              store: store,
+              cleanup: () async => cleanups += 1,
+            ),
           ),
           lockAuthenticatorProvider.overrideWithValue(lock),
           privacyCoverProvider.overrideWithValue(_Cover()),
           privacyPreferenceStoreProvider.overrideWithValue(_Store()),
-          signedOutCleanupProvider.overrideWithValue(() => cleanups += 1),
           shareVaultProvider
               .overrideWithValue((vault, {Rect? origin}) async {}),
           journalExportServiceProvider.overrideWithValue(
@@ -269,7 +275,7 @@ void main() {
       'Apple user success without revocation shows how to remove Lumen under '
       'Settings, Apple ID, Sign in with Apple', (t) async {
     auth.identityList = [_identity('apple')];
-    gateway.result = (deleted: true, appleRevoked: false);
+    gateway.result = (queued: true, alreadyQueued: false, appleRevoked: false);
     await pump(t);
     await openConfirmation(t);
     await t.tap(confirm);
@@ -299,19 +305,49 @@ void main() {
     expect(find.byType(DeleteAccountScreen), findsOneWidget);
     expect(find.byKey(const Key('deleteAccountProblem')), findsOneWidget);
     expect(
-      find.text('Could not delete your account. Check your connection and '
-          'try again.'),
+      find.text('We could not confirm that your account is being deleted. '
+          'Check your connection and try again. If you close Lumen now, it '
+          'will try again the next time you open it.'),
       findsOneWidget,
     );
     expect(find.textContaining('secret'), findsNothing);
     expect(find.descendant(of: confirm, matching: find.text('Try again')),
         findsOneWidget);
+    expect(store.value, isNotNull, reason: 'the marker is kept');
 
     // Retry works once the connection is back.
     gateway.callError = null;
     await t.tap(confirm);
     await t.pumpAndSettle();
     expect(cleanups, 1);
+    expect(find.textContaining('Your account is deleted'), findsOneWidget);
+    expect(gateway.sentRequestIds.toSet(), hasLength(1),
+        reason: 'the retry resends the same request id');
+    expect(store.value, isNull);
+  });
+
+  testWidgets(
+      'reply lost: nothing is wiped; the retry gets already_queued and the '
+      'app wipes', (t) async {
+    gateway.replies = <Object>[
+      TimeoutException('reply lost'),
+      (queued: true, alreadyQueued: true, appleRevoked: null),
+    ];
+    await pump(t);
+    await openConfirmation(t);
+    await t.tap(confirm);
+    await t.pumpAndSettle();
+
+    expect(cleanups, 0);
+    expect(gateway.events, isNot(contains('signOutLocal')));
+    expect(find.byKey(const Key('deleteAccountProblem')), findsOneWidget);
+
+    await t.tap(confirm);
+    await t.pumpAndSettle();
+    expect(gateway.sentRequestIds, hasLength(2));
+    expect(gateway.sentRequestIds.toSet(), hasLength(1));
+    expect(cleanups, 1);
+    expect(gateway.events.last, 'signOutLocal');
     expect(find.textContaining('Your account is deleted'), findsOneWidget);
   });
 

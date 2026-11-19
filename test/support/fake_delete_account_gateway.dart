@@ -9,9 +9,16 @@ class FakeDeleteAccountGateway implements DeleteAccountGateway {
 
   final List<String> events;
   final sentCodes = <String?>[];
+  final sentRequestIds = <String>[];
 
-  ({bool deleted, bool? appleRevoked}) result =
-      (deleted: true, appleRevoked: null);
+  @override
+  String? userId = 'user-1';
+
+  DeleteReply result = (queued: true, alreadyQueued: false, appleRevoked: null);
+
+  /// When set, used instead of [result] for each call in turn (the last one
+  /// repeats): e.g. a lost reply followed by "already queued".
+  List<Object>? replies;
   Object? refreshError;
   Object? callError;
   Object? signOutError;
@@ -20,19 +27,27 @@ class FakeDeleteAccountGateway implements DeleteAccountGateway {
   Future<void>? callGate;
 
   @override
-  Future<void> refreshSession() async {
+  Future<void> refreshSession({String? expectedUserId}) async {
     events.add('refreshSession');
     if (refreshError != null) throw refreshError!;
   }
 
   @override
-  Future<({bool deleted, bool? appleRevoked})> call({
+  Future<DeleteReply> call({
+    required String requestId,
     String? appleAuthorizationCode,
   }) async {
     events.add('call');
+    sentRequestIds.add(requestId);
     sentCodes.add(appleAuthorizationCode);
     if (callGate != null) await callGate;
     if (callError != null) throw callError!;
+    final queue = replies;
+    if (queue != null && queue.isNotEmpty) {
+      final next = queue.length > 1 ? queue.removeAt(0) : queue.first;
+      if (next is DeleteReply) return next;
+      throw next;
+    }
     return result;
   }
 
