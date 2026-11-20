@@ -10,6 +10,8 @@ import {
 } from "../_shared/retrieve-memory-contract.ts";
 import { buildContext } from "./context.ts";
 import { loadQuotes } from "./quotes.ts";
+import { runMemoryQuery, type MemoryQueryDeps } from "./memory-query.ts";
+import { memoryQueryResponse } from "./memory-query-types.ts";
 
 // The handler takes its clients, embedder and logger as dependencies so it
 // can be tested without a Supabase stack; index.ts wires the real ones.
@@ -24,6 +26,8 @@ export interface RetrieveMemoryDeps {
   /** Throwing here (no Supabase.ai locally) just disables semantic seeds. */
   embedder(): Embedder;
   log(fields: Record<string, unknown>): void;
+  /** Optional while the routed voice workflow is evaluated. */
+  memoryQuery?: MemoryQueryDeps;
 }
 
 export const corsHeaders = {
@@ -63,6 +67,8 @@ const json = (status: number, body: unknown) =>
 export function validRequestShape(body: unknown): boolean {
   if (typeof body !== "object" || body === null || Array.isArray(body)) return false;
   const b = body as Record<string, unknown>;
+  if (b.version === 3 && (b.scope !== "user" || typeof b.question !== "string" ||
+    b.question.length > MAX_QUERY_CHARS || b.question.trim().length < 2)) return false;
   if (
     b.query !== undefined &&
     b.query !== null &&
@@ -207,6 +213,8 @@ export function createHandler(deps: RetrieveMemoryDeps): (req: Request) => Promi
       if (!validRequestShape(parsed)) return json(400, { error: "invalid request" });
       const body = parsed as {
         query?: string;
+        question?: string;
+        version?: number;
         notebookId?: string;
         scope?: unknown;
         state?: {
@@ -260,6 +268,22 @@ export function createHandler(deps: RetrieveMemoryDeps): (req: Request) => Promi
       }
 
       const query = (body.query ?? "").trim();
+
+      if (body.version === 3) {
+        if (!deps.memoryQuery) return json(200, memoryQueryResponse());
+        return json(200, await runMemoryQuery(deps.memoryQuery, supa, body.question!.trim(), query, startedAt,
+          async (graphQuery, signal) => {
+            const { data, error } = await supa.rpc("get_user_graph", { p_types: null, p_limit: USER_GRAPH_LIMIT });
+            signal.throwIfAborted();
+            if (error) return [];
+            const g = userGraphToState(data);
+            if (!Object.keys(g.entities).length) return [];
+            const result = await rank(g, graphQuery, undefined);
+            signal.throwIfAborted();
+            const quotes = await loadQuotes(supa, result.entities.map((entity) => entity.id), notebookId);
+            return quotes.map((quote) => quote.entryId);
+          }, logTelemetry));
+      }
 
       if (scope === "user") {
         if (!query) return json(200, retrieveMemoryResponseV2("", [], []));

@@ -174,6 +174,8 @@ class JournalNotifier extends Notifier<JournalState> {
   DateTime? _sessionStartedAt;
   String? _lastMemoryQuery;
   int _memoryCallsThisTurn = 0;
+  int _memoryTurnGeneration = 0;
+  bool _memoryUserTurnOpen = false;
   static const _maxMemoryCallsPerTurn = 3;
   // What the last memory lookup brought back (LM-13 / LM-14 read it).
   RecallActivity? _recall;
@@ -1284,27 +1286,39 @@ class JournalNotifier extends Notifier<JournalState> {
     };
   }
 
-  Future<Map<String, dynamic>> _retrieveMemory(
+  Future<Map<String, dynamic>?> _retrieveMemory(
       Map<String, dynamic> args, bool Function() isCurrent) async {
     final notebookId = _activeNotebookId;
-    final query = _redactor.redact((args['query'] as String?)?.trim() ?? '');
+    final queryArg = args['query'];
+    final questionArg = args['question'];
+    final query = _redactor.redact(queryArg is String ? queryArg.trim() : '');
+    final question =
+        _redactor.redact(questionArg is String ? questionArg.trim() : '');
+    final dedupKey = memoryQueryRoutingEnabled ? question : query;
+    final generation = _memoryTurnGeneration;
+    const empty = memoryQueryRoutingEnabled
+        ? MemoryRetrieval.insufficient
+        : MemoryRetrieval.empty;
     // Over-call guardrails: tiny query, identical repeat (within turn), per-turn cap.
     if (notebookId == null ||
         query.length < 2 ||
-        query == _lastMemoryQuery ||
+        dedupKey.length < 2 ||
+        dedupKey == _lastMemoryQuery ||
         _memoryCallsThisTurn >= _maxMemoryCallsPerTurn) {
-      return memoryToolResult(MemoryRetrieval.empty);
+      return memoryToolResult(empty);
     }
     _memoryCallsThisTurn++;
-    _lastMemoryQuery = query;
+    _lastMemoryQuery = dedupKey;
     final service = ref.read(retrieveMemoryServiceProvider);
     // User scope: every conversation the user has had, not just this one.
     final retrieval = await service.retrieveResult(
       query: query,
+      question: memoryQueryRoutingEnabled ? question : null,
       notebookId: notebookId,
       scope: RetrievalScope.user,
     );
-    if (retrieval.entityIds.isNotEmpty && isCurrent()) {
+    if (!isCurrent() || generation != _memoryTurnGeneration) return null;
+    if (retrieval.entityIds.isNotEmpty || retrieval.quotes.isNotEmpty) {
       _recall = RecallActivity(
         seq: ++_recallSeq,
         entityIds: retrieval.entityIds,
@@ -1591,6 +1605,10 @@ class JournalNotifier extends Notifier<JournalState> {
         (_status != SessionStatus.live && _status != SessionStatus.paused)) {
       return false;
     }
+    _memoryTurnGeneration++;
+    _memoryUserTurnOpen = true;
+    _memoryCallsThisTurn = 0;
+    _lastMemoryQuery = null;
     final reply = _turnMachine.state.activeAssistant;
     if (reply != null && !reply.interrupted) {
       // The machine cuts the reply at the heard prefix and flushes playback;
@@ -1868,14 +1886,14 @@ class JournalNotifier extends Notifier<JournalState> {
         signal(const TurnCompleteSignal());
       }
       ..onToolCall = (name, args) async {
-        if (!isCurrent()) return const <String, dynamic>{};
-        Map<String, dynamic> result;
+        if (!isCurrent()) return null;
+        Map<String, dynamic>? result;
         if (name == 'get_relevant_memory') {
           result = await _retrieveMemory(args, isCurrent);
         } else {
           result = const {};
         }
-        if (!isCurrent()) return const <String, dynamic>{};
+        if (!isCurrent()) return null;
         return result;
       }
       ..onGoAway = (timeLeft) {
@@ -2236,6 +2254,12 @@ class JournalNotifier extends Notifier<JournalState> {
       // interim text is replaceable, and only a finalized, immutable
       // transcript may reach the graph.
       case UserTranscript(:final text, :final isFinal):
+        if (text.trim().isNotEmpty && !_memoryUserTurnOpen) {
+          _memoryTurnGeneration++;
+          _memoryUserTurnOpen = true;
+          _memoryCallsThisTurn = 0;
+          _lastMemoryQuery = null;
+        }
         if (text.isEmpty && !isFinal) return;
         if (text.trim().isNotEmpty) _userStillSpeaking();
         final events =
@@ -2268,6 +2292,8 @@ class JournalNotifier extends Notifier<JournalState> {
             false;
         if (!fed) _markAgentSpeaking();
       case InterruptedSignal():
+        _memoryTurnGeneration++;
+        _memoryUserTurnOpen = false;
         // Gemini supplies audio and transcription without a trustworthy
         // word-level alignment. Queuing PCM therefore cannot prove any text
         // was physically heard. The null boundary safely skips durable
@@ -2277,6 +2303,8 @@ class JournalNotifier extends Notifier<JournalState> {
           _dispatchTurn(event);
         }
       case TurnCompleteSignal():
+        _memoryTurnGeneration++;
+        _memoryUserTurnOpen = false;
         // Lumen may end a turn without speaking; that ends the wait too,
         // unless it is the cut-off reply's own completion.
         if (!_droppingCutOffReply) _setAwaitingReply(false);
@@ -2371,8 +2399,14 @@ class JournalNotifier extends Notifier<JournalState> {
                 'description':
                     'A few words to recall: a name, a topic, or a phrase.',
               },
+              if (memoryQueryRoutingEnabled)
+                'question': {
+                  'type': 'string',
+                  'description':
+                      'The full current user question, preserving time and calculation wording.',
+                },
             },
-            'required': ['query'],
+            'required': ['query', if (memoryQueryRoutingEnabled) 'question'],
           },
         },
       ],
@@ -2550,6 +2584,7 @@ class JournalNotifier extends Notifier<JournalState> {
     _lastTranscript = '';
     _lastMemoryQuery = null;
     _memoryCallsThisTurn = 0;
+    _memoryUserTurnOpen = false;
     _setStatus(SessionStatus.idle);
     if (userSpoke) ref.read(openingPrepProvider).markReturning();
     if (closedNotebookId != null) _writeSessionCard(closedNotebookId);

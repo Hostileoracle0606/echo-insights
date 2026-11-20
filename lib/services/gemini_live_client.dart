@@ -12,7 +12,7 @@ typedef OnTranscript = void Function(String text, bool isFinal);
 /// One chunk of agent PCM16 plus the rate it was produced at (from the
 /// chunk's `audio/pcm;rate=N` mime type; Gemini's 24kHz when absent).
 typedef OnAudio = void Function(Uint8List pcm16, int sampleRate);
-typedef OnToolCall = Future<Map<String, dynamic>> Function(
+typedef OnToolCall = Future<Map<String, dynamic>?> Function(
   String toolName,
   Map<String, dynamic> args,
 );
@@ -43,6 +43,7 @@ class GeminiLiveClient {
   final LiveChannelFactory _channelFactory;
 
   WebSocketChannel? _channel;
+  final Set<String> _pendingToolCalls = {};
   StreamSubscription<dynamic>? _sub;
 
   // Protocol state. Gemini Live rejects realtime input sent before the server
@@ -450,6 +451,13 @@ class GeminiLiveClient {
       return;
     }
 
+    if (msg.containsKey('toolCallCancellation')) {
+      final cancellation = msg['toolCallCancellation'];
+      final ids = cancellation is Map ? cancellation['ids'] : null;
+      if (ids is List) _pendingToolCalls.removeAll(ids.whereType<String>());
+      return;
+    }
+
     if (msg.containsKey('toolCall')) {
       final calls = msg['toolCall']['functionCalls'] as List<dynamic>? ?? [];
       for (final call in calls) {
@@ -461,13 +469,16 @@ class GeminiLiveClient {
         final args = (callMap['args'] as Map<String, dynamic>?) ?? {};
         final handler = onToolCall;
         final clock = Stopwatch()..start();
-        final Future<Map<String, dynamic>> pending = handler == null
+        _pendingToolCalls.add(id);
+        final Future<Map<String, dynamic>?> pending = handler == null
             ? Future.value(const <String, dynamic>{})
             : handler(name, args);
         pending.timeout(toolTimeout).then((result) {
           vlog('client',
               'toolCall $name answered in ${clock.elapsedMilliseconds}ms');
-          respondToTool(id, result);
+          if (_pendingToolCalls.remove(id) && result != null) {
+            respondToTool(id, result);
+          }
         }).catchError((Object error) {
           vlog(
             'client',
@@ -475,7 +486,7 @@ class GeminiLiveClient {
                 '${error is TimeoutException ? 'timed out' : 'failed'} '
                 'after ${clock.elapsedMilliseconds}ms — answering empty',
           );
-          respondToTool(id, const {});
+          if (_pendingToolCalls.remove(id)) respondToTool(id, const {});
         });
       }
       return;
@@ -597,6 +608,7 @@ class GeminiLiveClient {
     _stallTimer = null;
     _closing = true;
     _setupComplete = false;
+    _pendingToolCalls.clear();
     // Anyone still waiting for this connection's setup stops waiting now.
     _failSetup(StateError('Gemini Live connection closed'));
     final sub = _sub;
