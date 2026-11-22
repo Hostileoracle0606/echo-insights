@@ -110,9 +110,20 @@ retracts (the wrong value never appears as history). Keep both distinct.
 
 **Done when**
 
-- [ ] Migration, RLS tests and contract schema in `contracts/`.
-- [ ] "Current", "previous", "as of" and "history" are single indexed queries.
-- [ ] Retracted facts are excluded from every read path, including history.
+- [x] Migration, RLS tests and contract schema in `contracts/`.
+- [x] "Current", "previous", "as of" and "history" are single indexed queries.
+- [x] Retracted facts are excluded from every read path, including history.
+
+**Built** (`feat/ec-02-fact-layer`). `memory_facts` with owner-only reads that
+never show retracted rows, and writes only through `insert_memory_fact` and
+`retract_memory_fact`. Reads: `get_memory_fact(entity, attribute, scope, at)`
+for `current`, `previous` and `as_of` (confirmed values only), and
+`get_memory_fact_history` (every live version, plans included). Versions are
+ordered by `event_at`, else `stated_at`, on `memory_facts_version_idx`.
+Contract: `contracts/memory-fact-v1.schema.json`, checked by
+`_shared/memory-fact-contract.ts` and by the database test.
+`scripts/staging-db-test.py` runs pgTAP files on staging in one transaction
+that always rolls back (there is no local Docker database).
 
 ## EC-03 — Write-time upsert extraction
 
