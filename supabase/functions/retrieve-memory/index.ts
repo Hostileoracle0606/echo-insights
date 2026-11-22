@@ -4,7 +4,6 @@ import { GteSmallEmbedder } from "../_shared/embedder.ts";
 import { safeLog } from "../_shared/safe-log.ts";
 import { createHandler, type DbClient } from "./handler.ts";
 import { createDecisionsRouter } from "./decisions.ts";
-import { createEvidenceResolver } from "./evidence.ts";
 
 // Thin entry point: real clients, embedder and log sink. The request logic,
 // both scopes and their tests live in handler.ts.
@@ -40,7 +39,6 @@ function routeConfiguration() {
           highConfidence: confidenceRange && confidenceRange === "high",
         }),
     }),
-    resolve: createEvidenceResolver({ getApiKey, fetch }),
   };
 }
 

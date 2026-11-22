@@ -1,7 +1,7 @@
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import type { DbClient } from "../_shared/db-client.ts";
 import type { Entity, GraphState, Relation } from "../_shared/graphloop/types.ts";
-import { graphEvidence, rereadEvidence } from "./graph-evidence.ts";
+import { graphEvidence } from "./graph-evidence.ts";
 
 // Routed recall answers from the graph: the entities that match the question
 // (select.ts) and the journal entries linked to them, never a free-text
@@ -91,9 +91,4 @@ Deno.test("no matching entity means no evidence and no entry lookups", async () 
   const result = await graphEvidence(client(calls), graph, "the weather", new Map(), signal);
   assertEquals(result, { entityIds: [], passages: [] });
   assertEquals(calls, []);
-});
-
-Deno.test("reread returns the cited entries as they are now", async () => {
-  const fresh = await rereadEvidence(client(), ["priya", "lisbon"], ["move", "gone"], signal);
-  assertEquals(fresh.map((p) => p.entryId), ["move"]);
 });

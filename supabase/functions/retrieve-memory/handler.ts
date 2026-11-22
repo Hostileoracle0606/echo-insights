@@ -9,7 +9,8 @@ import {
   retrieveMemoryResponseV2,
 } from "../_shared/retrieve-memory-contract.ts";
 import { buildContext } from "./context.ts";
-import { graphEvidence, rereadEvidence } from "./graph-evidence.ts";
+import { graphEvidence } from "./graph-evidence.ts";
+import { isMemoryFactHistory, type MemoryFact } from "../_shared/memory-fact-contract.ts";
 import { selectRelevant } from "./select.ts";
 import { loadQuotes } from "./quotes.ts";
 import { runMemoryQuery, type MemoryQueryDeps } from "./memory-query.ts";
@@ -274,8 +275,9 @@ export function createHandler(deps: RetrieveMemoryDeps): (req: Request) => Promi
       if (body.version === 3) {
         if (!deps.memoryQuery) return json(200, memoryQueryResponse());
         // Evidence comes from the graph only: the entities matching the
-        // question and their linked entries (graph-evidence.ts).
-        let selectedIds: string[] = [];
+        // question and their linked entries (graph-evidence.ts), and the
+        // facts stored for those entities (EC-06).
+        let selected: { id: string; name: string }[] = [];
         const graphSource = {
           evidence: async (graphQuery: string, signal: AbortSignal) => {
             const [graph, seeds] = await Promise.all([
@@ -290,11 +292,20 @@ export function createHandler(deps: RetrieveMemoryDeps): (req: Request) => Promi
             const g = userGraphToState(graph.data);
             if (!Object.keys(g.entities).length) return [];
             const found = await graphEvidence(supa, g, graphQuery, seeds, signal);
-            selectedIds = found.entityIds;
+            selected = found.entityIds.map((id) => ({ id, name: g.entities[id]?.name ?? id }));
             return found.passages;
           },
-          reread: (sourceIds: string[], signal: AbortSignal) =>
-            rereadEvidence(supa, selectedIds, sourceIds, signal),
+          facts: async (signal: AbortSignal) => {
+            if (!selected.length) return { entities: [], facts: [] };
+            const { data, error } = await supa.rpc("get_entity_fact_history", {
+              p_entity_ids: selected.map((e) => e.id),
+            });
+            signal.throwIfAborted();
+            if (error || !isMemoryFactHistory({ facts: data })) {
+              return { entities: selected, facts: [] };
+            }
+            return { entities: selected, facts: data as MemoryFact[] };
+          },
         };
         return json(
           200,

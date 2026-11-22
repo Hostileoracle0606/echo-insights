@@ -61,6 +61,8 @@ function client(): DbClient {
         ? graph
         : name === "get_entity_mentions"
         ? { total: 1, mentions: mentions[args.p_entity_id as string] ?? [] }
+        : name === "get_entity_fact_history"
+        ? []
         : name === "match_user_entity_embeddings"
         ? [
           { entity_id: "lumen-app", notebook_id: "nb-a", score: 0.86 },
@@ -73,7 +75,6 @@ function client(): DbClient {
 }
 
 Deno.test("routed recall's evidence is only entries of close matches", async () => {
-  const resolvedWith: string[][] = [];
   const handler = createHandler({
     userClient: client,
     adminClient: client,
@@ -81,11 +82,9 @@ Deno.test("routed recall's evidence is only entries of close matches", async () 
     log: () => {},
     memoryQuery: {
       timeoutMs: 500,
+      // No stored fact answers this, so the linked entries come back as the
+      // user's own words: only those of the close matches.
       route: () => Promise.resolve({ operation: "recall", timeScope: "current" }),
-      resolve: (_question, _route, passages) => {
-        resolvedWith.push(passages.map((p) => p.entryId).sort());
-        return Promise.resolve({ status: "insufficient_evidence", text: "", sourceIds: [] });
-      },
     },
   });
 
@@ -104,5 +103,6 @@ Deno.test("routed recall's evidence is only entries of close matches", async () 
   );
 
   assertEquals(response.status, 200);
-  assertEquals(resolvedWith, [["c1", "l1"]]);
+  const body = await response.json();
+  assertEquals(body.quotes.map((q: { entryId: string }) => q.entryId).sort(), ["c1", "l1"]);
 });
