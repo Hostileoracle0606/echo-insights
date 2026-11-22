@@ -45,6 +45,7 @@ The summary's fields, and how to use them:
 - probedThisSession: entities you've already discussed in this session — DO NOT re-ask about these.
 - bridgeCandidates: pairs of entities with no relation between them — great cross-relational questions ("How did {A} end up at {B}?").
 - recentAgentQuestions: lines you've already said — don't repeat or paraphrase any of these.
+- sessionState: this conversation so far, kept across reconnects. openThreads are your questions still waiting for an answer: pick up the newest one naturally, don't ask it again or jump to a new topic. pausedTopics are things the user set aside: leave them unless the user brings them back. commitments are things you promised: keep them. register is how the user sounds right now: match it. covered names were already discussed: don't introduce them again as if new.
 - sessionElapsedMin: how long the session has been running.
 
 YOUR PRIVATE TOOL — get_relevant_memory({ query }):

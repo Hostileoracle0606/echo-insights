@@ -30,6 +30,7 @@ import 'package:lumen/services/extract_graph_service.dart';
 import 'package:lumen/services/extraction_context.dart';
 import 'package:lumen/services/gemini_live_client.dart';
 import 'package:lumen/services/live_credentials.dart';
+import 'package:lumen/services/conversation_state_service.dart';
 import 'package:lumen/services/memory_fact_service.dart';
 import 'package:lumen/services/notebook_commit_service.dart';
 import 'package:lumen/services/notebook_runtime_service.dart';
@@ -191,6 +192,24 @@ class _FakeExtractor implements ExtractGraphService {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
+/// EC-04: the session state record's saves and clears.
+class _FakeConversationState implements ConversationStateService {
+  final saved = <Map<String, dynamic>>[];
+  final cleared = <String>[];
+  Map<String, dynamic>? stored;
+
+  @override
+  Future<void> save(String notebookId, Map<String, dynamic> state) async {
+    saved.add(state);
+  }
+
+  @override
+  Future<Map<String, dynamic>?> load(String notebookId) async => stored;
+
+  @override
+  Future<void> clear(String notebookId) async => cleared.add(notebookId);
+}
+
 /// EC-03: the facts recorded after a commit.
 class _FakeFacts implements MemoryFactService {
   final calls = <({String notebookId, String entryId, List<Map<String, dynamic>> facts})>[];
@@ -347,6 +366,7 @@ class _Harness {
       notebookCommitServiceProvider.overrideWithValue(commits),
       extractGraphServiceProvider.overrideWithValue(extractor),
       memoryFactServiceProvider.overrideWithValue(facts),
+      conversationStateServiceProvider.overrideWithValue(sessionState),
       sharedLogProvider.overrideWithValue(sharedLog),
       retrieveMemoryServiceProvider.overrideWithValue(_NoMemory()),
       turnJournalServiceProvider.overrideWithValue(journal_),
@@ -386,6 +406,7 @@ class _Harness {
   final _FakeCommits commits;
   final extractor = _FakeExtractor();
   final facts = _FakeFacts();
+  final sessionState = _FakeConversationState();
   final sharedLog = _CountingLog();
   final cards = _FakeCards();
   final briefs = _FakeBriefs();
@@ -453,6 +474,7 @@ void _expectNoWrites(_Harness h) {
   expect(h.transcripts.saved, isEmpty, reason: 'transcript store');
   expect(h.extractor.texts, isEmpty, reason: 'extraction');
   expect(h.facts.calls, isEmpty, reason: 'facts (EC-03)');
+  expect(h.sessionState.saved, isEmpty, reason: 'session state (EC-04)');
   expect(h.sharedLog.recorded, isEmpty,
       reason: 'What Lumen shared log (LM-57)');
 }
@@ -1284,6 +1306,72 @@ void main() {
       expect(summary['recentAgentQuestions'],
           [for (var i = 2; i < 10; i++) 'Question $i?'],
           reason: 'the latest eight, not the first eight');
+    });
+
+    test('a rebuilt context carries the open question, paused topic, promise '
+        'and register (EC-04)', () async {
+      await liveInSavedNotebook(twoTurns);
+      userSaysAndLumenReplies(
+          h, 'Priya is moving to Lisbon.', 'How do you feel about her move?');
+      await _settle();
+      userSaysAndLumenReplies(h, "Honestly I'm stressed. Not now.",
+          "Okay. I'll ask you about it tomorrow. What else is on your mind?");
+      await pastRebuildCheck();
+      await h.waitForSocket(2);
+      h.socket.serverSends({'setupComplete': <String, dynamic>{}});
+      await _settle();
+
+      final content = h.socket.sent
+          .firstWhere((m) => m.containsKey('client_content'))['client_content']
+          as Map<String, dynamic>;
+      final summaryLine = [
+        for (final turn in content['turns'] as List)
+          for (final part in (turn as Map)['parts'] as List)
+            ...((part as Map)['text'] as String).split('\n'),
+      ].firstWhere((line) => line.startsWith('[graph summary] '));
+      final state = (jsonDecode(summaryLine.substring('[graph summary] '.length))
+          as Map<String, dynamic>)['sessionState'] as Map<String, dynamic>;
+      expect(state['openThreads'], ['What else is on your mind?']);
+      expect(state['pausedTopics'], ['How do you feel about her move?']);
+      expect(state['commitments'], ["I'll ask you about it tomorrow."]);
+      expect(state['register'], 'stressed');
+    });
+
+    test('the session state is saved on the record and cleared at the end '
+        '(EC-04)', () async {
+      await liveInSavedNotebook(null);
+      userSaysAndLumenReplies(h, "I'm tired today.", 'What wore you out?');
+      await _settle();
+      expect(h.sessionState.saved, isNotEmpty);
+      expect(h.sessionState.saved.last['openThreads'], ['What wore you out?']);
+      expect(h.sessionState.saved.last['register'], 'tired');
+
+      await h.journal.leaveNotebook();
+      expect(h.sessionState.cleared, [_notebookId]);
+    });
+
+    test('a conversation reopened after a restart picks up its saved state '
+        '(EC-04)', () async {
+      h = _Harness(
+        state: JournalState.empty().copyWith(entries: [_entry('Earlier.')]),
+        supabase: _EndingNotebooks(),
+        rebuild: twoTurns,
+      );
+      h.sessionState.stored = {
+        'openThreads': ['How did the interview go?'],
+        'pausedTopics': <String>[],
+        'asked': ['How did the interview go?'],
+        'commitments': <String>[],
+        'register': null,
+        'covered': <String>[],
+      };
+      await h.journal.enterNotebook(_notebookId);
+      await h.startLive();
+      await _settle();
+      userSaysAndLumenReplies(h, 'Hmm.', 'Take your time.');
+      await _settle();
+      expect(h.sessionState.saved.last['openThreads'], ['How did the interview go?'],
+          reason: 'a filler reply does not answer the question it was asked');
     });
 
     test('typed turns with the mic paused still rebuild at a pause', () async {

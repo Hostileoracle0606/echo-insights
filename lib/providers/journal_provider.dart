@@ -14,6 +14,7 @@ import '../logic/agenda.dart' as agenda_logic;
 import '../env.dart';
 import '../logic/fact_records.dart';
 import '../logic/context_rebuild_policy.dart';
+import '../logic/session_state.dart';
 import '../logic/session_topics.dart';
 import '../logic/conversation_policy.dart';
 import '../logic/echo_gate.dart';
@@ -190,6 +191,16 @@ class JournalNotifier extends Notifier<JournalState> {
   /// keeps only its last 16 turns, so a topic raised early would otherwise
   /// drop out of probedThisSession in a long session.
   final Map<String, String> _lumenSaidThisSession = {};
+
+  /// EC-04: what this conversation has open, paused, promised and covered,
+  /// built from its finalized turns and saved outside the Live session, so a
+  /// rebuilt or reopened session continues instead of starting over.
+  SessionState _sessionState = SessionState.empty;
+  final Set<String> _sessionStateTurnIds = {};
+
+  /// Whether a stored record may exist for this conversation (saved, or
+  /// restored): it is deleted when the conversation ends.
+  bool _sessionStateStored = false;
   static const _maxMemoryCallsPerTurn = 3;
   // What the last memory lookup brought back (LM-13 / LM-14 read it).
   RecallActivity? _recall;
@@ -604,12 +615,22 @@ class JournalNotifier extends Notifier<JournalState> {
       ..clear()
       ..addAll(latest.conversation);
     if (_sessionStartedAt != null) {
+      var stateChanged = false;
       for (final turn in _conversation) {
-        if (turn.role == Speaker.assistant &&
-            !_savedAtOpen.contains(turn.turnId)) {
+        if (_savedAtOpen.contains(turn.turnId)) continue;
+        if (turn.role == Speaker.assistant) {
           _lumenSaidThisSession[turn.turnId] = turn.text;
         }
+        if (_sessionStateTurnIds.add(turn.turnId)) {
+          _sessionState = _sessionState.observe(
+            speaker: turn.role,
+            text: _redactor.redact(turn.text),
+            known: state.entities.values.map((entity) => entity.name),
+          );
+          stateChanged = true;
+        }
       }
+      if (stateChanged) _saveSessionState();
     }
     _saveNewTurns(latest.notebookId);
     _inProgress
@@ -617,6 +638,42 @@ class JournalNotifier extends Notifier<JournalState> {
       ..addAll(_turnMachine.inProgress);
     _extracting = latest.pending.isNotEmpty;
     _notifyUi();
+  }
+
+  /// EC-04: saves the session state record. Never off the record; a failed
+  /// save is logged and the next turn saves again.
+  void _saveSessionState() {
+    final notebookId = _activeNotebookId;
+    if (notebookId == null || offTheRecord) return;
+    final snapshot = _sessionState.redacted(_redactor.redact).toJson();
+    _sessionStateStored = true;
+    unawaited(() async {
+      try {
+        await ref
+            .read(conversationStateServiceProvider)
+            .save(notebookId, snapshot);
+      } catch (error) {
+        vlog('session', 'session state not saved: $error');
+      }
+    }());
+  }
+
+  /// EC-04: a conversation reopened (after a restart, say) picks up its
+  /// saved state, unless it already has its own.
+  Future<void> _restoreSessionState(String notebookId) async {
+    if (offTheRecord) return;
+    try {
+      final stored =
+          await ref.read(conversationStateServiceProvider).load(notebookId);
+      if (stored == null || notebookId != _activeNotebookId) return;
+      _sessionStateStored = true;
+      if (_sessionState.isEmpty) {
+        _sessionState =
+            SessionState.fromJson(stored).redacted(_redactor.redact);
+      }
+    } catch (error) {
+      vlog('session', 'session state not restored: $error');
+    }
   }
 
   /// Saves each newly finalized turn (both speakers) to the notebook's
@@ -1255,6 +1312,9 @@ class JournalNotifier extends Notifier<JournalState> {
     _forgetSharedLog();
     _redactor.add(entityId, names);
     state = _redactor.redactState(withoutEntity(state, entityId));
+    // EC-04: the forgotten name leaves the session state too.
+    _sessionState = _sessionState.redacted(_redactor.redact);
+    if (_sessionStateStored) _saveSessionState();
     final session = _session;
     if (session != null &&
         (_status == SessionStatus.live || _status == SessionStatus.paused)) {
@@ -1412,6 +1472,8 @@ class JournalNotifier extends Notifier<JournalState> {
           .where((turn) => turn.role == Speaker.assistant)
           .map((turn) => _redactor.redact(turn.text))
           .where((text) => text.isNotEmpty)),
+      // EC-04: what is open, paused, promised and covered right now.
+      'sessionState': _sessionState.redacted(_redactor.redact).toSummary(),
       'sessionElapsedMin': sessionElapsedMin,
     };
   }
@@ -2096,6 +2158,12 @@ class JournalNotifier extends Notifier<JournalState> {
     _sessionStartedAt = DateTime.now();
     _recalledThisSession.clear();
     _lumenSaidThisSession.clear();
+    _sessionState = SessionState.empty;
+    _sessionStateTurnIds.clear();
+    _sessionStateStored = false;
+    // Not awaited: the session starts at once; a saved state that arrives
+    // after the first turns is adopted only if this one is still empty.
+    unawaited(_restoreSessionState(prepared.notebookId));
     final rebuildConfig = ref.read(contextRebuildConfigProvider);
     _rebuildPolicy = rebuildConfig == null
         ? null
@@ -2734,6 +2802,22 @@ class JournalNotifier extends Notifier<JournalState> {
     _sessionStartedAt = null;
     _recalledThisSession.clear();
     _lumenSaidThisSession.clear();
+    // EC-04: the conversation is over; its state record goes with it.
+    final stateNotebookId = _activeNotebookId;
+    if (_sessionStateStored && stateNotebookId != null) {
+      unawaited(() async {
+        try {
+          await ref
+              .read(conversationStateServiceProvider)
+              .clear(stateNotebookId);
+        } catch (error) {
+          vlog('session', 'session state not cleared: $error');
+        }
+      }());
+    }
+    _sessionState = SessionState.empty;
+    _sessionStateTurnIds.clear();
+    _sessionStateStored = false;
     _activeNotebookId = null;
     _restoredNotebookId = null;
     _turnMachine.clearOffRecord();

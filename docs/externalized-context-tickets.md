@@ -194,9 +194,34 @@ or deleted when the conversation ends.
 
 **Done when**
 
-- [ ] A rebuilt session continues an open question instead of re-asking it.
-- [ ] Content already covered is not repeated after a rebuild.
-- [ ] Forget and off-the-record rules apply to the record.
+- [x] A rebuilt session continues an open question instead of re-asking it
+  (the rebuilt context carries it as `sessionState.openThreads`, and the
+  prompt says to pick it up; whether Gemini does is checked by voice).
+- [x] Content already covered is not repeated after a rebuild (`covered`,
+  `pausedTopics`, plus the existing `recentAgentQuestions`).
+- [x] Forget and off-the-record rules apply to the record.
+
+**Built** (`feat/ec-04-session-state`). `lib/logic/session_state.dart` builds
+the record in code from each finalized turn, with no model call:
+- `openThreads`: Lumen's last question in a turn, until a reply of three or
+  more words answers it (at most three open).
+- `pausedTopics`: questions the user set aside ("not now", "later").
+- `commitments`: "I'll remind / ask / check…".
+- `register`: from the user's latest feeling words.
+- `covered`: graph names either side said.
+
+`conversation_state` holds one row per notebook, owner only, written
+through RPCs, capped at 8 KB. The app saves after each new turn on the
+record (best effort), restores it when a conversation is reopened, and
+deletes it on leaving. Every rebuilt context includes it as `sessionState`.
+
+Forget and off the record: off-the-record turns never reach the record and
+nothing is saved off the record. A Forget redacts the record and drops the
+name from `covered`. Notebook deletion cascades. Forget-everywhere and
+export coverage of the table belong to EC-08.
+
+Not done: the brief does not fold the record in. It is deleted at the end
+of the conversation, and the brief is still built from the transcript.
 
 ## EC-05 — Context materialiser
 
