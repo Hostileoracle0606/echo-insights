@@ -189,6 +189,53 @@ void main() {
     });
   });
 
+  group('context window (EC-01)', () {
+    Map<String, dynamic> setupSent({bool? compressContext}) {
+      late Map<String, dynamic> setup;
+      fakeAsync((async) {
+        FakeLiveSocket? socket;
+        final client = compressContext == null
+            ? GeminiLiveClient(
+                sessionToken: 't',
+                model: 'm',
+                systemInstruction: 's',
+                voice: 'Aoede',
+                tools: const [],
+                channelFactory: (uri) => socket = FakeLiveSocket(uri),
+              )
+            : GeminiLiveClient(
+                sessionToken: 't',
+                model: 'm',
+                systemInstruction: 's',
+                voice: 'Aoede',
+                tools: const [],
+                compressContext: compressContext,
+                channelFactory: (uri) => socket = FakeLiveSocket(uri),
+              );
+        client.connect();
+        async.flushMicrotasks();
+        setup = socket!.sent.firstWhere((m) => m['setup'] != null)['setup']
+            as Map<String, dynamic>;
+      });
+      return setup;
+    }
+
+    test('Gemini compresses the window by default', () {
+      expect(setupSent()['context_window_compression'], {
+        'sliding_window': <String, dynamic>{},
+      });
+      expect(setupSent(compressContext: true)['context_window_compression'],
+          isNotNull);
+    });
+
+    test('a session rebuilt from saved context asks for no compression', () {
+      final setup = setupSent(compressContext: false);
+      expect(setup.containsKey('context_window_compression'), isFalse);
+      // Resumption stays: a dropped socket still comes back with its context.
+      expect(setup.containsKey('session_resumption'), isTrue);
+    });
+  });
+
   group('tool calls', () {
     // Plain maps (not records): the matcher compares maps deeply, while a
     // record compares the maps inside it by identity.

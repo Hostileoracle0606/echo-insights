@@ -12,6 +12,8 @@
 ///   and one finalized transcript produces at most one durable turn.
 library;
 
+import 'filler_words.dart';
+
 enum Speaker { user, assistant }
 
 /// How a user turn reached Lumen: spoken (and transcribed) or typed in the
@@ -646,7 +648,12 @@ class TurnMachine {
   /// Turns a completed active turn into an immutable finalized turn. The only
   /// path by which spoken text becomes eligible to change the canonical graph.
   List<TurnEffect> _finalize(ActiveTurn turn, String transcript, bool truncated) {
-    final text = transcript.trim();
+    // Hesitation sounds never reach the saved transcript, extraction or the
+    // graph. A turn of nothing else is not a turn.
+    final text = (turn.speaker == Speaker.user
+            ? stripFillers(transcript)
+            : transcript)
+        .trim();
     if (_active(turn.speaker)?.turnId == turn.turnId) {
       _setActive(turn.speaker, null);
     }
