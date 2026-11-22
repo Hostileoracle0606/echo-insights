@@ -36,6 +36,11 @@ class GeminiLiveClient {
   /// Silence that ends the user's turn (Gemini recommends 500–800 ms).
   final Duration silenceToEndTurn;
 
+  /// Whether Gemini compresses the context window with a sliding window.
+  /// Off only when the app rebuilds sessions from saved context itself
+  /// (EC-01), which must then rebuild before Gemini's ~15-minute audio limit.
+  final bool compressContext;
+
   /// Gemini waits for an answer to every tool call before it continues, so a
   /// handler that hangs (a stalled network call) would silence Lumen for
   /// good. Past this, the call is answered with an empty result.
@@ -123,6 +128,7 @@ class GeminiLiveClient {
     required this.tools,
     this.silenceToEndTurn = const Duration(milliseconds: 700),
     this.toolTimeout = const Duration(seconds: 4),
+    this.compressContext = true,
     String? resumptionHandle,
     LiveChannelFactory? channelFactory,
   })  : _resumptionHandle = resumptionHandle,
@@ -236,10 +242,12 @@ class GeminiLiveClient {
         'session_resumption': {
           if (_resumptionHandle != null) 'handle': _resumptionHandle,
         },
-        // Without compression, audio sessions end at ~15 minutes.
-        'context_window_compression': {
-          'sliding_window': <String, dynamic>{},
-        },
+        // Without compression, audio sessions end at ~15 minutes, unless the
+        // app rebuilds the session from saved context first (EC-01).
+        if (compressContext)
+          'context_window_compression': {
+            'sliding_window': <String, dynamic>{},
+          },
         'realtime_input_config': {
           'automatic_activity_detection': {
             'silence_duration_ms': silenceToEndTurn.inMilliseconds,

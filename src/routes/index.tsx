@@ -770,7 +770,7 @@ function Index() {
       {
         name: "get_relevant_memory",
         description:
-          "Retrieve past memory relevant to a query from the user's knowledge graph: a focused packet of related entities, relations, and the exact things the user said (sources). Use this when the user references something from earlier or the past, or when grounding your reply in prior context would help. Distinct from get_graph_summary, which tells you what to ask next. The result is for YOUR planning only — never read it aloud.",
+          "Retrieve past memory relevant to a query from the user's knowledge graph: a focused packet of related entities, relations, and the exact things the user said (sources). Call it only when the user refers back to something from before or asks what they told you, not to find something to talk about. Distinct from get_graph_summary, which tells you what to ask next. The result is for YOUR planning only — never read it aloud.",
         parameters: {
           type: "OBJECT",
           properties: {

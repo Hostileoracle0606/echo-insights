@@ -11,6 +11,9 @@ import '../audio/pcm_player.dart';
 import '../audio/standard_opening.dart';
 import '../audio/voice_engine.dart';
 import '../logic/agenda.dart' as agenda_logic;
+import '../env.dart';
+import '../logic/context_rebuild_policy.dart';
+import '../logic/session_topics.dart';
 import '../logic/conversation_policy.dart';
 import '../logic/echo_gate.dart';
 import '../logic/forget_redaction.dart';
@@ -176,6 +179,16 @@ class JournalNotifier extends Notifier<JournalState> {
   int _memoryCallsThisTurn = 0;
   int _memoryTurnGeneration = 0;
   bool _memoryUserTurnOpen = false;
+
+  /// Entity ids get_relevant_memory returned this session. Lumen may raise
+  /// someone from another notebook, so the graph alone can't say what it
+  /// has already brought up (probedThisSession).
+  final Set<String> _recalledThisSession = {};
+
+  /// Everything Lumen said this session, by turn id. The live conversation
+  /// keeps only its last 16 turns, so a topic raised early would otherwise
+  /// drop out of probedThisSession in a long session.
+  final Map<String, String> _lumenSaidThisSession = {};
   static const _maxMemoryCallsPerTurn = 3;
   // What the last memory lookup brought back (LM-13 / LM-14 read it).
   RecallActivity? _recall;
@@ -442,7 +455,75 @@ class JournalNotifier extends Notifier<JournalState> {
       if (_opening?.markOpeningHeard() ?? false) {
         vlog('session', 'greeting heard — user turn enabled');
       }
+      _scheduleRebuildCheck();
+    } else if (_replyAfterRebuild) {
+      _replyAfterRebuild = false;
+      // The client's reply-latency line just before this is the first turn
+      // after a rebuild (EC-10 compares it with normal turns).
+      vlog('rebuild', 'first reply after rebuild is playing');
     }
+    _notifyUi();
+  }
+
+  /// Lumen's voice stopped: once the grace period passes with the floor
+  /// still free, rebuild if the policy says the budget is spent.
+  void _scheduleRebuildCheck() {
+    if (_rebuildPolicy == null) return;
+    _rebuildCheckTimer?.cancel();
+    _rebuildCheckTimer = Timer(_rebuildCheckDelay, () {
+      _rebuildCheckTimer = null;
+      final policy = _rebuildPolicy;
+      if (policy == null || _session == null) return;
+      final reason = policy.check(
+        DateTime.now(),
+        FloorState(
+          // Paused only stops the mic: the connection stays, and typed turns
+          // still use it, so its context still needs rebuilding.
+          live: _status == SessionStatus.live ||
+              _status == SessionStatus.paused,
+          agentSpeaking: _agentSpeaking,
+          // A grace timer still running means the user spoke moments ago.
+          userSpeaking: _speechEndTimer != null,
+          awaitingReply: _awaitingReply,
+          reconnecting: _reconnecting,
+          offTheRecord: offTheRecord,
+        ),
+      );
+      if (reason != null) unawaited(_rebuildContext(reason));
+    });
+  }
+
+  /// Replaces the connection with one seeded from saved context (EC-01),
+  /// through the same fresh-reconnect path a Forget uses. Mic audio said
+  /// meanwhile is held and sent once the new session is seeded. Logs timing
+  /// only, never content.
+  Future<void> _rebuildContext(RebuildReason reason) async {
+    final session = _session;
+    final policy = _rebuildPolicy;
+    if (session == null || policy == null || _rebuilding) return;
+    final started = DateTime.now();
+    final turns = policy.turnsSinceRebuild;
+    final age = started.difference(policy.since);
+    policy.rebuilt(started);
+    _rebuilding = true;
+    vlog(
+      'rebuild',
+      'start reason=${reason.name} turns=$turns age=${age.inSeconds}s',
+    );
+    try {
+      await _reopenWithSavedContext(session, reason: 'context rebuild');
+    } finally {
+      _rebuilding = false;
+    }
+    final ok = identical(_session, session) &&
+        _status != SessionStatus.error &&
+        !_reconnecting;
+    _replyAfterRebuild = ok;
+    vlog(
+      'rebuild',
+      '${ok ? 'seeded' : 'did not complete'} in '
+          '${DateTime.now().difference(started).inMilliseconds}ms',
+    );
     _notifyUi();
   }
 
@@ -521,6 +602,14 @@ class JournalNotifier extends Notifier<JournalState> {
     _conversation
       ..clear()
       ..addAll(latest.conversation);
+    if (_sessionStartedAt != null) {
+      for (final turn in _conversation) {
+        if (turn.role == Speaker.assistant &&
+            !_savedAtOpen.contains(turn.turnId)) {
+          _lumenSaidThisSession[turn.turnId] = turn.text;
+        }
+      }
+    }
     _saveNewTurns(latest.notebookId);
     _inProgress
       ..clear()
@@ -1276,12 +1365,15 @@ class JournalNotifier extends Notifier<JournalState> {
             },
           )
           .toList(),
-      'recentAgentQuestions': _conversation
+      'probedThisSession': probedThisSession(
+        lumenSaid: _lumenSaidThisSession.values.map(_redactor.redact),
+        known: state.entities.values.map((entity) => entity.name),
+        recalledIds: _recalledThisSession,
+      ),
+      'recentAgentQuestions': recentLines(_conversation
           .where((turn) => turn.role == Speaker.assistant)
           .map((turn) => _redactor.redact(turn.text))
-          .where((text) => text.isNotEmpty)
-          .take(8)
-          .toList(),
+          .where((text) => text.isNotEmpty)),
       'sessionElapsedMin': sessionElapsedMin,
     };
   }
@@ -1318,6 +1410,7 @@ class JournalNotifier extends Notifier<JournalState> {
       scope: RetrievalScope.user,
     );
     if (!isCurrent() || generation != _memoryTurnGeneration) return null;
+    _recalledThisSession.addAll(retrieval.entityIds);
     if (retrieval.entityIds.isNotEmpty || retrieval.quotes.isNotEmpty) {
       _recall = RecallActivity(
         seq: ++_recallSeq,
@@ -1677,7 +1770,25 @@ class JournalNotifier extends Notifier<JournalState> {
 
   /// A reconnect by resumption handle is in progress.
   bool _reconnecting = false;
-  bool get reconnecting => _reconnecting;
+
+  /// A planned rebuild (EC-01) is not a lost connection: the dock does not
+  /// show "Reconnecting" for it.
+  bool get reconnecting => _reconnecting && !_rebuilding;
+
+  /// EC-01 spike: rebuilds the session from saved context at a pause instead
+  /// of letting Gemini compress its window. Null unless the flag is on and a
+  /// session is live.
+  ContextRebuildPolicy? _rebuildPolicy;
+  Timer? _rebuildCheckTimer;
+  bool _rebuilding = false;
+
+  /// The next reply is the first after a rebuild; its latency is the one
+  /// EC-10 compares with normal turns.
+  bool _replyAfterRebuild = false;
+
+  /// Waits this long after Lumen stops speaking before checking, so a user
+  /// who answers at once is never cut into.
+  static const _rebuildCheckDelay = Duration(milliseconds: 800);
 
   /// The session the user is in (null while idle or connecting).
   _PreparedLive? _session;
@@ -1945,6 +2056,12 @@ class JournalNotifier extends Notifier<JournalState> {
     _typedTurnsAwaitingConnection.clear();
     _droppingCutOffReply = false;
     _sessionStartedAt = DateTime.now();
+    _recalledThisSession.clear();
+    _lumenSaidThisSession.clear();
+    final rebuildConfig = ref.read(contextRebuildConfigProvider);
+    _rebuildPolicy = rebuildConfig == null
+        ? null
+        : ContextRebuildPolicy(rebuildConfig, startedAt: _sessionStartedAt!);
     // A live Gemini socket and an active turn-processing session are two
     // separate states. Establish the turn-machine identity before anything
     // arrives so transcripts can be finalized, extracted, and committed
@@ -2307,7 +2424,10 @@ class JournalNotifier extends Notifier<JournalState> {
         _memoryUserTurnOpen = false;
         // Lumen may end a turn without speaking; that ends the wait too,
         // unless it is the cut-off reply's own completion.
-        if (!_droppingCutOffReply) _setAwaitingReply(false);
+        if (!_droppingCutOffReply) {
+          _setAwaitingReply(false);
+          _rebuildPolicy?.turnCompleted();
+        }
         _droppingCutOffReply = false;
         _memoryCallsThisTurn = 0;
         _lastMemoryQuery = null;
@@ -2317,6 +2437,9 @@ class JournalNotifier extends Notifier<JournalState> {
         // With a playback clock, Lumen stops "speaking" when its queued
         // audio drains — usually seconds after Gemini's turn completes.
         if (_player == null) _clearAgentSpeaking();
+        // A turn with no audio still playing never flips speaking off, so
+        // it schedules the rebuild check itself (EC-01).
+        if (!_agentSpeaking) _scheduleRebuildCheck();
     }
   }
 
@@ -2390,7 +2513,7 @@ class JournalNotifier extends Notifier<JournalState> {
         {
           'name': 'get_relevant_memory',
           'description':
-              'Retrieve past memory relevant to a query: related entities and how they connect. Use when the user references something from earlier, or when grounding your reply in prior context would help. Distinct from the graph summary given at the start. For planning only — never read aloud.',
+              'Retrieve what the user said before about a topic: related entities and how they connect, and their own words from earlier conversations. Call it only when the user refers back to something from before or asks what they told you, not to find something to talk about. Distinct from the graph summary given at the start. For planning only — never read aloud.',
           'parameters': {
             'type': 'object',
             'properties': {
@@ -2439,6 +2562,10 @@ class JournalNotifier extends Notifier<JournalState> {
     _opening = null;
     _session?.gate.dispose();
     _session = null;
+    _rebuildCheckTimer?.cancel();
+    _rebuildCheckTimer = null;
+    _rebuildPolicy = null;
+    _replyAfterRebuild = false;
     _connectionLapsed = false;
     _typedTurnsAwaitingConnection.clear();
     _droppingCutOffReply = false;
@@ -2567,6 +2694,8 @@ class JournalNotifier extends Notifier<JournalState> {
 
     _muted = false;
     _sessionStartedAt = null;
+    _recalledThisSession.clear();
+    _lumenSaidThisSession.clear();
     _activeNotebookId = null;
     _restoredNotebookId = null;
     _turnMachine.clearOffRecord();
@@ -2673,6 +2802,15 @@ final speechEndGraceProvider = Provider<Duration>(
   (ref) => const Duration(milliseconds: 900),
 );
 
+/// EC-01 spike: how sessions are rebuilt from saved context, or null to let
+/// Gemini compress the window as before. Built from `--dart-define`s; tests
+/// override it.
+final contextRebuildConfigProvider = Provider<ContextRebuildConfig?>(
+  (ref) => Env.contextRebuildEnabled
+      ? ContextRebuildConfig.fromDefines(maxTurns: Env.contextRebuildMaxTurns)
+      : null,
+);
+
 /// Whether the platform removes Lumen's voice from the mic. Where it can't
 /// say (no voice engine, as in tests), the mic is trusted as before.
 final echoCancellationProvider = Provider<Future<bool> Function()>(
@@ -2698,6 +2836,9 @@ final liveClientFactoryProvider = Provider<
         systemInstruction: geminiLiveSystemInstruction,
         voice: 'Aoede',
         tools: JournalNotifier.liveTools,
+        // EC-01: the app rebuilds the session itself, so Gemini must not
+        // compress (and silently drop) parts of the window.
+        compressContext: ref.read(contextRebuildConfigProvider) == null,
       ),
 );
 

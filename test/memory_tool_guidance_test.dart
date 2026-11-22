@@ -1,0 +1,29 @@
+import 'package:flutter_test/flutter_test.dart';
+import 'package:lumen/logic/conversation_policy.dart';
+import 'package:lumen/providers/journal_provider.dart';
+
+/// Lumen kept steering back to one remembered person: both the prompt and
+/// the tool told it to recall memory whenever that would make it "sound like
+/// you remember", so it reached into memory to find something to say.
+void main() {
+  final toolDescription =
+      ((JournalNotifier.liveTools.single['function_declarations'] as List)
+          .single as Map)['description'] as String;
+
+  test('memory is recalled only when the user refers back', () {
+    expect(geminiLiveSystemInstruction,
+        contains('Call it only when the user refers back'));
+    expect(toolDescription, contains('only when the user refers back'));
+  });
+
+  test('memory is never a way to find something to talk about', () {
+    expect(geminiLiveSystemInstruction,
+        isNot(contains('sound like you remember')));
+    expect(toolDescription, isNot(contains('grounding your reply')));
+    expect(
+        geminiLiveSystemInstruction,
+        contains(
+            "never bring up something it returned that the user didn't ask about"));
+    expect(toolDescription, contains('not to find something to talk about'));
+  });
+}
