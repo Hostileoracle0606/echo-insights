@@ -415,6 +415,97 @@ Deno.test("duplicate operands require distinct named scope, even across excerpts
     "clarification",
   );
 });
+Deno.test("version lookups tell the provider that a change sentence records its resulting value", async () => {
+  // Live eval: for "from $200 to $350" the model quoted "from $200" as the entry's value,
+  // collapsing two versions into one and blocking the "previous" answer.
+  let prompt = "";
+  const run = createEvidenceResolver({
+    getApiKey: () => "test",
+    fetch: async (_url, init) => {
+      prompt = JSON.parse(init!.body as string).contents[0].parts[0].text;
+      return new Response(JSON.stringify({
+        candidates: [{
+          content: {
+            parts: [{ text: JSON.stringify({ facts, complete: true }) }],
+          },
+        }],
+      }));
+    },
+  });
+  for (const scope of ["previous", "current", "compare_versions"] as const) {
+    await run(
+      "What was my previous goal?",
+      route("recall", scope),
+      passages,
+      new AbortController().signal,
+    );
+    assertEquals(
+      prompt.includes(
+        'When a passage records a change "from X to Y", quote and extract Y, the value after the change, as that passage\'s fact.',
+      ),
+      true,
+      scope,
+    );
+    // Live eval: asked for the "previous" goal, the model returned only g1 and
+    // dropped the later version the code needs to select "previous".
+    assertEquals(
+      prompt.includes(
+        "Return one fact for every passage that states a value of this fact, even when it is not the version the question asks about; code selects the version afterwards.",
+      ),
+      true,
+      scope,
+    );
+  }
+});
+Deno.test("distinct items listed in one entry are separate operands even under a shared category", async () => {
+  // Facts as returned by gemini-2.5-flash in the live eval (multi-operands case).
+  const ps = [
+    p(
+      "s1",
+      "For the workshop I bought paper for $12, markers for $8, and tape for $5.",
+      "2026-05-01",
+    ),
+  ];
+  const item = (span: string, value: number) => ({
+    ...fact("s1", span, value, "2026-05-01"),
+    date: null,
+    unit: "dollars",
+    category: "workshop supplies",
+  });
+  const fs = [
+    item("paper for $12", 12),
+    item("markers for $8", 8),
+    item("tape for $5", 5),
+  ];
+  const run = resolver({ facts: [...fs, fs[1]], complete: true });
+  const verdict = await run(
+    "How much did I spend on the three workshop supplies in total?",
+    route("calculate", "unspecified"),
+    ps,
+    new AbortController().signal,
+  );
+  assertEquals(verdict.status, "supported");
+  assertEquals(verdict.text, "The total is 25 dollars.");
+  assertEquals(verdict.sourceIds, ["s1"]);
+  // Overlapping excerpts of one entry may restate the same amount: still ambiguous.
+  // Category "paper" is named in the question and both spans, so only the overlap check applies.
+  const overlapping = resolver({
+    facts: [
+      { ...item("paper for $12", 12), category: "paper" },
+      { ...item("bought paper for $12", 12), category: "paper" },
+    ],
+    complete: true,
+  });
+  assertEquals(
+    (await overlapping(
+      "How much did I spend on paper in total?",
+      route("calculate", "unspecified"),
+      ps,
+      new AbortController().signal,
+    )).status,
+    "clarification",
+  );
+});
 Deno.test("month lookup stays in requested month and resolves year only when unique", async () => {
   const ps = [
     p("a", "My goal was 100.", "2026-01-20"),

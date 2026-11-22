@@ -86,7 +86,7 @@ export function createEvidenceResolver(deps: Dependencies) {
       const selection = route.timeScope === "current" ||
           route.timeScope === "previous" ||
           route.timeScope === "compare_versions"
-        ? "Find all dated statements about the same fact, including earlier values and the latest value. Do not choose the requested version yourself. Use the same category and unit for each state of that fact. Prefer an independently dated statement for each value."
+        ? 'Find all dated statements about the same fact, including earlier values and the latest value. Do not choose the requested version yourself. Use the same category and unit for each state of that fact. Prefer an independently dated statement for each value. When a passage records a change "from X to Y", quote and extract Y, the value after the change, as that passage\'s fact. Take earlier values from their own entries. Return one fact for every passage that states a value of this fact, even when it is not the version the question asks about; code selects the version afterwards.'
         : route.operation === "confirm_event"
         ? "Include tentative statements about the exact requested event as proposed even when no entry confirms it. Exclude statements about a different event or direction of change. Set value to null because event confirmation uses the quoted statement."
         : "Select the facts needed to answer the question.";
@@ -402,10 +402,27 @@ export function createEvidenceResolver(deps: Dependencies) {
         if (
           !/\b(total|sum|combined|altogether|in all|how many)\b/i.test(question)
         ) return clarification();
-        // Repeated categories cannot safely be assumed to be distinct operands.
+        // Repeated categories cannot safely be assumed to be distinct operands,
+        // unless they are non-overlapping excerpts of one entry (an itemized list).
+        const byCategory = new Map<string, Fact[]>();
+        for (const f of selected) {
+          byCategory.set(norm(f.category), [
+            ...(byCategory.get(norm(f.category)) ?? []),
+            f,
+          ]);
+        }
+        const itemized = (group: Fact[]) => {
+          if (new Set(group.map((f) => f.sourceId)).size !== 1) return false;
+          const text = byId.get(group[0].sourceId)!.text;
+          const ranges = group.map((f) => {
+            const start = text.indexOf(f.span);
+            return [start, start + f.span.length];
+          }).sort((a, b) => a[0] - b[0]);
+          return ranges.every((r, i) => i === 0 || r[0] >= ranges[i - 1][1]);
+        };
         if (
-          new Set(selected.map((f) => norm(f.category))).size !==
-            selected.length || selected.length < 2
+          selected.length < 2 ||
+          [...byCategory.values()].some((g) => g.length > 1 && !itemized(g))
         ) return clarification();
         // Equal values in separate excerpts may be repetitions of one fact.
         // Count them only when each is explicitly scoped in both the question and source.

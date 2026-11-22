@@ -112,6 +112,37 @@ Deno.test("invalid, weak and conflicting decisions fall back", async () => {
   }
 });
 
+Deno.test("a confident operation with a weak time scope keeps the operation and leaves scope unspecified", async () => {
+  // Live probe: "What book did I finish in February?" gave recall 0.99, as_of 0.58.
+  const weakScope = payload("recall", "as_of");
+  weakScope.answers.time_scope = answer("as_of", scopes, 0.58);
+  const observed: unknown[] = [];
+  const route = createDecisionsRouter({
+    getApiKey: () => "key",
+    fetchImpl: async () => response(weakScope),
+    observe: (o) => observed.push(o),
+  });
+  assert(
+    JSON.stringify(await route("private", new AbortController().signal)) ===
+      JSON.stringify({ operation: "recall", timeScope: "unspecified" }),
+  );
+  assert(
+    JSON.stringify(
+      observed.map((o) => (o as { confidenceRange?: string }).confidenceRange),
+    ) ===
+      JSON.stringify(["low"]),
+    "a degraded scope is reported as low confidence",
+  );
+  // An invalid scope is not a weak one: it still falls back entirely.
+  const invalidScope = payload();
+  invalidScope.answers.time_scope.choice = "someday";
+  const strict = createDecisionsRouter({
+    getApiKey: () => "key",
+    fetchImpl: async () => response(invalidScope),
+  });
+  assert(await strict("private", new AbortController().signal) === null);
+});
+
 Deno.test("timeout returns even when fetch ignores abort and late results are discarded", async () => {
   let finish!: (value: Response) => void;
   const route = createDecisionsRouter({

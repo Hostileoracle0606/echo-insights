@@ -171,7 +171,12 @@ export function createDecisionsRouter(options: Options) {
           OPERATIONS,
           threshold,
         );
-        const scope = choice(body?.answers?.time_scope, SCOPES, threshold);
+        let scope = choice(body?.answers?.time_scope, SCOPES, threshold);
+        // A confident operation with only a weak version preference can still
+        // search safely; "unspecified" makes evidence ask when versions differ.
+        const degraded = !!operation.value &&
+          scope.reason === "low_confidence";
+        if (degraded) scope = { value: "unspecified" };
         if (!operation.value || !scope.value) {
           return {
             reason: operation.reason ?? scope.reason ?? "invalid" as Reason,
@@ -186,6 +191,7 @@ export function createDecisionsRouter(options: Options) {
             operation: operation.value,
             timeScope: scope.value,
           } satisfies MemoryRoute,
+          degraded,
         };
       })();
       const result = await Promise.race([request, stopped]);
@@ -202,7 +208,10 @@ export function createDecisionsRouter(options: Options) {
         });
         return null;
       }
-      report({ route: result.route, confidenceRange: "high" });
+      report({
+        route: result.route,
+        confidenceRange: result.degraded ? "low" : "high",
+      });
       return result.route;
     } catch {
       report({
