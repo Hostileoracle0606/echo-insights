@@ -30,6 +30,7 @@ import 'package:lumen/services/extract_graph_service.dart';
 import 'package:lumen/services/extraction_context.dart';
 import 'package:lumen/services/gemini_live_client.dart';
 import 'package:lumen/services/live_credentials.dart';
+import 'package:lumen/services/memory_fact_service.dart';
 import 'package:lumen/services/notebook_commit_service.dart';
 import 'package:lumen/services/notebook_runtime_service.dart';
 import 'package:lumen/services/retrieve_memory_service.dart';
@@ -105,6 +106,7 @@ class _FakeCommits implements NotebookCommitService {
     return CommitCommitted(
       requestId: requestId,
       revision: expectedRevision + 1,
+      entryId: 'server-entry-$commits',
       suppressedIds: suppressedIds,
     );
   }
@@ -161,6 +163,8 @@ class _CountingLog implements SharedLog {
 class _FakeExtractor implements ExtractGraphService {
   final texts = <String>[];
   final contexts = <List<String>>[];
+  final spokenAts = <DateTime?>[];
+  GraphPatch result = GraphPatch.empty();
 
   @override
   Future<GraphPatch> extract({
@@ -175,14 +179,30 @@ class _FakeExtractor implements ExtractGraphService {
     FollowUp? answeringFollowUp,
     int tokenBudget = defaultExtractionTokenBudget,
     int maxRetries = 2,
+    DateTime? spokenAt,
   }) async {
     texts.add(text);
     contexts.add([for (final turn in recentConversation) turn.text]);
-    return GraphPatch.empty();
+    spokenAts.add(spokenAt);
+    return result;
   }
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+/// EC-03: the facts recorded after a commit.
+class _FakeFacts implements MemoryFactService {
+  final calls = <({String notebookId, String entryId, List<Map<String, dynamic>> facts})>[];
+
+  @override
+  Future<void> recordFacts({
+    required String notebookId,
+    required String entryId,
+    required List<Map<String, dynamic>> facts,
+  }) async {
+    calls.add((notebookId: notebookId, entryId: entryId, facts: facts));
+  }
 }
 
 class _NoMemory implements RetrieveMemoryService {
@@ -326,6 +346,7 @@ class _Harness {
     container = ProviderContainer(overrides: [
       notebookCommitServiceProvider.overrideWithValue(commits),
       extractGraphServiceProvider.overrideWithValue(extractor),
+      memoryFactServiceProvider.overrideWithValue(facts),
       sharedLogProvider.overrideWithValue(sharedLog),
       retrieveMemoryServiceProvider.overrideWithValue(_NoMemory()),
       turnJournalServiceProvider.overrideWithValue(journal_),
@@ -364,6 +385,7 @@ class _Harness {
   final _FakeTranscripts transcripts;
   final _FakeCommits commits;
   final extractor = _FakeExtractor();
+  final facts = _FakeFacts();
   final sharedLog = _CountingLog();
   final cards = _FakeCards();
   final briefs = _FakeBriefs();
@@ -430,6 +452,7 @@ void _expectNoWrites(_Harness h) {
   expect(h.journal_.writes, 0, reason: 'turn journal');
   expect(h.transcripts.saved, isEmpty, reason: 'transcript store');
   expect(h.extractor.texts, isEmpty, reason: 'extraction');
+  expect(h.facts.calls, isEmpty, reason: 'facts (EC-03)');
   expect(h.sharedLog.recorded, isEmpty,
       reason: 'What Lumen shared log (LM-57)');
 }
@@ -540,6 +563,56 @@ void main() {
     expect(h.container.read(journalProvider).entities, isEmpty);
     expect(h.journal.suppressedEntityIds, contains('maya-chen'));
     expect(h.container.read(forgottenThisRunProvider), contains('maya-chen'));
+  });
+
+  test('a committed turn records its facts against the server entry (EC-03)',
+      () async {
+    h = _Harness(supabase: _EndingNotebooks());
+    h.extractor.result = const GraphPatch(
+      entities: [EntityPatch(name: 'savings goal', type: EntityType.concept)],
+      relations: [],
+      supersedes: [],
+      facts: [
+        FactPatch(
+          entity: 'savings goal',
+          attribute: 'amount',
+          valueNum: 8000,
+          unit: 'USD',
+          status: 'confirmed',
+        ),
+      ],
+    );
+    await h.journal.enterNotebook(_notebookId);
+    await h.startLive();
+
+    expect(h.journal.sendTypedTurn('My savings goal is 8k now.'), isTrue);
+    await _waitForCommits(h, 1);
+    await _settle();
+
+    expect(h.extractor.spokenAts.single, isNotNull,
+        reason: 'the model resolves "yesterday" from when the turn was said');
+    final call = h.facts.calls.single;
+    expect(call.notebookId, _notebookId);
+    expect(call.entryId, 'server-entry-1');
+    expect(call.facts, [
+      {
+        'entityId': 'savings-goal',
+        'attribute': 'amount',
+        'valueNum': 8000,
+        'unit': 'USD',
+        'status': 'confirmed',
+      },
+    ]);
+  });
+
+  test('a turn with no facts records nothing', () async {
+    h = _Harness(supabase: _EndingNotebooks());
+    await h.journal.enterNotebook(_notebookId);
+    await h.startLive();
+    expect(h.journal.sendTypedTurn('Just a quiet day.'), isTrue);
+    await _waitForCommits(h, 1);
+    await _settle();
+    expect(h.facts.calls, isEmpty);
   });
 
   group('back on the record', () {

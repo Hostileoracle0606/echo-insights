@@ -143,6 +143,7 @@ class _FakeExtractor implements ExtractGraphService {
     FollowUp? answeringFollowUp,
     int tokenBudget = defaultExtractionTokenBudget,
     int maxRetries = 2,
+    DateTime? spokenAt,
   }) async {
     texts.add(text);
     return GraphPatch.empty();

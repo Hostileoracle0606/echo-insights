@@ -46,8 +46,15 @@ function requestEvent(overrides = {}) {
  * [fetchImpl] with the user-token redaction call answered: each forgotten
  * name replaced, the way redact_forgotten_text does. Calls are recorded.
  */
-function withRedaction(fetchImpl, { forgotten = [], calls = [] } = {}) {
+function withRedaction(
+  fetchImpl,
+  { forgotten = [], calls = [], factKeys = [], factKeyCalls = [] } = {},
+) {
   return async (url, init = {}) => {
+    if (factKeys !== null && String(url).includes("/rest/v1/rpc/list_memory_fact_keys")) {
+      factKeyCalls.push({ url: String(url), headers: init.headers, body: JSON.parse(init.body) });
+      return { ok: true, json: async () => factKeys };
+    }
     if (String(url).includes("/rest/v1/rpc/redact_forgotten_text")) {
       calls.push({ url: String(url), headers: init.headers, body: JSON.parse(init.body) });
       const text = forgotten.reduce(
@@ -801,3 +808,136 @@ for (const [label, answer] of [
     assert.equal(providerBodies.length, 0);
   });
 }
+
+// EC-03: extraction also returns typed facts, recorded after the turn commits.
+
+function geminiReturning(args, requests = []) {
+  return async (url, options) => {
+    requests.push({ url: String(url), options });
+    if (String(url).includes("/rest/v1/notebooks")) {
+      return { ok: true, json: async () => [{ id: notebookId }] };
+    }
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        candidates: [{ content: { parts: [{ functionCall: { name: "extract_graph", args } }] } }],
+      }),
+    };
+  };
+}
+
+test("the prompt asks for facts and the function declares them", () => {
+  assert.match(granularPrompt, /FACTS/);
+  assert.match(wikiPrompt, /FACTS/);
+  const facts = extractGraphFunction.parameters.properties.facts;
+  assert.equal(facts.type, "array");
+  assert.deepEqual(facts.items.properties.status.enum, ["confirmed", "proposed", "cancelled"]);
+  // Required (an empty list is fine): left optional, the model skips facts
+  // whenever it already returned a relation for the same statement.
+  assert.ok(extractGraphFunction.parameters.required.includes("facts"));
+});
+
+test("valid facts are returned; malformed ones are dropped without losing the turn", async () => {
+  const handle = createExtractGraphHandler(
+    dependencies({
+      fetchImpl: geminiReturning({
+        entities: [{ name: "savings goal", type: "concept" }],
+        relations: [],
+        supersedes: [],
+        facts: [
+          { entity: "savings goal", attribute: "Amount", valueNum: 8000, unit: "USD",
+            status: "confirmed", previousValueNum: 5000 },
+          { entity: "Priya", attribute: "moving_to", valueText: "Lisbon", status: "proposed",
+            eventDate: "2026-12-01" },
+          { entity: "savings goal", attribute: "amount", status: "confirmed" },
+          { entity: "savings goal", attribute: "amount", valueNum: 1, status: "done" },
+          { entity: "", attribute: "amount", valueNum: 1, status: "confirmed" },
+          { entity: "savings goal", attribute: "amount", valueNum: 1, status: "confirmed",
+            eventDate: "last tuesday" },
+        ],
+      }),
+    }),
+  );
+  const response = await handle(requestEvent({ text: "I raised my savings goal from 5k to 8k." }));
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(JSON.parse(response.body).patch.facts, [
+    { entity: "savings goal", attribute: "amount", valueNum: 8000, unit: "USD",
+      status: "confirmed", previousValueNum: 5000 },
+    { entity: "Priya", attribute: "moving_to", valueText: "Lisbon", status: "proposed",
+      eventAt: "2026-12-01T12:00:00Z" },
+  ]);
+});
+
+test("a patch with no facts keeps its old shape", async () => {
+  const handle = createExtractGraphHandler(
+    dependencies({
+      fetchImpl: geminiReturning({ entities: [{ name: "Maya", type: "person" }], relations: [], facts: [] }),
+    }),
+  );
+  const body = JSON.parse((await handle(requestEvent())).body);
+  assert.equal("facts" in body.patch, false);
+});
+
+test("the model sees the fact keys in use and when the turn was said", async () => {
+  const requests = [];
+  const calls = [];
+  const handle = createExtractGraphHandler(
+    dependencies({
+      fetchImpl: geminiReturning({ entities: [], relations: [] }, requests),
+      redaction: {
+        factKeyCalls: calls,
+        factKeys: [{ entityId: "maya", attribute: "favourite_food", unit: null }],
+      },
+    }),
+  );
+  await handle(requestEvent({ spokenAt: "2026-11-22T17:23:00-05:00" }));
+  const keysCall = calls.find((c) => c.url.includes("list_memory_fact_keys"));
+  assert.deepEqual(keysCall.body, { p_entity_ids: ["maya", "project-atlas"] });
+  assert.equal(keysCall.headers.authorization, "Bearer signed-user-token");
+  const text = JSON.parse(requests.at(-1).options.body).contents[0].parts[0].text;
+  assert.match(text, /EXISTING FACT KEYS[^]*Maya\.favourite_food/);
+  assert.match(text, /SAID AT: 2026-11-22 \(Sunday\)/);
+});
+
+test("extraction still runs when the fact keys cannot be read", async () => {
+  const requests = [];
+  const handle = createExtractGraphHandler(
+    rawDependencies({
+      fetchImpl: withRedaction(async (url, init) => {
+        if (String(url).includes("list_memory_fact_keys")) return { ok: false, status: 500 };
+        return geminiReturning({ entities: [], relations: [] }, requests)(url, init);
+      }, { factKeys: null }),
+    }),
+  );
+  const response = await handle(requestEvent());
+  assert.equal(response.statusCode, 200);
+  assert.equal(requests.some((r) => r.url.includes("generativelanguage")), true);
+});
+
+test("spokenAt must be a date when given", async () => {
+  const handle = createExtractGraphHandler(dependencies());
+  const response = await handle(requestEvent({ spokenAt: "yesterday" }));
+  assert.equal(response.statusCode, 400);
+});
+
+test("placeholder previous values are dropped, never stored as history", async () => {
+  const handle = createExtractGraphHandler(
+    dependencies({
+      fetchImpl: geminiReturning({
+        entities: [{ name: "savings goal", type: "concept" }],
+        relations: [],
+        facts: [
+          { entity: "savings goal", attribute: "amount", valueNum: 6000, status: "confirmed",
+            previousValueText: "unknown" },
+          { entity: "rent", attribute: "amount", valueNum: 1700, status: "confirmed",
+            previousValueNum: 1700 },
+          { entity: "city", attribute: "name", valueText: "Lisbon", status: "confirmed",
+            previousValueText: "N/A" },
+        ],
+      }),
+    }),
+  );
+  const facts = JSON.parse((await handle(requestEvent({ text: "I bumped it up to 6k." }))).body).patch.facts;
+  assert.equal(facts.some((f) => "previousValueText" in f || "previousValueNum" in f), false);
+});

@@ -7,6 +7,18 @@ export const forgottenNote =
 
 export const entityDescriptionTargetLength = 800;
 
+export const factsSection = `FACTS — typed values the user states, so Lumen can answer exactly later:
+- Record a fact only for a concrete value the user states in the NEW UTTERANCE: an amount, count, date, place, name, percentage or state ("my savings goal is 8k", "rent is 1,700 a month", "the final is on 12 December", "the final is 40% of my grade").
+- entity: the name of an entity you return in \`entities\` or one in EXISTING ENTITIES. attribute: a short snake_case noun for what the value is (amount, moving_to, deadline, grade_weight). When EXISTING FACT KEYS has a key that means the same thing, reuse that entity and attribute exactly, even if the user words it differently ("monthly savings target" is the existing savings goal's amount).
+- valueNum for numbers, written out in full ("5k" is 5000, "two hundred" is 200), with unit ("USD" for "$" or "dollars" unless another currency is named; "%", "kg", "hours"). valueText for anything else.
+- status: confirmed when the user says it is true now or has happened. A goal, target, budget or limit the user has set is confirmed: "my savings goal is 5k" is a confirmed amount of 5000 (that is the goal). proposed when the event or change itself has not happened yet: plans, intentions and possibilities ("planning to", "thinking about", "might", "is moving next month"). cancelled when the user says a plan is off.
+- A fact's subject is an entity; its VALUE is a number, date or piece of text. When the value would itself be an entity (a place, person or organization: "Priya is moving to Lisbon"), return a relation instead of a fact.
+- Every fact's entity must also be in \`entities\` (or EXISTING ENTITIES): "savings goal" in "my savings goal is 5k" is an entity (concept) as well as the subject of the fact.
+- A plan with a concrete value is still a fact: "I'm planning to raise my savings goal to 10k next year" is the savings goal's amount 10000, status proposed, with eventDate for next year.
+- eventDate: YYYY-MM-DD, only when the user says when it happened or will happen; resolve "last Tuesday" or "next month" from SAID AT. Otherwise omit it.
+- A change "from X to Y": value Y, with previousValueNum or previousValueText X. Only give a previous value the user actually says in the NEW UTTERANCE ("from 1500 to 1700", "it used to be 5k"); "bumped it up to 6k" has none, so leave both previous fields out.
+- Never record from RECENT CONVERSATION or from what Lumen said, a value the user is unsure of ("maybe 5k?"), a feeling or an opinion. Return an empty \`facts\` array when there are none.`;
+
 export const wikiPrompt = `You are the editor of the user's personal wiki — built silently from their voice journal.
 
 Your job is to decide which things in the user's utterance deserve their own wiki page. The bar is HIGH: a node only exists if it can anchor a real line of questioning that Lumen could pursue across multiple sessions to build a substantive page.
@@ -79,6 +91,8 @@ Do NOT trigger when:
 Reference relations by their [bracketed] id from the EXISTING RELATIONS list above. If you can't find an exact id match, do not invent one — omit the supersede.
 
 If the utterance contains nothing that passes the wiki-page test, return empty arrays. Better an empty turn than wiki bloat.
+${factsSection}
+
 Never speak to the user. You are not the conversational agent.
 
 ${forgottenNote}`;
@@ -142,6 +156,8 @@ Do NOT trigger when:
 Reference relations by their [bracketed] id from the EXISTING RELATIONS list above. If you can't find an exact id match, do not invent one — omit the supersede.
 
 Return empty arrays only when the utterance has no extractable entities — small talk, hesitations, yes/no answers, filler tokens.
+${factsSection}
+
 Never speak to the user. You are not the conversational agent.
 
 ${forgottenNote}`;
@@ -197,7 +213,30 @@ export const extractGraphFunction = {
         items: { type: "string" },
         description: "Ids of existing relations the user just contradicted.",
       },
+      facts: {
+        type: "array",
+        description:
+          "Typed values the user stated in the new utterance that are not entities: amounts, counts, dates, percentages, text. " +
+          "\"My savings goal is 5k\" → {entity: \"savings goal\", attribute: \"amount\", valueNum: 5000, unit: \"USD\", status: \"confirmed\"}. " +
+          "\"I'm planning to raise it to 10k next year\" → the same key, valueNum 10000, status \"proposed\". " +
+          "Empty only when the utterance states no such value.",
+        items: {
+          type: "object",
+          properties: {
+            entity: { type: "string" },
+            attribute: { type: "string" },
+            valueNum: { type: "number" },
+            valueText: { type: "string" },
+            unit: { type: "string" },
+            status: { type: "string", enum: ["confirmed", "proposed", "cancelled"] },
+            eventDate: { type: "string", description: "YYYY-MM-DD" },
+            previousValueNum: { type: "number" },
+            previousValueText: { type: "string" },
+          },
+          required: ["entity", "attribute", "status"],
+        },
+      },
     },
-    required: ["entities", "relations"],
+    required: ["entities", "relations", "facts"],
   },
 };

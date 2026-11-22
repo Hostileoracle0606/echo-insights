@@ -83,5 +83,9 @@ GraphPatch filterNoise(GraphPatch patch, {Set<String>? extra}) {
     entities: kept,
     relations: relations,
     supersedes: patch.supersedes,
+    // A fact about a dropped entity would land on nothing: dropped with it.
+    facts: patch.facts
+        .where((fact) => !droppedKeys.contains(normalizeName(fact.entity)))
+        .toList(),
   );
 }

@@ -137,12 +137,52 @@ confirming the prior version. Never overwrite a `user_corrected` fact.
 
 **Done when**
 
-- [ ] Repeating a fact creates no duplicate row.
-- [ ] A changed value supersedes with correct `event_at` ordering, stable
+- [x] Repeating a fact creates no duplicate row.
+- [x] A changed value supersedes with correct `event_at` ordering, stable
   under out-of-order entries.
-- [ ] "Savings goal" and "monthly savings target" land on one attribute in the
+- [x] "Savings goal" and "monthly savings target" land on one attribute in the
   labelled fixtures.
-- [ ] Editing an entry re-derives its facts, except pinned corrections.
+- [x] Editing an entry re-derives its facts, except pinned corrections
+  (`record_memory_facts(..., p_replace => true)`; the app has no entry
+  editing yet, so nothing calls it).
+
+**Built** (`feat/ec-03-fact-extraction`).
+
+- **Database** (`record_memory_facts`): every decision is made in SQL, so a
+  retried or restored turn adds nothing. Outcomes: `repeat`, `superseded`,
+  `history` (said now about an earlier time), `pinned` (a correction made
+  after the statement wins) and `inserted`. "From X to Y" records Y and
+  confirms X when X is not already the version in effect.
+  `list_memory_fact_keys` returns the attribute names in use.
+- **Extraction** (`infra/lambda/extract-graph`): the model also returns
+  `facts`. It is shown the fact keys already stored for the turn's entities
+  (read with the user's own token, best effort) and `SAID AT`, the user's own
+  date, so "last Tuesday" resolves on their calendar. Each fact is checked on
+  its own; a malformed fact never costs the turn its entities. A placeholder
+  previous value ("unknown", or the new value again) is dropped.
+- **App**: `GraphPatch.facts` (kept in the durable checkpoint), `spokenAt`
+  on the extraction request, and the facts recorded against the server's
+  entry id once the commit succeeds. Best effort: a failure leaves the turn
+  saved without facts (EC-09 can derive them). Off the record nothing is
+  extracted, so nothing is recorded. The noise filter drops the facts of an
+  entity it drops.
+
+**Changed from the plan.**
+
+- Attribute names are matched by the model against the keys already stored,
+  not by embeddings. The model sees the turn in context; an embedding of two
+  words does not. The merge path for later collisions is still open.
+- A value that is itself an entity stays a relation ("Priya is moving to
+  Lisbon" is `Priya --moving_to--> Lisbon`). The model did this every time,
+  whatever the prompt said, and the graph already answers it. Facts hold
+  values that are not entities: amounts, counts, dates, percentages, text.
+
+**Real-model check** (`scripts/fact-eval.py`, staging, Gemini 2.5 Flash):
+14 of 15 case runs pass over three runs. The goal and "monthly savings
+target" land on one key, "from 1500 to 1700" gives current 1700 and previous
+1500, "last Tuesday" resolves to 17 Nov, an unsure "maybe 2k?" is never
+confirmed. The one miss: a turn's plan ("raise it to 10k next year") was
+left out once.
 
 ## EC-04 — Session state record
 

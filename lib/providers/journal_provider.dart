@@ -12,6 +12,7 @@ import '../audio/standard_opening.dart';
 import '../audio/voice_engine.dart';
 import '../logic/agenda.dart' as agenda_logic;
 import '../env.dart';
+import '../logic/fact_records.dart';
 import '../logic/context_rebuild_policy.dart';
 import '../logic/session_topics.dart';
 import '../logic/conversation_policy.dart';
@@ -909,6 +910,7 @@ class JournalNotifier extends Notifier<JournalState> {
             .toList(growable: false),
         retrievedEntityIds: retrieval.entityIds,
         answeringFollowUp: openFollowUps.isEmpty ? null : openFollowUps.last,
+        spokenAt: _spokenAt(effect.key.turnId),
       );
       vlog('timing', 'extract model +${clock.elapsedMilliseconds}ms');
       _lastPatches[effect.key.turnId] = patch;
@@ -923,6 +925,35 @@ class JournalNotifier extends Notifier<JournalState> {
       _dispatchTurn(
           DurableExtractionFailed(key: effect.key, message: '$error'));
     }
+  }
+
+  /// When [turnId] was said, in local time (EC-03: relative dates in the
+  /// turn are resolved from it). A restored turn keeps its original time.
+  DateTime? _spokenAt(String turnId) {
+    final turn = _turnMachine.state.pending
+        .where((t) => t.turnId == turnId)
+        .firstOrNull;
+    return turn == null ? null : DateTime.tryParse(turn.finalizedAt)?.toLocal();
+  }
+
+  /// EC-03: the committed turn's facts, recorded against its real entry.
+  /// Best effort: a failure leaves the turn saved without facts (EC-09's
+  /// backfill can derive them later), never blocks the conversation.
+  void _recordFacts(String notebookId, String entryId, GraphPatch patch) {
+    final facts = factRecords(patch, suppressed: _suppressed);
+    if (facts.isEmpty) return;
+    unawaited(() async {
+      try {
+        await ref.read(memoryFactServiceProvider).recordFacts(
+              notebookId: notebookId,
+              entryId: entryId,
+              facts: facts,
+            );
+        vlog('session', 'facts recorded: ${facts.length}');
+      } catch (error) {
+        vlog('session', 'facts not recorded: $error');
+      }
+    }());
   }
 
   Future<void> _runCommit(FinalizedTurn turn) async {
@@ -998,6 +1029,10 @@ class JournalNotifier extends Notifier<JournalState> {
 
     if (outcome is commit_service.CommitCommitted) {
       _revision = outcome.revision;
+      final committedEntryId = outcome.entryId;
+      final storedPatch = turn.extraction;
+      final factPatch = _lastPatches[turn.turnId] ??
+          (storedPatch == null ? null : GraphPatch.fromJson(storedPatch));
       // The server dropped these: the device stops showing them, and a
       // relaunch (which has no list of them) can't add them back for long.
       for (final id in outcome.suppressedIds) {
@@ -1025,6 +1060,9 @@ class JournalNotifier extends Notifier<JournalState> {
       }
       _preparedCommits.remove(turn.turnId);
       _lastPatches.remove(turn.turnId);
+      if (factPatch != null && committedEntryId != null) {
+        _recordFacts(turn.notebookId, committedEntryId, factPatch);
+      }
       _dispatchTurn(
           CommitCommitted(turnId: turn.turnId, revision: outcome.revision));
       // The server dropped or renamed something (LM-63: an id that spells a
