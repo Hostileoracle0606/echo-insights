@@ -1,5 +1,5 @@
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { readMemoryPassages, searchMemoryPassages } from "./passages.ts";
+import { MAX_EMBEDDED_PASSAGES, readMemoryPassages, searchMemoryPassages } from "./passages.ts";
 import { StubEmbedder } from "../_shared/embedder.ts";
 
 const entry = (id: string, text: string) => ({
@@ -74,4 +74,34 @@ Deno.test("lexical search survives an unavailable local embedder", async () => {
   assertEquals(await searchMemoryPassages(client, embedder, "basil"), [
     entry("a", "basil grows here"),
   ]);
+});
+
+// The hosted edge worker ran out of compute (HTTP 546) when every candidate,
+// up to about 60, was embedded on each routed question. Only the strongest
+// keyword and source candidates are embedded now.
+Deno.test("passage search embeds the question and at most the top candidates", async () => {
+  const rows = Array.from({ length: 60 }, (_, i) =>
+    entry(`e${String(i).padStart(2, "0")}`, i === 41 ? "Priya is moving to Lisbon" : `unrelated note ${i}`)
+  );
+  const client = {
+    rpc: (_name: string, args: Record<string, unknown>) =>
+      Promise.resolve({
+        data: args.p_exact
+          ? rows.filter((r) => (args.p_ids as string[]).includes(r.entryId))
+          : rows,
+        error: null,
+      }),
+  };
+  const embedded: string[][] = [];
+  const embedder = {
+    modelId: "stub@1",
+    embed: (texts: string[]) => {
+      embedded.push(texts);
+      return new StubEmbedder().embed(texts);
+    },
+  };
+  const result = await searchMemoryPassages(client, embedder, "Where is Priya moving?");
+  assertEquals(embedded.length, 1);
+  assertEquals(embedded[0].length <= 1 + MAX_EMBEDDED_PASSAGES, true);
+  assertEquals(result[0].entryId, "e41", "the keyword match is still embedded and ranked first");
 });

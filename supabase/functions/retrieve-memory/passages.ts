@@ -11,6 +11,12 @@ export interface PassageRpcClient {
 
 const MAX_RESULTS = 8;
 const MAX_SOURCES = 20;
+/**
+ * Candidates embedded per search, after a keyword and source pre-rank. The
+ * hosted edge worker ran out of compute (HTTP 546) embedding all of them,
+ * up to about 60, on every routed question.
+ */
+export const MAX_EMBEDDED_PASSAGES = 12;
 function cancelled(signal?: AbortSignal): void {
   if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
 }
@@ -75,27 +81,33 @@ export async function searchMemoryPassages(
   if (!query) return [];
   const candidates = await fetchRows(client, query, sourceIds, false, signal);
   if (!candidates.length) return [];
-  let vectors: number[][] = [];
-  try {
-    vectors = await embedder.embed([query, ...candidates.map((p) => p.text)]);
-    if (vectors.length !== candidates.length + 1) vectors = [];
-  } catch {
-    // Local semantic embedding is optional; lexical and source hits still work.
-  }
-  cancelled(signal);
   const terms = new Set(query.toLowerCase().match(/[\p{L}\p{N}]{3,}/gu) ?? []);
   const preferred = new Set(sourceIds.slice(0, MAX_SOURCES));
-  const ranked = candidates.map((p, i) => {
+  const base = candidates.map((p) => {
     const words = new Set(
       p.text.toLowerCase().match(/[\p{L}\p{N}]{3,}/gu) ?? [],
     );
     let overlap = 0;
     for (const term of terms) if (words.has(term)) overlap++;
-    return {
-      p,
-      score: (vectors.length ? cosine(vectors[0], vectors[i + 1]) : 0) +
-        overlap / Math.max(terms.size, 1) + (preferred.has(p.entryId) ? 1 : 0),
-    };
+    return overlap / Math.max(terms.size, 1) + (preferred.has(p.entryId) ? 1 : 0);
+  });
+  // Embed only the strongest keyword and source candidates.
+  const toEmbed = candidates
+    .map((_, i) => i)
+    .sort((a, b) => base[b] - base[a] || a - b)
+    .slice(0, MAX_EMBEDDED_PASSAGES);
+  const similarity = new Map<number, number>();
+  try {
+    const vectors = await embedder.embed([query, ...toEmbed.map((i) => candidates[i].text)]);
+    if (vectors.length === toEmbed.length + 1) {
+      toEmbed.forEach((i, k) => similarity.set(i, cosine(vectors[0], vectors[k + 1])));
+    }
+  } catch {
+    // Local semantic embedding is optional; lexical and source hits still work.
+  }
+  cancelled(signal);
+  const ranked = candidates.map((p, i) => {
+    return { p, score: (similarity.get(i) ?? 0) + base[i] };
   }).sort((a, b) => b.score - a.score || a.p.entryId.localeCompare(b.p.entryId))
     .slice(0, MAX_RESULTS);
   const fresh = await readMemoryPassages(
