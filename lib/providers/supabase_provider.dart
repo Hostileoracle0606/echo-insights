@@ -6,6 +6,7 @@ import '../services/account_auth_service.dart';
 import '../services/extract_graph_service.dart';
 import '../services/fresh_access_token.dart';
 import '../services/memory_control_service.dart';
+import '../services/memory_fact_service.dart';
 import '../services/model_inputs.dart';
 import '../services/notebook_commit_service.dart';
 import '../services/notebook_runtime_service.dart';
@@ -50,6 +51,10 @@ final accountAuthServiceProvider = Provider<AccountAuthService>((ref) {
 
 final notebookCommitServiceProvider = Provider<NotebookCommitService>((ref) {
   return NotebookCommitService(ref.watch(supabaseClientProvider));
+});
+
+final memoryFactServiceProvider = Provider<MemoryFactService>((ref) {
+  return MemoryFactService(ref.watch(supabaseClientProvider));
 });
 
 final memoryControlServiceProvider = Provider<MemoryControlService>((ref) {
