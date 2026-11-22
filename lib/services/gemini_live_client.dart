@@ -97,6 +97,8 @@ class GeminiLiveClient {
   /// Gemini will close this connection soon (its connections are
   /// time-limited). [timeLeft] is null when the server gave no parseable
   /// duration. A warm standby replaces itself on this signal.
+  /// EC-05: Gemini reported the window's size in prompt tokens.
+  void Function(int promptTokens)? onUsage;
   void Function(Duration? timeLeft)? onGoAway;
 
   Completer<void> _setupDone = _newSetupCompleter();
@@ -425,6 +427,13 @@ class GeminiLiveClient {
       return;
     }
     final msg = jsonDecode(text) as Map<String, dynamic>;
+
+    // EC-05: the window's size, on whatever message carries it.
+    final usage = msg['usageMetadata'];
+    if (usage is Map) {
+      final prompt = usage['promptTokenCount'];
+      if (prompt is int) onUsage?.call(prompt);
+    }
 
     if (msg.containsKey('setupComplete')) {
       _setupComplete = true;

@@ -13,6 +13,7 @@ import '../audio/voice_engine.dart';
 import '../logic/agenda.dart' as agenda_logic;
 import '../env.dart';
 import '../logic/fact_records.dart';
+import '../logic/context_materialiser.dart';
 import '../logic/context_rebuild_policy.dart';
 import '../logic/session_state.dart';
 import '../logic/session_topics.dart';
@@ -201,6 +202,11 @@ class JournalNotifier extends Notifier<JournalState> {
   /// Whether a stored record may exist for this conversation (saved, or
   /// restored): it is deleted when the conversation ends.
   bool _sessionStateStored = false;
+
+  /// EC-05: estimated tokens of turns not yet counted by the rebuild policy,
+  /// and the working set's facts, fetched before a rebuild connects.
+  int _unbudgetedTokens = 0;
+  List<WorkingFact> _workingFacts = const [];
   static const _maxMemoryCallsPerTurn = 3;
   // What the last memory lookup brought back (LM-13 / LM-14 read it).
   RecallActivity? _recall;
@@ -438,12 +444,63 @@ class JournalNotifier extends Notifier<JournalState> {
     session.live
       ..dropResumption()
       ..holdInput();
+    _workingFacts = await _fetchWorkingFacts();
     await _reconnect(
       session,
       reason,
       whilePaused: true,
       fresh: true,
     );
+  }
+
+  /// EC-05: current facts for the most recently seen entities. Bounded in
+  /// time; a rebuild without facts is still a rebuild.
+  Future<List<WorkingFact>> _fetchWorkingFacts() async {
+    final ids = (state.entities.values.toList()
+          ..sort((a, b) {
+            final byTime = b.lastSeen.compareTo(a.lastSeen);
+            return byTime != 0 ? byTime : a.id.compareTo(b.id);
+          }))
+        .take(60)
+        .map((entity) => entity.id)
+        .toList();
+    if (ids.isEmpty) return const [];
+    try {
+      return await ref
+          .read(memoryFactServiceProvider)
+          .currentFacts(ids)
+          .timeout(const Duration(milliseconds: 800));
+    } catch (error) {
+      vlog('rebuild', 'working-set facts unavailable: $error');
+      return const [];
+    }
+  }
+
+  /// EC-05: the rebuilt context, from stored state only: continuation,
+  /// working set, session state and the last few turns.
+  MaterialisedContext _materialisedContext() {
+    final latestEntry = state.entries.isEmpty ? null : state.entries.first;
+    final active = <String>{
+      ..._recalledThisSession,
+      ...?latestEntry?.entityIds,
+      for (final entity in state.entities.values)
+        if (_sessionState.covered.contains(entity.name)) entity.id,
+    }..removeWhere((id) => !state.entities.containsKey(id));
+    final built = materialiseContext(
+      graph: state,
+      facts: _workingFacts,
+      session: _sessionState.redacted(_redactor.redact),
+      recentTurns: resumeContext(
+        conversation: _lumenConversation,
+        entries: state.entries,
+      ),
+      activeEntityIds: active,
+      planning: _buildGraphSummary(),
+      now: DateTime.now(),
+    );
+    vlog('rebuild', 'context ~${built.estimatedTokens} tokens, '
+        '${built.turns.length} turns');
+    return built;
   }
 
   void toggleMute() {
@@ -622,6 +679,10 @@ class JournalNotifier extends Notifier<JournalState> {
           _lumenSaidThisSession[turn.turnId] = turn.text;
         }
         if (_sessionStateTurnIds.add(turn.turnId)) {
+          // EC-05: what the turn added to the window, if Gemini doesn't say.
+          // Spoken audio costs ~25 tokens a second, far more than its text.
+          _unbudgetedTokens += estimateTokens(turn.text) *
+              (turn.input == TurnInput.voice ? 7 : 1);
           _sessionState = _sessionState.observe(
             speaker: turn.role,
             text: _redactor.redact(turn.text),
@@ -2107,6 +2168,9 @@ class JournalNotifier extends Notifier<JournalState> {
         if (!isCurrent()) return null;
         return result;
       }
+      ..onUsage = (promptTokens) {
+        if (isCurrent()) _rebuildPolicy?.observedWindow(promptTokens);
+      }
       ..onGoAway = (timeLeft) {
         if (!isCurrent() || !identical(_session, prepared)) return;
         vlog('session', 'Gemini will close this connection in $timeLeft');
@@ -2279,23 +2343,23 @@ class JournalNotifier extends Notifier<JournalState> {
           if (fresh) {
             // Saved turns only: the off-record ones are not in this list.
             final continuing = _continuesConversation;
-            live
-              ..sendHistory(
-                continuing
-                    ? resumeContext(
-                        conversation: _lumenConversation,
-                        entries: state.entries,
-                      )
-                    : const [],
-                note: continuing ? resumeNote : null,
+            if (continuing) {
+              // EC-05: the same conversation goes on, from stored state.
+              final built = _materialisedContext();
+              live.sendHistory(built.turns,
+                  note: resumeNote, context: built.context);
+            } else {
+              live.sendHistory(
+                const [],
                 context: openingContext(
                   openingLine: null,
                   brief: null,
                   briefAlreadyRaised: true,
                   graphSummary: _buildGraphSummary(),
                 ),
-              )
-              ..releaseInput();
+              );
+            }
+            live.releaseInput();
             _turnMachine.holdAssistantOffRecord = false;
           }
           // A cut-off reply's turn ended with the old connection.
@@ -2532,7 +2596,8 @@ class JournalNotifier extends Notifier<JournalState> {
         // unless it is the cut-off reply's own completion.
         if (!_droppingCutOffReply) {
           _setAwaitingReply(false);
-          _rebuildPolicy?.turnCompleted();
+          _rebuildPolicy?.turnCompleted(tokens: _unbudgetedTokens);
+          _unbudgetedTokens = 0;
         }
         _droppingCutOffReply = false;
         _memoryCallsThisTurn = 0;
@@ -2929,7 +2994,10 @@ final speechEndGraceProvider = Provider<Duration>(
 /// override it.
 final contextRebuildConfigProvider = Provider<ContextRebuildConfig?>(
   (ref) => Env.contextRebuildEnabled
-      ? ContextRebuildConfig.fromDefines(maxTurns: Env.contextRebuildMaxTurns)
+      ? ContextRebuildConfig.fromDefines(
+          maxTurns: Env.contextRebuildMaxTurns,
+          maxTokens: Env.contextRebuildMaxTokens,
+        )
       : null,
 );
 

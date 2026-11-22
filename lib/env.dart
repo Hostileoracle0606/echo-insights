@@ -29,6 +29,8 @@ class Env {
         String.fromEnvironment('CONTEXT_REBUILD_ENABLED'),
     'CONTEXT_REBUILD_MAX_TURNS':
         String.fromEnvironment('CONTEXT_REBUILD_MAX_TURNS'),
+    'CONTEXT_REBUILD_MAX_TOKENS':
+        String.fromEnvironment('CONTEXT_REBUILD_MAX_TOKENS'),
   };
 
   static String _first(List<String> keys) {
@@ -78,7 +80,13 @@ class Env {
       (_clean(_defined['CONTEXT_REBUILD_ENABLED']) ?? '').toLowerCase() ==
       'true';
 
-  /// Turns per session before a rebuild (EC-01); empty keeps the default.
+  /// Turns per session before a rebuild (EC-01): an override for testing;
+  /// empty leaves only the token budget.
   static String get contextRebuildMaxTurns =>
       _clean(_defined['CONTEXT_REBUILD_MAX_TURNS']) ?? '';
+
+  /// Window tokens since the last rebuild before the next (EC-05); empty
+  /// keeps the default.
+  static String get contextRebuildMaxTokens =>
+      _clean(_defined['CONTEXT_REBUILD_MAX_TOKENS']) ?? '';
 }

@@ -163,6 +163,20 @@ void main() {
       expect(timeLeft, const Duration(milliseconds: 12500));
     });
 
+    test('usage metadata reports the window size, alongside content (EC-05)',
+        () {
+      final seen = <int>[];
+      final client = makeClient()..onUsage = seen.add;
+      client.handleServerMessage(jsonEncode({
+        'serverContent': {'turnComplete': true},
+        'usageMetadata': {'promptTokenCount': 4210, 'totalTokenCount': 4400},
+      }));
+      client.handleServerMessage(jsonEncode({
+        'usageMetadata': {'totalTokenCount': 'x'},
+      }));
+      expect(seen, [4210]);
+    });
+
     test('goAway without a parseable timeLeft still fires', () {
       var fired = false;
       Duration? timeLeft = Duration.zero;
