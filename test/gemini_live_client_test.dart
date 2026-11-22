@@ -317,6 +317,37 @@ void main() {
       });
     });
 
+    test('a stale null result is not sent', () {
+      fakeAsync((async) {
+        final pending = Completer<Map<String, dynamic>?>();
+        final socket = connectedClient(async, (name, args) => pending.future);
+        socket().serverSends(toolCall('stale'));
+        pending.complete(null);
+        async.flushMicrotasks();
+        async.elapse(const Duration(seconds: 5));
+        expect(toolResponses(socket()), isEmpty);
+      });
+    });
+
+    test('provider cancellation suppresses late result and timeout', () {
+      fakeAsync((async) {
+        final pending = Completer<Map<String, dynamic>?>();
+        final socket = connectedClient(async, (name, args) => pending.future);
+        socket().serverSends(toolCall('canceled'));
+        async.flushMicrotasks();
+        socket().serverSends({
+          'toolCallCancellation': {
+            'ids': ['canceled']
+          }
+        });
+        async.flushMicrotasks();
+        pending.complete({'answer': 'stale'});
+        async.flushMicrotasks();
+        async.elapse(const Duration(seconds: 5));
+        expect(toolResponses(socket()), isEmpty);
+      });
+    });
+
     test('a tool that throws is answered empty straight away', () {
       fakeAsync((async) {
         final socket = connectedClient(
