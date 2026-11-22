@@ -265,3 +265,58 @@ Deno.test("provider throttling asks the user to retry without inferring the jour
   assertEquals(logs[0].outcome, "evidence_unavailable");
   assertEquals(logs[0].providerStatus, 429);
 });
+
+// Open recall ("What did I say about Priya?") has no value to compute, version
+// to pick or event to confirm, so the resolver adds only latency and failure
+// modes ("Which time or version?", "describes a plan"). The graph's linked
+// entries go straight back as the user's own words for Live to answer from.
+Deno.test("open recall answers from the linked entries without the resolver", async () => {
+  const logs: Record<string, unknown>[] = [];
+  const unused = () => {
+    throw new Error("No resolver or reread expected");
+  };
+  const entry = (entryId: string, text: string): MemoryPassage => ({
+    ...passage,
+    entryId,
+    notebookId: `nb-${entryId}`,
+    text,
+  });
+  const linked = [
+    entry("move", "My sister Priya is moving to Lisbon next month."),
+    entry("work", "No, I think she's moving there mostly for work."),
+    entry("dev", "She is a software developer."),
+    entry("happy", "I'm happy for her."),
+  ];
+  const result = await runMemoryQuery(
+    {
+      route: () =>
+        Promise.resolve({ operation: "recall", timeScope: "unspecified" }),
+      resolve: unused,
+    },
+    {
+      auth: { getUser: unused },
+      from: unused,
+      rpc: (_name, args) => Promise.resolve({ data: args.p_text, error: null }),
+    },
+    "What did I say about Priya?",
+    "Priya",
+    Date.now(),
+    { evidence: () => Promise.resolve(linked), reread: unused },
+    (fields) => logs.push(fields),
+  );
+  assertEquals(result.verdict.status, "supported");
+  assertEquals(result.verdict.sourceIds, ["move", "work", "dev"]);
+  assertEquals(result.quotes.map((q) => q.text), [
+    "My sister Priya is moving to Lisbon next month.",
+    "No, I think she's moving there mostly for work.",
+    "She is a software developer.",
+  ]);
+  assertEquals(result.quotes.every((q) => result.verdict.sourceIds.includes(q.entryId)), true);
+  assertEquals(logs[0].outcome, "open_recall");
+});
+
+Deno.test("recall that asks for a version still goes through the resolver", async () => {
+  const { call, events } = setup();
+  await call();
+  assertEquals(events.includes("resolve"), true);
+});

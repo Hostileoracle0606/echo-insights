@@ -175,10 +175,28 @@ conversation takes priority. Instruct Lumen to call a tool, never guess, for
 anything outside its context. Reuse the plan/completion and version rules from
 the memory-routing branch, moved onto typed facts.
 
+**Replaces the query-time resolver.** Routed recall (`retrieve-memory` v3)
+still extracts facts from linked entries with a Gemini 2.5 Flash call on every
+question ([`evidence.ts`](../supabase/functions/retrieve-memory/evidence.ts)).
+That call does no arithmetic, which is already code. It turns sentences into
+numbers, units, dates and plan-or-done, and it costs ~1.5 s per question. It
+also labels the same entries differently from run to run: on staging (22 Nov
+2026), "What did I say about Priya?" and "What did the user say about Priya?"
+returned different clarifications over the same three entries. With EC-02 and
+EC-03 storing those facts once, at write time, the router chooses which tool
+to call and the answer needs no model. The resolver is then deleted.
+
+Open recall (router: `recall` with an `unspecified` time scope) no longer
+calls the resolver. It returns the graph's top linked entries as quotes
+(`feat/open-recall`). Only calculations, version questions and event
+confirmation still pay for the query-time call until this ticket lands.
+
 **Done when**
 
 - [ ] The MQ eval cases pass against the tools with no passage extraction.
 - [ ] Tool latency p95 is under 300 ms server side.
+- [ ] Routed calculate, version and confirm-event questions make no model call
+  after the router, and `evidence.ts` is removed.
 
 ## EC-07 — Correction flow
 

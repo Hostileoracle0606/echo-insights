@@ -30,6 +30,32 @@ export type GraphEvidenceSource = {
   reread(sourceIds: string[], signal: AbortSignal): Promise<MemoryPassage[]>;
 };
 
+/**
+ * Open recall: the user asks what they said about something, with no value to
+ * compute, version to pick or event to confirm. The resolver only adds latency
+ * and failure modes there ("Which time or version?", "describes a plan"), so
+ * the graph's most connected linked entries go back as the user's own words
+ * and Live answers from them, as it does for v2.
+ */
+export const OPEN_RECALL_TEXT =
+  "These are the user's own past words that match. Answer from them in your own words.";
+
+function isOpenRecall(route: MemoryRoute): boolean {
+  return route.operation === "recall" && route.timeScope === "unspecified";
+}
+
+function toQuote(passage: MemoryPassage) {
+  return {
+    entryId: passage.entryId,
+    notebookId: passage.notebookId,
+    text: clip(passage.text),
+    spokenAt: passage.spokenAt,
+    createdAt: passage.createdAt,
+    notebookTitle: "",
+    turnId: null,
+  };
+}
+
 async function redact(
   client: DbClient,
   input: string,
@@ -110,6 +136,18 @@ export async function runMemoryQuery(
       record("no_graph_match", route);
       return memoryQueryResponse();
     }
+    if (isOpenRecall(route)) {
+      const shown = passages.slice(0, MAX_QUOTES);
+      record("open_recall", { ...route, sourceCount: shown.length });
+      return memoryQueryResponse(
+        {
+          status: "supported",
+          text: OPEN_RECALL_TEXT,
+          sourceIds: shown.map((p) => p.entryId),
+        },
+        shown.map(toQuote),
+      );
+    }
     const verdict = await deps.resolve(safeQuestion, route, passages, signal);
     signal.throwIfAborted();
     if (
@@ -168,18 +206,7 @@ export async function runMemoryQuery(
     record("supported", { ...route, sourceCount: sourceIds.length });
     return memoryQueryResponse(
       { status: "supported", text, sourceIds },
-      sourceIds.slice(0, MAX_QUOTES).map((id) => {
-        const passage = fresh.get(id)!;
-        return {
-          entryId: passage.entryId,
-          notebookId: passage.notebookId,
-          text: clip(passage.text),
-          spokenAt: passage.spokenAt,
-          createdAt: passage.createdAt,
-          notebookTitle: "",
-          turnId: null,
-        };
-      }),
+      sourceIds.slice(0, MAX_QUOTES).map((id) => toQuote(fresh.get(id)!)),
     );
   };
 
