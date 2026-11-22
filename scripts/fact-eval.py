@@ -35,16 +35,32 @@ CASES = [
         "name": "same goal, different words",
         "turns": ["My savings goal is 5k.", "I bumped my monthly savings target up to 6k."],
         "expect": [("savings-goal", None, "current", 6000), ("savings-goal", None, "previous", 5000)],
+        "asks": [
+            ("What's my savings goal now?", "savings goal", "6000"),
+            ("What was my savings goal before?", "savings goal", "5000"),
+            ("How much did my savings goal go up?", "savings goal", "up 1000"),
+        ],
     },
     {
         "name": "from X to Y",
         "turns": ["My rent went from 1500 to 1700 a month."],
         "expect": [("rent", None, "current", 1700), ("rent", None, "previous", 1500)],
+        "asks": [
+            ("How much is my rent now?", "rent", "1700"),
+            ("What was my rent before?", "rent", "1500"),
+        ],
     },
     {
         "name": "a plan is proposed, not current",
         "turns": ["My savings goal is 5k.", "I'm planning to raise my savings goal to 10k next year."],
         "expect": [("savings-goal", None, "current", 5000), ("savings-goal", None, "proposed_num", 10000)],
+        "asks": [("Did I raise my savings goal to 10k?", "savings goal", "planned")],
+    },
+    {
+        "name": "a total across items",
+        "turns": ["My rent is 1700 a month.", "I spend 400 a month on groceries."],
+        "expect": [("rent", None, "current", 1700), ("groceries", None, "current", 400)],
+        "asks": [("What do my rent and groceries come to in total?", "rent groceries", "2100")],
     },
     {
         "name": "an unsure value is not a fact",
@@ -105,6 +121,9 @@ def rpc(token, name, params):
 
 def slugify(name):
     return re.sub(r"-+", "-", re.sub(r"[^a-z0-9]+", "-", name.lower())).strip("-")
+
+
+ASK_MS = []
 
 
 def run_case(token, user_id, case):
@@ -168,7 +187,22 @@ def run_case(token, user_id, case):
                 "p_notebook_id": notebook, "p_entry_id": result["ids"]["entryId"], "p_facts": facts,
             }) if facts else {"recorded": [], "skipped": 0}
             recorded.append((text, patch.get("facts", []), outcome))
-        return check(token, case, known, recorded)
+        ok, lines = check(token, case, known, recorded)
+        for question, hint, want in case.get("asks", []):
+            start = time.time()
+            status, data = call("POST", f"{URL}/functions/v1/retrieve-memory", {
+                "scope": "user", "notebookId": notebook, "version": 3,
+                "query": hint, "question": question,
+            }, token)
+            ms = (time.time() - start) * 1000
+            ASK_MS.append(ms)
+            verdict = (data or {}).get("verdict", {}) if status == 200 else {}
+            text = verdict.get("text", "")
+            passed = status == 200 and want.lower() in text.lower()
+            ok &= passed
+            lines.append(f"    {'PASS' if passed else 'FAIL'} ask {question!r} ({ms:.0f} ms): "
+                         f"{verdict.get('status', status)} | {text[:120]}")
+        return ok, lines
     finally:
         call("DELETE", f"{URL}/rest/v1/notebooks?id=eq.{notebook}", None, token)
 
@@ -234,6 +268,11 @@ def main():
         print(f"{'PASS' if ok else 'FAIL'} {case['name']} ({time.time() - start:.1f}s)")
         print("\n".join(lines))
     print(f"\n{passed}/{len(selected)} cases passed")
+    if ASK_MS:
+        ordered = sorted(ASK_MS)
+        p95 = ordered[min(len(ordered) - 1, int(round(0.95 * (len(ordered) - 1))))]
+        print(f"routed questions: {len(ordered)}, p50 {ordered[len(ordered) // 2]:.0f} ms, "
+              f"p95 {p95:.0f} ms (wall time, including the network)")
     return 0 if passed == len(selected) else 1
 
 

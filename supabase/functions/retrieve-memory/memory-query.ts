@@ -1,41 +1,34 @@
 import type { DbClient } from "../_shared/db-client.ts";
+import type { MemoryFact } from "../_shared/memory-fact-contract.ts";
 import { MAX_QUOTES } from "../_shared/retrieve-memory-contract.ts";
-import { EvidenceUnavailable } from "./evidence.ts";
+import { answerFromFacts, type FactEntity } from "./fact-answers.ts";
+import { fallbackRoute } from "./fallback-route.ts";
 import {
   type MemoryPassage,
   memoryQueryResponse,
   type MemoryRoute,
-  type MemoryVerdict,
 } from "./memory-query-types.ts";
 import { clip } from "./quotes.ts";
 
 export type MemoryQueryDeps = {
   timeoutMs?: number;
   route(question: string, signal: AbortSignal): Promise<MemoryRoute | null>;
-  resolve(
-    question: string,
-    route: MemoryRoute,
-    passages: MemoryPassage[],
-    signal: AbortSignal,
-  ): Promise<MemoryVerdict>;
 };
 
 /**
- * Where routed recall gets its evidence: the graph only (graph-evidence.ts).
- * [evidence] returns the entries linked to the entities matching the query;
- * [reread] reads the cited ones again, the same way, before answering.
+ * Where routed recall reads from: the graph and the fact layer only.
+ * [evidence] returns the entries linked to the entities matching the query
+ * (graph-evidence.ts); [facts] returns those same entities with every live
+ * fact stored for them (EC-06).
  */
 export type GraphEvidenceSource = {
   evidence(query: string, signal: AbortSignal): Promise<MemoryPassage[]>;
-  reread(sourceIds: string[], signal: AbortSignal): Promise<MemoryPassage[]>;
+  facts(signal: AbortSignal): Promise<{ entities: FactEntity[]; facts: MemoryFact[] }>;
 };
 
 /**
- * Open recall: the user asks what they said about something, with no value to
- * compute, version to pick or event to confirm. The resolver only adds latency
- * and failure modes there ("Which time or version?", "describes a plan"), so
- * the graph's most connected linked entries go back as the user's own words
- * and Live answers from them, as it does for v2.
+ * The user's own words, for Live to answer from: open recall ("What did I
+ * say about Priya?"), and any exact question no stored fact answers.
  */
 export const OPEN_RECALL_TEXT =
   "These are the user's own past words that match. Answer from them in your own words.";
@@ -106,121 +99,75 @@ export async function runMemoryQuery(
     },
   );
 
+  const quotesAnswer = (
+    passages: MemoryPassage[],
+    route: MemoryRoute,
+    outcome: string,
+    extra: Record<string, unknown> = {},
+  ) => {
+    const shown = passages.slice(0, MAX_QUOTES);
+    record(outcome, { ...route, sourceCount: shown.length, ...extra });
+    return memoryQueryResponse(
+      { status: "supported", text: OPEN_RECALL_TEXT, sourceIds: shown.map((p) => p.entryId) },
+      shown.map(toQuote),
+    );
+  };
+
   const work = async () => {
     const [safeQuestion, safeHint] = await Promise.all([
       redact(client, question, signal),
       hint ? redact(client, hint, signal) : Promise.resolve(""),
     ]);
     if (safeQuestion.length < 2) return memoryQueryResponse();
-    const route = await deps.route(safeQuestion, signal);
+    // When the router declines, code routes the question from its wording:
+    // the user is never told the journal couldn't be checked.
+    const decided = await deps.route(safeQuestion, signal);
     signal.throwIfAborted();
-    if (!route || route.operation === "conversation") {
-      record(route ? "conversation" : "route_fallback");
-      if (route) {
-        return memoryQueryResponse({
-          status: "conversation",
-          text: "Continue the conversation normally.",
-          sourceIds: [],
-        });
-      }
+    const route = decided ?? fallbackRoute(safeQuestion);
+    const routed = (outcome: string, details: Record<string, unknown> = {}) =>
+      record(outcome, { ...details, ...(decided ? {} : { routeFallback: true }) });
+    if (route.operation === "conversation") {
+      routed("conversation");
       return memoryQueryResponse({
-        status: "clarification",
-        text: "I couldn't check your journal just now. Could you ask again?",
+        status: "conversation",
+        text: "Continue the conversation normally.",
         sourceIds: [],
       });
     }
 
     const passages = await graph.evidence(safeHint || safeQuestion, signal);
     signal.throwIfAborted();
-    if (!passages.length) {
-      record("no_graph_match", route);
-      return memoryQueryResponse();
-    }
     if (isOpenRecall(route)) {
-      const shown = passages.slice(0, MAX_QUOTES);
-      record("open_recall", { ...route, sourceCount: shown.length });
-      return memoryQueryResponse(
-        {
-          status: "supported",
-          text: OPEN_RECALL_TEXT,
-          sourceIds: shown.map((p) => p.entryId),
-        },
-        shown.map(toQuote),
-      );
+      if (!passages.length) {
+        routed("no_graph_match", route);
+        return memoryQueryResponse();
+      }
+      return quotesAnswer(passages, route, "open_recall", decided ? {} : { routeFallback: true });
     }
-    const verdict = await deps.resolve(safeQuestion, route, passages, signal);
+
+    // EC-06: an exact question is answered from stored facts by code. No
+    // model call after the router.
+    const { entities, facts } = await graph.facts(signal);
     signal.throwIfAborted();
-    if (
-      verdict.status === "insufficient_evidence" ||
-      verdict.status === "conversation"
-    ) {
-      record("insufficient_evidence", route);
-      return memoryQueryResponse();
+    const answer = answerFromFacts(safeQuestion, route, entities, facts);
+    if (answer) {
+      const text = await redact(client, answer.text, signal);
+      if (text && text === answer.text) {
+        routed("fact_answer", { ...route, status: answer.status, factCount: facts.length });
+        return memoryQueryResponse(answer);
+      }
     }
-
-    const text = await redact(client, verdict.text, signal);
-    if (!text || text !== verdict.text || text.length > 1500) {
-      return memoryQueryResponse();
+    // No stored fact fits: the user's own words, if any.
+    if (passages.length) {
+      return quotesAnswer(passages, route, "fact_fallback_quotes", decided ? {} : { routeFallback: true });
     }
-    if (verdict.status === "clarification" && !verdict.sourceIds.length) {
-      record("clarification", route);
-      return memoryQueryResponse({
-        status: "clarification",
-        text,
-        sourceIds: [],
-      });
-    }
-
-    const selected = new Map(passages.map((p) => [p.entryId, p]));
-    const sourceIds = [...new Set(verdict.sourceIds)];
-    if (!sourceIds.length || sourceIds.some((id) => !selected.has(id))) {
-      return memoryQueryResponse();
-    }
-    const fresh = new Map(
-      (await graph.reread(sourceIds, signal)).map((p) => [p.entryId, p]),
-    );
-    signal.throwIfAborted();
-    if (
-      sourceIds.some((id) => {
-        const old = selected.get(id)!;
-        const current = fresh.get(id);
-        return !current || current.notebookId !== old.notebookId ||
-          current.text !== old.text ||
-          current.spokenAt !== old.spokenAt ||
-          current.createdAt !== old.createdAt;
-      })
-    ) {
-      record("source_changed", route);
-      return memoryQueryResponse();
-    }
-
-    if (verdict.status === "clarification") {
-      record("clarification", route);
-      return memoryQueryResponse({
-        status: "clarification",
-        text,
-        sourceIds: [],
-      });
-    }
-
-    record("supported", { ...route, sourceCount: sourceIds.length });
-    return memoryQueryResponse(
-      { status: "supported", text, sourceIds },
-      sourceIds.slice(0, MAX_QUOTES).map((id) => toQuote(fresh.get(id)!)),
-    );
+    routed("no_graph_match", route);
+    return memoryQueryResponse();
   };
 
   try {
     return await Promise.race([work(), expired]);
-  } catch (error) {
-    if (!signal.aborted && error instanceof EvidenceUnavailable) {
-      record("evidence_unavailable", { providerStatus: error.status });
-      return memoryQueryResponse({
-        status: "clarification",
-        text: "I couldn't check your journal just now. Could you ask again?",
-        sourceIds: [],
-      });
-    }
+  } catch {
     if (!signal.aborted) record("workflow_unavailable");
     return memoryQueryResponse();
   } finally {

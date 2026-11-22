@@ -26,4 +26,11 @@ void main() {
             "never bring up something it returned that the user didn't ask about"));
     expect(toolDescription, contains('not to find something to talk about'));
   });
+
+  test('exact questions go to the tool, never a guess (EC-06)', () {
+    expect(geminiLiveSystemInstruction,
+        contains('an exact value, a total or difference'));
+    expect(geminiLiveSystemInstruction,
+        contains('Never guess a number or a date.'));
+  });
 }

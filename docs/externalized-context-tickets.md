@@ -296,10 +296,41 @@ confirmation still pay for the query-time call until this ticket lands.
 
 **Done when**
 
-- [ ] The MQ eval cases pass against the tools with no passage extraction.
-- [ ] Tool latency p95 is under 300 ms server side.
-- [ ] Routed calculate, version and confirm-event questions make no model call
+- [x] The MQ eval cases pass against the tools with no passage extraction.
+- [ ] Tool latency p95 is under 300 ms server side. (Not met as written: the
+  router is a ~250 ms model call. See below.)
+- [x] Routed calculate, version and confirm-event questions make no model call
   after the router, and `evidence.ts` is removed.
+
+**Built** (`feat/ec-06-fact-tools`), inside the existing routed
+`get_relevant_memory` path rather than four new Live tools. The router
+already says what kind of question it is, and one tool keeps Gemini's choice
+simple.
+
+- `fact-answers.ts`: graph selection picks the entities, the question's words
+  pick the attribute, and code answers from `get_entity_fact_history`:
+  current, previous, as of a date or month, the change between versions,
+  whether a plan happened (a named value is checked against that value),
+  totals and differences in the question's order. Decimal-safe; units are
+  never mixed; a repeated value is one version. Answers say when the value
+  was said ("latest stored, said 20 Nov 2026").
+- No stored fact: the linked entries go back as the user's own words. Open
+  recall is unchanged.
+- `fallback-route.ts`: when the Decisions router declines, code routes the
+  question from its wording. A remark with no memory cue is conversation.
+  This removes "I couldn't check your journal just now", which a user heard
+  after "Ask me something interesting".
+- `evidence.ts` (the per-question extraction call) and the re-read are gone.
+- The prompt tells Lumen to call the tool for exact values, totals, changes
+  and plans, and never to guess a number or a date.
+
+**Measured** (`scripts/fact-eval.py`, staging, real extraction then routed
+questions). Answers matched every time the facts were stored. The misses were
+extraction skipping a stated plan (2 of 5 runs of that case). Wall time per
+routed question: p50 0.6–1.0 s, p95 0.8–1.5 s, including the network and the
+router. That replaces 2.0–3.2 s with the resolver. The 300 ms server target
+excludes the router and could not be measured separately: the function logs
+are not readable through the API.
 
 ## EC-07 — Correction flow
 

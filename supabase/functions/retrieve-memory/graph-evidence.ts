@@ -85,18 +85,3 @@ export async function graphEvidence(
     .map((entry) => entry.passage);
   return { entityIds, passages };
 }
-
-/** The cited entries as they are now, read through the same graph links. */
-export async function rereadEvidence(
-  client: DbClient,
-  entityIds: string[],
-  sourceIds: string[],
-  signal: AbortSignal,
-): Promise<MemoryPassage[]> {
-  if (!entityIds.length || !sourceIds.length) return [];
-  const linked = await linkedEntries(client, entityIds, signal);
-  return sourceIds.flatMap((id) => {
-    const entry = linked.get(id);
-    return entry ? [entry.passage] : [];
-  });
-}
