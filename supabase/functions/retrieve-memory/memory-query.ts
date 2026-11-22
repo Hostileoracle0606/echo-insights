@@ -12,24 +12,22 @@ import { clip } from "./quotes.ts";
 export type MemoryQueryDeps = {
   timeoutMs?: number;
   route(question: string, signal: AbortSignal): Promise<MemoryRoute | null>;
-  search(
-    client: DbClient,
-    question: string,
-    hint: string,
-    signal: AbortSignal,
-    sourceIds?: string[],
-  ): Promise<MemoryPassage[]>;
   resolve(
     question: string,
     route: MemoryRoute,
     passages: MemoryPassage[],
     signal: AbortSignal,
   ): Promise<MemoryVerdict>;
-  reread(
-    client: DbClient,
-    sourceIds: string[],
-    signal: AbortSignal,
-  ): Promise<MemoryPassage[]>;
+};
+
+/**
+ * Where routed recall gets its evidence: the graph only (graph-evidence.ts).
+ * [evidence] returns the entries linked to the entities matching the query;
+ * [reread] reads the cited ones again, the same way, before answering.
+ */
+export type GraphEvidenceSource = {
+  evidence(query: string, signal: AbortSignal): Promise<MemoryPassage[]>;
+  reread(sourceIds: string[], signal: AbortSignal): Promise<MemoryPassage[]>;
 };
 
 async function redact(
@@ -54,7 +52,7 @@ export async function runMemoryQuery(
   question: string,
   hint: string,
   startedAt: number,
-  graphSources: (query: string, signal: AbortSignal) => Promise<string[]>,
+  graph: GraphEvidenceSource,
   log: (fields: Record<string, unknown>) => void,
 ) {
   const controller = new AbortController();
@@ -106,44 +104,13 @@ export async function runMemoryQuery(
       });
     }
 
-    const searchGraph = async () => {
-      const sourceIds = await graphSources(safeHint || safeQuestion, signal);
-      signal.throwIfAborted();
-      if (!sourceIds.length) return [];
-      const linked = await deps.search(
-        client,
-        safeQuestion,
-        safeHint,
-        signal,
-        sourceIds,
-      );
-      signal.throwIfAborted();
-      return linked;
-    };
-    let passages = await deps.search(client, safeQuestion, safeHint, signal);
+    const passages = await graph.evidence(safeHint || safeQuestion, signal);
     signal.throwIfAborted();
-    let triedGraph = false;
     if (!passages.length) {
-      triedGraph = true;
-      passages = await searchGraph();
-    }
-    if (!passages.length) {
-      record("no_passages", route);
+      record("no_graph_match", route);
       return memoryQueryResponse();
     }
-    let verdict = await deps.resolve(safeQuestion, route, passages, signal);
-    signal.throwIfAborted();
-    // An irrelevant recent hit can still leave the answer missing. Try linked
-    // evidence once when it contributes a new eligible source within the budget.
-    if (verdict.status === "insufficient_evidence" && !triedGraph) {
-      const linked = await searchGraph();
-      if (
-        linked.some((p) => !passages.some((old) => old.entryId === p.entryId))
-      ) {
-        passages = linked;
-        verdict = await deps.resolve(safeQuestion, route, passages, signal);
-      }
-    }
+    const verdict = await deps.resolve(safeQuestion, route, passages, signal);
     signal.throwIfAborted();
     if (
       verdict.status === "insufficient_evidence" ||
@@ -172,7 +139,7 @@ export async function runMemoryQuery(
       return memoryQueryResponse();
     }
     const fresh = new Map(
-      (await deps.reread(client, sourceIds, signal)).map((p) => [p.entryId, p]),
+      (await graph.reread(sourceIds, signal)).map((p) => [p.entryId, p]),
     );
     signal.throwIfAborted();
     if (

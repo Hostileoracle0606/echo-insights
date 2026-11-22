@@ -5,7 +5,6 @@ import { safeLog } from "../_shared/safe-log.ts";
 import { createHandler, type DbClient } from "./handler.ts";
 import { createDecisionsRouter } from "./decisions.ts";
 import { createEvidenceResolver } from "./evidence.ts";
-import { readMemoryPassages, searchMemoryPassages } from "./passages.ts";
 
 // Thin entry point: real clients, embedder and log sink. The request logic,
 // both scopes and their tests live in handler.ts.
@@ -41,20 +40,7 @@ function routeConfiguration() {
           highConfidence: confidenceRange && confidenceRange === "high",
         }),
     }),
-    search: (
-      client: DbClient,
-      question: string,
-      hint: string,
-      signal: AbortSignal,
-      sourceIds?: string[],
-    ) =>
-      searchMemoryPassages(client, {
-        modelId: "gte-small@1",
-        // Initialize only when ranking, so startup failure can degrade to lexical search.
-        embed: (texts) => new GteSmallEmbedder().embed(texts),
-      }, question, hint, signal, sourceIds),
     resolve: createEvidenceResolver({ getApiKey, fetch }),
-    reread: readMemoryPassages,
   };
 }
 

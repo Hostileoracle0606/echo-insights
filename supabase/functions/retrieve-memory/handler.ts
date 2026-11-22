@@ -9,6 +9,7 @@ import {
   retrieveMemoryResponseV2,
 } from "../_shared/retrieve-memory-contract.ts";
 import { buildContext } from "./context.ts";
+import { graphEvidence, rereadEvidence } from "./graph-evidence.ts";
 import { selectRelevant } from "./select.ts";
 import { loadQuotes } from "./quotes.ts";
 import { runMemoryQuery, type MemoryQueryDeps } from "./memory-query.ts";
@@ -272,24 +273,41 @@ export function createHandler(deps: RetrieveMemoryDeps): (req: Request) => Promi
 
       if (body.version === 3) {
         if (!deps.memoryQuery) return json(200, memoryQueryResponse());
-        return json(200, await runMemoryQuery(deps.memoryQuery, supa, body.question!.trim(), query, startedAt,
-          async (graphQuery, signal) => {
-            const { data, error } = await supa.rpc("get_user_graph", { p_types: null, p_limit: USER_GRAPH_LIMIT });
+        // Evidence comes from the graph only: the entities matching the
+        // question and their linked entries (graph-evidence.ts).
+        let selectedIds: string[] = [];
+        const graphSource = {
+          evidence: async (graphQuery: string, signal: AbortSignal) => {
+            const [graph, seeds] = await Promise.all([
+              supa.rpc("get_user_graph", { p_types: null, p_limit: USER_GRAPH_LIMIT }),
+              semanticSeeds(deps, graphQuery, (vector, model) => ({
+                fn: "match_user_entity_embeddings",
+                args: { p_user_id: user.id, p_query: vector, p_limit: SEED_LIMIT, p_model: model },
+              })),
+            ]);
             signal.throwIfAborted();
-            if (error) return [];
-            const g = userGraphToState(data);
+            if (graph.error) return [];
+            const g = userGraphToState(graph.data);
             if (!Object.keys(g.entities).length) return [];
-            // Same selection as the live tool: only close matches (select.ts).
-            const seeds = await semanticSeeds(deps, graphQuery, (vector, model) => ({
-              fn: "match_user_entity_embeddings",
-              args: { p_user_id: user.id, p_query: vector, p_limit: SEED_LIMIT, p_model: model },
-            }));
-            signal.throwIfAborted();
-            const result = selectRelevant(g, graphQuery, seeds);
-            if (!result.entities.length) return [];
-            const quotes = await loadQuotes(supa, result.entities.map((entity) => entity.id), notebookId);
-            return quotes.map((quote) => quote.entryId);
-          }, logTelemetry));
+            const found = await graphEvidence(supa, g, graphQuery, seeds, signal);
+            selectedIds = found.entityIds;
+            return found.passages;
+          },
+          reread: (sourceIds: string[], signal: AbortSignal) =>
+            rereadEvidence(supa, selectedIds, sourceIds, signal),
+        };
+        return json(
+          200,
+          await runMemoryQuery(
+            deps.memoryQuery,
+            supa,
+            body.question!.trim(),
+            query,
+            startedAt,
+            graphSource,
+            logTelemetry,
+          ),
+        );
       }
 
       if (scope === "user") {

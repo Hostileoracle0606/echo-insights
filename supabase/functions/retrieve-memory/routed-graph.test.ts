@@ -2,11 +2,9 @@ import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { StubEmbedder } from "../_shared/embedder.ts";
 import { createHandler, type DbClient } from "./handler.ts";
 
-// When routed recall finds no passage directly, it falls back to the graph:
-// entries that mention the entities matching the question. That fallback
-// used the general ranking, which returns most of a small graph, so a
-// question about the Lumen app could be answered from Samsung entries.
-// It now uses the same selection as the live tool (select.ts).
+// Routed recall reads evidence from the graph only: the entries linked to the
+// entities matching the question, selected as the live tool does (select.ts).
+// A description word ("project") must not bring another topic's entries in.
 
 const NOW = new Date().toISOString();
 const ent = (id: string, name: string, type: string, description: string | null = null) => ({
@@ -74,8 +72,8 @@ function client(): DbClient {
   };
 }
 
-Deno.test("routed recall's graph fallback reads only entries of close matches", async () => {
-  const searchedSources: string[][] = [];
+Deno.test("routed recall's evidence is only entries of close matches", async () => {
+  const resolvedWith: string[][] = [];
   const handler = createHandler({
     userClient: client,
     adminClient: client,
@@ -84,12 +82,10 @@ Deno.test("routed recall's graph fallback reads only entries of close matches", 
     memoryQuery: {
       timeoutMs: 500,
       route: () => Promise.resolve({ operation: "recall", timeScope: "current" }),
-      search: (_client, _question, _hint, _signal, sourceIds) => {
-        if (sourceIds) searchedSources.push([...sourceIds].sort());
-        return Promise.resolve([]);
+      resolve: (_question, _route, passages) => {
+        resolvedWith.push(passages.map((p) => p.entryId).sort());
+        return Promise.resolve({ status: "insufficient_evidence", text: "", sourceIds: [] });
       },
-      resolve: () => Promise.resolve({ status: "insufficient_evidence", text: "", sourceIds: [] }),
-      reread: () => Promise.resolve([]),
     },
   });
 
@@ -108,5 +104,5 @@ Deno.test("routed recall's graph fallback reads only entries of close matches", 
   );
 
   assertEquals(response.status, 200);
-  assertEquals(searchedSources, [["c1", "l1"]]);
+  assertEquals(resolvedWith, [["c1", "l1"]]);
 });

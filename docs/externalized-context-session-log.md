@@ -261,30 +261,42 @@ a Claude session ends, which silently stops extraction.
 **Decision.** Test on the iPhone 17 Pro, and restart the runtime before each
 run with `scripts/ec01-rebuild-test.sh runtime`.
 
-### 11. Passage routing: merged, then reverted
+### 11. Routing kept, answered from the graph instead of passages
 
 **What happened.**
 - The memory-routing branch (`codex/memory-query-routing-tickets`) was
   merged to main behind its flag (PR #40).
-- It answers memory questions from journal passages: a model classifies the
-  question, a search finds candidate entries, and a second model call
-  writes the answer.
+- It answered memory questions from journal passages: a model classifies the
+  question (recall, confirm event, calculate, conversation, and a time
+  scope), a free-text search finds candidate entries, and a resolver model
+  writes a verdict citing them.
 - On staging, two problems showed up:
   - every routed question crashed the edge worker, because it embedded up
     to 60 passages per search;
   - after capping that, factual questions still returned "insufficient
-    evidence", in 3.2–3.5 s.
+    evidence". The search matched any word of three or more letters and
+    kept the 20 most recent entries, so older facts were crowded out.
 
 **Decision.** The user reaffirmed that this app retrieves from the graph and
-structured records, not passages. PR #40 was reverted, which restores main
-to exactly its state after PR #39. The routing branch is kept unmerged for
-reference.
+structured records, not passages, and kept the routing.
+- PR #40 was first reverted (PR #41), then reapplied with the passage search
+  removed.
+- **Kept:** routed questions still go through the classifier and the
+  resolver.
+- **Evidence now comes from the graph** (`graph-evidence.ts`): the entities
+  matching the question, chosen by the live tool's selection step, and the
+  journal entries the graph links to them.
+- **Ranking is structural:** an entry linked to more of the selected
+  entities ranks first. "Priya is moving to Lisbon" is linked to both Priya
+  and Lisbon, so it outranks newer entries that only name Priya.
+- **Re-reading before answering** goes through the same links.
+- **Removed:** `passages.ts` and the `memory_passage_candidates` migration.
 
-**Why.** Passage retrieval is what decision 1 set out to replace. It
-interprets raw text at question time, adds two model calls (about 1–1.5 s
-or more), and on real data it missed facts the graph holds. Direct
-questions are to be answered from typed facts (EC-02, EC-06), with the
-live tool's selection step for recall in the meantime.
+**Why.** Passage search interprets raw text at question time, which is what
+decision 1 set out to replace, and on real data it missed facts the graph
+holds. The classifier and resolver stay useful on top of graph evidence: the
+time scope and operation shape the answer. Typed facts (EC-02, EC-06) remain
+the long-term source for direct questions.
 
 ## Files
 

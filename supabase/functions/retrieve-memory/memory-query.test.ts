@@ -12,11 +12,29 @@ const passage: MemoryPassage = {
   createdAt: "2026-10-10T12:00:00Z",
 };
 
+// The user's graph: Dana's goal entity, linked to one journal entry.
+const graph = {
+  entityCount: 1,
+  relationCount: 0,
+  entities: [{
+    id: "goal",
+    name: "goal",
+    type: "concept",
+    description: null,
+    mentions: 1,
+    firstSeen: "2026-10-10T12:00:00Z",
+    lastSeen: "2026-10-10T12:00:00Z",
+    notebookCount: 1,
+  }],
+  relations: [],
+};
+
 function setup(
   { owned = true, changed = false, hangs = false, plan = false } = {},
 ) {
   const events: string[] = [];
   const logs: unknown[] = [];
+  let mentionReads = 0;
   const client: DbClient = {
     auth: {
       getUser: () =>
@@ -35,6 +53,27 @@ function setup(
     }),
     rpc: (name, args) => {
       events.push(name);
+      if (name === "get_user_graph") return Promise.resolve({ data: graph, error: null });
+      if (name === "get_entity_mentions") {
+        // The second read is the recheck before answering.
+        const text = changed && mentionReads++ > 0 ? "Edited" : passage.text;
+        if (!changed) mentionReads++;
+        return Promise.resolve({
+          data: {
+            total: 1,
+            mentions: [{
+              entryId: passage.entryId,
+              notebookId: passage.notebookId,
+              notebookTitle: "t",
+              createdAt: passage.createdAt,
+              excerpt: text,
+              turnId: null,
+              spokenAt: null,
+            }],
+          },
+          error: null,
+        });
+      }
       return Promise.resolve({
         data: name === "redact_forgotten_text"
           ? String(args.p_text).replaceAll("Dana", "someone")
@@ -49,7 +88,7 @@ function setup(
       throw new Error("Unexpected admin client");
     },
     embedder: () => {
-      throw new Error("Unused");
+      throw new Error("No embedder: name matches only");
     },
     log: (fields) => logs.push(fields),
     memoryQuery: {
@@ -59,12 +98,6 @@ function setup(
         assertEquals(question, "What was my previous goal with someone?");
         if (hangs) return new Promise(() => {});
         return Promise.resolve({ operation: "recall", timeScope: "previous" });
-      },
-      search: (_client, question, hint) => {
-        events.push("search");
-        assertEquals(question, "What was my previous goal with someone?");
-        assertEquals(hint, "someone goal");
-        return Promise.resolve([passage]);
       },
       resolve: (_question, route, passages) => {
         events.push("resolve");
@@ -77,12 +110,6 @@ function setup(
             : "Your previous goal was 100.",
           sourceIds: [passage.entryId],
         });
-      },
-      reread: () => {
-        events.push("reread");
-        return Promise.resolve(
-          changed ? [{ ...passage, text: "Edited" }] : [passage],
-        );
       },
     },
   });
@@ -117,15 +144,18 @@ Deno.test("full question is redacted and routed after access, with evidence rech
   assertEquals(body.quotes.map((q: { entryId: string }) => q.entryId), [
     "journal-1",
   ]);
+  // Evidence comes from the graph: the matching entity's linked entries,
+  // read again before answering.
   assertEquals(events, [
     "bump_retrieve_rate",
     "redact_forgotten_text",
     "redact_forgotten_text",
     "route",
-    "search",
+    "get_user_graph",
+    "get_entity_mentions",
     "resolve",
     "redact_forgotten_text",
-    "reread",
+    "get_entity_mentions",
   ]);
   assertEquals(JSON.stringify(logs).includes("previous goal"), false);
 });
@@ -151,52 +181,28 @@ Deno.test("the routed path never runs for an unowned notebook", async () => {
   assertEquals(events, []);
 });
 
-Deno.test("graph sources can recover evidence when a direct hit is unrelated", async () => {
-  const unrelated = {
-    ...passage,
-    entryId: "other",
-    text: "My running shoes arrived.",
+Deno.test("no matching entity answers insufficient without calling the resolver", async () => {
+  const unused = () => {
+    throw new Error("No resolver call expected");
   };
-  const attempts: string[][] = [];
   const result = await runMemoryQuery(
     {
       route: () =>
         Promise.resolve({ operation: "recall", timeScope: "previous" }),
-      search: (_client, _question, _hint, _signal, sourceIds = []) => {
-        attempts.push(sourceIds);
-        return Promise.resolve(sourceIds.length ? [passage] : [unrelated]);
-      },
-      resolve: (_question, _route, passages) =>
-        Promise.resolve(
-          passages[0].entryId === passage.entryId
-            ? {
-              status: "supported",
-              text: "The earlier goal was 100.",
-              sourceIds: [passage.entryId],
-            }
-            : {
-              status: "insufficient_evidence",
-              text: "No relevant evidence yet.",
-              sourceIds: [],
-            },
-        ),
-      reread: () => Promise.resolve([passage]),
+      resolve: unused,
     },
     {
-      auth: { getUser: () => Promise.reject(new Error("Unexpected auth")) },
-      from: () => {
-        throw new Error("Unexpected table lookup");
-      },
+      auth: { getUser: unused },
+      from: unused,
       rpc: (_name, args) => Promise.resolve({ data: args.p_text, error: null }),
     },
     "What was my previous goal?",
     "goal",
     Date.now(),
-    () => Promise.resolve([passage.entryId]),
+    { evidence: () => Promise.resolve([]), reread: unused },
     () => {},
   );
-  assertEquals(attempts, [[], [passage.entryId]]);
-  assertEquals(result.verdict.sourceIds, [passage.entryId]);
+  assertEquals(result.verdict.status, "insufficient_evidence");
 });
 
 Deno.test("a conversation decision skips retrieval without implying a missing answer", async () => {
@@ -210,9 +216,7 @@ Deno.test("a conversation decision skips retrieval without implying a missing an
           operation: "conversation",
           timeScope: "unspecified",
         }),
-      search: unused,
       resolve: unused,
-      reread: unused,
     },
     {
       auth: { getUser: unused },
@@ -222,7 +226,7 @@ Deno.test("a conversation decision skips retrieval without implying a missing an
     "I'm glad to hear that.",
     "",
     Date.now(),
-    unused,
+    { evidence: unused, reread: unused },
     () => {},
   );
   assertEquals(result.verdict.status, "conversation");
@@ -237,12 +241,10 @@ Deno.test("provider throttling asks the user to retry without inferring the jour
     {
       route: () =>
         Promise.resolve({ operation: "recall", timeScope: "previous" }),
-      search: () => Promise.resolve([passage]),
       resolve: createEvidenceResolver({
         getApiKey: () => "synthetic",
         fetch: () => Promise.resolve(new Response(null, { status: 429 })),
       }),
-      reread: unused,
     },
     {
       auth: { getUser: unused },
@@ -252,7 +254,7 @@ Deno.test("provider throttling asks the user to retry without inferring the jour
     "What was my previous goal?",
     "goal",
     Date.now(),
-    unused,
+    { evidence: () => Promise.resolve([passage]), reread: unused },
     (fields) => logs.push(fields),
   );
   assertEquals(result.verdict.status, "clarification");
