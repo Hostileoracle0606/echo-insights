@@ -14,6 +14,7 @@ import { createSupabaseAuthorizer } from "../infra/lambda/supabase-authorizer/co
 import { createLiveSessionHandler } from "../infra/lambda/live-session/core.mjs";
 import { createExtractGraphHandler } from "../infra/lambda/extract-graph/core.mjs";
 import { createCloseSessionHandler } from "../infra/lambda/close-session/core.mjs";
+import { createSessionBriefHandler } from "../infra/lambda/close-session/brief.mjs";
 
 function required(name) {
   const value = process.env[name]?.trim();
@@ -25,8 +26,20 @@ const supabaseUrl = required("SUPABASE_URL");
 const publishableKey = required("SUPABASE_PUBLISHABLE_KEY");
 const geminiKey = required("GEMINI_API_KEY");
 const port = Number(process.env.PORT ?? 8787);
-if (!/^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(supabaseUrl)) {
-  throw new Error(`local-runtime only runs against a local Supabase, not ${supabaseUrl}`);
+// A hosted test project is allowed only when named explicitly, and never
+// production: LOCAL_RUNTIME_TEST_PROJECT=<ref> with SUPABASE_URL set to
+// https://<ref>.supabase.co.
+const PRODUCTION_REFS = new Set(["bjoevzvsdlhlcjywpyfx"]);
+const testProject = process.env.LOCAL_RUNTIME_TEST_PROJECT?.trim();
+const isLocal = /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(supabaseUrl);
+const isNamedTestProject =
+  !!testProject &&
+  !PRODUCTION_REFS.has(testProject) &&
+  supabaseUrl === `https://${testProject}.supabase.co`;
+if (!isLocal && !isNamedTestProject) {
+  throw new Error(
+    `local-runtime only runs against a local Supabase or a named test project, not ${supabaseUrl}`,
+  );
 }
 
 const getPermanentCredential = async () => geminiKey;
@@ -66,13 +79,19 @@ const extractGraph = createExtractGraphHandler({
   },
 });
 const closeSession = createCloseSessionHandler({ ...shared, model: "gemini-2.5-flash" });
+const sessionBrief = createSessionBriefHandler({
+  ...shared,
+  model: "gemini-2.5-flash",
+  ttsModel: "gemini-2.5-flash-preview-tts",
+});
 
-// The four routes of infra/lib/infra-stack.ts.
+// The five routes of infra/lib/infra-stack.ts.
 const routes = [
   [/^\/v1\/notebooks\/([^/]+)\/live-sessions$/, liveSession],
   [/^\/v1\/live-sessions$/, liveSession],
   [/^\/v1\/notebooks\/([^/]+)\/extractions$/, extractGraph],
   [/^\/v1\/notebooks\/([^/]+)\/close$/, closeSession],
+  [/^\/v1\/notebooks\/([^/]+)\/brief$/, sessionBrief],
 ];
 
 const cors = {

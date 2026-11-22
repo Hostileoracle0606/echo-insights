@@ -10,6 +10,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lumen/audio/audio_output.dart';
 import 'package:lumen/audio/pcm_capture.dart';
 import 'package:lumen/audio/pcm_player.dart';
+import 'package:lumen/logic/context_rebuild_policy.dart';
 import 'package:lumen/logic/turn_state.dart' hide CommitCommitted;
 import 'package:lumen/models/entity.dart';
 import 'package:lumen/models/follow_up.dart';
@@ -308,6 +309,7 @@ class _Harness {
     List<ConversationTurn> history = const [],
     Duration openingTimeout = const Duration(seconds: 10),
     SupabaseService? supabase,
+    ContextRebuildConfig? rebuild,
   })  : transcripts = _FakeTranscripts(history),
         commits = _FakeCommits(state ?? JournalState.empty()) {
     credentials = LiveCredentials(fetch: () async {
@@ -333,6 +335,7 @@ class _Harness {
       sessionCardServiceProvider.overrideWithValue(cards),
       sessionBriefServiceProvider.overrideWithValue(briefs),
       liveCredentialsProvider.overrideWithValue(credentials),
+      contextRebuildConfigProvider.overrideWithValue(rebuild),
       audioOutputProvider.overrideWithValue(
         AudioOutput(createPlayer: () => PcmPlayer(backend: _Backend())),
       ),
@@ -1094,5 +1097,187 @@ void main() {
     expect(h.journal.sendTypedTurn('Saved.'), isTrue);
     await _waitForCommits(h, 1);
     expect(h.cards.drafted, [_notebookId], reason: 'drafting works once live');
+  });
+
+  group('context rebuild (EC-01)', () {
+    const twoTurns = ContextRebuildConfig(
+      maxTurns: 2,
+      minInterval: Duration.zero,
+    );
+    // Past the provider's 800 ms grace after Lumen's turn ends.
+    Future<void> pastRebuildCheck() =>
+        Future<void>.delayed(const Duration(milliseconds: 1000));
+
+    Future<void> liveInSavedNotebook(ContextRebuildConfig? rebuild) async {
+      h = _Harness(
+        state: JournalState.empty().copyWith(entries: [_entry('Earlier.')]),
+        supabase: _EndingNotebooks(),
+        rebuild: rebuild,
+      );
+      await h.journal.enterNotebook(_notebookId);
+      await h.startLive();
+      h.socket.serverSends({
+        'sessionResumptionUpdate': {'resumable': true, 'newHandle': 'old'},
+      });
+      await _settle();
+    }
+
+    test('a spent turn budget rebuilds at a pause from saved context',
+        () async {
+      await liveInSavedNotebook(twoTurns);
+      userSaysAndLumenReplies(h, 'My goal is 350 now.', 'Noted.');
+      await _waitForCommits(h, 1);
+      await pastRebuildCheck();
+      expect(h.sockets, hasLength(1), reason: 'one turn: budget not spent');
+
+      userSaysAndLumenReplies(h, 'And Maya starts Monday.', 'Lovely.');
+      await pastRebuildCheck();
+      await h.waitForSocket(2);
+      expect(h.socket.setup['session_resumption'], isEmpty,
+          reason: 'a new conversation, seeded by the app, not resumed');
+      expect(h.journal.reconnecting, isFalse,
+          reason: 'a planned rebuild shows no "Reconnecting" chip');
+
+      h.socket.serverSends({'setupComplete': <String, dynamic>{}});
+      await _settle();
+      final seeded = jsonEncode(
+        h.socket.sent.firstWhere((m) => m.containsKey('client_content')),
+      );
+      expect(seeded, contains('My goal is 350 now.'));
+      expect(seeded, contains('And Maya starts Monday.'));
+      expect(h.tokensMinted, greaterThanOrEqualTo(2),
+          reason: 'a new conversation takes a new single-use token');
+    });
+
+    test('a rebuilt context lists topics already raised and the latest lines',
+        () async {
+      h = _Harness(
+        state: JournalState.empty().copyWith(
+          entries: [_entry('Earlier.')],
+          entities: {
+            'priya': Entity(
+              id: 'priya',
+              name: 'Priya',
+              type: EntityType.person,
+              metadata: const {},
+              mentions: 1,
+              firstSeen: DateTime(2026, 11, 21),
+              lastSeen: DateTime(2026, 11, 21),
+            ),
+            'samsung': Entity(
+              id: 'samsung',
+              name: 'Samsung',
+              type: EntityType.organization,
+              metadata: const {},
+              mentions: 1,
+              firstSeen: DateTime(2026, 11, 21),
+              lastSeen: DateTime(2026, 11, 21),
+            ),
+          },
+        ),
+        supabase: _EndingNotebooks(),
+        rebuild: const ContextRebuildConfig(
+          maxTurns: 10,
+          minInterval: Duration.zero,
+        ),
+      );
+      await h.journal.enterNotebook(_notebookId);
+      await h.startLive();
+      userSaysAndLumenReplies(h, 'Hi.', "How's Priya doing?");
+      await _settle();
+      for (var i = 1; i < 10; i++) {
+        userSaysAndLumenReplies(h, 'Turn $i.', 'Question $i?');
+        await _settle();
+      }
+      await pastRebuildCheck();
+      await h.waitForSocket(2);
+      h.socket.serverSends({'setupComplete': <String, dynamic>{}});
+      await _settle();
+
+      final content = h.socket.sent
+          .firstWhere((m) => m.containsKey('client_content'))['client_content']
+          as Map<String, dynamic>;
+      final summaryLine = [
+        for (final turn in content['turns'] as List)
+          for (final part in (turn as Map)['parts'] as List)
+            ...((part as Map)['text'] as String).split('\n'),
+      ].firstWhere((line) => line.startsWith('[graph summary] '));
+      final summary = jsonDecode(
+          summaryLine.substring('[graph summary] '.length)) as Map<String, dynamic>;
+      expect(summary['probedThisSession'], ['Priya'],
+          reason: 'Lumen raised Priya in its first reply, before the last 16 '
+              'turns the live conversation keeps; Samsung never came up');
+      expect(summary['recentAgentQuestions'],
+          [for (var i = 2; i < 10; i++) 'Question $i?'],
+          reason: 'the latest eight, not the first eight');
+    });
+
+    test('typed turns with the mic paused still rebuild at a pause', () async {
+      // Found in the Simulator: opening the composer pauses the mic, and a
+      // typed-only conversation never rebuilt.
+      await liveInSavedNotebook(twoTurns);
+      await h.journal.pauseMic();
+      for (final text in ['Typed one.', 'Typed two.']) {
+        expect(h.journal.sendTypedTurn(text), isTrue);
+        h.socket
+          ..serverSends({
+            'serverContent': {
+              'outputTranscription': {'text': 'Reply.', 'finished': true},
+            },
+          })
+          ..serverSends({
+            'serverContent': {'turnComplete': true},
+          });
+        await _settle();
+      }
+      await pastRebuildCheck();
+      await h.waitForSocket(2);
+      h.socket.serverSends({'setupComplete': <String, dynamic>{}});
+      await _settle();
+      expect(
+        jsonEncode(
+            h.socket.sent.firstWhere((m) => m.containsKey('client_content'))),
+        contains('Typed two.'),
+      );
+    });
+
+    test('without the flag the session is never rebuilt', () async {
+      await liveInSavedNotebook(null);
+      for (var i = 0; i < 3; i++) {
+        userSaysAndLumenReplies(h, 'Turn $i.', 'Reply $i.');
+        await _settle();
+      }
+      await pastRebuildCheck();
+      expect(h.sockets, hasLength(1));
+    });
+
+    test('off the record never rebuilds: its turns are not saved', () async {
+      await liveInSavedNotebook(twoTurns);
+      h.journal.setOffTheRecord(true);
+      for (var i = 0; i < 3; i++) {
+        userSaysAndLumenReplies(h, 'Secret $i.', 'Reply $i.');
+        await _settle();
+      }
+      await pastRebuildCheck();
+      expect(h.sockets, hasLength(1));
+    });
+
+    test('the production client compresses only when not rebuilding', () {
+      GeminiLiveClient make(ContextRebuildConfig? rebuild) {
+        final container = ProviderContainer(overrides: [
+          contextRebuildConfigProvider.overrideWithValue(rebuild),
+        ]);
+        addTearDown(container.dispose);
+        return container.read(liveClientFactoryProvider)(
+          sessionToken: 't',
+          model: 'm',
+        );
+      }
+
+      expect(make(null).compressContext, isTrue);
+      expect(make(twoTurns).compressContext, isFalse);
+      // h is torn down after every test; give this one a harness too.
+      h = _Harness();
+    });
   });
 }

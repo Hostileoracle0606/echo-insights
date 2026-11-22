@@ -9,6 +9,7 @@ import {
   retrieveMemoryResponseV2,
 } from "../_shared/retrieve-memory-contract.ts";
 import { buildContext } from "./context.ts";
+import { selectRelevant } from "./select.ts";
 import { loadQuotes } from "./quotes.ts";
 
 // The handler takes its clients, embedder and logger as dependencies so it
@@ -286,10 +287,11 @@ export function createHandler(deps: RetrieveMemoryDeps): (req: Request) => Promi
         if (Object.keys(g.entities).length === 0) {
           return json(200, retrieveMemoryResponseV2("", [], []));
         }
-        const result = await rank(g, query, extraSeeds);
+        // The live tool: only what is close in meaning to the query (select.ts).
+        const result = selectRelevant(g, query, extraSeeds);
         const context = buildContext(result);
         const entityIds = result.entities.map((entity) => entity.id);
-        const quotes = await loadQuotes(supa, entityIds, notebookId);
+        const quotes = entityIds.length === 0 ? [] : await loadQuotes(supa, entityIds, notebookId);
         logTelemetry({
           ok: true,
           scope,
