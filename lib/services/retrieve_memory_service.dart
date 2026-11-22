@@ -67,9 +67,6 @@ Map<String, dynamic> stateToGraphloop(JournalState state) => {
 
 const int retrieveMemoryContractVersion = 1;
 const int retrieveMemoryContractVersionV2 = 2;
-const int retrieveMemoryContractVersionV3 = 3;
-const bool memoryQueryRoutingEnabled =
-    bool.fromEnvironment('MEMORY_QUERY_ROUTING_ENABLED');
 
 /// Which memory retrieve-memory searches. [user] reads the user's merged
 /// graph across every notebook on the server and answers v2 with quotes;
@@ -82,23 +79,14 @@ class MemoryRetrieval {
   final String context;
   final List<String> entityIds;
   final List<MemoryQuote> quotes;
-  final MemoryVerdict? verdict;
 
   const MemoryRetrieval({
     required this.context,
     required this.entityIds,
     this.quotes = const [],
-    this.verdict,
   });
 
   static const empty = MemoryRetrieval(context: '', entityIds: []);
-  static const insufficient = MemoryRetrieval(
-      context: '',
-      entityIds: [],
-      verdict: MemoryVerdict(
-          status: 'insufficient_evidence',
-          text: 'I could not find enough evidence to answer that.',
-          sourceIds: []));
 
   factory MemoryRetrieval.fromData(dynamic data) {
     if (data is! Map) {
@@ -106,10 +94,8 @@ class MemoryRetrieval {
     }
     final version = data['version'];
     if (version != retrieveMemoryContractVersion &&
-        version != retrieveMemoryContractVersionV2 &&
-        version != retrieveMemoryContractVersionV3) {
-      throw const FormatException(
-          'Unsupported retrieve-memory contract version');
+        version != retrieveMemoryContractVersionV2) {
+      throw const FormatException('Unsupported retrieve-memory contract version');
     }
     final context = data['context'];
     final ids = data['entityIds'];
@@ -117,60 +103,18 @@ class MemoryRetrieval {
       throw FormatException('Invalid retrieve-memory v$version response');
     }
     final quotes = <MemoryQuote>[];
-    if (version == retrieveMemoryContractVersionV2 ||
-        version == retrieveMemoryContractVersionV3) {
+    if (version == retrieveMemoryContractVersionV2) {
       final raw = data['quotes'];
-      if (raw is! List ||
-          (version == retrieveMemoryContractVersionV3 && raw.length > 3)) {
+      if (raw is! List) {
         throw const FormatException('Invalid retrieve-memory v2 response');
       }
       quotes.addAll(raw.map(MemoryQuote.fromData));
-    }
-    final verdict = version == retrieveMemoryContractVersionV3
-        ? MemoryVerdict.fromData(data['verdict'])
-        : null;
-    if (verdict != null &&
-        (context.isNotEmpty ||
-            ids.isNotEmpty ||
-            quotes
-                .any((quote) => !verdict.sourceIds.contains(quote.entryId)))) {
-      throw const FormatException('Invalid v3 evidence');
     }
     return MemoryRetrieval(
       context: context,
       entityIds: ids.cast<String>().toList(growable: false),
       quotes: List.unmodifiable(quotes),
-      verdict: verdict,
     );
-  }
-}
-
-class MemoryVerdict {
-  final String status;
-  final String text;
-  final List<String> sourceIds;
-  const MemoryVerdict(
-      {required this.status, required this.text, required this.sourceIds});
-
-  factory MemoryVerdict.fromData(dynamic data) {
-    if (data is! Map ||
-        !const [
-          'supported',
-          'clarification',
-          'insufficient_evidence',
-          'conversation'
-        ].contains(data['status']) ||
-        data['text'] is! String ||
-        (data['text'] as String).trim().isEmpty ||
-        data['sourceIds'] is! List ||
-        (data['sourceIds'] as List).any((id) => id is! String)) {
-      throw const FormatException('Invalid memory verdict');
-    }
-    return MemoryVerdict(
-        status: data['status'] as String,
-        text: data['text'] as String,
-        sourceIds: List<String>.unmodifiable(
-            (data['sourceIds'] as List).cast<String>()));
   }
 }
 
@@ -181,21 +125,13 @@ Map<String, dynamic> memoryToolResult(
   MemoryRetrieval retrieval, {
   DateTime? now,
 }) =>
-    retrieval.verdict != null
-        ? {
-            'status': retrieval.verdict!.status,
-            'answer': retrieval.verdict!.text
-          }
-        : {
-            'context': retrieval.context,
-            'quotes': [
-              for (final quote in retrieval.quotes)
-                {
-                  'when': spokenWhen(quote.saidAt, now: now),
-                  'text': quote.text
-                },
-            ],
-          };
+    {
+      'context': retrieval.context,
+      'quotes': [
+        for (final quote in retrieval.quotes)
+          {'when': spokenWhen(quote.saidAt, now: now), 'text': quote.text},
+      ],
+    };
 
 /// User-scope lookups answer Gemini's live tool call, which blocks Lumen
 /// until it is answered; past this the call degrades to empty memory.
@@ -239,19 +175,12 @@ class RetrieveMemoryService {
   Future<MemoryRetrieval> retrieveResult({
     required String query,
     required String notebookId,
-    String? question,
     JournalState? state,
     RetrievalScope scope = RetrievalScope.notebook,
     Duration? timeout,
   }) async {
     final q = query.trim();
-    final useV3 = memoryQueryRoutingEnabled && scope == RetrievalScope.user;
-    final fallback =
-        useV3 ? MemoryRetrieval.insufficient : MemoryRetrieval.empty;
-    if (q.length < 2 ||
-        (useV3 && (question == null || question.trim().isEmpty))) {
-      return fallback;
-    }
+    if (q.length < 2) return MemoryRetrieval.empty;
     final startedAt = DateTime.now();
 
     // Non-sensitive telemetry: outcome + counts only, never query/context text.
@@ -266,8 +195,6 @@ class RetrieveMemoryService {
     try {
       final body = <String, dynamic>{
         'query': q,
-        if (useV3) 'version': retrieveMemoryContractVersionV3,
-        if (useV3) 'question': question!.trim(),
         'notebookId': notebookId,
         if (scope == RetrievalScope.user)
           'scope': 'user'
@@ -279,9 +206,6 @@ class RetrieveMemoryService {
       final call = _invoke(body);
       final data = await (limit == null ? call : call.timeout(limit));
       final result = MemoryRetrieval.fromData(data);
-      if (useV3 && result.verdict == null) {
-        throw const FormatException('Expected v3 verdict');
-      }
       emit(
         result.context.isEmpty ? 'empty' : 'ok',
         result.context.length,
@@ -290,13 +214,13 @@ class RetrieveMemoryService {
       return result;
     } on TimeoutException {
       emit('timeout', 0);
-      return fallback;
+      return MemoryRetrieval.empty;
     } on FormatException {
       emit('contractError', 0);
-      return fallback;
+      return MemoryRetrieval.empty;
     } catch (_) {
       emit('error', 0);
-      return fallback;
+      return MemoryRetrieval.empty;
     }
   }
 }
