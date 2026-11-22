@@ -279,8 +279,14 @@ export function createHandler(deps: RetrieveMemoryDeps): (req: Request) => Promi
             if (error) return [];
             const g = userGraphToState(data);
             if (!Object.keys(g.entities).length) return [];
-            const result = await rank(g, graphQuery, undefined);
+            // Same selection as the live tool: only close matches (select.ts).
+            const seeds = await semanticSeeds(deps, graphQuery, (vector, model) => ({
+              fn: "match_user_entity_embeddings",
+              args: { p_user_id: user.id, p_query: vector, p_limit: SEED_LIMIT, p_model: model },
+            }));
             signal.throwIfAborted();
+            const result = selectRelevant(g, graphQuery, seeds);
+            if (!result.entities.length) return [];
             const quotes = await loadQuotes(supa, result.entities.map((entity) => entity.id), notebookId);
             return quotes.map((quote) => quote.entryId);
           }, logTelemetry));
