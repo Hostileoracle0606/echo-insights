@@ -261,6 +261,31 @@ a Claude session ends, which silently stops extraction.
 **Decision.** Test on the iPhone 17 Pro, and restart the runtime before each
 run with `scripts/ec01-rebuild-test.sh runtime`.
 
+### 11. Passage routing: merged, then reverted
+
+**What happened.**
+- The memory-routing branch (`codex/memory-query-routing-tickets`) was
+  merged to main behind its flag (PR #40).
+- It answers memory questions from journal passages: a model classifies the
+  question, a search finds candidate entries, and a second model call
+  writes the answer.
+- On staging, two problems showed up:
+  - every routed question crashed the edge worker, because it embedded up
+    to 60 passages per search;
+  - after capping that, factual questions still returned "insufficient
+    evidence", in 3.2–3.5 s.
+
+**Decision.** The user reaffirmed that this app retrieves from the graph and
+structured records, not passages. PR #40 was reverted, which restores main
+to exactly its state after PR #39. The routing branch is kept unmerged for
+reference.
+
+**Why.** Passage retrieval is what decision 1 set out to replace. It
+interprets raw text at question time, adds two model calls (about 1–1.5 s
+or more), and on real data it missed facts the graph holds. Direct
+questions are to be answered from typed facts (EC-02, EC-06), with the
+live tool's selection step for recall in the meantime.
+
 ## Files
 
 **App (Flutter)**
