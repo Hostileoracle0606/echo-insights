@@ -235,10 +235,37 @@ rebuilds.
 
 **Done when**
 
-- [ ] The context is bounded and contains no duplicate fact.
-- [ ] The same graph and session state always produce the same context.
-- [ ] Rebuild triggers move from turn count to the token budget, plus Forget
+- [x] The context is bounded and contains no duplicate fact.
+- [x] The same graph and session state always produce the same context.
+- [x] Rebuild triggers move from turn count to the token budget, plus Forget
   and confirmed corrections.
+
+**Built** (`feat/ec-05-context-materialiser`). `lib/logic/context_materialiser.dart`
+builds the context:
+
+- a continuation line ("don't greet, recap or restart");
+- the planning fields the prompt reads, trimmed;
+- `sessionState` (EC-04);
+- the working set, ranked: entities talked about now, then their one-hop
+  neighbours, then by recency and mentions. Each row has a short
+  description, its current facts (`get_current_facts`: one current value per
+  attribute, plus any plan said since) and its links;
+- the last six turns verbatim.
+
+Rows are added until the ~1,500-token budget is reached. The output is the
+same for the same inputs in any order. Every fresh reconnect of a
+continuing conversation uses it: rebuild, back on the record, and Forget.
+
+**Triggers.** Gemini Live's `usageMetadata.promptTokenCount` is now read.
+The budget counts window growth since the first report after a rebuild
+(default 6,000 tokens, `CONTEXT_REBUILD_MAX_TOKENS`). When Gemini doesn't
+report, a transcript estimate stands in, weighted ×7 for speech. Turn count
+is only an override (`CONTEXT_REBUILD_MAX_TURNS`).
+`ContextRebuildPolicy.request(RebuildReason.correction)` rebuilds at the
+next pause (EC-07 calls it). Forget reconnects at once, as before.
+
+Facts are fetched before the reconnect starts, within 800 ms; a rebuild
+without them still goes ahead.
 
 ## EC-06 — Fact tools
 

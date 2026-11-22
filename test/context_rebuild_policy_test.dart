@@ -99,24 +99,68 @@ void main() {
     );
   });
 
-  test('defaults rebuild within Gemini audio limits and keep replay complete',
+  test('defaults rebuild within Gemini audio limits, on tokens not turns (EC-05)',
       () {
     const config = ContextRebuildConfig();
     // Compression is off when rebuilding, so age must stay under ~15 minutes.
     expect(config.maxAge, lessThan(const Duration(minutes: 15)));
-    // Every turn since the last rebuild still fits resumeContext's 20 turns.
-    expect(config.maxTurns, lessThanOrEqualTo(20));
+    expect(config.maxTurns, isNull, reason: 'turn count is only an override');
+    expect(config.maxTokens, 6000);
   });
 
   test('config reads overrides and falls back on invalid values', () {
     expect(ContextRebuildConfig.fromDefines(maxTurns: '4').maxTurns, 4);
-    expect(
-      ContextRebuildConfig.fromDefines(maxTurns: 'x').maxTurns,
-      const ContextRebuildConfig().maxTurns,
+    expect(ContextRebuildConfig.fromDefines(maxTurns: 'x').maxTurns, isNull);
+    expect(ContextRebuildConfig.fromDefines(maxTurns: '0').maxTurns, isNull);
+    expect(ContextRebuildConfig.fromDefines(maxTokens: '2500').maxTokens, 2500);
+    expect(ContextRebuildConfig.fromDefines(maxTokens: 'x').maxTokens, 6000);
+  });
+
+  test('the token budget triggers a rebuild at a pause (EC-05)', () {
+    final p = ContextRebuildPolicy(
+      const ContextRebuildConfig(maxTokens: 100),
+      startedAt: t0,
     );
-    expect(
-      ContextRebuildConfig.fromDefines(maxTurns: '0').maxTurns,
-      const ContextRebuildConfig().maxTurns,
+    final later = t0.add(const Duration(minutes: 1));
+    p.turnCompleted(tokens: 60);
+    expect(p.check(later, idle), isNull);
+    p.turnCompleted(tokens: 50);
+    expect(p.tokensSinceRebuild, 110);
+    expect(p.check(later, idle.copyWith(agentSpeaking: true)), isNull,
+        reason: 'only at a pause');
+    expect(p.check(later, idle), RebuildReason.tokenBudget);
+    p.rebuilt(later);
+    expect(p.tokensSinceRebuild, 0);
+  });
+
+  test('a requested rebuild (a confirmed correction) waits for the next pause',
+      () {
+    final p = ContextRebuildPolicy(const ContextRebuildConfig(), startedAt: t0);
+    p.request(RebuildReason.correction);
+    final later = t0.add(const Duration(seconds: 5));
+    expect(p.check(later, idle.copyWith(userSpeaking: true)), isNull);
+    expect(p.check(later, idle), RebuildReason.correction);
+    p.rebuilt(later);
+    expect(p.check(later, idle), isNull, reason: 'done once');
+  });
+
+  test('the window Gemini reports counts from the first report after a rebuild',
+      () {
+    final p = ContextRebuildPolicy(
+      const ContextRebuildConfig(maxTokens: 1000),
+      startedAt: t0,
     );
+    final later = t0.add(const Duration(minutes: 1));
+    p.observedWindow(5000); // system instruction and seed context
+    expect(p.tokensSinceRebuild, 0);
+    p.turnCompleted(tokens: 10);
+    p.observedWindow(5900);
+    expect(p.tokensSinceRebuild, 900, reason: 'the report outweighs the estimate');
+    expect(p.check(later, idle), isNull);
+    p.observedWindow(6100);
+    expect(p.check(later, idle), RebuildReason.tokenBudget);
+    p.rebuilt(later);
+    p.observedWindow(5200);
+    expect(p.tokensSinceRebuild, 0, reason: 'a new baseline after a rebuild');
   });
 }

@@ -10,6 +10,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lumen/audio/audio_output.dart';
 import 'package:lumen/audio/pcm_capture.dart';
 import 'package:lumen/audio/pcm_player.dart';
+import 'package:lumen/logic/context_materialiser.dart' show WorkingFact;
 import 'package:lumen/logic/context_rebuild_policy.dart';
 import 'package:lumen/logic/turn_state.dart' hide CommitCommitted;
 import 'package:lumen/models/entity.dart';
@@ -222,6 +223,11 @@ class _FakeFacts implements MemoryFactService {
   }) async {
     calls.add((notebookId: notebookId, entryId: entryId, facts: facts));
   }
+
+  List<WorkingFact> current = const [];
+
+  @override
+  Future<List<WorkingFact>> currentFacts(List<String> entityIds) async => current;
 }
 
 class _NoMemory implements RetrieveMemoryService {
@@ -1372,6 +1378,62 @@ void main() {
       await _settle();
       expect(h.sessionState.saved.last['openThreads'], ['How did the interview go?'],
           reason: 'a filler reply does not answer the question it was asked');
+    });
+
+    test('a rebuild continues from the materialised context (EC-05)', () async {
+      h = _Harness(
+        state: JournalState.empty().copyWith(
+          entries: [_entry('Earlier.')],
+          entities: {
+            'savings-goal': Entity(
+              id: 'savings-goal',
+              name: 'savings goal',
+              type: EntityType.concept,
+              metadata: const {},
+              mentions: 2,
+              firstSeen: DateTime(2026, 11, 20),
+              lastSeen: DateTime(2026, 11, 21),
+            ),
+          },
+        ),
+        supabase: _EndingNotebooks(),
+        rebuild: const ContextRebuildConfig(maxTurns: 8, minInterval: Duration.zero),
+      );
+      h.facts.current = const [
+        WorkingFact(entityId: 'savings-goal', attribute: 'amount', valueNum: 8000,
+            unit: 'USD', status: 'confirmed'),
+      ];
+      await h.journal.enterNotebook(_notebookId);
+      await h.startLive();
+      for (var i = 0; i < 8; i++) {
+        userSaysAndLumenReplies(h, 'User line $i.', 'Lumen line $i?');
+        await _settle();
+      }
+      await pastRebuildCheck();
+      await h.waitForSocket(2);
+      h.socket.serverSends({'setupComplete': <String, dynamic>{}});
+      await _settle();
+
+      final content = h.socket.sent
+          .firstWhere((m) => m.containsKey('client_content'))['client_content']
+          as Map<String, dynamic>;
+      final texts = [
+        for (final turn in content['turns'] as List)
+          for (final part in (turn as Map)['parts'] as List) (part as Map)['text'] as String,
+      ];
+      expect(texts.first, startsWith('[continuation] '));
+      expect(texts.join('\n'), isNot(contains('[opening said]')));
+      final summary = jsonDecode(texts.first
+              .split('\n')
+              .firstWhere((l) => l.startsWith('[graph summary] '))
+              .substring('[graph summary] '.length)) as Map<String, dynamic>;
+      final goal = (summary['workingSet'] as List)
+          .firstWhere((row) => (row as Map)['name'] == 'savings goal') as Map;
+      expect(goal['facts'], ['amount: 8000 USD']);
+      // The context, six recent turns and the resume note: not a 20-turn replay.
+      expect(texts.length, 1 + 6 + 1);
+      expect(texts[texts.length - 2], 'Lumen line 7?');
+      expect(texts.contains('User line 0.'), isFalse);
     });
 
     test('typed turns with the mic paused still rebuild at a pause', () async {
