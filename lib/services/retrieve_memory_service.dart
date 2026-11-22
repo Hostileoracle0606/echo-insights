@@ -184,7 +184,16 @@ Map<String, dynamic> memoryToolResult(
     retrieval.verdict != null
         ? {
             'status': retrieval.verdict!.status,
-            'answer': retrieval.verdict!.text
+            'answer': retrieval.verdict!.text,
+            // Open recall answers with the user's own words (dated, no ids).
+            if (retrieval.quotes.isNotEmpty)
+              'quotes': [
+                for (final quote in retrieval.quotes)
+                  {
+                    'when': spokenWhen(quote.saidAt, now: now),
+                    'text': quote.text
+                  },
+              ],
           }
         : {
             'context': retrieval.context,

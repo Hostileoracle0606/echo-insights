@@ -20,6 +20,35 @@ void main() {
         {'status': 'supported', 'answer': 'Your previous goal was 100.'});
     expect(memoryToolResult(result).toString(), isNot(contains('private-id')));
   });
+  test('a verdict with quotes also forwards them, dated, never ids', () {
+    final data = v3();
+    data['verdict'] = {
+      'status': 'supported',
+      'text': 'These are the user\'s own words about this.',
+      'sourceIds': ['private-id']
+    };
+    data['quotes'] = [
+      {
+        'entryId': 'private-id',
+        'notebookId': 'private-notebook',
+        'notebookTitle': '',
+        'turnId': null,
+        'spokenAt': null,
+        'createdAt': '2026-10-22T09:00:00Z',
+        'text': 'My sister Priya is moving to Lisbon next month.',
+      }
+    ];
+    final result = memoryToolResult(MemoryRetrieval.fromData(data),
+        now: DateTime(2026, 10, 23, 15));
+    expect(result['status'], 'supported');
+    expect(result['quotes'], [
+      {
+        'when': 'Thu, Oct 22 (yesterday)',
+        'text': 'My sister Priya is moving to Lisbon next month.'
+      }
+    ]);
+    expect(result.toString(), isNot(contains('private')));
+  });
   test('malformed and oversized v3 verdicts are rejected', () {
     final bad = v3();
     bad['verdict'] = {'status': 'unknown', 'text': 'x', 'sourceIds': []};
