@@ -32,6 +32,7 @@ import 'package:lumen/services/extraction_context.dart';
 import 'package:lumen/services/gemini_live_client.dart';
 import 'package:lumen/services/live_credentials.dart';
 import 'package:lumen/services/conversation_state_service.dart';
+import 'package:lumen/services/memory_correction_service.dart';
 import 'package:lumen/services/memory_fact_service.dart';
 import 'package:lumen/services/notebook_commit_service.dart';
 import 'package:lumen/services/notebook_runtime_service.dart';
@@ -191,6 +192,39 @@ class _FakeExtractor implements ExtractGraphService {
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+/// EC-07: corrections proposed, applied and rejected.
+class _FakeCorrections implements MemoryCorrectionService {
+  final proposed = <Map<String, dynamic>>[];
+  final applied = <String>[];
+  final rejected = <String>[];
+
+  @override
+  Future<Map<String, dynamic>> propose({
+    required String about,
+    String? attribute,
+    required Map<String, dynamic> change,
+  }) async {
+    proposed.add({'about': about, 'attribute': attribute, 'change': change});
+    return {
+      'status': 'pending',
+      'correctionId': 'c-${proposed.length}',
+      'readBack': 'So your savings goal amount is 7000 USD, not 8000 USD. Is that right?',
+    };
+  }
+
+  @override
+  Future<Map<String, dynamic>> apply(String correctionId) async {
+    applied.add(correctionId);
+    return {'status': 'applied'};
+  }
+
+  @override
+  Future<Map<String, dynamic>> reject(String correctionId) async {
+    rejected.add(correctionId);
+    return {'status': 'rejected', 'offerRemoval': rejected.length >= 2};
+  }
 }
 
 /// EC-04: the session state record's saves and clears.
@@ -373,6 +407,7 @@ class _Harness {
       extractGraphServiceProvider.overrideWithValue(extractor),
       memoryFactServiceProvider.overrideWithValue(facts),
       conversationStateServiceProvider.overrideWithValue(sessionState),
+      memoryCorrectionServiceProvider.overrideWithValue(corrections),
       sharedLogProvider.overrideWithValue(sharedLog),
       retrieveMemoryServiceProvider.overrideWithValue(_NoMemory()),
       turnJournalServiceProvider.overrideWithValue(journal_),
@@ -413,6 +448,7 @@ class _Harness {
   final extractor = _FakeExtractor();
   final facts = _FakeFacts();
   final sessionState = _FakeConversationState();
+  final corrections = _FakeCorrections();
   final sharedLog = _CountingLog();
   final cards = _FakeCards();
   final briefs = _FakeBriefs();
@@ -481,6 +517,7 @@ void _expectNoWrites(_Harness h) {
   expect(h.extractor.texts, isEmpty, reason: 'extraction');
   expect(h.facts.calls, isEmpty, reason: 'facts (EC-03)');
   expect(h.sessionState.saved, isEmpty, reason: 'session state (EC-04)');
+  expect(h.corrections.proposed, isEmpty, reason: 'corrections (EC-07)');
   expect(h.sharedLog.recorded, isEmpty,
       reason: 'What Lumen shared log (LM-57)');
 }
@@ -641,6 +678,141 @@ void main() {
     await _waitForCommits(h, 1);
     await _settle();
     expect(h.facts.calls, isEmpty);
+  });
+
+  /// Gemini calls [name]; returns what the app answered.
+  Future<Map<String, dynamic>> toolCall(
+      _Harness h, String name, Map<String, dynamic> args, String id) async {
+    h.socket.serverSends({
+      'toolCall': {
+        'functionCalls': [
+          {'id': id, 'name': name, 'args': args},
+        ],
+      },
+    });
+    for (var i = 0; i < 200; i++) {
+      for (final message in h.socket.sent) {
+        final responses = (message['tool_response'] as Map?)?['function_responses'];
+        if (responses is List) {
+          for (final response in responses.cast<Map>()) {
+            if (response['id'] == id) {
+              return ((response['response'] as Map)['output'] as Map).cast<String, dynamic>();
+            }
+          }
+        }
+      }
+      await Future<void>.delayed(Duration.zero);
+    }
+    fail('no tool response for $id');
+  }
+
+  group('corrections (EC-07)', () {
+    const propose = {
+      'action': 'propose',
+      'about': 'savings goal',
+      'attribute': 'amount',
+      'value': '7k',
+    };
+
+    test('read back first; applied only after a yes, then the context is rebuilt',
+        () async {
+      h = _Harness(
+        state: JournalState.empty().copyWith(entries: [_entry('Earlier.')]),
+        supabase: _EndingNotebooks(),
+        rebuild: const ContextRebuildConfig(minInterval: Duration.zero),
+      );
+      await h.journal.enterNotebook(_notebookId);
+      await h.startLive();
+
+      final readBack = await toolCall(h, 'correct_memory', propose, 'c1');
+      expect(readBack['status'], 'read_back');
+      expect(readBack['say'],
+          'So your savings goal amount is 7000 USD, not 8000 USD. Is that right?');
+      expect(h.corrections.proposed.single['change'], {'valueNum': 7000});
+      expect(h.corrections.applied, isEmpty, reason: 'nothing changes before a yes');
+
+      final done = await toolCall(h, 'correct_memory', {'action': 'confirm'}, 'c2');
+      expect(done['status'], 'done');
+      expect(h.corrections.applied, ['c-1']);
+
+      // The old value is still in Gemini's window: rebuilt at the next pause.
+      h.socket
+        ..serverSends({
+          'serverContent': {
+            'outputTranscription': {'text': 'Updated.', 'finished': true},
+          },
+        })
+        ..serverSends({
+          'serverContent': {'turnComplete': true},
+        });
+      await Future<void>.delayed(const Duration(milliseconds: 1000));
+      await h.waitForSocket(2);
+    });
+
+    test('a confirm with nothing pending changes nothing', () async {
+      h = _Harness(supabase: _EndingNotebooks());
+      await h.journal.enterNotebook(_notebookId);
+      await h.startLive();
+      final result = await toolCall(h, 'correct_memory', {'action': 'confirm'}, 'c1');
+      expect(result['status'], 'nothing_to_confirm');
+      expect(h.corrections.applied, isEmpty);
+    });
+
+    test('a rejected read-back asks again, then offers to forget it', () async {
+      h = _Harness(supabase: _EndingNotebooks());
+      await h.journal.enterNotebook(_notebookId);
+      await h.startLive();
+      await toolCall(h, 'correct_memory', propose, 'c1');
+      final once = await toolCall(h, 'correct_memory', {'action': 'reject'}, 'c2');
+      expect(once['offerRemoval'], isFalse);
+      await toolCall(h, 'correct_memory', propose, 'c3');
+      final twice = await toolCall(h, 'correct_memory', {'action': 'reject'}, 'c4');
+      expect(twice['offerRemoval'], isTrue);
+      expect(h.corrections.rejected, ['c-1', 'c-2']);
+      expect(h.corrections.applied, isEmpty);
+    });
+
+    test('off the record, nothing is corrected', () async {
+      h = _Harness(supabase: _EndingNotebooks());
+      await openFreshOffTheRecord(h);
+      final result = await toolCall(h, 'correct_memory', propose, 'c1');
+      expect(result['status'], 'off_the_record');
+      expect(h.corrections.proposed, isEmpty);
+    });
+
+    test('the disputing turn does not record its own facts', () async {
+      h = _Harness(supabase: _EndingNotebooks());
+      h.extractor.result = const GraphPatch(
+        entities: [EntityPatch(name: 'savings goal', type: EntityType.concept)],
+        relations: [],
+        supersedes: [],
+        facts: [
+          FactPatch(entity: 'savings goal', attribute: 'amount', valueNum: 7000,
+              unit: 'USD', status: 'confirmed'),
+        ],
+      );
+      await h.journal.enterNotebook(_notebookId);
+      await h.startLive();
+      h.socket.serverSends({
+        'serverContent': {
+          'inputTranscription': {'text': "No, it's 7k, not 8k.", 'finished': true},
+        },
+      });
+      await toolCall(h, 'correct_memory', propose, 'c1');
+      h.socket
+        ..serverSends({
+          'serverContent': {
+            'outputTranscription': {'text': 'So 7000, not 8000?', 'finished': true},
+          },
+        })
+        ..serverSends({
+          'serverContent': {'turnComplete': true},
+        });
+      await _waitForCommits(h, 1);
+      await _settle();
+      expect(h.facts.calls, isEmpty,
+          reason: 'the correction, once confirmed, is the record of it');
+    });
   });
 
   group('back on the record', () {

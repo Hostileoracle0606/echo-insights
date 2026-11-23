@@ -13,6 +13,7 @@ import '../audio/voice_engine.dart';
 import '../logic/agenda.dart' as agenda_logic;
 import '../env.dart';
 import '../logic/fact_records.dart';
+import '../logic/memory_correction.dart';
 import '../logic/context_materialiser.dart';
 import '../logic/context_rebuild_policy.dart';
 import '../logic/session_state.dart';
@@ -207,6 +208,12 @@ class JournalNotifier extends Notifier<JournalState> {
   /// and the working set's facts, fetched before a rebuild connects.
   int _unbudgetedTokens = 0;
   List<WorkingFact> _workingFacts = const [];
+
+  /// EC-07: the correction waiting for the user's yes, and when the latest
+  /// one was proposed: the disputing turn's own facts are not recorded (the
+  /// confirmed correction is the record).
+  String? _pendingCorrectionId;
+  DateTime? _correctionProposedAt;
   static const _maxMemoryCallsPerTurn = 3;
   // What the last memory lookup brought back (LM-13 / LM-14 read it).
   RecallActivity? _recall;
@@ -1054,6 +1061,18 @@ class JournalNotifier extends Notifier<JournalState> {
     return turn == null ? null : DateTime.tryParse(turn.finalizedAt)?.toLocal();
   }
 
+  /// EC-07: whether [turn] is the user disputing a fact: a correction was
+  /// proposed just after it was said.
+  bool _disputesAFact(FinalizedTurn turn) {
+    final proposed = _correctionProposedAt;
+    final said = DateTime.tryParse(turn.finalizedAt);
+    if (proposed == null || said == null || turn.speaker != Speaker.user) {
+      return false;
+    }
+    final gap = proposed.difference(said);
+    return gap > const Duration(seconds: -15) && gap < const Duration(seconds: 60);
+  }
+
   /// EC-03: the committed turn's facts, recorded against its real entry.
   /// Best effort: a failure leaves the turn saved without facts (EC-09's
   /// backfill can derive them later), never blocks the conversation.
@@ -1178,7 +1197,9 @@ class JournalNotifier extends Notifier<JournalState> {
       }
       _preparedCommits.remove(turn.turnId);
       _lastPatches.remove(turn.turnId);
-      if (factPatch != null && committedEntryId != null) {
+      if (factPatch != null &&
+          committedEntryId != null &&
+          !_disputesAFact(turn)) {
         _recordFacts(turn.notebookId, committedEntryId, factPatch);
       }
       _dispatchTurn(
@@ -1537,6 +1558,86 @@ class JournalNotifier extends Notifier<JournalState> {
       'sessionState': _sessionState.redacted(_redactor.redact).toSummary(),
       'sessionElapsedMin': sessionElapsedMin,
     };
+  }
+
+  /// EC-07: the correction flow. propose stores a pending correction and
+  /// returns the read-back sentence the database built; confirm applies it
+  /// (only after the user's yes) and rebuilds the context at the next pause,
+  /// so the old value leaves Gemini's window; reject records a "no". Off the
+  /// record nothing is changed.
+  Future<Map<String, dynamic>> _correctMemory(Map<String, dynamic> args) async {
+    if (offTheRecord) {
+      return const {
+        'status': 'off_the_record',
+        'say': "I can't change what I remember while we're off the record.",
+      };
+    }
+    final service = ref.read(memoryCorrectionServiceProvider);
+    try {
+      switch (args['action']) {
+        case 'propose':
+          final about = args['about'];
+          final change = correctionChange(args);
+          if (about is! String || about.trim().isEmpty || change == null) {
+            return const {
+              'status': 'ask',
+              'question': 'Ask what exactly was wrong and what it should be.',
+            };
+          }
+          final attribute = args['attribute'];
+          _correctionProposedAt = DateTime.now();
+          final result = await service.propose(
+            about: _redactor.redact(about.trim()),
+            attribute: attribute is String ? attribute : null,
+            change: change,
+          );
+          switch (result['status']) {
+            case 'pending':
+              _pendingCorrectionId = result['correctionId'] as String?;
+              return {
+                'status': 'read_back',
+                'say': result['readBack'],
+                'next':
+                    'Say this, then wait. Confirm only after a clear yes; reject after a no.',
+              };
+            case 'ask':
+              return {'status': 'ask', 'question': result['question']};
+            default:
+              return const {
+                'status': 'not_found',
+                'say': "I don't have that stored, so there's nothing to change.",
+              };
+          }
+        case 'confirm':
+          final id = _pendingCorrectionId;
+          if (id == null) return const {'status': 'nothing_to_confirm'};
+          _pendingCorrectionId = null;
+          final result = await service.apply(id);
+          if (result['status'] != 'applied') {
+            return const {'status': 'not_applied', 'say': "That couldn't be changed just now."};
+          }
+          _rebuildPolicy?.request(RebuildReason.correction);
+          vlog('session', 'correction applied');
+          return const {'status': 'done'};
+        case 'reject':
+          final id = _pendingCorrectionId;
+          if (id == null) return const {'status': 'nothing_to_reject'};
+          _pendingCorrectionId = null;
+          final result = await service.reject(id);
+          final offer = result['offerRemoval'] == true;
+          return {
+            'status': 'rejected',
+            'offerRemoval': offer,
+            'next': offer
+                ? 'Offer to forget it instead (propose with remove true).'
+                : 'Ask what the right value is.',
+          };
+      }
+      return const {'status': 'ask', 'question': 'Use propose, confirm or reject.'};
+    } catch (error) {
+      vlog('session', 'correction failed: $error');
+      return const {'status': 'not_applied', 'say': "That couldn't be changed just now."};
+    }
   }
 
   Future<Map<String, dynamic>?> _retrieveMemory(
@@ -2162,6 +2263,8 @@ class JournalNotifier extends Notifier<JournalState> {
         Map<String, dynamic>? result;
         if (name == 'get_relevant_memory') {
           result = await _retrieveMemory(args, isCurrent);
+        } else if (name == 'correct_memory') {
+          result = await _correctMemory(args);
         } else {
           result = const {};
         }
@@ -2701,6 +2804,54 @@ class JournalNotifier extends Notifier<JournalState> {
                 },
             },
             'required': ['query', if (memoryQueryRoutingEnabled) 'question'],
+          },
+        },
+        {
+          'name': 'correct_memory',
+          'description':
+              'Change or forget something stored about the user, only when they say a stored fact is wrong or ask you to forget it. First call with action "propose": say the returned read-back sentence exactly and wait. Call "confirm" only after a clear yes, "reject" after a no. Never read this aloud.',
+          'parameters': {
+            'type': 'object',
+            'properties': {
+              'action': {
+                'type': 'string',
+                'enum': ['propose', 'confirm', 'reject'],
+              },
+              'about': {
+                'type': 'string',
+                'description':
+                    'The thing the fact is about, as the user names it ("savings goal").',
+              },
+              'attribute': {
+                'type': 'string',
+                'description':
+                    'Which detail, when the thing has several ("amount", "due day").',
+              },
+              'value': {
+                'type': 'string',
+                'description': 'The right value, as said ("7k", "the 2nd").',
+              },
+              'unit': {'type': 'string'},
+              'date': {
+                'type': 'string',
+                'description':
+                    'The right date, YYYY-MM-DD, when the date was wrong.',
+              },
+              'status': {
+                'type': 'string',
+                'enum': ['done', 'planned', 'called off'],
+              },
+              'belongs_to': {
+                'type': 'string',
+                'description':
+                    'Who or what it really belongs to, when it was attributed wrongly.',
+              },
+              'remove': {
+                'type': 'boolean',
+                'description': 'True to forget the fact instead of changing it.',
+              },
+            },
+            'required': ['action'],
           },
         },
       ],
