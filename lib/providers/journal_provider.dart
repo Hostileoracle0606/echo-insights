@@ -249,6 +249,8 @@ class JournalNotifier extends Notifier<JournalState> {
   // Greetings never reach the turn machine: there is nothing to extract.
   final _bundledOpenings = <OpeningChoice, Future<StandardOpening?>>{};
   final _greetingRows = <ConversationTurn>[];
+  // The greetings played on the record: saved with the conversation.
+  final _recordedGreetings = <ConversationTurn>[];
 
   // Optimistic-concurrency counter from the last-known server snapshot.
   // Every commit reads this fresh (at the moment it actually runs, not when
@@ -751,7 +753,7 @@ class JournalNotifier extends Notifier<JournalState> {
     if (notebookId == null || notebookId != _activeNotebookId) return;
     final retryAfter = _saveRetryAfter;
     if (retryAfter != null && DateTime.now().isBefore(retryAfter)) return;
-    for (final turn in _conversation) {
+    for (final turn in [..._recordedGreetings, ..._conversation]) {
       if (!_savedTurnIds.add(turn.turnId)) continue;
       unawaited(_saveTurn(notebookId, turn));
     }
@@ -1697,6 +1699,7 @@ class JournalNotifier extends Notifier<JournalState> {
     vlog('timing', 'open: snapshot +${clock.elapsedMilliseconds}ms');
     _activeNotebookId = notebookId;
     _greetingRows.clear();
+    _recordedGreetings.clear();
     _history
       ..clear()
       ..addAll(await history);
@@ -2269,7 +2272,9 @@ class JournalNotifier extends Notifier<JournalState> {
           result = const {};
         }
         if (!isCurrent()) return null;
-        return result;
+        final note = _sessionState.toToolNote();
+        if (result == null || result.isEmpty || note.isEmpty) return result;
+        return {...result, 'conversationSoFar': note};
       }
       ..onUsage = (promptTokens) {
         if (isCurrent()) _rebuildPolicy?.observedWindow(promptTokens);
@@ -2521,13 +2526,26 @@ class JournalNotifier extends Notifier<JournalState> {
       return;
     }
     final now = DateTime.now().toUtc().toIso8601String();
-    _greetingRows.add(ConversationTurn(
+    final greeting = ConversationTurn(
       turnId: 'lumen-greeting-$now',
       role: Speaker.assistant,
       text: clip.text,
       createdAt: now,
       startedAt: now,
-    ));
+    );
+    _greetingRows.add(greeting);
+    if (!offTheRecord) {
+      // Saved like any Lumen turn, so the closing card and the next brief
+      // see what the greeting asked, and whether the user took it up.
+      _recordedGreetings.add(greeting);
+      _saveNewTurns(_activeNotebookId);
+      _sessionState = _sessionState.observe(
+        speaker: Speaker.assistant,
+        text: _redactor.redact(clip.text),
+        known: state.entities.values.map((entity) => entity.name),
+      );
+      _saveSessionState();
+    }
     var fed = false;
     if (player != null) {
       // The words ride on the pill while the voice plays and leave when it

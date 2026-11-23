@@ -121,6 +121,18 @@ class SessionState {
         'covered': covered,
       };
 
+  /// What rides on each memory tool result: Gemini Live reads context only
+  /// before its first reply, so a tool result is the one place the model
+  /// sees, mid-session, what it already asked and what the user set aside.
+  /// Empty when there is nothing to say.
+  Map<String, dynamic> toToolNote({int maxAsked = 6}) => {
+        if (asked.isNotEmpty)
+          'alreadyAsked': asked.length <= maxAsked
+              ? asked
+              : asked.sublist(asked.length - maxAsked),
+        if (pausedTopics.isNotEmpty) 'setAside': pausedTopics,
+      };
+
   /// Empty when [json] is not a stored state: a bad row never breaks a
   /// conversation.
   static SessionState fromJson(Object? json) {
@@ -190,7 +202,8 @@ final _promise = RegExp(
 
 final _deflection = RegExp(
   r"\b(not now|later|another time|rather not|skip (?:it|that|this)|"
-  r"don'?t want to (?:talk|get into|go into)|move on|change the subject)\b",
+  r"don'?t want to (?:talk|get into|go into)|move on|change the subject|"
+  r"(?:talk about|discuss) something else)\b",
   caseSensitive: false,
 );
 

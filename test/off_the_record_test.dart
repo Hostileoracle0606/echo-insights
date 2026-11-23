@@ -1275,7 +1275,7 @@ void main() {
       focus: const ['Maya'],
       openingThread: 'the move',
       openingLine: 'Welcome back.',
-      createdAt: DateTime.utc(2026, 10, 27, 9, 30),
+      createdAt: _recentBrief,
       playedAt: null,
       pcm: Uint8List(24000),
       sampleRate: 24000,
@@ -1300,7 +1300,7 @@ void main() {
       focus: const ['Maya'],
       openingThread: 'the move',
       openingLine: 'Welcome back.',
-      createdAt: DateTime.utc(2026, 10, 27, 9, 30),
+      createdAt: _recentBrief,
       playedAt: null,
       pcm: Uint8List(24000),
       sampleRate: 24000,
@@ -1689,3 +1689,8 @@ void main() {
     });
   });
 }
+
+// Recent at run time: a brief over sessionBriefMaxAge (21 days) is stale.
+final _recentBrief = DateTime.utc(
+  DateTime.now().year, DateTime.now().month, DateTime.now().day,
+).subtract(const Duration(days: 1));
