@@ -41,4 +41,14 @@ void main() {
     expect(geminiLiveSystemInstruction,
         contains('Never say it is fixed until confirm returns done'));
   });
+
+  test('a new value the user simply states is not a correction (EC-10 run)', () {
+    // Found in the Simulator: "My savings goal is 8k now" made Lumen call
+    // correct_memory, then say it "didn't have the number stored".
+    final declarations =
+        JournalNotifier.liveTools.single['function_declarations'] as List;
+    final tool = declarations.cast<Map>().firstWhere((d) => d['name'] == 'correct_memory');
+    expect(tool['description'], contains('is not a correction'));
+    expect(geminiLiveSystemInstruction, contains('is not a correction'));
+  });
 }

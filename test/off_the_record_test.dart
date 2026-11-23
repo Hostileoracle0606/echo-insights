@@ -207,6 +207,7 @@ class _FakeCorrections implements MemoryCorrectionService {
     required Map<String, dynamic> change,
   }) async {
     proposed.add({'about': about, 'attribute': attribute, 'change': change});
+    if (about == 'nothing stored') return {'status': 'not_found'};
     return {
       'status': 'pending',
       'correctionId': 'c-${proposed.length}',
@@ -747,6 +748,17 @@ void main() {
         });
       await Future<void>.delayed(const Duration(milliseconds: 1000));
       await h.waitForSocket(2);
+    });
+
+    test('nothing to correct gives Lumen nothing to say about storage', () async {
+      h = _Harness(supabase: _EndingNotebooks());
+      await h.journal.enterNotebook(_notebookId);
+      await h.startLive();
+      final result = await toolCall(h, 'correct_memory',
+          {...propose, 'about': 'nothing stored'}, 'c1');
+      expect(result['status'], 'not_found');
+      expect(result.containsKey('say'), isFalse);
+      expect(jsonEncode(result).toLowerCase(), isNot(contains('stored')));
     });
 
     test('a confirm with nothing pending changes nothing', () async {
