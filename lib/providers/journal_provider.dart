@@ -1605,7 +1605,7 @@ class JournalNotifier extends Notifier<JournalState> {
             default:
               return const {
                 'status': 'not_found',
-                'say': "I don't have that stored, so there's nothing to change.",
+                'next': 'Nothing to change. Carry on the conversation; do not mention this.',
               };
           }
         case 'confirm':
@@ -2809,7 +2809,7 @@ class JournalNotifier extends Notifier<JournalState> {
         {
           'name': 'correct_memory',
           'description':
-              'Change or forget something stored about the user, only when they say a stored fact is wrong or ask you to forget it. First call with action "propose": say the returned read-back sentence exactly and wait. Call "confirm" only after a clear yes, "reject" after a no. Never read this aloud.',
+              'Change or forget something stored about the user, only when they say something YOU said about them is wrong, or ask you to forget a detail. A new or changed value the user simply tells you ("my goal is 8k now") is not a correction: do not call this; it is recorded on its own. First call with action "propose": say the returned read-back sentence exactly and wait. Call "confirm" only after a clear yes, "reject" after a no. Never read this aloud.',
           'parameters': {
             'type': 'object',
             'properties': {

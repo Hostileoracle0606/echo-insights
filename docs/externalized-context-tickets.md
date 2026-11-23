@@ -460,9 +460,25 @@ fact are re-read on a run after `--reset`.
 
 **Done when**
 
-- [ ] Reports exist for Simulator and device runs.
+- [ ] Reports exist for Simulator and device runs. (Simulator, typed:
+  [ec-10-report-2026-11-22.md](ec-10-report-2026-11-22.md). Spoken
+  Simulator and device runs still to do.)
 - [ ] A documented go / no-go for the rebuild design, or the single-session
-  fallback.
+  fallback. (Not decided. The automated checks pass on the typed run, but
+  the listening test and spoken and device runs are needed, and one
+  coherence miss after a rebuild was seen.)
+
+**Built** (`feat/ec-10-gate`): `scripts/ec10-report.py`.
+
+- Time to first audio, p50 / p95 / max, for plain and tool turns, normal
+  and first after a rebuild, each compared like with like.
+- Each rebuild's reason, seeding time, context size and turns replayed.
+- Boundary checks on Lumen's reply to the first user turn after each
+  rebuild: re-greeting, repeating an earlier line (word overlap ≥ 0.6),
+  re-asking the pending question.
+
+It has a `--self-test`. The run also found and fixed an over-eager
+`correct_memory` call (see the report).
 
 ## EC-11 — Pre-warmed switch (only if EC-01 gap is audible)
 
