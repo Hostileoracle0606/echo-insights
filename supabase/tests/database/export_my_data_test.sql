@@ -74,9 +74,9 @@ select is((select array(select jsonb_object_keys(j) order by 1) from a_export),
 select is((select jsonb_array_length(j->'notebooks') from a_export), 2,
   'both of A''s notebooks, and only those');
 select is((select array(select jsonb_object_keys(j->'notebooks'->0) order by 1) from a_export),
-  array['archivedAt', 'askedQuestions', 'card', 'conversationMode', 'createdAt',
-        'durationSeconds', 'endedAt', 'entities', 'entityCount', 'followUps', 'id',
-        'journalEntries', 'modeContext', 'relations', 'startedAt', 'summary',
+  array['archivedAt', 'askedQuestions', 'card', 'conversationMode', 'corrections', 'createdAt',
+        'durationSeconds', 'endedAt', 'entities', 'entityCount', 'facts', 'followUps', 'id',
+        'journalEntries', 'modeContext', 'relations', 'sessionState', 'startedAt', 'summary',
         'title', 'titleSource', 'turns', 'updatedAt'],
   'a notebook has the documented keys, and no userId or revision');
 select is((select j->'notebooks'->0->>'title' from a_export), 'A first',
