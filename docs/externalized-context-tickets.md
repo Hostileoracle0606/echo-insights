@@ -386,8 +386,27 @@ the deletion, with redacted replay.
 
 **Done when**
 
-- [ ] Each privacy path has a test that covers every new table.
-- [ ] After a mid-session Forget, the rebuilt context contains no trace of it.
+- [x] Each privacy path has a test that covers every new table.
+- [x] After a mid-session Forget, the rebuilt context contains no trace of it.
+
+**Built** (`feat/ec-08-privacy-coverage`).
+
+- Forget and Remove both write an `entity_suppressions` row first, in the
+  same transaction, so a trigger on it deletes what was derived from it:
+  the entity's facts (matched by the same suppression hash), any fact whose
+  value names a forgotten person, and any session state that names them.
+  Corrections go with their facts.
+- Auto-forget and notebook deletion cascade from the deleted entry or
+  notebook; account deletion cascades to everything.
+- `export_my_data` adds `facts` (live only), `sessionState` and
+  `corrections` per notebook. The app's export keeps them as they are.
+
+Tests: `privacy_derived_memory_test.sql` (22, every path against every new
+table, and a bystander's data untouched), the export test's key list, an
+export fixture and model test, and a mid-session Forget whose open thread
+survives with the name redacted. Some older privacy tests (`\gset`, fixed
+ids) cannot run through `scripts/staging-db-test.py`. They fail the same
+way with and without this migration.
 
 ## EC-09 — Backfill existing journals
 
