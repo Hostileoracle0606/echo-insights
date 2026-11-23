@@ -415,8 +415,34 @@ and rate-limited, honouring Forget state at run time.
 
 **Done when**
 
-- [ ] A backfilled journal answers EC-06 queries equal to one extracted live.
-- [ ] Interruption and resume produce no duplicates.
+- [x] A backfilled journal answers EC-06 queries equal to one extracted live.
+- [x] Interruption and resume produce no duplicates.
+
+**Built** (`feat/ec-09-backfill`).
+
+- `memory_backfill_progress` and `list_backfill_entries` /
+  `advance_memory_backfill` / `reset_memory_backfill` (12 db tests).
+  Entries come oldest first, from a cursor kept in the database. Only the
+  user's own words are listed: an entry equal to one of Lumen's turns is
+  skipped (on staging about half the stored entries were Lumen's), and so
+  is an entry linked to no entity. Each comes with its Forget-redacted text,
+  its entities, when it was said, and whether it already has facts.
+- `scripts/backfill-facts.py` runs the same extraction the app runs per turn,
+  one entry at a time with a delay, and backs off on 429. The model is shown
+  the entry's and the notebook's entities, as the live path does. Facts are
+  recorded with `p_replace`. An entry that already has facts (extracted
+  live) is left alone.
+- Forget at run time: the text is the redacted one, the runtime redacts
+  again with the user's token, and facts about forgotten (deleted) entities
+  are skipped by `record_memory_facts`.
+
+`scripts/backfill-facts.py --eval` (staging, real model, two runs): every
+routed question answered like the live path (7 of 7), and an interrupted,
+resumed and then repeated backfill gave identical fact counts.
+
+Limits: it runs for one signed-in account. Running it for every user needs a
+server-side job with the service role. Entries whose extraction finds no
+fact are re-read on a run after `--reset`.
 
 ## EC-10 — Latency and naturalness gate
 
