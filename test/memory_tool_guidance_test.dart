@@ -8,7 +8,8 @@ import 'package:lumen/providers/journal_provider.dart';
 void main() {
   final toolDescription =
       ((JournalNotifier.liveTools.single['function_declarations'] as List)
-          .single as Map)['description'] as String;
+          .cast<Map>()
+          .firstWhere((d) => d['name'] == 'get_relevant_memory'))['description'] as String;
 
   test('memory is recalled only when the user refers back', () {
     expect(geminiLiveSystemInstruction,

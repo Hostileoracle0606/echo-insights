@@ -345,9 +345,36 @@ extraction does not record them again.
 
 **Done when**
 
-- [ ] Value, date, status, attribution and removal corrections each round-trip.
-- [ ] After a corrected value, "previous" never returns the wrong value.
-- [ ] Re-extraction after an entry edit keeps the correction.
+- [x] Value, date, status, attribution and removal corrections each round-trip.
+- [x] After a corrected value, "previous" never returns the wrong value.
+- [x] Re-extraction after an entry edit keeps the correction.
+
+**Built** (`feat/ec-07-corrections`), as one Live tool, `correct_memory`
+(action `propose` / `confirm` / `reject`), rather than three.
+
+- `propose_memory_correction` finds the fact by the thing's name (exact
+  name, then id, then a name containing it) and, when it has several
+  details, the attribute. If more than one detail fits, it returns one
+  question ("Which do you mean: rent amount or rent deposit?"). It stores a
+  pending correction and returns the read-back sentence, built in SQL:
+  - value: "So your savings goal amount is 7000 USD, not 8000 USD. Is that
+    right?"
+  - date, status ("only planned, not done"), attribution ("it was
+    Priya's…") and removal ("So I should forget that…").
+- `apply_memory_correction`, called only after the user's yes: a change
+  retracts the old fact (`corrected`) and stores the right one
+  `user_corrected`; a removal retracts with `user_removed`.
+- `reject_memory_correction`: after two rejected read-backs for one fact,
+  `offerRemoval` is true and Lumen offers to forget it.
+- The app keeps the pending id, refuses corrections off the record, does not
+  record the disputing turn's own facts (the confirmed correction is the
+  record), and asks for a rebuild at the next pause
+  (`RebuildReason.correction`) so the old value leaves Gemini's window.
+
+Not done: "mark disputed" (a fact kept but flagged) is not built; the offer
+is to remove it. A misreading of a correct record, like "your own enterprise
+AI" for "our own", has no fact to correct; the graph and the prompt are the
+fix for that, not this flow.
 
 ## EC-08 — Forget, export and deletion coverage
 

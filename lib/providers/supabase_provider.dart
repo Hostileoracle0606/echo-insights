@@ -7,6 +7,7 @@ import '../services/conversation_state_service.dart';
 import '../services/extract_graph_service.dart';
 import '../services/fresh_access_token.dart';
 import '../services/memory_control_service.dart';
+import '../services/memory_correction_service.dart';
 import '../services/memory_fact_service.dart';
 import '../services/model_inputs.dart';
 import '../services/notebook_commit_service.dart';
@@ -57,6 +58,11 @@ final notebookCommitServiceProvider = Provider<NotebookCommitService>((ref) {
 final conversationStateServiceProvider =
     Provider<ConversationStateService>((ref) {
   return ConversationStateService(ref.watch(supabaseClientProvider));
+});
+
+final memoryCorrectionServiceProvider =
+    Provider<MemoryCorrectionService>((ref) {
+  return MemoryCorrectionService(ref.watch(supabaseClientProvider));
 });
 
 final memoryFactServiceProvider = Provider<MemoryFactService>((ref) {

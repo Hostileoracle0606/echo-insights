@@ -433,7 +433,8 @@ void main() {
         startsWith('[opening said] "${_bundledText('lumen_returning')}"\n'));
     expect(context, isNot(contains('[session brief]')));
     expect(context.split('\n').last, startsWith('[graph summary] '));
-    expect(_toolNames(JournalNotifier.liveTools), ['get_relevant_memory']);
+    expect(_toolNames(JournalNotifier.liveTools),
+        ['get_relevant_memory', 'correct_memory']);
     expect(
       h.journal.transcriptRows
           .where((row) => row.turn.turnId.startsWith('lumen-greeting')),
