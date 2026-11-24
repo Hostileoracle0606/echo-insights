@@ -13,5 +13,10 @@
       "QuotaExhausted",
       "BudgetExhausted"
     ]
+  },
+  "2026-11-24": {
+    "used": 16,
+    "limit": 18,
+    "stops": []
   }
 }

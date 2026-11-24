@@ -10,6 +10,14 @@ export class QuotaExhausted extends Error {
   constructor() { super('provider returned 429 (quota)'); this.name = 'QuotaExhausted'; }
 }
 
+// 401/402/403: the key is wrong or its billing is spent (Gemini answers 402
+// "prepayment credits are depleted"). Every later call would fail the same
+// way, and the Lambda would report each as a per-turn "providerUnavailable",
+// so stop the run instead of saving a scenario whose turns were all lost.
+export class ProviderAccountError extends Error {
+  constructor(status) { super(`provider returned ${status} (key or billing)`); this.name = 'ProviderAccountError'; }
+}
+
 export function createBudget(limit) {
   let used = 0;
   return {
@@ -48,6 +56,10 @@ export function providerFetch({
     const response = await realFetch(url, init);
     if (response.status === 429) {
       stop = new QuotaExhausted();
+      throw stop;
+    }
+    if (response.status === 401 || response.status === 402 || response.status === 403) {
+      stop = new ProviderAccountError(response.status);
       throw stop;
     }
     return response;

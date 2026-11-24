@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { BudgetExhausted, QuotaExhausted, createBudget, providerFetch } from './budget.mjs';
+import { BudgetExhausted, ProviderAccountError, QuotaExhausted, createBudget, providerFetch } from './budget.mjs';
 
 const SUPABASE = 'http://127.0.0.1:55321';
 const GEMINI = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
@@ -39,6 +39,17 @@ test('a provider 429 throws QuotaExhausted and nothing reaches the provider afte
   assert.equal(calls.length, 1, 'no retry past a 429');
   assert.ok(fetchImpl.stopReason() instanceof QuotaExhausted);
 });
+
+for (const status of [401, 402, 403]) {
+  test(`a provider ${status} (key or billing) stops the run like a 429, so no empty graph is saved`, async () => {
+    const { calls, realFetch } = fakeFetch(status);
+    const fetchImpl = providerFetch({ realFetch, budget: createBudget(10), providerHosts: hosts });
+    await assert.rejects(fetchImpl(GEMINI, { method: 'POST' }), ProviderAccountError);
+    await assert.rejects(fetchImpl(GEMINI, { method: 'POST' }), ProviderAccountError);
+    assert.equal(calls.length, 1, 'no retry past an account failure');
+    assert.match(fetchImpl.stopReason().message, new RegExp(String(status)));
+  });
+}
 
 test('Supabase-origin calls pass through and never consume budget', async () => {
   const { calls, realFetch } = fakeFetch();

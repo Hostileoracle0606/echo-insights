@@ -85,6 +85,46 @@ All metrics are counts over probes. Text is compared as whole words, ignoring ca
 - **sequence preserved:** the latest state is in active retrieved text, and every earlier state survives as a *statement*: a description, a relation, or a superseded relation kept as history. A leftover bare entity name doesn't count. This rule was tightened after the first results, because the first version passed on the name alone.
 - **ambiguity acknowledged:** two distinct retrieved entities share the ambiguous first name, meaning they weren't merged into one person.
 
+## Claude as judge (`judge.mjs`, `--phase judge`)
+
+Stale facts, decided/correct status, sequence and ambiguity need reading, not
+word matching, so their reported numbers come from **Claude only**
+(`claude-opus-5-5`, structured JSON output, effort `high`). Recall, rank and
+precision stay deterministic set comparisons. Gemini never judges, so the
+model that wrote the memory never grades it.
+
+- **Input:** the scenario script as ground truth (every turn and memory action, in order), the probe question, and the retrieved items from the scenario (background distractors are left out). For briefs: the script and the brief text, once per scenario.
+- **Applicability** comes from the probe labels, not the judge: a check the probe doesn't make is forced to `n/a`, and an applicable check the judge leaves unanswered counts as a failure, never a pass.
+- **Calibration:** 8 hand-labelled cases (`judge-calibration.mjs`) run first on every judge run. They cover a denial that isn't stale, a stale brief, stale and clean retrieval, sequence kept and lost, and two same-named people kept apart or merged. If any disagrees, the run still writes verdicts but marks `calibrated: false`. Rubric v1 disagreed on one case (status with both the old and corrected city live). The rubric was made explicit that any live contradicting statement makes status wrong, matching the scorer's existing status rule. v2 agrees 8/8.
+- **Cost and caching:** about 45 calls (~55k input / ~7k output tokens, ≈$0.40) for 8 scenarios. Verdicts are cached by a hash of model, rubric and input in `judgments.json`, with each verdict's one-sentence reason.
+- **Rule agreement** with the old word-matching rules is reported in `memory.json` (`method.judge.ruleAgreement`), never scored.
+
+```bash
+source eval/privacy/local-env.sh
+export ANTHROPIC_API_KEY=...
+npm run eval:memory -- --phase judge   # judges the newest probes.json
+```
+
+## Judged results, November 24, 2026
+
+Same 8 scenarios and 32 probes as November 19 (`probes.json` unchanged),
+re-scored with Claude as the judge; calibration 8/8.
+[Scores](../results/2026-11-24-b266bda/memory/memory.json) ·
+[Verdicts and reasons](../results/2026-11-24-b266bda/memory/judgments.json)
+
+| | Rule-based (Nov 19) | Claude judge (Nov 24) |
+|---|---|---|
+| Stale in retrieval | 3/10 | **3/10** |
+| Stale briefs | 1/3 | **2/3** |
+| Decided/correct status | 2/3 | **2/3** |
+| Sequence preserved | 2/2 | **0/2** |
+
+Where they differ:
+- **Brief after forget** (`deletion-forget-person`): the name is gone, but the brief still says "had lunch with someone who is thinking about moving to Oslo". Claude counts the forgotten person's details as live memory; the word rules only looked for the name.
+- **Sequence** (`changing-decided-then-reversed`): both trips are retrieved side by side with no statement that Lisbon came first and was cancelled. The old rule passed because both names were present.
+
+**Extraction blocked, November 24.** The four pending scenarios (two same-first-name cases, the next-session job-title correction, tentative-to-decided) could not be extracted: Gemini answers `402 prepayment credits are depleted` for the paid key. The Lambda reports that as a per-turn `providerUnavailable`, so the first attempt saved four empty graphs; those were deleted. `providerFetch` now treats a provider 401/402/403 as an account stop like a 429, so the run ends and saves nothing.
+
 ## Partial results, November 19, 2026
 
 The local run scored **8 of 12 scenarios and 32 of 48 retrieval probes**.
@@ -132,6 +172,6 @@ smaller graphs and earlier scorers.
 - **N = 1** extraction per scenario (free-tier quota). No run-to-run spread is claimed; the model runs at temperature 0, but output can still vary.
 - Local stack at a given commit; Gemini is the real provider.
 - Path attribution is `combined` (see above).
-- Text scores use word markers and a small set of negation rules. The raw retrieval and brief text in `probes.json` is available for manual review.
+- Stale, status, sequence and ambiguity are judged by one model (Claude) once per input, checked against 8 hand-labelled cases. Its verdicts and reasons are in `judgments.json` for review; no second human rater has checked them.
 - Spoken answers (an LLM judge over Live transcripts) are not covered yet. That needs Live quota scheduling and is planned separately.
 - Snapshots carry the throwaway user's random suppression key (`suppressionKey`). Forget hashes are keyed per user, and a restored forget needs that key to keep redacting the name. The key protected only the synthetic names in these files, and its user is deleted.
