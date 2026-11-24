@@ -105,7 +105,38 @@ export ANTHROPIC_API_KEY=...
 npm run eval:memory -- --phase judge   # judges the newest probes.json
 ```
 
-## Judged results, November 24, 2026
+## Full results, November 24, 2026 (12 of 12 scenarios, Claude judge)
+
+All 12 scenarios extracted (Gemini credit restored), 48 probes, 12 briefs.
+Judge calibration 8/8; 68 judge verdicts (38 new calls, 30 reused from cache).
+[Scores](../results/2026-11-24-c96c142/memory/memory.json) ·
+[Verdicts and reasons](../results/2026-11-24-c96c142/memory/judgments.json) ·
+[Raw probes](../results/2026-11-24-c96c142/memory/probes.json)
+
+| | Continuity | Correction | Deletion | Changing facts | Total |
+|---|---|---|---|---|---|
+| Probes | 16 | 12 | 8 | 12 | **48** |
+| Recall@1 | 2/13 | 6/12 | 2/4 | 3/12 | **13/41** |
+| Recall@3 | 7/13 | 9/12 | 3/4 | 6/12 | **25/41** |
+| Recall@8 | 11/13 | 11/12 | 3/4 | 8/12 | **33/41** |
+| Extraction misses | 6/19 | 0/12 | 0/4 | 1/13 | **7/48** |
+| Precision@3 | 7/48 | 9/36 | 3/24 | 7/36 | **26/144** |
+| Stale in retrieval (judge) | – | 5/6 | 0/6 | – | **5/12** |
+| Stale briefs (judge) | – | 1/3 | 2/2 | – | **3/5** |
+| Current status correct (judge) | – | 2/5 | – | 0/2 | **2/7** |
+| Sequence preserved (judge) | – | – | – | 0/3 | **0/3** |
+| Same-name people kept apart (judge) | 1/3 | – | – | – | **1/3** |
+| Look-alike name confused | – | – | – | 1/2 | **1/2** |
+
+What the new scenarios add:
+- **Next-session correction leaves the old title live** (`correction-job-title-next-session`): after "senior analyst" is corrected to "staff analyst", memory still states "The user was promoted to senior analyst at Larkfield Bank" (stale in 2 probes, status wrong in 2). The brief is clean. Same pattern as the same-session city correction.
+- **Removing a project doesn't reach the brief** (`deletion-remove-project`): retrieval no longer shows "Wren Box", but the brief still says "Building a birdhouse project called Wren Box for nephew Otto". Both deletion scenarios now leave the removed thing in the brief (2/2).
+- **The rejected-commit bug now costs 3 of 12 scenarios a turn** (`continuity-paraphrase`, `changing-tentative-to-decided`, `continuity-two-sams`; `invalidChange` when the extractor names a relation endpoint it didn't declare). Downstream, the Sam Ortiz turn and the "decided to stay" turn were never saved, so the ambiguity misses (2) and the tentative-to-decided status and sequence misses come from the lost turns, not from retrieval.
+- **Two Alexes kept apart** (`continuity-two-alexes`): the one same-name case whose turns all saved passed.
+
+Rule agreement (reported, not scored): stale 12/12, status 7/7, ambiguity 3/3, sequence 1/3.
+
+## Judged results, November 24, 2026 (first 8 scenarios)
 
 Same 8 scenarios and 32 probes as November 19 (`probes.json` unchanged),
 re-scored with Claude as the judge; calibration 8/8.
