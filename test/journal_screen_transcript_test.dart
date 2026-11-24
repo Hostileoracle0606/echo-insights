@@ -51,7 +51,7 @@ class _LifecycleJournal extends JournalNotifier {
   }
 
   @override
-  Future<NotebookTransitionResult> leaveNotebook() {
+  Future<NotebookTransitionResult> leaveNotebookForCard() {
     leaveCalls += 1;
     return leaveCompleter.future;
   }
@@ -177,7 +177,7 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('home waits for notebook shutdown, then shows its card',
+  testWidgets('home waits for the live transport to close, then shows the card',
       (tester) async {
     await tester.binding.setSurfaceSize(const Size(402, 874));
     addTearDown(() => tester.binding.setSurfaceSize(null));
