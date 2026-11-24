@@ -118,18 +118,33 @@ const ACTION_RPC = {
   forget: (id: string) => ["forget_entity", { p_entity_id: id }],
 } as const;
 
+export type TurnReport = {
+  turnId: string;
+  session: number;
+  text: string;
+  patch: { entities?: Array<{ name: string; type?: string; description?: string }>; relations?: Array<{ source: string; label: string; target: string }> } | null;
+  extractionStatus: number;
+  commit: { status: string; code: string | null } | null;
+  before: JournalState;
+  after: JournalState;
+  latencyMs: { extraction: number; commit: number };
+};
+
 export async function replayScenario({
   scenario,
   env,
   fetchImpl,
   takeSnapshot,
   now = () => new Date(),
+  onTurn,
 }: {
   scenario: Scenario;
   env: Env;
   fetchImpl: Fetch;
   takeSnapshot: (notebookId: string) => Promise<unknown>;
   now?: () => Date;
+  /** Optional per-turn report for the stage tracks (eval/stages); unused by eval/memory. */
+  onTurn?: (turn: TurnReport) => Promise<void> | void;
 }) {
   let providerCalls = 0;
   const counted: Fetch = async (input, init) => {
@@ -219,6 +234,7 @@ export async function replayScenario({
         context: toRuntimeContext(compiled.clientContext),
       };
       await fetchImpl.pace?.();
+      const extractionStarted = Date.now();
       const response = await gatewayInvoke({
         authorize,
         handler: extract,
@@ -229,6 +245,7 @@ export async function replayScenario({
           body: JSON.stringify(body),
         },
       });
+      const extractionMs = Date.now() - extractionStarted;
       stopIfSpent();
       const parsed = JSON.parse(response.body || "{}");
       // A failed extraction or a rejected commit loses this turn's memory in
@@ -239,18 +256,28 @@ export async function replayScenario({
       sessionTurns.push({ role: "user", text });
       if (response.statusCode !== 200) {
         lostTurns.push({ turnId, reason: `extraction ${response.statusCode} ${parsed.code ?? "unknown"}`, undeclaredEndpoints: [] });
+        await onTurn?.({ turnId, session: sessionNumber, text, patch: null, extractionStatus: response.statusCode,
+          commit: null, before: state, after: state, latencyMs: { extraction: extractionMs, commit: 0 } });
         continue;
       }
       // The web adapter drops the extractor's follow-up: Gemini Live owns dialogue.
       const { change } = mergeExtraction(state, text, { ...parsed.patch, followUp: undefined });
+      const commitStarted = Date.now();
       const outcome = await rest("rpc/commit_notebook", {
         body: { p_notebook_id: notebookId, p_expected_revision: revision, p_request_id: randomUUID(), p_change: change },
       });
+      const commitMs = Date.now() - commitStarted;
       if (outcome?.status !== "committed") {
         const known = new Set([...Object.keys(state.entities), ...change.entities.map((e) => e.id)]);
         const undeclared = change.relations.flatMap((r) => [r.source, r.target]).filter((id) => !known.has(id));
         lostTurns.push({ turnId, reason: `commit ${outcome?.code ?? outcome?.status ?? "unknown"}`,
           undeclaredEndpoints: [...new Set(undeclared)], patch: parsed.patch });
+      }
+      if (onTurn) {
+        const after = outcome?.status === "committed" ? (await loadSnapshot()).state : state;
+        await onTurn({ turnId, session: sessionNumber, text, patch: parsed.patch, extractionStatus: 200,
+          commit: { status: outcome?.status ?? "unknown", code: outcome?.code ?? null }, before: state, after,
+          latencyMs: { extraction: extractionMs, commit: commitMs } });
       }
     }
     for (const action of (scenario.actions ?? []).filter((a) => a.after_session === sessionNumber)) {
@@ -273,6 +300,7 @@ export async function replayScenario({
   const snapshot = await takeSnapshot(notebookId);
   return {
     snapshot,
+    notebookId,
     meta: { scenario: scenario.id, extractorVersion: EXTRACTOR_VERSION, mode: DEFAULT_EXTRACTION_MODE,
       model: "gemini-2.5-flash", turns, providerCalls, actions, lostTurns, extractedAt: now().toISOString() },
   };
