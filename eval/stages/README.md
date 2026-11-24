@@ -38,7 +38,15 @@ export GEMINI_API_KEY=... STAGES_GEMINI_CALL_BUDGET=1500
 npm run eval:stages -- --track all --split test           # resumable; --smoke for the 3-world check
 ```
 
+Serving functions for this eval: serve from a temporary `git archive` copy (as in `eval/memory/README.md`) and append `[edge_runtime] policy = "per_worker"` to **that copy's** `config.toml`. With the CLI default, every embedding request reloads gte-small and hits the local CPU hard limit (HTTP 546); a warm worker lets `embedNotebook`'s retries recover. The repo's config is not changed.
+
 Outputs: `eval/results/<date>-<sha>/stages/<split>/` — `worlds/<id>.json` (every per-item row), `summary.json`, `baseline-report.md`. The 48-probe suite (`npm run eval:memory`) is unchanged and remains the legacy regression suite.
+
+## Smoke run, November 24, 2026
+
+3 test histories, 10 questions, every track ([report](../results/2026-11-24-bceecde/stages/smoke/baseline-report.md)). It checks the machinery, not Lumen: intervals on 3 histories are too wide to conclude anything. What it showed about the harness, all fixed before this run:
+- Context placed in the system prompt made Gemini read raw retrieval context back (`[graph summary] mode: granular…`); answers now go through Live's `get_relevant_memory` tool declaration with the retrieval as the tool response, at user scope as the tool call retrieves.
+- Hybrid and lexical-only oracle retrieval ranked identically on all 10 questions. Not a harness bug: the semantic path runs, but at `MIN_SEED_SCORE = 0.7` it adds about one seed per query, which never moved an answering memory into or out of the top 10. The full run will say whether that holds.
 
 ## Limitations
 
