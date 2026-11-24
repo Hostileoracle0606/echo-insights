@@ -41,7 +41,8 @@ work.
 - Local Supabase only; the production embedder, `entity_embeddings` model versioning and pgvector stay as they are.
 - The embedded entity text is whatever `supabase/functions/embed-entities` embeds (today `name + "\n" + description`); the oracle track gets it by running that function, never by copying the format.
 - Gemini (paid key) is the system under test; Claude generates data and judges. Claude never grades text Claude wrote as a stand-in for Lumen.
-- Spend caps, enforced in code: Claude ≤ $40, Gemini ≤ $15 for the first full baseline. A run stops cleanly at a cap and resumes.
+- **No Claude API spend.** Everything Claude does (writing turns and questions, judging) runs through Claude Code in headless mode (`claude -p --json-schema …`) on the owner's Claude plan, with `ANTHROPIC_API_KEY` removed from its environment so it can never fall back to paid credit. A call that would bill the API is a bug. The plan's usage limits pace the run: it stops cleanly when the plan says to wait, and resumes.
+- Gemini spend cap, enforced in code: ≤ $15 for the first full baseline.
 - Downloads of public datasets need the owner's go-ahead per dataset (name, source, size, licence) before fetching.
 
 ## Approaches considered
@@ -82,7 +83,7 @@ Ground truth comes from code; Claude only writes language.
 - **Attributes** are scored as recall of each gold attribute value in the extracted description or relations (normalized match).
 - **Unanswerable queries** are excluded from rank metrics and scored only end to end (abstention).
 - **Answer prompt:** the end-to-end answer uses the production prompt text read from `lib/logic/conversation_policy.dart` at run time; if it can't be extracted, a frozen copy is used with a test that fails when the source changes.
-- **Models:** Claude `claude-opus-5-5` for generation and judging; Gemini `gemini-2.5-flash` via the production Lambdas for extraction, and the same model for text answers.
+- **Models:** Claude Opus through Claude Code headless on the owner's plan (`--model opus`) for generation and judging; the existing memory judge (`eval/memory/judge.mjs`) moves to the same backend, its API path removed; Gemini `gemini-2.5-flash` via the production Lambdas for extraction, and the same model for text answers.
 
 ### Public checks (`eval/stages/public/`)
 
@@ -102,5 +103,5 @@ Exact scenario-family templates and name pools, the review page's look, converte
 ## My calls (owner can override)
 
 - Manual review is done by the owner, because Claude reviewing Claude-generated labels isn't independent.
-- Spend caps above; the first full baseline runs test + legacy; val is generated but only run for spot checks.
+- Gemini cap above; Claude work runs on the plan, not the API; the first full baseline runs test + legacy; val is generated but only run for spot checks.
 - Train split is generated now but not used in this phase.
