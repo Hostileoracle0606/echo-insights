@@ -77,7 +77,7 @@ export async function replayWorld({ record, stack, geminiKey, fetchImpl, runner,
   }
 
   const admission = turns.flatMap((t) => admissionOutcomes({
-    patch: t.patch, commit: t.commit, before: t.before, after: t.after, gold,
+    patch: t.patch, commit: t.commit, before: t.before, after: t.after, gold, idFor: undefined,
   }).map((o) => ({ ...o, turnId: t.turnId })));
 
   return {
