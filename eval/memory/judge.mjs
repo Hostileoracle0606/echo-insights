@@ -8,7 +8,7 @@
 // distractors are left out: they carry no scenario facts.
 import { createHash } from 'node:crypto';
 
-export const JUDGE_MODEL = 'claude-opus-5-5';
+export const JUDGE_MODEL = 'opus via Claude Code headless (plan)';
 export const RUBRIC_VERSION = 2;
 
 export const SYSTEM_PROMPT = `You grade the memory of Lumen, a voice journal that remembers people, places and plans from conversations. You are given a scripted conversation history (ground truth) and what Lumen's memory returned. Judge only from that material.
@@ -105,22 +105,13 @@ export class JudgeUnavailable extends Error {
   constructor(message) { super(message); this.name = 'JudgeUnavailable'; }
 }
 
-/** One structured-output call. `client` is an Anthropic SDK client (or a test double with the same shape). */
-export async function ask(client, text, schema) {
-  const response = await client.beta.messages.create({
-    model: JUDGE_MODEL,
-    max_tokens: 16000,
-    betas: ['server-side-fallback-2026-07-01'],
-    fallbacks: 'default',
-    output_config: { effort: 'high', format: { type: 'json_schema', schema } },
-    system: SYSTEM_PROMPT,
-    messages: [{ role: 'user', content: text }],
-  });
-  if (response.stop_reason === 'refusal') throw new JudgeUnavailable(`judge refused (${response.stop_details?.category ?? 'no category'})`);
-  if (response.stop_reason === 'max_tokens') throw new JudgeUnavailable('judge hit max_tokens');
-  const block = response.content.find((b) => b.type === 'text');
-  if (!block) throw new JudgeUnavailable('judge returned no text');
-  return { verdict: JSON.parse(block.text), model: response.model, usage: response.usage };
+/**
+ * One structured-output call through a plan runner (eval/lib/claude-plan.mjs),
+ * or a test double with the same `run` shape. Never the Anthropic API.
+ */
+export async function ask(runner, text, schema) {
+  const { output, usage } = await runner.run({ system: SYSTEM_PROMPT, prompt: text, schema });
+  return { verdict: output, model: JUDGE_MODEL, usage };
 }
 
 /** Forces "n/a" on checks the probe doesn't make, so a judge can't add or drop a denominator. */

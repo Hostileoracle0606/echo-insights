@@ -19,7 +19,7 @@ import { ExtractionFailed, PROVIDER_HOSTS, replayScenario } from "./replay";
 import { interleaveByCategory, loadScenarios } from "./scenario.mjs";
 import { scoreProbe, summarize } from "./score.mjs";
 import { snapshotDigest, takeSnapshot } from "./snapshot.mjs";
-import Anthropic from "@anthropic-ai/sdk";
+import { assertPlanAuth, createPlanRunner } from "../lib/claude-plan.mjs";
 import {
   BRIEF_SCHEMA, JUDGE_MODEL, PROBE_SCHEMA, RUBRIC_VERSION, applyVerdict, ask, briefInput, cacheKey,
   normalizeProbeVerdict, probeInput,
@@ -42,12 +42,9 @@ if (!["extract", "probe", "all", "judge"].includes(phase)) {
   process.exit(2);
 }
 // judge: re-scores the newest saved probes.json with Claude as the only judge
-// of stale facts, status, order and ambiguity. Spends Anthropic API credit,
-// never Gemini quota; verdicts are cached by input hash.
-if (phase === "judge" && !env.ANTHROPIC_API_KEY?.trim()) {
-  console.error("memory eval: judge needs ANTHROPIC_API_KEY");
-  process.exit(2);
-}
+// of stale facts, status, order and ambiguity. Runs on the owner's Claude plan
+// through Claude Code headless (eval/lib/claude-plan.mjs), never the API and
+// never Gemini; verdicts are cached by input hash.
 
 const stack = localStack(env);
 if (!stack) {
@@ -228,7 +225,8 @@ type Judged = {
 // Claude as the only judge of stale/status/order/ambiguity (judge.mjs).
 // Calibration runs first; verdicts are cached by input hash across runs.
 async function judge({ results, sources }: { results: any[]; sources: Record<string, any> }): Promise<Judged> {
-  const client = new Anthropic();
+  await assertPlanAuth();
+  const client = createPlanRunner();
   const cachePath = newestRunFile(resultsRoot, "judgments.json");
   const cache: Record<string, any> = cachePath ? readJson(cachePath).cache ?? {} : {};
   const used: Record<string, any> = {};

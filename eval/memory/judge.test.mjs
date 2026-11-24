@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
-  BRIEF_SCHEMA, JUDGE_MODEL, JudgeUnavailable, PROBE_SCHEMA, applyVerdict, ask, briefInput, cacheKey,
+  BRIEF_SCHEMA, JUDGE_MODEL, SYSTEM_PROMPT, applyVerdict, ask, briefInput, cacheKey,
   normalizeProbeVerdict, probeInput, scriptOf,
 } from './judge.mjs';
 
@@ -16,14 +16,10 @@ const felix = {
   probes: [{ ask: 'What does Felix do for work?', expect_retrieved: ['Felix Navarro'], expect_status: 'decided', stale_text: ['pediatric nurse'] }],
 };
 
-const fakeClient = (reply) => {
+const fakeRunner = (reply) => {
   const calls = [];
-  return {
-    calls,
-    beta: { messages: { create: async (body) => { calls.push(body); return reply(body); } } },
-  };
+  return { calls, run: async (req) => { calls.push(req); return reply(req); } };
 };
-const textReply = (obj, extra = {}) => ({ stop_reason: 'end_turn', model: JUDGE_MODEL, usage: {}, content: [{ type: 'text', text: JSON.stringify(obj) }], ...extra });
 
 test('scriptOf places user memory actions after the session they follow', () => {
   const lines = scriptOf(felix).split('\n');
@@ -78,20 +74,17 @@ test('an unjudged applicable check counts against Lumen, never for it', () => {
   assert.deepEqual([judged.status, judged.order, judged.ambiguity], ['wrong', 'lost', 'missed']);
 });
 
-test('ask sends Claude Opus 5.5 a JSON-schema format with refusal fallback and parses the verdict', async () => {
-  const client = fakeClient(() => textReply({ stale: 'clean', reason: 'ok' }));
-  const { verdict, model } = await ask(client, 'hello', BRIEF_SCHEMA);
+test('ask sends the rubric as the system prompt and the schema to the plan runner', async () => {
+  const runner = fakeRunner(() => ({ output: { stale: 'clean', reason: 'ok' }, usage: { output_tokens: 5 } }));
+  const { verdict, model, usage } = await ask(runner, 'hello', BRIEF_SCHEMA);
   assert.deepEqual(verdict, { stale: 'clean', reason: 'ok' });
   assert.equal(model, JUDGE_MODEL);
-  const body = client.calls[0];
-  assert.equal(body.model, 'claude-opus-5-5');
-  assert.equal(body.fallbacks, 'default');
-  assert.deepEqual(body.output_config.format, { type: 'json_schema', schema: BRIEF_SCHEMA });
+  assert.equal(usage.output_tokens, 5);
+  assert.deepEqual(runner.calls[0], { system: SYSTEM_PROMPT, prompt: 'hello', schema: BRIEF_SCHEMA });
 });
 
-test('ask throws JudgeUnavailable on refusal and on truncation instead of guessing', async () => {
-  await assert.rejects(ask(fakeClient(() => textReply({}, { stop_reason: 'refusal', stop_details: { category: 'cyber' } })), 'x', PROBE_SCHEMA), JudgeUnavailable);
-  await assert.rejects(ask(fakeClient(() => textReply({}, { stop_reason: 'max_tokens' })), 'x', PROBE_SCHEMA), JudgeUnavailable);
+test('the judge runs on the Claude plan, never a named API model', () => {
+  assert.match(JUDGE_MODEL, /plan/);
 });
 
 test('cacheKey changes with the input and is stable otherwise', () => {
