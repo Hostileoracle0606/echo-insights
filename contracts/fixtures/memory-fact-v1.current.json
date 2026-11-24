@@ -1,0 +1,17 @@
+{
+  "fact": {
+    "id": "6f0c2f7e-2f1b-4f43-9d3a-5b0a1c2d3e4f",
+    "entityId": "savings-goal",
+    "attribute": "amount",
+    "valueNum": 8000,
+    "valueText": null,
+    "unit": "USD",
+    "status": "confirmed",
+    "eventAt": null,
+    "statedAt": "2026-11-20T10:00:00+00:00",
+    "supersedesFactId": "0b1c2d3e-4f50-4617-8899-aabbccddeeff",
+    "provenance": "extracted",
+    "sourceNotebookId": "33333333-3333-3333-3333-333333333333",
+    "sourceEntryId": "55555555-5555-5555-5555-555555555555"
+  }
+}

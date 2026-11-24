@@ -402,8 +402,9 @@ class FakeLumenServer {
     }
     final hash = _hash(card);
     if (stored != null && stored.revision == revision && !stored.draft) {
-      if (stored.hash != hash)
+      if (stored.hash != hash) {
         return {'status': 'rejected', 'code': 'keyReused'};
+      }
       return {'status': 'saved', 'card': stored.card};
     }
     cards[id] = FakeCard(revision, card, hash: hash);
@@ -424,8 +425,9 @@ class FakeLumenServer {
     if (stored != null &&
         stored.notebookId == id &&
         stored.revision == revision) {
-      if (stored.hash != hash)
+      if (stored.hash != hash) {
         return {'status': 'rejected', 'code': 'keyReused'};
+      }
       return {'status': 'unchanged'};
     }
     if (stored != null &&

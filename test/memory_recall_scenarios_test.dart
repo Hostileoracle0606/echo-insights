@@ -171,6 +171,7 @@ class _FakeExtractor implements ExtractGraphService {
     FollowUp? answeringFollowUp,
     int tokenBudget = defaultExtractionTokenBudget,
     int maxRetries = 2,
+    DateTime? spokenAt,
   }) async {
     texts.add(text);
     recent.addAll(recentConversation.map((t) => t.text));
@@ -190,6 +191,7 @@ class _NoMemory implements RetrieveMemoryService {
   Future<MemoryRetrieval> retrieveResult({
     required String query,
     required String notebookId,
+    String? question,
     JournalState? state,
     RetrievalScope scope = RetrievalScope.notebook,
     Duration? timeout,
@@ -882,6 +884,39 @@ void main() {
         h.journal.transcriptRows.map((r) => r.turn.text),
         contains('Priya Raman called about the marathon.'),
       );
+    });
+
+    test('a forget mid-session leaves no trace in the session state (EC-08)',
+        () async {
+      h = _Harness(state: _beforeForget());
+      await h.journal.enterNotebook(_notebookId);
+      await h.startLive();
+      _userSays(h.socket, 'Priya Raman called about the marathon.');
+      h.socket
+        ..serverSends({
+          'serverContent': {
+            'outputTranscription': {
+              'text': "How is Priya Raman feeling? I'll ask about Priya Raman tomorrow.",
+              'finished': true,
+            },
+          },
+        })
+        ..serverSends({
+          'serverContent': {'turnComplete': true},
+        });
+      await _settle();
+
+      h.commits.state = _afterForget(entriesRedacted: true);
+      await h.journal.forgetEntity('priya-raman');
+      await h.waitForSocket(2);
+      h.socket.serverSends({'setupComplete': <String, dynamic>{}});
+      await _settle();
+
+      final sent = jsonEncode(h.socket.sent);
+      expect(sent.toLowerCase(), isNot(contains('raman')),
+          reason: 'not in the turns, the working set or the session state');
+      expect(sent, contains('How is someone feeling?'),
+          reason: 'the open thread survives, with her name redacted');
     });
 
     test('after a forget, extraction and retrieval never carry her name', () async {

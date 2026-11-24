@@ -36,7 +36,12 @@
       ],
       "askedQuestions": [
         {"question": "Where is Lisbon?", "targetEntityIds": [], "askedAt": "2026-10-01T10:05:00+00:00"}
-      ]
+      ],
+      "facts": [
+        {"id": "6f0c2f7e-2f1b-4f43-9d3a-5b0a1c2d3e4f", "entityId": "savings-goal", "attribute": "amount", "valueNum": 8000, "valueText": null, "unit": "USD", "status": "confirmed", "eventAt": null, "statedAt": "2026-11-20T10:00:00+00:00", "supersedesFactId": null, "provenance": "extracted", "sourceNotebookId": null, "sourceEntryId": null}
+      ],
+      "sessionState": {"openThreads": ["How was the run?"], "pausedTopics": [], "asked": ["How was the run?"], "commitments": [], "register": "upbeat", "covered": []},
+      "corrections": []
     },
     {
       "id": "a1111111-0000-0000-0000-000000000002",
@@ -58,7 +63,10 @@
       "entities": [],
       "relations": [],
       "followUps": [],
-      "askedQuestions": []
+      "askedQuestions": [],
+      "facts": [],
+      "sessionState": null,
+      "corrections": []
     }
   ]
 }

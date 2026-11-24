@@ -25,6 +25,12 @@ class Env {
     'VITE_SUPABASE_PUBLISHABLE_KEY':
         String.fromEnvironment('VITE_SUPABASE_PUBLISHABLE_KEY'),
     'PASSKEYS_ENABLED': String.fromEnvironment('PASSKEYS_ENABLED'),
+    'CONTEXT_REBUILD_ENABLED':
+        String.fromEnvironment('CONTEXT_REBUILD_ENABLED'),
+    'CONTEXT_REBUILD_MAX_TURNS':
+        String.fromEnvironment('CONTEXT_REBUILD_MAX_TURNS'),
+    'CONTEXT_REBUILD_MAX_TOKENS':
+        String.fromEnvironment('CONTEXT_REBUILD_MAX_TOKENS'),
   };
 
   static String _first(List<String> keys) {
@@ -66,4 +72,21 @@ class Env {
   /// no button appears that cannot work.
   static bool get passkeysEnabled =>
       (_clean(_defined['PASSKEYS_ENABLED']) ?? '').toLowerCase() == 'true';
+
+  /// EC-01 spike: rebuild Live sessions from saved context at a pause instead
+  /// of letting Gemini compress the window. Off unless the build says
+  /// `--dart-define=CONTEXT_REBUILD_ENABLED=true`.
+  static bool get contextRebuildEnabled =>
+      (_clean(_defined['CONTEXT_REBUILD_ENABLED']) ?? '').toLowerCase() ==
+      'true';
+
+  /// Turns per session before a rebuild (EC-01): an override for testing;
+  /// empty leaves only the token budget.
+  static String get contextRebuildMaxTurns =>
+      _clean(_defined['CONTEXT_REBUILD_MAX_TURNS']) ?? '';
+
+  /// Window tokens since the last rebuild before the next (EC-05); empty
+  /// keeps the default.
+  static String get contextRebuildMaxTokens =>
+      _clean(_defined['CONTEXT_REBUILD_MAX_TOKENS']) ?? '';
 }

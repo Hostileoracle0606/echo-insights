@@ -23,6 +23,35 @@ const _defaultNoise = {
   'night',
   'now',
   'later',
+  // Hesitation and filler a transcript can carry into an entity name.
+  'um',
+  'umm',
+  'uh',
+  'uhh',
+  'uhm',
+  'er',
+  'erm',
+  'hm',
+  'hmm',
+  'mm',
+  'mmm',
+  'mhm',
+  'uh huh',
+  'ah',
+  'oh',
+  'eh',
+  'like',
+  'you know',
+  'i mean',
+  'okay',
+  'ok',
+  'yeah',
+  'yes',
+  'no',
+  'so',
+  'well',
+  'actually',
+  'basically',
 };
 
 String normalizeName(String name) =>
@@ -54,5 +83,9 @@ GraphPatch filterNoise(GraphPatch patch, {Set<String>? extra}) {
     entities: kept,
     relations: relations,
     supersedes: patch.supersedes,
+    // A fact about a dropped entity would land on nothing: dropped with it.
+    facts: patch.facts
+        .where((fact) => !droppedKeys.contains(normalizeName(fact.entity)))
+        .toList(),
   );
 }

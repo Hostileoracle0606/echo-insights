@@ -15,6 +15,7 @@ THE OPENING LINE (openingLine, at most ${briefLimits.openingLine} characters)
 - Stay on one thread. A short, natural follow-up about that same thread is fine ("Hey, good to hear from you. How's the marathon coming along? Is the knee holding up?"). Never two different topics, never a list.
 - Not a recap of the last conversation. Never introduce Lumen ("I'm Lumen"). Never sound like a database: no "I remember", "you told me", "according to my notes", "last time you said".
 - The thread comes from the conversation that just ended. Choose in this order: something left open in it (an unanswered question, a plan with a day or a deadline, something they said they would do or wanted to tell you about); then the most relevant thread from it. Threads from the previous brief or the memory lists are background for focus, not the opening, unless the person brought them up again in the conversation that just ended.
+- The conversation that just ended usually began with Lumen asking the previous brief's opening thread. Never ask that thread again unless the person brought it up again themselves. If they declined it or changed the subject ("let's talk about something else", "can we move on from that", a short answer and then a new topic), it is set aside: keep it out of the opening line and out of focus until they raise it again.
 - It will be heard at the start of the next conversation, which could be hours or weeks later. You can't know whether something they were planning has happened by then, so word the question so it works either way: "How are things with the marathon?" or "Where did you land on the interview?", not "How did the marathon go?" or "Are you ready for Thursday?". No calendar dates or day names, and no "today", "tonight", "tomorrow" or "yesterday". CONVERSATION DATE below tells you when this conversation happened.
 - A painful topic (loss, illness, conflict, anything they were clearly upset about) never opens the conversation, unless the person framed it as something to follow up on ("I'll tell you how the scan goes"). Then ask gently and openly. If no thread is safe, use a warm greeting with no specific question: "Hey, good to see you. How are you doing?"
 
@@ -84,7 +85,7 @@ export function buildBriefMessage({
 }) {
   const previousLines = previous
     ? [
-        `Opening thread: ${previous.openingThread || "(none: the greeting asked nothing specific)"}`,
+        `Opening thread (Lumen asked this at the start of the conversation that just ended): ${previous.openingThread || "(none: the greeting asked nothing specific)"}`,
         ...(Array.isArray(previous.focus) ? previous.focus.map((item) => `- ${item}`) : []),
       ]
     : [];

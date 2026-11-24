@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../logic/fact_records.dart' show isoWithOffset;
 import '../logic/forget_redaction.dart';
 import '../logic/memory_removal.dart' show withoutEntity;
 import '../logic/noise_filter.dart';
@@ -91,6 +92,7 @@ class ExtractGraphService {
     FollowUp? answeringFollowUp,
     int tokenBudget = defaultExtractionTokenBudget,
     int maxRetries = 2,
+    DateTime? spokenAt,
   }) async {
     // The answer can come back after the map moved on (a stand-in retired,
     // a person forgotten): it is dropped and the turn asked for once more,
@@ -109,6 +111,7 @@ class ExtractGraphService {
           answeringFollowUp: answeringFollowUp,
           tokenBudget: tokenBudget,
           maxRetries: maxRetries,
+          spokenAt: spokenAt,
         );
       } on PseudonymResultStale {
         if (attempt == 1) rethrow;
@@ -128,6 +131,7 @@ class ExtractGraphService {
     required FollowUp? answeringFollowUp,
     required int tokenBudget,
     required int maxRetries,
+    DateTime? spokenAt,
   }) async {
     // LM-63: a person forgotten in this run is redacted from the turn, the
     // recent conversation and the graph, here, on every attempt: a retry
@@ -197,6 +201,9 @@ class ExtractGraphService {
       'text': swapped.text,
       'mode': mode,
       'context': swapped.context,
+      // EC-03: when the turn was said, with the user's offset, so the model
+      // resolves "last Tuesday" on their calendar.
+      if (spokenAt != null) 'spokenAt': isoWithOffset(spokenAt),
     };
     // What is logged is the map that is encoded and sent (LM-57); a retry
     // sends the same body, so it is one entry.
@@ -404,6 +411,10 @@ class ExtractGraphService {
           if (!gone(r.source) && !gone(r.target)) r,
       ],
       supersedes: patch.supersedes,
+      facts: [
+        for (final f in patch.facts)
+          if (!gone(f.entity)) f,
+      ],
     );
   }
 

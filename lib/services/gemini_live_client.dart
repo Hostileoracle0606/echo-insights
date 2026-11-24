@@ -12,7 +12,7 @@ typedef OnTranscript = void Function(String text, bool isFinal);
 /// One chunk of agent PCM16 plus the rate it was produced at (from the
 /// chunk's `audio/pcm;rate=N` mime type; Gemini's 24kHz when absent).
 typedef OnAudio = void Function(Uint8List pcm16, int sampleRate);
-typedef OnToolCall = Future<Map<String, dynamic>> Function(
+typedef OnToolCall = Future<Map<String, dynamic>?> Function(
   String toolName,
   Map<String, dynamic> args,
 );
@@ -36,6 +36,11 @@ class GeminiLiveClient {
   /// Silence that ends the user's turn (Gemini recommends 500–800 ms).
   final Duration silenceToEndTurn;
 
+  /// Whether Gemini compresses the context window with a sliding window.
+  /// Off only when the app rebuilds sessions from saved context itself
+  /// (EC-01), which must then rebuild before Gemini's ~15-minute audio limit.
+  final bool compressContext;
+
   /// Gemini waits for an answer to every tool call before it continues, so a
   /// handler that hangs (a stalled network call) would silence Lumen for
   /// good. Past this, the call is answered with an empty result.
@@ -43,6 +48,7 @@ class GeminiLiveClient {
   final LiveChannelFactory _channelFactory;
 
   WebSocketChannel? _channel;
+  final Set<String> _pendingToolCalls = {};
   StreamSubscription<dynamic>? _sub;
 
   // Protocol state. Gemini Live rejects realtime input sent before the server
@@ -91,6 +97,8 @@ class GeminiLiveClient {
   /// Gemini will close this connection soon (its connections are
   /// time-limited). [timeLeft] is null when the server gave no parseable
   /// duration. A warm standby replaces itself on this signal.
+  /// EC-05: Gemini reported the window's size in prompt tokens.
+  void Function(int promptTokens)? onUsage;
   void Function(Duration? timeLeft)? onGoAway;
 
   Completer<void> _setupDone = _newSetupCompleter();
@@ -122,6 +130,7 @@ class GeminiLiveClient {
     required this.tools,
     this.silenceToEndTurn = const Duration(milliseconds: 700),
     this.toolTimeout = const Duration(seconds: 4),
+    this.compressContext = true,
     String? resumptionHandle,
     LiveChannelFactory? channelFactory,
   })  : _resumptionHandle = resumptionHandle,
@@ -235,10 +244,12 @@ class GeminiLiveClient {
         'session_resumption': {
           if (_resumptionHandle != null) 'handle': _resumptionHandle,
         },
-        // Without compression, audio sessions end at ~15 minutes.
-        'context_window_compression': {
-          'sliding_window': <String, dynamic>{},
-        },
+        // Without compression, audio sessions end at ~15 minutes, unless the
+        // app rebuilds the session from saved context first (EC-01).
+        if (compressContext)
+          'context_window_compression': {
+            'sliding_window': <String, dynamic>{},
+          },
         'realtime_input_config': {
           'automatic_activity_detection': {
             'silence_duration_ms': silenceToEndTurn.inMilliseconds,
@@ -417,6 +428,13 @@ class GeminiLiveClient {
     }
     final msg = jsonDecode(text) as Map<String, dynamic>;
 
+    // EC-05: the window's size, on whatever message carries it.
+    final usage = msg['usageMetadata'];
+    if (usage is Map) {
+      final prompt = usage['promptTokenCount'];
+      if (prompt is int) onUsage?.call(prompt);
+    }
+
     if (msg.containsKey('setupComplete')) {
       _setupComplete = true;
       vlog(
@@ -450,6 +468,13 @@ class GeminiLiveClient {
       return;
     }
 
+    if (msg.containsKey('toolCallCancellation')) {
+      final cancellation = msg['toolCallCancellation'];
+      final ids = cancellation is Map ? cancellation['ids'] : null;
+      if (ids is List) _pendingToolCalls.removeAll(ids.whereType<String>());
+      return;
+    }
+
     if (msg.containsKey('toolCall')) {
       final calls = msg['toolCall']['functionCalls'] as List<dynamic>? ?? [];
       for (final call in calls) {
@@ -461,13 +486,16 @@ class GeminiLiveClient {
         final args = (callMap['args'] as Map<String, dynamic>?) ?? {};
         final handler = onToolCall;
         final clock = Stopwatch()..start();
-        final Future<Map<String, dynamic>> pending = handler == null
+        _pendingToolCalls.add(id);
+        final Future<Map<String, dynamic>?> pending = handler == null
             ? Future.value(const <String, dynamic>{})
             : handler(name, args);
         pending.timeout(toolTimeout).then((result) {
           vlog('client',
               'toolCall $name answered in ${clock.elapsedMilliseconds}ms');
-          respondToTool(id, result);
+          if (_pendingToolCalls.remove(id) && result != null) {
+            respondToTool(id, result);
+          }
         }).catchError((Object error) {
           vlog(
             'client',
@@ -475,7 +503,7 @@ class GeminiLiveClient {
                 '${error is TimeoutException ? 'timed out' : 'failed'} '
                 'after ${clock.elapsedMilliseconds}ms — answering empty',
           );
-          respondToTool(id, const {});
+          if (_pendingToolCalls.remove(id)) respondToTool(id, const {});
         });
       }
       return;
@@ -597,6 +625,7 @@ class GeminiLiveClient {
     _stallTimer = null;
     _closing = true;
     _setupComplete = false;
+    _pendingToolCalls.clear();
     // Anyone still waiting for this connection's setup stops waiting now.
     _failSetup(StateError('Gemini Live connection closed'));
     final sub = _sub;

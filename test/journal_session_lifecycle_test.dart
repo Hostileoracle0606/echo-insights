@@ -19,6 +19,7 @@ import 'package:lumen/models/journal_state.dart';
 import 'package:lumen/models/session_brief.dart';
 import 'package:lumen/models/session_card.dart';
 import 'package:lumen/providers/journal_provider.dart';
+import 'package:lumen/providers/leaving_notebooks_provider.dart';
 import 'package:lumen/providers/opening_prep_provider.dart';
 import 'package:lumen/providers/supabase_provider.dart';
 import 'package:lumen/providers/voice_services_provider.dart';
@@ -130,6 +131,9 @@ class _FakeTurnJournal implements TurnJournalService {
 class _FakeExtractor implements ExtractGraphService {
   final texts = <String>[];
 
+  /// When set, each extraction waits for it (a slow model call).
+  Completer<void>? hold;
+
   @override
   Future<GraphPatch> extract({
     required String notebookId,
@@ -143,8 +147,10 @@ class _FakeExtractor implements ExtractGraphService {
     FollowUp? answeringFollowUp,
     int tokenBudget = defaultExtractionTokenBudget,
     int maxRetries = 2,
+    DateTime? spokenAt,
   }) async {
     texts.add(text);
+    await hold?.future;
     return GraphPatch.empty();
   }
 
@@ -157,6 +163,7 @@ class _NoMemory implements RetrieveMemoryService {
   Future<MemoryRetrieval> retrieveResult({
     required String query,
     required String notebookId,
+    String? question,
     JournalState? state,
     RetrievalScope scope = RetrievalScope.notebook,
     Duration? timeout,
@@ -200,8 +207,14 @@ class _NoNotebookInserts implements SupabaseService {
 class _EndingNotebooks implements SupabaseService {
   final ended = <String>[];
 
+  /// When set, ending a notebook throws it.
+  Object? failWith;
+
   @override
-  Future<void> endNotebook(String notebookId) async => ended.add(notebookId);
+  Future<void> endNotebook(String notebookId) async {
+    if (failWith != null) throw failWith!;
+    ended.add(notebookId);
+  }
 
   @override
   dynamic noSuchMethod(Invocation invocation) =>
@@ -260,12 +273,14 @@ class _FakeBriefs implements SessionBriefService {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
+// Recent at run time: a brief over sessionBriefMaxAge (21 days) is stale.
+final _briefAt = DateTime.now().toUtc().subtract(const Duration(days: 1));
+
 SessionBrief _brief() => SessionBrief(
       focus: const ['Maya', 'the move'],
       openingThread: 'how the move to Lisbon went',
       openingLine: 'Hey, welcome back. How did the move to Lisbon go?',
-      // Relative to now: a fixed date goes stale after sessionBriefMaxAge.
-      createdAt: DateTime.now().toUtc().subtract(const Duration(hours: 2)),
+      createdAt: _briefAt,
       playedAt: null,
       pcm: Uint8List(24000), // 0.5 s at 24 kHz
       sampleRate: 24000,
@@ -432,7 +447,8 @@ void main() {
         startsWith('[opening said] "${_bundledText('lumen_returning')}"\n'));
     expect(context, isNot(contains('[session brief]')));
     expect(context.split('\n').last, startsWith('[graph summary] '));
-    expect(_toolNames(JournalNotifier.liveTools), ['get_relevant_memory']);
+    expect(_toolNames(JournalNotifier.liveTools),
+        ['get_relevant_memory', 'correct_memory']);
     expect(
       h.journal.transcriptRows
           .where((row) => row.turn.turnId.startsWith('lumen-greeting')),
@@ -720,6 +736,93 @@ void main() {
     });
   }
 
+  /// The user says something; its extraction model call is still running.
+  Future<void> speakWithSlowExtraction() async {
+    h.extractor.hold = Completer<void>();
+    h.socket
+      ..serverSends({
+        'serverContent': {
+          'inputTranscription': {
+            'text': 'I finished the Atlas draft.',
+            'finished': true,
+          },
+        },
+      })
+      ..serverSends({
+        'serverContent': {'turnComplete': true},
+      });
+    for (var i = 0; i < 400 && h.extractor.texts.isEmpty; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+    }
+    expect(h.extractor.texts, ['I finished the Atlas draft.']);
+  }
+
+  test(
+      'leaving for the card returns once the transport is closed; the drain, '
+      'ending and final card finish in the background', () async {
+    final notebooks = _EndingNotebooks();
+    h = _Harness(
+      state: JournalState.empty().copyWith(entries: [_entry('Earlier.')]),
+      supabase: notebooks,
+    );
+    await h.journal.enterNotebook(_notebookId);
+    await h.startLive();
+    await speakWithSlowExtraction();
+
+    final left = await h.journal.leaveNotebookForCard();
+
+    expect(left.succeeded, isTrue);
+    expect(h.mic.stops, greaterThan(0), reason: 'the mic is closed');
+    expect(notebooks.ended, isEmpty, reason: 'the drain is still running');
+    expect(h.cards.closed, isEmpty,
+        reason: 'no final card from a stale revision');
+    final leaving = h.container.read(leavingNotebooksProvider);
+    final pending = leaving.pending(_notebookId);
+    expect(pending, isNotNull);
+
+    h.extractor.hold!.complete();
+    await pending;
+
+    expect(notebooks.ended, [_notebookId]);
+    expect(h.cards.closed, [_notebookId]);
+    expect(h.journal.status, SessionStatus.idle);
+    expect(leaving.pending(_notebookId), isNull);
+  });
+
+  test(
+      'a leave that fails after the card shows fails its pending future; '
+      'retrying leaves again', () async {
+    final notebooks = _EndingNotebooks()..failWith = StateError('offline');
+    h = _Harness(
+      state: JournalState.empty().copyWith(entries: [_entry('Earlier.')]),
+      supabase: notebooks,
+    );
+    await h.journal.enterNotebook(_notebookId);
+    await h.startLive();
+
+    final left = await h.journal.leaveNotebookForCard();
+    expect(left.succeeded, isTrue);
+
+    final leaving = h.container.read(leavingNotebooksProvider);
+    LeaveIncomplete? failure;
+    try {
+      await leaving.pending(_notebookId);
+    } on LeaveIncomplete catch (error) {
+      failure = error;
+    }
+    expect(failure, isNotNull);
+    expect(h.journal.status, SessionStatus.error);
+    expect(h.cards.closed, isEmpty);
+
+    notebooks.failWith = null;
+    await failure!.retry();
+    await leaving.pending(_notebookId);
+
+    expect(notebooks.ended, [_notebookId]);
+    expect(h.cards.closed, [_notebookId]);
+    expect(h.journal.status, SessionStatus.idle);
+  });
+
   test('leaving asks for the next session brief, then reloads it', () async {
     h = _Harness(
       state: JournalState.empty().copyWith(entries: [_entry('Earlier.')]),
@@ -795,7 +898,11 @@ void main() {
       ..serverSends({
         'serverContent': {'turnComplete': true},
       });
-    for (var i = 0; i < 50 && h.transcripts.saved.isEmpty; i++) {
+    // The greeting is saved first; wait for the user's turn.
+    for (var i = 0;
+        i < 50 &&
+            !h.transcripts.saved.any((t) => t.role == Speaker.user);
+        i++) {
       await Future<void>.delayed(const Duration(milliseconds: 5));
     }
     expect(h.transcripts.saved.map((t) => t.role), contains(Speaker.user));

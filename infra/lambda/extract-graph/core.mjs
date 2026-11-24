@@ -117,13 +117,68 @@ function normalizeRequest(body) {
   };
 }
 
+const factStatuses = new Set(["confirmed", "proposed", "cancelled"]);
+const maxFacts = 20;
+const placeholderValues = new Set(["unknown", "none", "n/a", "na", "null", "nothing", "not stated", "unspecified", "?"]);
+
+/**
+ * EC-03: the facts the model returned, each checked on its own. A malformed
+ * fact is dropped; it never costs the turn its entities and relations. The
+ * database decides repeat / supersede / pinned when the app records them.
+ */
+function sanitizeFacts(value) {
+  if (!Array.isArray(value)) return [];
+  const facts = [];
+  for (const raw of value) {
+    if (facts.length >= maxFacts) break;
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
+    const entity = typeof raw.entity === "string" ? raw.entity.trim() : "";
+    const attribute = typeof raw.attribute === "string"
+      ? raw.attribute.trim().toLowerCase().replace(/\s+/g, " ")
+      : "";
+    if (!entity || entity.length > 200 || !attribute || attribute.length > 80) continue;
+    if (!factStatuses.has(raw.status)) continue;
+    const fact = { entity, attribute };
+    if (typeof raw.valueNum === "number" && Number.isFinite(raw.valueNum)) fact.valueNum = raw.valueNum;
+    if (typeof raw.valueText === "string" && raw.valueText.trim() && raw.valueText.length <= 500) {
+      fact.valueText = raw.valueText.trim();
+    }
+    if (fact.valueNum === undefined && fact.valueText === undefined) continue;
+    if (typeof raw.unit === "string" && raw.unit.trim() && raw.unit.length <= 40) fact.unit = raw.unit.trim();
+    fact.status = raw.status;
+    if (raw.eventDate != null || raw.eventAt != null) {
+      const date = typeof raw.eventDate === "string" ? raw.eventDate : "";
+      const eventAt = typeof raw.eventAt === "string" ? raw.eventAt : `${date}T12:00:00Z`;
+      if (!/^\d{4}-\d{2}-\d{2}T/.test(eventAt) || !Number.isFinite(Date.parse(eventAt))) continue;
+      fact.eventAt = eventAt;
+    }
+    // A previous value is stored as real history, so a placeholder the model
+    // filled in ("unknown") or one equal to the new value is dropped.
+    if (typeof raw.previousValueNum === "number" && Number.isFinite(raw.previousValueNum) &&
+        raw.previousValueNum !== fact.valueNum) {
+      fact.previousValueNum = raw.previousValueNum;
+    }
+    if (typeof raw.previousValueText === "string" && raw.previousValueText.trim() &&
+        raw.previousValueText.length <= 500 &&
+        !placeholderValues.has(raw.previousValueText.trim().toLowerCase()) &&
+        raw.previousValueText.trim().toLowerCase() !== fact.valueText?.toLowerCase()) {
+      fact.previousValueText = raw.previousValueText.trim();
+    }
+    facts.push(fact);
+  }
+  return facts;
+}
+
 function normalizePatch(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  const { facts, ...rest } = value;
+  const cleanFacts = sanitizeFacts(facts);
   return {
-    ...value,
+    ...rest,
     entities: Array.isArray(value.entities)
       ? value.entities.map(normalizeEntityDescription)
       : value.entities,
+    ...(cleanFacts.length ? { facts: cleanFacts } : {}),
   };
 }
 
@@ -172,9 +227,18 @@ function validContext(context) {
   return true;
 }
 
+function validSpokenAt(value) {
+  return value == null || (
+    boundedString(value, 40) &&
+    /^\d{4}-\d{2}-\d{2}T/.test(value) &&
+    Number.isFinite(Date.parse(value))
+  );
+}
+
 function validRequest(body) {
   return (
     body &&
+    validSpokenAt(body.spokenAt) &&
     boundedString(body.turnId, 100) &&
     boundedString(body.extractorVersion, 100) &&
     boundedString(body.text, 50000) &&
@@ -184,7 +248,18 @@ function validRequest(body) {
   );
 }
 
-function buildUserMessage(text, context) {
+const weekdays = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+/** "2026-11-22 (Sunday)": the user's own calendar date when spokenAt has their offset. */
+function saidAtLine(spokenAt, nowMs) {
+  const date = typeof spokenAt === "string" && /^\d{4}-\d{2}-\d{2}/.test(spokenAt)
+    ? spokenAt.slice(0, 10)
+    : new Date(nowMs).toISOString().slice(0, 10);
+  const [year, month, day] = date.split("-").map(Number);
+  return `${date} (${weekdays[new Date(Date.UTC(year, month - 1, day)).getUTCDay()]})`;
+}
+
+function buildUserMessage(text, context, { factKeys = [], spokenAt = null, nowMs = Date.now() } = {}) {
   const namesById = new Map(context.entities.map((entity) => [entity.id, entity.name]));
   const entities = context.entities.length
     ? context.entities
@@ -210,8 +285,21 @@ function buildUserMessage(text, context) {
     ? `\n\nQUESTION BEING ANSWERED (grounding only):\n- ${followUp.question}${followUp.reason ? ` — ${followUp.reason}` : ""}`
     : "";
 
-  return `EXISTING ENTITIES (reuse these spellings for the same thing):
+  const keys = factKeys.length
+    ? factKeys
+        .map((key) =>
+          `- ${namesById.get(key.entityId) ?? key.entityId}.${key.attribute}${key.unit ? ` (${key.unit})` : ""}`,
+        )
+        .join("\n")
+    : "(none yet)";
+
+  return `SAID AT: ${saidAtLine(spokenAt, nowMs)}
+
+EXISTING ENTITIES (reuse these spellings for the same thing):
 ${entities}
+
+EXISTING FACT KEYS (entity.attribute — reuse these for the same kind of value):
+${keys}
 
 EXISTING RELATIONS (each prefixed with its [id] — use these IDs verbatim in supersedes when contradicted):
 ${relations}
@@ -269,7 +357,37 @@ function validPatch(value) {
     }
   }
   if (value.supersedes?.some((id) => typeof id !== "string")) return false;
+  if (value.facts != null && (!Array.isArray(value.facts) || value.facts.length > maxFacts)) return false;
   return true;
+}
+
+/**
+ * The attribute names already stored for the turn's entities, read with the
+ * user's own token. Facts are a bonus: when this fails, extraction goes on
+ * without them.
+ */
+async function readFactKeys({ supabaseUrl, publishableKey, authorization, fetchImpl, entityIds }) {
+  if (!entityIds.length) return [];
+  try {
+    const response = await fetchImpl(new URL("/rest/v1/rpc/list_memory_fact_keys", supabaseUrl), {
+      method: "POST",
+      headers: {
+        accept: "application/json",
+        "content-type": "application/json",
+        apikey: publishableKey,
+        authorization,
+      },
+      body: JSON.stringify({ p_entity_ids: entityIds }),
+      signal: AbortSignal.timeout(2000),
+    });
+    if (!response.ok) return [];
+    const keys = await response.json();
+    return Array.isArray(keys)
+      ? keys.filter((k) => k && typeof k.entityId === "string" && typeof k.attribute === "string")
+      : [];
+  } catch {
+    return [];
+  }
 }
 
 function patchFromProviderResponse(payload) {
@@ -284,6 +402,7 @@ function patchFromProviderResponse(payload) {
         entities: args.entities,
         relations: args.relations,
         supersedes: args.supersedes ?? [],
+        facts: args.facts,
       });
       if (validPatch(patch)) return patch;
     }
@@ -444,12 +563,29 @@ export function createExtractGraphHandler({
       return jsonResponse(503, { status: "rejected", code: "providerUnavailable" });
     }
 
+    const factKeys = await readFactKeys({
+      supabaseUrl,
+      publishableKey,
+      authorization,
+      fetchImpl,
+      entityIds: redacted.context.entities.map((entity) => entity.id),
+    });
+
     const providerBody = {
       system_instruction: {
         parts: [{ text: body.mode === "wiki" ? wikiPrompt : granularPrompt }],
       },
       contents: [
-        { role: "user", parts: [{ text: buildUserMessage(redacted.text, redacted.context) }] },
+        {
+          role: "user",
+          parts: [{
+            text: buildUserMessage(redacted.text, redacted.context, {
+              factKeys,
+              spokenAt: body.spokenAt,
+              nowMs: now(),
+            }),
+          }],
+        },
       ],
       tools: [{ function_declarations: [extractGraphFunction] }],
       tool_config: {
