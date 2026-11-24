@@ -35,3 +35,13 @@ test('the answer prompt is read from the app source, and a change to it is caugh
   // end-to-end track still reflects production, then update PROMPT_SHA256.
   assert.equal(prompt.sha256, PROMPT_SHA256);
 });
+
+test('the memory tool declaration matches the one the app gives Gemini Live', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { MEMORY_TOOL } = await import('./answer-prompt.mjs');
+  const dart = readFileSync(new URL('../../../lib/providers/journal_provider.dart', import.meta.url), 'utf8');
+  assert.equal(MEMORY_TOOL.name, 'get_relevant_memory');
+  assert.ok(dart.includes(`'name': '${MEMORY_TOOL.name}'`));
+  assert.ok(dart.includes(MEMORY_TOOL.description), 'tool description drifted from journal_provider.dart');
+  assert.ok(dart.includes(MEMORY_TOOL.parameters.properties.query.description));
+});

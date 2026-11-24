@@ -61,11 +61,11 @@ test('embedNotebook rejects an unconfirmed completion', async () => {
   }), /missing or invalid remaining/);
 });
 
-test('embedNotebook fails loudly after 3 attempts, or at once on ok:false', async () => {
+test('embedNotebook fails loudly after 6 attempts (local CPU-limit 546s recover), or at once on ok:false', async () => {
   let n = 0;
   await assert.rejects(embedNotebook({ url: 'http://x', secret: 's', notebookId: 'nb',
     fetchImpl: async () => { n += 1; return new Response('{}', { status: 502 }); }, sleep: async () => {} }), /embed-entities → 502/);
-  assert.equal(n, 3);
+  assert.equal(n, 6);
   await assert.rejects(embedNotebook({ url: 'http://x', secret: 's', notebookId: 'nb',
     fetchImpl: async () => new Response('{"ok":false,"stage":"notebook"}', { status: 200 }), sleep: async () => {} }), /notebook/);
 });

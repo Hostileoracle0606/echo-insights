@@ -16,3 +16,15 @@ export function productionAnswerPrompt() {
   const text = match[1];
   return { text, sha256: createHash('sha256').update(text).digest('hex') };
 }
+
+// The memory tool Gemini Live is given (lib/providers/journal_provider.dart
+// liveTools); a test checks these strings against the Dart source.
+export const MEMORY_TOOL = {
+  name: 'get_relevant_memory',
+  description: 'Retrieve past memory relevant to a query: related entities and how they connect. Use when the user references something from earlier, or when grounding your reply in prior context would help. Distinct from the graph summary given at the start. For planning only — never read aloud.',
+  parameters: {
+    type: 'object',
+    properties: { query: { type: 'string', description: 'A few words to recall: a name, a topic, or a phrase.' } },
+    required: ['query'],
+  },
+};

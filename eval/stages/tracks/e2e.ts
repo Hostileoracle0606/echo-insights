@@ -1,13 +1,12 @@
 /**
  * End to end: the graph the production replay left behind is restored with the
  * background distractors and embedded (hybrid, as production), retrieve-memory
- * ranks for each question, Gemini answers in text with the production Live
- * prompt plus the retrieved context, and Claude (on the plan) judges the answer.
- * Text stands in for Live audio and the context is given up front rather than
- * through Live's tool call; the README says so.
+ * ranks for each question (user scope, as Live's tool call), Gemini answers in
+ * text with the production Live prompt, the memory tool and the retrieval as its
+ * tool response, and Claude (on the plan) judges. Text stands in for Live audio.
  */
 import { attribute, finalCorrect } from "./attribution.mjs";
-import { productionAnswerPrompt } from "./answer-prompt.mjs";
+import { MEMORY_TOOL, productionAnswerPrompt } from "./answer-prompt.mjs";
 import { goldEntities, goldIdFor } from "./match.mjs";
 import { rankWorld } from "./oracle.mjs";
 
@@ -23,17 +22,25 @@ const JUDGE_SCHEMA = {
   additionalProperties: false,
 };
 
-export async function answer({ question, context, geminiKey, fetchImpl }: { question: string; context: string; geminiKey: string; fetchImpl: any }) {
-  const prompt = productionAnswerPrompt().text;
-  const system = `${prompt}\n\nMemory retrieved from the user's journal for this question:\n${context || "(nothing found)"}`;
+/**
+ * As production: the Live prompt as the system instruction, the memory tool
+ * declared, and the retrieval delivered as that tool's response ({ context,
+ * quotes }) to a call the model "made" with the question as its query.
+ */
+export async function answer({ question, context, quotes, geminiKey, fetchImpl }: { question: string; context: string; quotes: unknown[]; geminiKey: string; fetchImpl: any }) {
   const started = Date.now();
   await fetchImpl.pace?.();
   const response = await fetchImpl("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent", {
     method: "POST",
     headers: { "content-type": "application/json", "x-goog-api-key": geminiKey },
     body: JSON.stringify({
-      systemInstruction: { parts: [{ text: system }] },
-      contents: [{ role: "user", parts: [{ text: question }] }],
+      systemInstruction: { parts: [{ text: productionAnswerPrompt().text }] },
+      tools: [{ functionDeclarations: [MEMORY_TOOL] }],
+      contents: [
+        { role: "user", parts: [{ text: question }] },
+        { role: "model", parts: [{ functionCall: { name: MEMORY_TOOL.name, args: { query: question } } }] },
+        { role: "user", parts: [{ functionResponse: { name: MEMORY_TOOL.name, response: { context, quotes } } }] },
+      ],
       generationConfig: { thinkingConfig: { thinkingBudget: 0 }, maxOutputTokens: 400 },
     }),
     signal: AbortSignal.timeout(60_000),
@@ -66,7 +73,7 @@ export async function runE2EWorld({ record, replay, stack, embedSecret, geminiKe
   for (const r of ranked) {
     const q = world.queries.find((x: { id: string }) => x.id === r.queryId);
     const question = texts.get(q.id) as string;
-    const reply = await answer({ question, context: r.context, geminiKey, fetchImpl });
+    const reply = await answer({ question, context: r.context, quotes: r.quotes ?? [], geminiKey, fetchImpl });
     const verdict = await judgeAnswer(runner, cache, { question, answerText: reply.text, gold: q.answer, answerable: q.answerable });
     const correct = finalCorrect(verdict.verdict, q.answerable);
     const top10 = r.ranked.map((id: string) => goldIdFor(names.get(id) ?? "", gold)).filter(Boolean);
@@ -74,6 +81,7 @@ export async function runE2EWorld({ record, replay, stack, embedSecret, geminiKe
     rows.push({
       worldId: world.id, queryId: q.id, family: q.family, answerable: q.answerable,
       answer: reply.text, verdict: verdict.verdict, reason: verdict.reason, correct,
+      foundAnswersTop10: q.answerable ? answers.every((a: string) => top10.includes(a)) : null,
       stage: attribute({ answers, extracted: replay.extractedGold, stored: replay.storedGold, top10, correct, answerable: q.answerable }),
       latencyMs: { retrieval: r.latencyMs, answer: reply.latencyMs },
     });

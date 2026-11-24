@@ -84,7 +84,8 @@ export function scoreQuery(ranked, query) {
   };
 }
 
-export async function retrieveRanked({ stack, user, notebookId, query, k = 10 }) {
+// User scope, as Gemini Live's get_relevant_memory tool call retrieves.
+export async function retrieveRanked({ stack, user, notebookId, query, k = 10, scope = 'user' }) {
   const headers = { apikey: stack.anonKey, authorization: `Bearer ${user.token}`, 'content-type': 'application/json' };
   const snap = await (await fetch(`${stack.url}/rest/v1/rpc/get_notebook_snapshot`, {
     method: 'POST', headers, body: JSON.stringify({ p_notebook_id: notebookId }),
@@ -93,11 +94,11 @@ export async function retrieveRanked({ stack, user, notebookId, query, k = 10 })
   const started = Date.now();
   const response = await fetch(`${stack.url}/functions/v1/retrieve-memory`, {
     method: 'POST', headers, signal: AbortSignal.timeout(60_000),
-    body: JSON.stringify({ scope: 'notebook', notebookId, query, limit: k, state: { entities: state.entities, relations: state.relations, entries: state.entries } }),
+    body: JSON.stringify({ scope, notebookId, query, limit: k, state: { entities: state.entities, relations: state.relations, entries: state.entries } }),
   });
   const body = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(`retrieve-memory → ${response.status} ${body.error ?? ''}`);
-  return { ranked: (body.entityIds ?? []).slice(0, k), context: body.context ?? '', latencyMs: Date.now() - started };
+  return { ranked: (body.entityIds ?? []).slice(0, k), context: body.context ?? '', quotes: body.quotes ?? [], latencyMs: Date.now() - started };
 }
 
 /** Restores `snapshot` (gold or extracted) with the background, embeds per mode, and ranks each query. */

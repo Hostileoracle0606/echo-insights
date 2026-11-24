@@ -96,7 +96,7 @@ export async function embedNotebook({ url, secret, notebookId, fetchImpl = fetch
       continue;
     }
     consecutiveFailures += 1;
-    if (response.status < 500 || consecutiveFailures >= 3) {
+    if (response.status < 500 || consecutiveFailures >= 6) {
       throw new Error(`embed-entities → ${response.status} ${body.stage ?? ''}`.trim());
     }
     await sleep(2000 * consecutiveFailures);
