@@ -87,6 +87,7 @@ export const DEFAULT_EXTRACTION_TOKEN_BUDGET = 1800;
 
 function toGraphEntity(entity: Entity, relationCount: number): GraphEntity {
   return {
+    id: entity.id,
     name: entity.name,
     type: entity.type,
     description: entity.description,

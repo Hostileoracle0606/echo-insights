@@ -1,167 +1,25 @@
 import { z } from "zod";
 
-import type { ExtractionMode } from "./journal-types";
-
 /**
- * Branch B extractor: silent NER over the user's transcript.
+ * Shared types and response handling for graph extraction.
  *
- * Gemini Live owns the spoken conversation, so this call only needs to
- * return entities + relations. Runs on gemini-2.5-flash with thinking
- * DISABLED (thinkingBudget: 0) — the extractor is a tight NER pass over
- * short utterances, and reasoning chains would multiply latency without
- * improving entity precision. Latency, not depth-of-reasoning, is the
- * binding constraint at natural voice pacing.
+ * The extractor itself (prompts, Gemini function declaration, the model call
+ * and its credential) runs server-side in `infra/lambda/extract-graph`, behind
+ * `POST /v1/notebooks/{notebookId}/extractions` on the Notebook Runtime. The
+ * web app reaches it through `extraction-runtime-http.ts`, exactly as the
+ * Flutter app does, so no provider key is ever present in the browser.
  *
- * Migrated from Groq llama-3.3-70b-versatile to consolidate on the same
- * provider already running the live conversation — one fewer API key, one
- * fewer rate-limit ceiling to manage, and roughly half the per-session
- * cost. Trade-off: Gemini's base latency is a touch higher than Groq's
- * custom inference stack, but disabling thinking keeps it within budget.
- *
- * Two extraction modes (selected per-call by ExtractionMode):
- *  - "wiki":     entity must support a real line of questioning. Model is
- *                required to emit 2–4 follow-up questions per entity it
- *                returns; no questions = entity gets dropped. Result: a
- *                clean topical wiki, fewer nodes.
- *  - "granular": current behavior — extract any named entity, no question
- *                requirement. More signal, more noise.
+ * What stays here:
+ *  - the context types the web app compiles per turn;
+ *  - `buildUserMessage`, which renders that context the way the runtime does
+ *    and is used by `compileExtractionContext` to measure the token budget;
+ *  - `parseExtractionPatch`, which validates the runtime's patch and applies
+ *    the client-side noise filter.
  */
-const WIKI_EXTRACTOR_PROMPT = `You are the editor of the user's personal wiki — built silently from their voice journal.
-
-Your job is to decide which things in the user's utterance deserve their own wiki page. The bar is HIGH: a node only exists if it can anchor a real line of questioning that Lumen could pursue across multiple sessions to build a substantive page.
-
-THE WIKI-PAGE TEST — apply to every candidate:
-  Imagine the user comes back next week. Could you, as Lumen, ask 2–4 distinct, meaningful questions about this thing that would build a real page over time?
-  - PASSES: "Maya" (How long have you known her? What's she like? Where did you meet?)
-  - PASSES: "CS246" (What's the material? Who's teaching it? Why retaking?)
-  - PASSES: "Project Atlas" (What problem? Who's on it? Where in its lifecycle?)
-  - PASSES: "AI" — only if the user is genuinely reasoning about it as a topic. (What about AI bothers you? What sparked this thought?)
-  - PASSES: "anxiety", "burnout", "imposter syndrome" — when the user names them as recurring patterns worth tracking across sessions. Type these as emotion.
-  - PASSES: "running", "meditation", "journaling" — recurring behaviors the user reasons about. Type these as activity.
-  - FAILS: "I" — there's no line of questioning ABOUT the user-as-pronoun. Their life is the wiki, not a node in it.
-  - FAILS: "happy", "tired", "stressed" used as one-off mood words about a single moment — those are properties of moments, not topics. The line of questioning routes through what made you feel that way.
-  - FAILS: "yesterday", "today", "this morning" — time words are coordinates, not topics.
-  - FAILS: "85", numbers, generic adjectives — values, not topics.
-  - FAILS: "Lumen" — the agent's own name. Never extract.
-  - FAILS: transcription artifacts, slang misheard ("True Nub"), filler.
-
-ENTITIES — what to return:
-- Only return things that pass the wiki-page test.
-- entity.name: surface form as the user said it.
-- entity.type: one of person, place, organization, project, event, activity, concept, emotion, other.
-  - activity: recurring behaviors the user reasons about (running, journaling, meditation).
-  - concept: abstract topics the user treats as named things (AI, attachment_theory, behavioral_patterns).
-  - emotion: named recurring emotional patterns (anxiety, burnout) — NOT one-off mood words.
-  - other: only when nothing else fits. Avoid using this as a default.
-- entity.description: only when the utterance gives a concrete, factual statement about the entity.
-- entity.questions: 2–4 distinct lines of questioning Lumen could pursue. These should NOT be questions the user already answered in this utterance — they're the open threads. Phrase them as Lumen would actually ask them, warm and specific.
-- Dedup against EXISTING ENTITIES — reuse the existing spelling.
-
-CONTINUATIONS — preserve subjects across turns:
-When RECENT CONVERSATION shows the agent just asked about an entity from EXISTING ENTITIES, and the user's reply continues that subject — pronouns ("she/he/it/they"), partial answer ("since freshman year"), or implicit reference ("the project", "that class") — INCLUDE that entity in \`entities\` using its existing spelling. The user's reply IS information about that entity even when they don't name it; without re-listing it, the journal loses the link to the entity's page.
-
-Apply this whenever the user's turn:
-  - directly answers the agent's last question about a known entity
-  - elaborates on the prior subject without naming it
-  - references the prior subject via pronoun or definite article
-
-Do NOT apply when the user pivots to a new subject. The trigger is a Q-A pair about the same entity.
-
-RELATIONS — keep the wiki connected. This is load-bearing. A wiki of disconnected pages is useless:
-- Format: source --label--> target. label = snake_case phrase (e.g. simulates, contrasts_with, example_of, used_for, depends_on, part_of, related_to, mentioned_with, situated_at, occurred_during, involves, exhibits, enables).
-- Endpoints must be entities — either ones you're returning now OR ones in EXISTING ENTITIES.
-- AGGRESSIVELY CONNECT. For every entity in this turn, scan for an edge to:
-  (a) every other entity in this turn,
-  (b) every entity in EXISTING ENTITIES that the user is still talking about (resolved via RECENT CONVERSATION),
-  (c) any prior entity the new one is a sibling/instance/component of.
-- TARGET DENSITY: aim for at least one edge per new entity, ideally more. If you return N new entities and zero edges, you have failed unless every entity is a true orphan topic.
-- WEAK-BUT-TRUE RELATIONS COUNT. Co-occurrence in the same thought IS a relation; use \`mentioned_with\` or \`related_to\` when no stronger label fits. A vague-but-grounded edge is better than no edge.
-- Examples of valid weak relations:
-  · "I went running with Maya in Brooklyn" → running--with-->Maya, running--at-->Brooklyn, Maya--in-->Brooklyn.
-  · "I'm anxious about the Atlas demo" → anxiety--about-->Project_Atlas, Project_Atlas--has_event-->demo.
-  · "CS246 reminds me of CS241" → CS246--related_to-->CS241.
-- "Never invent facts" means don't fabricate specifics the user didn't say (don't guess Maya's job, don't make up a date). It does NOT mean refusing to record relations the user clearly implied by mentioning two things together.
-
-SUPERSEDES — when the user contradicts the existing graph:
-The user's utterance sometimes corrects, replaces, or denies a relation already shown in EXISTING RELATIONS. When that happens, return the contradicted relation's [bracketed] id in \`supersedes\`.
-
-Trigger ONLY when the user explicitly:
-  - negates a fact ("Maya isn't on Atlas")
-  - replaces a fact ("It's not Maya, it's Sam")
-  - says something that makes the prior fact mutually exclusive with the new one — and the entity referenced is the SAME entity.
-
-Do NOT trigger when:
-  - the user adds new info that coexists with the old ("Maya also helps Sam" — both can be true)
-  - the user is vague or non-committal
-  - the relation has the same endpoints but a slightly different label (those are fine alongside each other)
-
-Reference relations by their [bracketed] id from the EXISTING RELATIONS list above. If you can't find an exact id match, do not invent one — omit the supersede.
-
-If the utterance contains nothing that passes the wiki-page test, return empty arrays. Better an empty turn than wiki bloat.
-Never speak to the user. You are not the conversational agent.`;
-
-const GRANULAR_EXTRACTOR_PROMPT = `You are a silent graph extractor for a voice journal.
-Your job is to keep the user's knowledge graph CONNECTED. A fragmented graph (islands of nodes with no edges) is a failure mode — actively prevent it.
-
-ENTITIES — extract from the NEW UTTERANCE:
-- Proper nouns: people, places, projects, events, organizations (Maya, Brooklyn, Project Atlas).
-- Concrete concepts the user names and reasons about (e.g. "AI", "technology", "behavioral patterns", "intelligence"). These are valid nodes when the user treats them as discrete things, not when they're filler.
-- entity.type: one of person, place, organization, project, event, activity, concept, emotion, other.
-  - activity: recurring behaviors ("running", "meditation", "journaling").
-  - concept: abstract topics treated as named things ("AI", "behavioral_patterns").
-  - emotion: named recurring emotional patterns ("anxiety", "burnout") — NOT one-off mood words.
-  - "other" is a true fallback; use it only when nothing else fits.
-- entity.description: only if the utterance gives a concrete fact about the entity; otherwise omit.
-- Skip pronouns, generic time words ("today", "yesterday"), one-off mood words ("happy", "stressed" used to describe a single moment), and verbs.
-- Dedup against EXISTING ENTITIES — reuse the existing spelling when the user is clearly referring to the same thing.
-
-CONTINUATIONS — preserve subjects across turns:
-When RECENT CONVERSATION shows the agent just asked about an entity from EXISTING ENTITIES, and the user's reply continues that subject — pronouns ("she/he/it/they"), partial answer ("since freshman year"), or implicit reference ("the project", "that class") — INCLUDE that entity in \`entities\` using its existing spelling. The user's reply IS information about that entity even when they don't name it; without re-listing it, the journal loses the link to the entity's page.
-
-Apply this whenever the user's turn:
-  - directly answers the agent's last question about a known entity
-  - elaborates on the prior subject without naming it
-  - references the prior subject via pronoun or definite article
-
-Do NOT apply when the user pivots to a new subject. The trigger is a Q-A pair about the same entity.
-
-RELATIONS — this is the most important part. Connect aggressively. Islands of nodes are a hard failure:
-- Format: source --label--> target. label = snake_case phrase (e.g. simulates, contrasts_with, example_of, used_for, depends_on, part_of, related_to, mentioned_with, situated_at, occurred_during, involves, exhibits, enables).
-- Endpoints must be entities — either ones you're returning now OR ones in EXISTING ENTITIES.
-- FOR EVERY ENTITY in this turn, scan exhaustively for edges to:
-  (a) every other entity in this turn (co-occurrence in the same thought is a relation),
-  (b) every entity in EXISTING ENTITIES the user is still talking about (resolved via RECENT CONVERSATION),
-  (c) parent/sibling/instance entities in EXISTING ENTITIES that the new one fits under.
-- TARGET DENSITY: aim for at least one edge per new entity, ideally more. If you return N new entities and zero edges, you have failed unless every entity is a true orphan topic.
-- WEAK-BUT-TRUE RELATIONS COUNT. When two entities show up in the same utterance and you can't think of a stronger label, emit \`mentioned_with\` or \`related_to\`. The graph being WIRED is worth more than every edge being maximally precise.
-- Examples:
-  · "AI can simulate intelligence" with \`AI\`, \`intelligence\`, \`technology\` already known → AI--simulates-->intelligence, AI--is_a-->technology.
-  · "people exhibit behavioral patterns" → people--exhibits-->behavioral_patterns.
-  · "I went running with Maya in Brooklyn" → running--with-->Maya, running--at-->Brooklyn, Maya--in-->Brooklyn.
-  · "I'm anxious about the Atlas demo" → anxiety--about-->Project_Atlas, Project_Atlas--has_event-->demo.
-  · "CS246 reminds me of CS241" → CS246--related_to-->CS241.
-  · user reasons about a concept that subsumes an existing one → existing--example_of-->new_concept.
-- "Never invent facts the user didn't imply" means don't fabricate specifics they didn't say (don't guess Maya's age, don't make up an address). It does NOT mean refusing to record relations they clearly implied by mentioning two things in the same breath.
-
-SUPERSEDES — when the user contradicts the existing graph:
-The user's utterance sometimes corrects, replaces, or denies a relation already shown in EXISTING RELATIONS. When that happens, return the contradicted relation's [bracketed] id in \`supersedes\`.
-
-Trigger ONLY when the user explicitly:
-  - negates a fact ("Maya isn't on Atlas")
-  - replaces a fact ("It's not Maya, it's Sam")
-  - says something that makes the prior fact mutually exclusive with the new one — and the entity referenced is the SAME entity.
-
-Do NOT trigger when:
-  - the user adds new info that coexists with the old ("Maya also helps Sam" — both can be true)
-  - the user is vague or non-committal
-  - the relation has the same endpoints but a slightly different label (those are fine alongside each other)
-
-Reference relations by their [bracketed] id from the EXISTING RELATIONS list above. If you can't find an exact id match, do not invent one — omit the supersede.
-
-Return empty arrays only when the utterance has no extractable entities — small talk, hesitations, yes/no answers, filler tokens.
-Never speak to the user. You are not the conversational agent.`;
 
 export interface GraphEntity {
+  /** Durable entity id (slug). Sent to the runtime so relations can reference it. */
+  id?: string;
   name: string;
   type: string;
   description?: string;
@@ -331,7 +189,7 @@ export interface ExtractGraphResult {
   };
 }
 
-const emptyResult = (): ExtractGraphResult => ({
+export const emptyExtractionResult = (): ExtractGraphResult => ({
   entities: [],
   relations: [],
   supersedes: [],
@@ -634,216 +492,15 @@ const patchToResult = (patch: GraphPatch): ExtractGraphResult => ({
   followUp: { question: "", reason: "", targetEntityNames: [] },
 });
 
-// Gemini's function_declarations accept an OpenAPI-flavored subset of JSON
-// Schema. We deliberately omit `additionalProperties: false` — Gemini's
-// validator doesn't reliably honor it and rejects schemas that include it
-// at deeper nesting levels. Zod re-validates the model's output downstream
-// anyway, so closure happens at the parse boundary, not in the schema itself.
-const extractGraphFunction = {
-  name: "extract_graph",
-  description: "Return entities and relations mentioned in NEW UTTERANCE.",
-  parameters: {
-    type: "object",
-    properties: {
-      entities: {
-        type: "array",
-        items: {
-          type: "object",
-          properties: {
-            name: { type: "string" },
-            type: {
-              type: "string",
-              enum: [
-                "person",
-                "place",
-                "organization",
-                "project",
-                "event",
-                "activity",
-                "concept",
-                "emotion",
-                "other",
-              ],
-            },
-            description: { type: "string" },
-            metadata: { type: "object" },
-            questions: {
-              type: "array",
-              items: { type: "string" },
-              description:
-                "Wiki-mode only: 2-4 follow-up questions Lumen could ask about this entity. Omit in granular mode.",
-            },
-          },
-          required: ["name", "type"],
-        },
-      },
-      relations: {
-        type: "array",
-        items: {
-          type: "object",
-          properties: {
-            source: { type: "string" },
-            target: { type: "string" },
-            label: { type: "string" },
-            metadata: { type: "object" },
-          },
-          required: ["source", "target", "label"],
-        },
-      },
-      supersedes: {
-        type: "array",
-        items: { type: "string" },
-        description:
-          "Ids of relations from EXISTING RELATIONS (the [bracketed] prefix) that the user just contradicted. Empty array if nothing contradicted. Use the EXACT id from the brackets — never invent one.",
-      },
-    },
-    required: ["entities", "relations"],
-  },
-};
-
-// Abort-aware sleep used by the 429 retry loop. Resolves when the timer
-// elapses or rejects with AbortError if the caller aborts mid-wait — so
-// a newer sentence arriving during backoff still cancels cleanly.
-function sleep(ms: number, signal?: AbortSignal): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (signal?.aborted) {
-      reject(new DOMException("Aborted", "AbortError"));
-      return;
-    }
-    const timer = setTimeout(resolve, ms);
-    signal?.addEventListener(
-      "abort",
-      () => {
-        clearTimeout(timer);
-        reject(new DOMException("Aborted", "AbortError"));
-      },
-      { once: true },
-    );
-  });
-}
-
-export async function extractGraph(
-  body: ExtractGraphBody,
-  signal?: AbortSignal,
-  mode: ExtractionMode = "wiki",
-): Promise<ExtractGraphResult> {
-  const text = body.text;
-  const isSessionStart =
-    body.sessionState?.isSessionStart ?? body.context?.sessionState?.isSessionStart ?? false;
-  // Branch B: session-start no longer needs an extractor call (Gemini Live
-  // handles the opening line). Skip the round trip entirely.
-  if (isSessionStart) return emptyResult();
-  if (!text || text.trim().length < 2) return emptyResult();
-
-  const apiKey = import.meta.env.VITE_GEMINI_API_KEY?.trim();
-  if (!apiKey) throw new Error("VITE_GEMINI_API_KEY is missing.");
-
-  const userMsg = buildUserMessage(body);
-  const systemPrompt = mode === "wiki" ? WIKI_EXTRACTOR_PROMPT : GRANULAR_EXTRACTOR_PROMPT;
-
-  const url =
-    "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
-  const requestInit: RequestInit = {
-    method: "POST",
-    headers: {
-      "x-goog-api-key": apiKey,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      system_instruction: { parts: [{ text: systemPrompt }] },
-      contents: [{ role: "user", parts: [{ text: userMsg }] }],
-      tools: [{ function_declarations: [extractGraphFunction] }],
-      // mode: "ANY" + a single allowed function = forced tool call,
-      // Gemini's equivalent of OpenAI's tool_choice: { type: "function" ... }.
-      tool_config: {
-        function_calling_config: {
-          mode: "ANY",
-          allowed_function_names: ["extract_graph"],
-        },
-      },
-      generationConfig: {
-        temperature: 0.2,
-        // thinkingBudget: 0 disables Flash 2.5's reasoning trace. Without
-        // this, the model emits hidden chain-of-thought tokens before the
-        // tool call — fine for harder reasoning, fatal here: NER pacing
-        // needs <1s round-trips and thinking adds 2-5s plus pay-per-token
-        // hidden output that we never use.
-        thinkingConfig: { thinkingBudget: 0 },
-      },
-    }),
-    signal,
-  };
-
-  // Retry on 429 with exponential backoff (1s then 2s) — three attempts
-  // total. Honors Retry-After when Gemini sends it, otherwise falls back
-  // to the schedule. Most free-tier 429s clear within the next per-minute
-  // window, so a short retry loop swallows the transient case without
-  // surfacing a toast. After the loop, a persistent 429 falls through to
-  // the existing error path below.
-  const MAX_RETRIES = 2;
-  let resp = await fetch(url, requestInit);
-  for (let attempt = 1; resp.status === 429 && attempt <= MAX_RETRIES; attempt++) {
-    const retryAfterRaw = resp.headers.get("Retry-After");
-    const retryAfterSec = retryAfterRaw ? Number.parseInt(retryAfterRaw, 10) : Number.NaN;
-    const delayMs =
-      Number.isFinite(retryAfterSec) && retryAfterSec > 0
-        ? retryAfterSec * 1000
-        : 1000 * 2 ** (attempt - 1);
-    console.warn(
-      `[extractGraph] 429 — retrying in ${delayMs}ms (attempt ${attempt}/${MAX_RETRIES})`,
-    );
-    // Drain the body so the underlying connection can be reused on retry.
-    await resp.text().catch(() => "");
-    await sleep(delayMs, signal);
-    resp = await fetch(url, requestInit);
-  }
-
-  if (!resp.ok) {
-    const detail = await resp.text().catch(() => "");
-    // Always log the full body to console — invaluable for diagnosing the
-    // intermittent 400s (safety filter blocks, schema rejections, malformed
-    // utterances). Truncated detail in toasts is not enough.
-    console.error("[extractGraph] HTTP error", {
-      status: resp.status,
-      utterance: text.slice(0, 240),
-      body: detail,
-    });
-    if (resp.status === 429) {
-      throw new Error("Rate limit exceeded. Please wait a moment.");
-    }
-    if (resp.status === 401 || resp.status === 403) {
-      throw new Error("Gemini rejected the API key. Check VITE_GEMINI_API_KEY.");
-    }
-    if (resp.status === 400) {
-      // Don't break the whole graph for a single bad utterance — log + skip.
-      // Common causes: safety-filter false positives, transcripts with rare
-      // unicode, occasional schema-validation hiccups when the utterance
-      // shape sits at an awkward edge of the function-call format.
-      return emptyResult();
-    }
-    throw new Error(`Gemini request failed (${resp.status}): ${detail.slice(0, 240)}`);
-  }
-
-  const data = await resp.json();
-  // Gemini puts the tool call inside candidates[0].content.parts[*].functionCall.
-  // Unlike Groq/OpenAI, args is already a parsed object — no JSON.parse needed.
-  // The model can also return text alongside the call (or, on safety blocks,
-  // omit the call entirely with finishReason: "SAFETY"); we tolerate both by
-  // searching parts for the first matching functionCall and falling back to
-  // an empty result rather than throwing.
-  const parts: Array<{ functionCall?: { name?: string; args?: unknown } }> =
-    data.candidates?.[0]?.content?.parts ?? [];
-  const fnCall = parts.find((p) => p.functionCall?.name === "extract_graph")?.functionCall;
-  if (!fnCall?.args) {
-    console.warn("[extractGraph] no functionCall in response", data);
-    return emptyResult();
-  }
-
-  const validation = graphPatchSchema.safeParse(fnCall.args);
+/**
+ * Validates a patch returned by the extraction runtime and converts it to the
+ * shape the merge step consumes. Returns null when the patch is malformed.
+ */
+export function parseExtractionPatch(value: unknown): ExtractGraphResult | null {
+  const validation = graphPatchSchema.safeParse(value);
   if (!validation.success) {
-    console.error("[extractGraph] zod validation failed:", validation.error.format(), fnCall.args);
-    return emptyResult();
+    console.error("[extractGraph] patch validation failed:", validation.error.format());
+    return null;
   }
-
   return patchToResult(filterNoise(validation.data));
 }
