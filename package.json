@@ -19,7 +19,8 @@
     "test:watch": "vitest",
     "eval:privacy": "node eval/privacy/run.mjs",
     "eval:memory": "vite-node --config eval/memory/vite.config.ts eval/memory/run.ts",
-    "test:eval": "node --test \"eval/**/*.test.mjs\""
+    "test:eval": "node --test \"eval/**/*.test.mjs\"",
+    "eval:stages:gen": "vite-node --config eval/memory/vite.config.ts eval/stages/gen/build.ts"
   },
   "dependencies": {
     "@ai-sdk/groq": "^3.0.35",
@@ -86,7 +87,6 @@
     "zod": "^3.24.2"
   },
   "devDependencies": {
-    "@anthropic-ai/sdk": "^1.13.0",
     "@eslint/js": "^9.32.0",
     "@lovable.dev/vite-tanstack-config": "^1.4.0",
     "@types/node": "^22.16.5",

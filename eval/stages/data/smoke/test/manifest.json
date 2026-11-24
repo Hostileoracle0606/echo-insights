@@ -1,0 +1,27 @@
+{
+  "synthetic": true,
+  "split": "test",
+  "smoke": true,
+  "generatorCommit": "e574879",
+  "writer": "Claude (opus) via Claude Code headless on the owner's plan",
+  "seeds": {
+    "start": 20001,
+    "requested": 3
+  },
+  "counts": {
+    "worlds": 3,
+    "queries": 10,
+    "answerable": 10,
+    "byFamily": {
+      "distractor": 1,
+      "paraphrase": 2,
+      "multi_hop": 2,
+      "temporal_change": 4,
+      "contradiction": 1
+    }
+  },
+  "droppedWorlds": [],
+  "removedDuplicateQueries": [],
+  "leakage": "clean",
+  "stoppedByPlanLimit": null
+}
