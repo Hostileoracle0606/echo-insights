@@ -119,4 +119,30 @@ void main() {
     expect(geminiLiveSystemInstruction,
         contains("leave them unless the user brings them back"));
   });
+
+  test('"let\'s talk about something else" sets the open question aside', () {
+    final state = _run([
+      (Speaker.assistant, 'How is Priya settling into Lisbon?'),
+      (Speaker.user, "Let's talk about something else."),
+    ]);
+    expect(state.pausedTopics, ['How is Priya settling into Lisbon?']);
+    expect(state.openThreads, isEmpty);
+  });
+
+  test('the tool note carries recent questions and set-aside topics', () {
+    expect(SessionState.empty.toToolNote(), isEmpty);
+    final state = _run([
+      for (var i = 1; i <= 8; i++) (Speaker.assistant, 'Question $i?'),
+      (Speaker.user, 'Not now.'),
+    ]);
+    final note = state.toToolNote();
+    expect(note['alreadyAsked'], [for (var i = 3; i <= 8; i++) 'Question $i?']);
+    expect(note['setAside'], isNotEmpty);
+  });
+
+  test('the prompt explains the tool note and the rephrase-once rule', () {
+    expect(geminiLiveSystemInstruction, contains('conversationSoFar'));
+    expect(geminiLiveSystemInstruction,
+        contains('ask it once more in simpler words'));
+  });
 }

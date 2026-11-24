@@ -400,12 +400,17 @@ test("the model sees the previous brief, follow-ups, entity questions and top en
   });
   await handle(requestEvent());
   const message = textCalls(state)[0].body.contents[0].parts[0].text;
-  assert.match(message, /PREVIOUS-THREAD-MARKER/);
+  assert.match(message, /Lumen asked this at the start of the conversation that just ended\): PREVIOUS-THREAD-MARKER/);
   assert.match(message, /How did the dentist visit go\?/);
   assert.match(message, /Who signs off on the demo\?/);
   assert.match(message, /Maya/);
   assert.match(message, /Project Atlas/);
   assert.match(message, /^You: Honestly it's been a lot\./m);
+});
+
+test("the prompt never re-asks the last opening thread, and drops one the person declined", () => {
+  assert.match(briefPrompt, /Never ask that thread again unless the person brought it up again themselves/);
+  assert.match(briefPrompt, /keep it out of the opening line and out of focus until they raise it again/);
 });
 
 test("the model call is forced, deterministic, and uses briefPrompt", async () => {
