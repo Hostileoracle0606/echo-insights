@@ -9,7 +9,12 @@ import {
   retrieveMemoryResponseV2,
 } from "../_shared/retrieve-memory-contract.ts";
 import { buildContext } from "./context.ts";
+import { graphEvidence } from "./graph-evidence.ts";
+import { isMemoryFactHistory, type MemoryFact } from "../_shared/memory-fact-contract.ts";
+import { selectRelevant } from "./select.ts";
 import { loadQuotes } from "./quotes.ts";
+import { runMemoryQuery, type MemoryQueryDeps } from "./memory-query.ts";
+import { memoryQueryResponse } from "./memory-query-types.ts";
 
 // The handler takes its clients, embedder and logger as dependencies so it
 // can be tested without a Supabase stack; index.ts wires the real ones.
@@ -24,6 +29,8 @@ export interface RetrieveMemoryDeps {
   /** Throwing here (no Supabase.ai locally) just disables semantic seeds. */
   embedder(): Embedder;
   log(fields: Record<string, unknown>): void;
+  /** Optional while the routed voice workflow is evaluated. */
+  memoryQuery?: MemoryQueryDeps;
 }
 
 export const corsHeaders = {
@@ -63,6 +70,8 @@ const json = (status: number, body: unknown) =>
 export function validRequestShape(body: unknown): boolean {
   if (typeof body !== "object" || body === null || Array.isArray(body)) return false;
   const b = body as Record<string, unknown>;
+  if (b.version === 3 && (b.scope !== "user" || typeof b.question !== "string" ||
+    b.question.length > MAX_QUERY_CHARS || b.question.trim().length < 2)) return false;
   if (
     b.query !== undefined &&
     b.query !== null &&
@@ -207,6 +216,8 @@ export function createHandler(deps: RetrieveMemoryDeps): (req: Request) => Promi
       if (!validRequestShape(parsed)) return json(400, { error: "invalid request" });
       const body = parsed as {
         query?: string;
+        question?: string;
+        version?: number;
         notebookId?: string;
         scope?: unknown;
         state?: {
@@ -261,6 +272,55 @@ export function createHandler(deps: RetrieveMemoryDeps): (req: Request) => Promi
 
       const query = (body.query ?? "").trim();
 
+      if (body.version === 3) {
+        if (!deps.memoryQuery) return json(200, memoryQueryResponse());
+        // Evidence comes from the graph only: the entities matching the
+        // question and their linked entries (graph-evidence.ts), and the
+        // facts stored for those entities (EC-06).
+        let selected: { id: string; name: string }[] = [];
+        const graphSource = {
+          evidence: async (graphQuery: string, signal: AbortSignal) => {
+            const [graph, seeds] = await Promise.all([
+              supa.rpc("get_user_graph", { p_types: null, p_limit: USER_GRAPH_LIMIT }),
+              semanticSeeds(deps, graphQuery, (vector, model) => ({
+                fn: "match_user_entity_embeddings",
+                args: { p_user_id: user.id, p_query: vector, p_limit: SEED_LIMIT, p_model: model },
+              })),
+            ]);
+            signal.throwIfAborted();
+            if (graph.error) return [];
+            const g = userGraphToState(graph.data);
+            if (!Object.keys(g.entities).length) return [];
+            const found = await graphEvidence(supa, g, graphQuery, seeds, signal);
+            selected = found.entityIds.map((id) => ({ id, name: g.entities[id]?.name ?? id }));
+            return found.passages;
+          },
+          facts: async (signal: AbortSignal) => {
+            if (!selected.length) return { entities: [], facts: [] };
+            const { data, error } = await supa.rpc("get_entity_fact_history", {
+              p_entity_ids: selected.map((e) => e.id),
+            });
+            signal.throwIfAborted();
+            if (error || !isMemoryFactHistory({ facts: data })) {
+              return { entities: selected, facts: [] };
+            }
+            return { entities: selected, facts: data as MemoryFact[] };
+          },
+        };
+        return json(
+          200,
+          await runMemoryQuery(
+            deps.memoryQuery,
+            supa,
+            body.question!.trim(),
+            query,
+            startedAt,
+            graphSource,
+            logTelemetry,
+          ),
+        );
+      }
+
       if (scope === "user") {
         if (!query) return json(200, retrieveMemoryResponseV2("", [], []));
         // body.state is ignored: the graph is the user's merged memory, read
@@ -286,10 +346,11 @@ export function createHandler(deps: RetrieveMemoryDeps): (req: Request) => Promi
         if (Object.keys(g.entities).length === 0) {
           return json(200, retrieveMemoryResponseV2("", [], []));
         }
-        const result = await rank(g, query, extraSeeds);
+        // The live tool: only what is close in meaning to the query (select.ts).
+        const result = selectRelevant(g, query, extraSeeds);
         const context = buildContext(result);
         const entityIds = result.entities.map((entity) => entity.id);
-        const quotes = await loadQuotes(supa, entityIds, notebookId);
+        const quotes = entityIds.length === 0 ? [] : await loadQuotes(supa, entityIds, notebookId);
         logTelemetry({
           ok: true,
           scope,

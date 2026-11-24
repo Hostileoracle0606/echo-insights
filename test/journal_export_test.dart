@@ -30,6 +30,15 @@ void main() {
       expect(export.toJson(), json);
     });
 
+    test('keeps the fact layer, session state and corrections (EC-08)', () {
+      final json = _fixture();
+      final exported = JournalExport.fromJson(json).toJson();
+      final first = (exported['notebooks'] as List).first as Map<String, dynamic>;
+      expect((first['facts'] as List).single['attribute'], 'amount');
+      expect((first['sessionState'] as Map)['openThreads'], ['How was the run?']);
+      expect(first['corrections'], isEmpty);
+    });
+
     test('keeps fields and keys this app does not know yet', () {
       final json = _fixture()
         ..['futureTopLevel'] = {'a': 1}

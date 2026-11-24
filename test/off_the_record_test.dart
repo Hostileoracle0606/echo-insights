@@ -10,6 +10,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lumen/audio/audio_output.dart';
 import 'package:lumen/audio/pcm_capture.dart';
 import 'package:lumen/audio/pcm_player.dart';
+import 'package:lumen/logic/context_materialiser.dart' show WorkingFact;
+import 'package:lumen/logic/context_rebuild_policy.dart';
 import 'package:lumen/logic/turn_state.dart' hide CommitCommitted;
 import 'package:lumen/models/entity.dart';
 import 'package:lumen/models/follow_up.dart';
@@ -29,6 +31,9 @@ import 'package:lumen/services/extract_graph_service.dart';
 import 'package:lumen/services/extraction_context.dart';
 import 'package:lumen/services/gemini_live_client.dart';
 import 'package:lumen/services/live_credentials.dart';
+import 'package:lumen/services/conversation_state_service.dart';
+import 'package:lumen/services/memory_correction_service.dart';
+import 'package:lumen/services/memory_fact_service.dart';
 import 'package:lumen/services/notebook_commit_service.dart';
 import 'package:lumen/services/notebook_runtime_service.dart';
 import 'package:lumen/services/retrieve_memory_service.dart';
@@ -104,6 +109,7 @@ class _FakeCommits implements NotebookCommitService {
     return CommitCommitted(
       requestId: requestId,
       revision: expectedRevision + 1,
+      entryId: 'server-entry-$commits',
       suppressedIds: suppressedIds,
     );
   }
@@ -160,6 +166,8 @@ class _CountingLog implements SharedLog {
 class _FakeExtractor implements ExtractGraphService {
   final texts = <String>[];
   final contexts = <List<String>>[];
+  final spokenAts = <DateTime?>[];
+  GraphPatch result = GraphPatch.empty();
 
   @override
   Future<GraphPatch> extract({
@@ -174,14 +182,87 @@ class _FakeExtractor implements ExtractGraphService {
     FollowUp? answeringFollowUp,
     int tokenBudget = defaultExtractionTokenBudget,
     int maxRetries = 2,
+    DateTime? spokenAt,
   }) async {
     texts.add(text);
     contexts.add([for (final turn in recentConversation) turn.text]);
-    return GraphPatch.empty();
+    spokenAts.add(spokenAt);
+    return result;
   }
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+/// EC-07: corrections proposed, applied and rejected.
+class _FakeCorrections implements MemoryCorrectionService {
+  final proposed = <Map<String, dynamic>>[];
+  final applied = <String>[];
+  final rejected = <String>[];
+
+  @override
+  Future<Map<String, dynamic>> propose({
+    required String about,
+    String? attribute,
+    required Map<String, dynamic> change,
+  }) async {
+    proposed.add({'about': about, 'attribute': attribute, 'change': change});
+    if (about == 'nothing stored') return {'status': 'not_found'};
+    return {
+      'status': 'pending',
+      'correctionId': 'c-${proposed.length}',
+      'readBack': 'So your savings goal amount is 7000 USD, not 8000 USD. Is that right?',
+    };
+  }
+
+  @override
+  Future<Map<String, dynamic>> apply(String correctionId) async {
+    applied.add(correctionId);
+    return {'status': 'applied'};
+  }
+
+  @override
+  Future<Map<String, dynamic>> reject(String correctionId) async {
+    rejected.add(correctionId);
+    return {'status': 'rejected', 'offerRemoval': rejected.length >= 2};
+  }
+}
+
+/// EC-04: the session state record's saves and clears.
+class _FakeConversationState implements ConversationStateService {
+  final saved = <Map<String, dynamic>>[];
+  final cleared = <String>[];
+  Map<String, dynamic>? stored;
+
+  @override
+  Future<void> save(String notebookId, Map<String, dynamic> state) async {
+    saved.add(state);
+  }
+
+  @override
+  Future<Map<String, dynamic>?> load(String notebookId) async => stored;
+
+  @override
+  Future<void> clear(String notebookId) async => cleared.add(notebookId);
+}
+
+/// EC-03: the facts recorded after a commit.
+class _FakeFacts implements MemoryFactService {
+  final calls = <({String notebookId, String entryId, List<Map<String, dynamic>> facts})>[];
+
+  @override
+  Future<void> recordFacts({
+    required String notebookId,
+    required String entryId,
+    required List<Map<String, dynamic>> facts,
+  }) async {
+    calls.add((notebookId: notebookId, entryId: entryId, facts: facts));
+  }
+
+  List<WorkingFact> current = const [];
+
+  @override
+  Future<List<WorkingFact>> currentFacts(List<String> entityIds) async => current;
 }
 
 class _NoMemory implements RetrieveMemoryService {
@@ -189,6 +270,7 @@ class _NoMemory implements RetrieveMemoryService {
   Future<MemoryRetrieval> retrieveResult({
     required String query,
     required String notebookId,
+    String? question,
     JournalState? state,
     RetrievalScope scope = RetrievalScope.notebook,
     Duration? timeout,
@@ -308,6 +390,7 @@ class _Harness {
     List<ConversationTurn> history = const [],
     Duration openingTimeout = const Duration(seconds: 10),
     SupabaseService? supabase,
+    ContextRebuildConfig? rebuild,
   })  : transcripts = _FakeTranscripts(history),
         commits = _FakeCommits(state ?? JournalState.empty()) {
     credentials = LiveCredentials(fetch: () async {
@@ -323,6 +406,9 @@ class _Harness {
     container = ProviderContainer(overrides: [
       notebookCommitServiceProvider.overrideWithValue(commits),
       extractGraphServiceProvider.overrideWithValue(extractor),
+      memoryFactServiceProvider.overrideWithValue(facts),
+      conversationStateServiceProvider.overrideWithValue(sessionState),
+      memoryCorrectionServiceProvider.overrideWithValue(corrections),
       sharedLogProvider.overrideWithValue(sharedLog),
       retrieveMemoryServiceProvider.overrideWithValue(_NoMemory()),
       turnJournalServiceProvider.overrideWithValue(journal_),
@@ -333,6 +419,7 @@ class _Harness {
       sessionCardServiceProvider.overrideWithValue(cards),
       sessionBriefServiceProvider.overrideWithValue(briefs),
       liveCredentialsProvider.overrideWithValue(credentials),
+      contextRebuildConfigProvider.overrideWithValue(rebuild),
       audioOutputProvider.overrideWithValue(
         AudioOutput(createPlayer: () => PcmPlayer(backend: _Backend())),
       ),
@@ -360,6 +447,9 @@ class _Harness {
   final _FakeTranscripts transcripts;
   final _FakeCommits commits;
   final extractor = _FakeExtractor();
+  final facts = _FakeFacts();
+  final sessionState = _FakeConversationState();
+  final corrections = _FakeCorrections();
   final sharedLog = _CountingLog();
   final cards = _FakeCards();
   final briefs = _FakeBriefs();
@@ -426,6 +516,9 @@ void _expectNoWrites(_Harness h) {
   expect(h.journal_.writes, 0, reason: 'turn journal');
   expect(h.transcripts.saved, isEmpty, reason: 'transcript store');
   expect(h.extractor.texts, isEmpty, reason: 'extraction');
+  expect(h.facts.calls, isEmpty, reason: 'facts (EC-03)');
+  expect(h.sessionState.saved, isEmpty, reason: 'session state (EC-04)');
+  expect(h.corrections.proposed, isEmpty, reason: 'corrections (EC-07)');
   expect(h.sharedLog.recorded, isEmpty,
       reason: 'What Lumen shared log (LM-57)');
 }
@@ -536,6 +629,202 @@ void main() {
     expect(h.container.read(journalProvider).entities, isEmpty);
     expect(h.journal.suppressedEntityIds, contains('maya-chen'));
     expect(h.container.read(forgottenThisRunProvider), contains('maya-chen'));
+  });
+
+  test('a committed turn records its facts against the server entry (EC-03)',
+      () async {
+    h = _Harness(supabase: _EndingNotebooks());
+    h.extractor.result = const GraphPatch(
+      entities: [EntityPatch(name: 'savings goal', type: EntityType.concept)],
+      relations: [],
+      supersedes: [],
+      facts: [
+        FactPatch(
+          entity: 'savings goal',
+          attribute: 'amount',
+          valueNum: 8000,
+          unit: 'USD',
+          status: 'confirmed',
+        ),
+      ],
+    );
+    await h.journal.enterNotebook(_notebookId);
+    await h.startLive();
+
+    expect(h.journal.sendTypedTurn('My savings goal is 8k now.'), isTrue);
+    await _waitForCommits(h, 1);
+    await _settle();
+
+    expect(h.extractor.spokenAts.single, isNotNull,
+        reason: 'the model resolves "yesterday" from when the turn was said');
+    final call = h.facts.calls.single;
+    expect(call.notebookId, _notebookId);
+    expect(call.entryId, 'server-entry-1');
+    expect(call.facts, [
+      {
+        'entityId': 'savings-goal',
+        'attribute': 'amount',
+        'valueNum': 8000,
+        'unit': 'USD',
+        'status': 'confirmed',
+      },
+    ]);
+  });
+
+  test('a turn with no facts records nothing', () async {
+    h = _Harness(supabase: _EndingNotebooks());
+    await h.journal.enterNotebook(_notebookId);
+    await h.startLive();
+    expect(h.journal.sendTypedTurn('Just a quiet day.'), isTrue);
+    await _waitForCommits(h, 1);
+    await _settle();
+    expect(h.facts.calls, isEmpty);
+  });
+
+  /// Gemini calls [name]; returns what the app answered.
+  Future<Map<String, dynamic>> toolCall(
+      _Harness h, String name, Map<String, dynamic> args, String id) async {
+    h.socket.serverSends({
+      'toolCall': {
+        'functionCalls': [
+          {'id': id, 'name': name, 'args': args},
+        ],
+      },
+    });
+    for (var i = 0; i < 200; i++) {
+      for (final message in h.socket.sent) {
+        final responses = (message['tool_response'] as Map?)?['function_responses'];
+        if (responses is List) {
+          for (final response in responses.cast<Map>()) {
+            if (response['id'] == id) {
+              return ((response['response'] as Map)['output'] as Map).cast<String, dynamic>();
+            }
+          }
+        }
+      }
+      await Future<void>.delayed(Duration.zero);
+    }
+    fail('no tool response for $id');
+  }
+
+  group('corrections (EC-07)', () {
+    const propose = {
+      'action': 'propose',
+      'about': 'savings goal',
+      'attribute': 'amount',
+      'value': '7k',
+    };
+
+    test('read back first; applied only after a yes, then the context is rebuilt',
+        () async {
+      h = _Harness(
+        state: JournalState.empty().copyWith(entries: [_entry('Earlier.')]),
+        supabase: _EndingNotebooks(),
+        rebuild: const ContextRebuildConfig(minInterval: Duration.zero),
+      );
+      await h.journal.enterNotebook(_notebookId);
+      await h.startLive();
+
+      final readBack = await toolCall(h, 'correct_memory', propose, 'c1');
+      expect(readBack['status'], 'read_back');
+      expect(readBack['say'],
+          'So your savings goal amount is 7000 USD, not 8000 USD. Is that right?');
+      expect(h.corrections.proposed.single['change'], {'valueNum': 7000});
+      expect(h.corrections.applied, isEmpty, reason: 'nothing changes before a yes');
+
+      final done = await toolCall(h, 'correct_memory', {'action': 'confirm'}, 'c2');
+      expect(done['status'], 'done');
+      expect(h.corrections.applied, ['c-1']);
+
+      // The old value is still in Gemini's window: rebuilt at the next pause.
+      h.socket
+        ..serverSends({
+          'serverContent': {
+            'outputTranscription': {'text': 'Updated.', 'finished': true},
+          },
+        })
+        ..serverSends({
+          'serverContent': {'turnComplete': true},
+        });
+      await Future<void>.delayed(const Duration(milliseconds: 1000));
+      await h.waitForSocket(2);
+    });
+
+    test('nothing to correct gives Lumen nothing to say about storage', () async {
+      h = _Harness(supabase: _EndingNotebooks());
+      await h.journal.enterNotebook(_notebookId);
+      await h.startLive();
+      final result = await toolCall(h, 'correct_memory',
+          {...propose, 'about': 'nothing stored'}, 'c1');
+      expect(result['status'], 'not_found');
+      expect(result.containsKey('say'), isFalse);
+      expect(jsonEncode(result).toLowerCase(), isNot(contains('stored')));
+    });
+
+    test('a confirm with nothing pending changes nothing', () async {
+      h = _Harness(supabase: _EndingNotebooks());
+      await h.journal.enterNotebook(_notebookId);
+      await h.startLive();
+      final result = await toolCall(h, 'correct_memory', {'action': 'confirm'}, 'c1');
+      expect(result['status'], 'nothing_to_confirm');
+      expect(h.corrections.applied, isEmpty);
+    });
+
+    test('a rejected read-back asks again, then offers to forget it', () async {
+      h = _Harness(supabase: _EndingNotebooks());
+      await h.journal.enterNotebook(_notebookId);
+      await h.startLive();
+      await toolCall(h, 'correct_memory', propose, 'c1');
+      final once = await toolCall(h, 'correct_memory', {'action': 'reject'}, 'c2');
+      expect(once['offerRemoval'], isFalse);
+      await toolCall(h, 'correct_memory', propose, 'c3');
+      final twice = await toolCall(h, 'correct_memory', {'action': 'reject'}, 'c4');
+      expect(twice['offerRemoval'], isTrue);
+      expect(h.corrections.rejected, ['c-1', 'c-2']);
+      expect(h.corrections.applied, isEmpty);
+    });
+
+    test('off the record, nothing is corrected', () async {
+      h = _Harness(supabase: _EndingNotebooks());
+      await openFreshOffTheRecord(h);
+      final result = await toolCall(h, 'correct_memory', propose, 'c1');
+      expect(result['status'], 'off_the_record');
+      expect(h.corrections.proposed, isEmpty);
+    });
+
+    test('the disputing turn does not record its own facts', () async {
+      h = _Harness(supabase: _EndingNotebooks());
+      h.extractor.result = const GraphPatch(
+        entities: [EntityPatch(name: 'savings goal', type: EntityType.concept)],
+        relations: [],
+        supersedes: [],
+        facts: [
+          FactPatch(entity: 'savings goal', attribute: 'amount', valueNum: 7000,
+              unit: 'USD', status: 'confirmed'),
+        ],
+      );
+      await h.journal.enterNotebook(_notebookId);
+      await h.startLive();
+      h.socket.serverSends({
+        'serverContent': {
+          'inputTranscription': {'text': "No, it's 7k, not 8k.", 'finished': true},
+        },
+      });
+      await toolCall(h, 'correct_memory', propose, 'c1');
+      h.socket
+        ..serverSends({
+          'serverContent': {
+            'outputTranscription': {'text': 'So 7000, not 8000?', 'finished': true},
+          },
+        })
+        ..serverSends({
+          'serverContent': {'turnComplete': true},
+        });
+      await _waitForCommits(h, 1);
+      await _settle();
+      expect(h.facts.calls, isEmpty,
+          reason: 'the correction, once confirmed, is the record of it');
+    });
   });
 
   group('back on the record', () {
@@ -986,7 +1275,7 @@ void main() {
       focus: const ['Maya'],
       openingThread: 'the move',
       openingLine: 'Welcome back.',
-      createdAt: DateTime.utc(2026, 10, 27, 9, 30),
+      createdAt: _recentBrief,
       playedAt: null,
       pcm: Uint8List(24000),
       sampleRate: 24000,
@@ -1011,7 +1300,7 @@ void main() {
       focus: const ['Maya'],
       openingThread: 'the move',
       openingLine: 'Welcome back.',
-      createdAt: DateTime.utc(2026, 10, 27, 9, 30),
+      createdAt: _recentBrief,
       playedAt: null,
       pcm: Uint8List(24000),
       sampleRate: 24000,
@@ -1095,4 +1384,313 @@ void main() {
     await _waitForCommits(h, 1);
     expect(h.cards.drafted, [_notebookId], reason: 'drafting works once live');
   });
+
+  group('context rebuild (EC-01)', () {
+    const twoTurns = ContextRebuildConfig(
+      maxTurns: 2,
+      minInterval: Duration.zero,
+    );
+    // Past the provider's 800 ms grace after Lumen's turn ends.
+    Future<void> pastRebuildCheck() =>
+        Future<void>.delayed(const Duration(milliseconds: 1000));
+
+    Future<void> liveInSavedNotebook(ContextRebuildConfig? rebuild) async {
+      h = _Harness(
+        state: JournalState.empty().copyWith(entries: [_entry('Earlier.')]),
+        supabase: _EndingNotebooks(),
+        rebuild: rebuild,
+      );
+      await h.journal.enterNotebook(_notebookId);
+      await h.startLive();
+      h.socket.serverSends({
+        'sessionResumptionUpdate': {'resumable': true, 'newHandle': 'old'},
+      });
+      await _settle();
+    }
+
+    test('a spent turn budget rebuilds at a pause from saved context',
+        () async {
+      await liveInSavedNotebook(twoTurns);
+      userSaysAndLumenReplies(h, 'My goal is 350 now.', 'Noted.');
+      await _waitForCommits(h, 1);
+      await pastRebuildCheck();
+      expect(h.sockets, hasLength(1), reason: 'one turn: budget not spent');
+
+      userSaysAndLumenReplies(h, 'And Maya starts Monday.', 'Lovely.');
+      await pastRebuildCheck();
+      await h.waitForSocket(2);
+      expect(h.socket.setup['session_resumption'], isEmpty,
+          reason: 'a new conversation, seeded by the app, not resumed');
+      expect(h.journal.reconnecting, isFalse,
+          reason: 'a planned rebuild shows no "Reconnecting" chip');
+
+      h.socket.serverSends({'setupComplete': <String, dynamic>{}});
+      await _settle();
+      final seeded = jsonEncode(
+        h.socket.sent.firstWhere((m) => m.containsKey('client_content')),
+      );
+      expect(seeded, contains('My goal is 350 now.'));
+      expect(seeded, contains('And Maya starts Monday.'));
+      expect(h.tokensMinted, greaterThanOrEqualTo(2),
+          reason: 'a new conversation takes a new single-use token');
+    });
+
+    test('a rebuilt context lists topics already raised and the latest lines',
+        () async {
+      h = _Harness(
+        state: JournalState.empty().copyWith(
+          entries: [_entry('Earlier.')],
+          entities: {
+            'priya': Entity(
+              id: 'priya',
+              name: 'Priya',
+              type: EntityType.person,
+              metadata: const {},
+              mentions: 1,
+              firstSeen: DateTime(2026, 11, 21),
+              lastSeen: DateTime(2026, 11, 21),
+            ),
+            'samsung': Entity(
+              id: 'samsung',
+              name: 'Samsung',
+              type: EntityType.organization,
+              metadata: const {},
+              mentions: 1,
+              firstSeen: DateTime(2026, 11, 21),
+              lastSeen: DateTime(2026, 11, 21),
+            ),
+          },
+        ),
+        supabase: _EndingNotebooks(),
+        rebuild: const ContextRebuildConfig(
+          maxTurns: 10,
+          minInterval: Duration.zero,
+        ),
+      );
+      await h.journal.enterNotebook(_notebookId);
+      await h.startLive();
+      userSaysAndLumenReplies(h, 'Hi.', "How's Priya doing?");
+      await _settle();
+      for (var i = 1; i < 10; i++) {
+        userSaysAndLumenReplies(h, 'Turn $i.', 'Question $i?');
+        await _settle();
+      }
+      await pastRebuildCheck();
+      await h.waitForSocket(2);
+      h.socket.serverSends({'setupComplete': <String, dynamic>{}});
+      await _settle();
+
+      final content = h.socket.sent
+          .firstWhere((m) => m.containsKey('client_content'))['client_content']
+          as Map<String, dynamic>;
+      final summaryLine = [
+        for (final turn in content['turns'] as List)
+          for (final part in (turn as Map)['parts'] as List)
+            ...((part as Map)['text'] as String).split('\n'),
+      ].firstWhere((line) => line.startsWith('[graph summary] '));
+      final summary = jsonDecode(
+          summaryLine.substring('[graph summary] '.length)) as Map<String, dynamic>;
+      expect(summary['probedThisSession'], ['Priya'],
+          reason: 'Lumen raised Priya in its first reply, before the last 16 '
+              'turns the live conversation keeps; Samsung never came up');
+      expect(summary['recentAgentQuestions'],
+          [for (var i = 2; i < 10; i++) 'Question $i?'],
+          reason: 'the latest eight, not the first eight');
+    });
+
+    test('a rebuilt context carries the open question, paused topic, promise '
+        'and register (EC-04)', () async {
+      await liveInSavedNotebook(twoTurns);
+      userSaysAndLumenReplies(
+          h, 'Priya is moving to Lisbon.', 'How do you feel about her move?');
+      await _settle();
+      userSaysAndLumenReplies(h, "Honestly I'm stressed. Not now.",
+          "Okay. I'll ask you about it tomorrow. What else is on your mind?");
+      await pastRebuildCheck();
+      await h.waitForSocket(2);
+      h.socket.serverSends({'setupComplete': <String, dynamic>{}});
+      await _settle();
+
+      final content = h.socket.sent
+          .firstWhere((m) => m.containsKey('client_content'))['client_content']
+          as Map<String, dynamic>;
+      final summaryLine = [
+        for (final turn in content['turns'] as List)
+          for (final part in (turn as Map)['parts'] as List)
+            ...((part as Map)['text'] as String).split('\n'),
+      ].firstWhere((line) => line.startsWith('[graph summary] '));
+      final state = (jsonDecode(summaryLine.substring('[graph summary] '.length))
+          as Map<String, dynamic>)['sessionState'] as Map<String, dynamic>;
+      expect(state['openThreads'], ['What else is on your mind?']);
+      expect(state['pausedTopics'], ['How do you feel about her move?']);
+      expect(state['commitments'], ["I'll ask you about it tomorrow."]);
+      expect(state['register'], 'stressed');
+    });
+
+    test('the session state is saved on the record and cleared at the end '
+        '(EC-04)', () async {
+      await liveInSavedNotebook(null);
+      userSaysAndLumenReplies(h, "I'm tired today.", 'What wore you out?');
+      await _settle();
+      expect(h.sessionState.saved, isNotEmpty);
+      expect(h.sessionState.saved.last['openThreads'], ['What wore you out?']);
+      expect(h.sessionState.saved.last['register'], 'tired');
+
+      await h.journal.leaveNotebook();
+      expect(h.sessionState.cleared, [_notebookId]);
+    });
+
+    test('a conversation reopened after a restart picks up its saved state '
+        '(EC-04)', () async {
+      h = _Harness(
+        state: JournalState.empty().copyWith(entries: [_entry('Earlier.')]),
+        supabase: _EndingNotebooks(),
+        rebuild: twoTurns,
+      );
+      h.sessionState.stored = {
+        'openThreads': ['How did the interview go?'],
+        'pausedTopics': <String>[],
+        'asked': ['How did the interview go?'],
+        'commitments': <String>[],
+        'register': null,
+        'covered': <String>[],
+      };
+      await h.journal.enterNotebook(_notebookId);
+      await h.startLive();
+      await _settle();
+      userSaysAndLumenReplies(h, 'Hmm.', 'Take your time.');
+      await _settle();
+      expect(h.sessionState.saved.last['openThreads'], ['How did the interview go?'],
+          reason: 'a filler reply does not answer the question it was asked');
+    });
+
+    test('a rebuild continues from the materialised context (EC-05)', () async {
+      h = _Harness(
+        state: JournalState.empty().copyWith(
+          entries: [_entry('Earlier.')],
+          entities: {
+            'savings-goal': Entity(
+              id: 'savings-goal',
+              name: 'savings goal',
+              type: EntityType.concept,
+              metadata: const {},
+              mentions: 2,
+              firstSeen: DateTime(2026, 11, 20),
+              lastSeen: DateTime(2026, 11, 21),
+            ),
+          },
+        ),
+        supabase: _EndingNotebooks(),
+        rebuild: const ContextRebuildConfig(maxTurns: 8, minInterval: Duration.zero),
+      );
+      h.facts.current = const [
+        WorkingFact(entityId: 'savings-goal', attribute: 'amount', valueNum: 8000,
+            unit: 'USD', status: 'confirmed'),
+      ];
+      await h.journal.enterNotebook(_notebookId);
+      await h.startLive();
+      for (var i = 0; i < 8; i++) {
+        userSaysAndLumenReplies(h, 'User line $i.', 'Lumen line $i?');
+        await _settle();
+      }
+      await pastRebuildCheck();
+      await h.waitForSocket(2);
+      h.socket.serverSends({'setupComplete': <String, dynamic>{}});
+      await _settle();
+
+      final content = h.socket.sent
+          .firstWhere((m) => m.containsKey('client_content'))['client_content']
+          as Map<String, dynamic>;
+      final texts = [
+        for (final turn in content['turns'] as List)
+          for (final part in (turn as Map)['parts'] as List) (part as Map)['text'] as String,
+      ];
+      expect(texts.first, startsWith('[continuation] '));
+      expect(texts.join('\n'), isNot(contains('[opening said]')));
+      final summary = jsonDecode(texts.first
+              .split('\n')
+              .firstWhere((l) => l.startsWith('[graph summary] '))
+              .substring('[graph summary] '.length)) as Map<String, dynamic>;
+      final goal = (summary['workingSet'] as List)
+          .firstWhere((row) => (row as Map)['name'] == 'savings goal') as Map;
+      expect(goal['facts'], ['amount: 8000 USD']);
+      // The context, six recent turns and the resume note: not a 20-turn replay.
+      expect(texts.length, 1 + 6 + 1);
+      expect(texts[texts.length - 2], 'Lumen line 7?');
+      expect(texts.contains('User line 0.'), isFalse);
+    });
+
+    test('typed turns with the mic paused still rebuild at a pause', () async {
+      // Found in the Simulator: opening the composer pauses the mic, and a
+      // typed-only conversation never rebuilt.
+      await liveInSavedNotebook(twoTurns);
+      await h.journal.pauseMic();
+      for (final text in ['Typed one.', 'Typed two.']) {
+        expect(h.journal.sendTypedTurn(text), isTrue);
+        h.socket
+          ..serverSends({
+            'serverContent': {
+              'outputTranscription': {'text': 'Reply.', 'finished': true},
+            },
+          })
+          ..serverSends({
+            'serverContent': {'turnComplete': true},
+          });
+        await _settle();
+      }
+      await pastRebuildCheck();
+      await h.waitForSocket(2);
+      h.socket.serverSends({'setupComplete': <String, dynamic>{}});
+      await _settle();
+      expect(
+        jsonEncode(
+            h.socket.sent.firstWhere((m) => m.containsKey('client_content'))),
+        contains('Typed two.'),
+      );
+    });
+
+    test('without the flag the session is never rebuilt', () async {
+      await liveInSavedNotebook(null);
+      for (var i = 0; i < 3; i++) {
+        userSaysAndLumenReplies(h, 'Turn $i.', 'Reply $i.');
+        await _settle();
+      }
+      await pastRebuildCheck();
+      expect(h.sockets, hasLength(1));
+    });
+
+    test('off the record never rebuilds: its turns are not saved', () async {
+      await liveInSavedNotebook(twoTurns);
+      h.journal.setOffTheRecord(true);
+      for (var i = 0; i < 3; i++) {
+        userSaysAndLumenReplies(h, 'Secret $i.', 'Reply $i.');
+        await _settle();
+      }
+      await pastRebuildCheck();
+      expect(h.sockets, hasLength(1));
+    });
+
+    test('the production client compresses only when not rebuilding', () {
+      GeminiLiveClient make(ContextRebuildConfig? rebuild) {
+        final container = ProviderContainer(overrides: [
+          contextRebuildConfigProvider.overrideWithValue(rebuild),
+        ]);
+        addTearDown(container.dispose);
+        return container.read(liveClientFactoryProvider)(
+          sessionToken: 't',
+          model: 'm',
+        );
+      }
+
+      expect(make(null).compressContext, isTrue);
+      expect(make(twoTurns).compressContext, isFalse);
+      // h is torn down after every test; give this one a harness too.
+      h = _Harness();
+    });
+  });
 }
+
+// Recent at run time: a brief over sessionBriefMaxAge (21 days) is stale.
+final _recentBrief = DateTime.utc(
+  DateTime.now().year, DateTime.now().month, DateTime.now().day,
+).subtract(const Duration(days: 1));

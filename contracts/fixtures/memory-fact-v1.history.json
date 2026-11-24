@@ -1,0 +1,34 @@
+{
+  "facts": [
+    {
+      "id": "0b1c2d3e-4f50-4617-8899-aabbccddeeff",
+      "entityId": "savings-goal",
+      "attribute": "amount",
+      "valueNum": 5000,
+      "valueText": null,
+      "unit": "USD",
+      "status": "confirmed",
+      "eventAt": null,
+      "statedAt": "2026-11-03T10:00:00+00:00",
+      "supersedesFactId": null,
+      "provenance": "extracted",
+      "sourceNotebookId": "33333333-3333-3333-3333-333333333333",
+      "sourceEntryId": null
+    },
+    {
+      "id": "9a8b7c6d-5e4f-4321-8765-0fedcba98765",
+      "entityId": "priya",
+      "attribute": "moving_to",
+      "valueNum": null,
+      "valueText": "Lisbon",
+      "unit": null,
+      "status": "proposed",
+      "eventAt": "2026-12-01T00:00:00+00:00",
+      "statedAt": "2026-11-01T10:00:00+00:00",
+      "supersedesFactId": null,
+      "provenance": "user_corrected",
+      "sourceNotebookId": null,
+      "sourceEntryId": null
+    }
+  ]
+}

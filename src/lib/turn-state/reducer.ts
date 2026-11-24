@@ -1,3 +1,4 @@
+import { stripFillers } from "./filler-words";
 import type {
   ActiveTurn,
   ConversationTurn,
@@ -212,7 +213,9 @@ export function createTurnMachine(deps: TurnMachineDeps, checkpoint?: TurnCheckp
    * only path by which spoken text becomes eligible to change the canonical graph.
    */
   function finalize(turn: ActiveTurn, transcript: string, truncated: boolean): TurnEffect[] {
-    const text = transcript.trim();
+    // Hesitation sounds never reach the saved transcript, extraction or the
+    // graph. A turn of nothing else is not a turn.
+    const text = (turn.speaker === "user" ? stripFillers(transcript) : transcript).trim();
     if (state.active[turn.speaker]?.turnId === turn.turnId) setActive(turn.speaker, null);
     if (state.awaiting[turn.speaker]?.turnId === turn.turnId) setAwaiting(turn.speaker, null);
     if (!text) return [];

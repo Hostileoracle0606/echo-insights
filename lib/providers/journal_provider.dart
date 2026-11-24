@@ -11,6 +11,13 @@ import '../audio/pcm_player.dart';
 import '../audio/standard_opening.dart';
 import '../audio/voice_engine.dart';
 import '../logic/agenda.dart' as agenda_logic;
+import '../env.dart';
+import '../logic/fact_records.dart';
+import '../logic/memory_correction.dart';
+import '../logic/context_materialiser.dart';
+import '../logic/context_rebuild_policy.dart';
+import '../logic/session_state.dart';
+import '../logic/session_topics.dart';
 import '../logic/conversation_policy.dart';
 import '../logic/echo_gate.dart';
 import '../logic/forget_redaction.dart';
@@ -175,6 +182,39 @@ class JournalNotifier extends Notifier<JournalState> {
   DateTime? _sessionStartedAt;
   String? _lastMemoryQuery;
   int _memoryCallsThisTurn = 0;
+  int _memoryTurnGeneration = 0;
+  bool _memoryUserTurnOpen = false;
+
+  /// Entity ids get_relevant_memory returned this session. Lumen may raise
+  /// someone from another notebook, so the graph alone can't say what it
+  /// has already brought up (probedThisSession).
+  final Set<String> _recalledThisSession = {};
+
+  /// Everything Lumen said this session, by turn id. The live conversation
+  /// keeps only its last 16 turns, so a topic raised early would otherwise
+  /// drop out of probedThisSession in a long session.
+  final Map<String, String> _lumenSaidThisSession = {};
+
+  /// EC-04: what this conversation has open, paused, promised and covered,
+  /// built from its finalized turns and saved outside the Live session, so a
+  /// rebuilt or reopened session continues instead of starting over.
+  SessionState _sessionState = SessionState.empty;
+  final Set<String> _sessionStateTurnIds = {};
+
+  /// Whether a stored record may exist for this conversation (saved, or
+  /// restored): it is deleted when the conversation ends.
+  bool _sessionStateStored = false;
+
+  /// EC-05: estimated tokens of turns not yet counted by the rebuild policy,
+  /// and the working set's facts, fetched before a rebuild connects.
+  int _unbudgetedTokens = 0;
+  List<WorkingFact> _workingFacts = const [];
+
+  /// EC-07: the correction waiting for the user's yes, and when the latest
+  /// one was proposed: the disputing turn's own facts are not recorded (the
+  /// confirmed correction is the record).
+  String? _pendingCorrectionId;
+  DateTime? _correctionProposedAt;
   static const _maxMemoryCallsPerTurn = 3;
   // What the last memory lookup brought back (LM-13 / LM-14 read it).
   RecallActivity? _recall;
@@ -210,6 +250,8 @@ class JournalNotifier extends Notifier<JournalState> {
   // Greetings never reach the turn machine: there is nothing to extract.
   final _bundledOpenings = <OpeningChoice, Future<StandardOpening?>>{};
   final _greetingRows = <ConversationTurn>[];
+  // The greetings played on the record: saved with the conversation.
+  final _recordedGreetings = <ConversationTurn>[];
 
   // Optimistic-concurrency counter from the last-known server snapshot.
   // Every commit reads this fresh (at the moment it actually runs, not when
@@ -412,12 +454,63 @@ class JournalNotifier extends Notifier<JournalState> {
     session.live
       ..dropResumption()
       ..holdInput();
+    _workingFacts = await _fetchWorkingFacts();
     await _reconnect(
       session,
       reason,
       whilePaused: true,
       fresh: true,
     );
+  }
+
+  /// EC-05: current facts for the most recently seen entities. Bounded in
+  /// time; a rebuild without facts is still a rebuild.
+  Future<List<WorkingFact>> _fetchWorkingFacts() async {
+    final ids = (state.entities.values.toList()
+          ..sort((a, b) {
+            final byTime = b.lastSeen.compareTo(a.lastSeen);
+            return byTime != 0 ? byTime : a.id.compareTo(b.id);
+          }))
+        .take(60)
+        .map((entity) => entity.id)
+        .toList();
+    if (ids.isEmpty) return const [];
+    try {
+      return await ref
+          .read(memoryFactServiceProvider)
+          .currentFacts(ids)
+          .timeout(const Duration(milliseconds: 800));
+    } catch (error) {
+      vlog('rebuild', 'working-set facts unavailable: $error');
+      return const [];
+    }
+  }
+
+  /// EC-05: the rebuilt context, from stored state only: continuation,
+  /// working set, session state and the last few turns.
+  MaterialisedContext _materialisedContext() {
+    final latestEntry = state.entries.isEmpty ? null : state.entries.first;
+    final active = <String>{
+      ..._recalledThisSession,
+      ...?latestEntry?.entityIds,
+      for (final entity in state.entities.values)
+        if (_sessionState.covered.contains(entity.name)) entity.id,
+    }..removeWhere((id) => !state.entities.containsKey(id));
+    final built = materialiseContext(
+      graph: state,
+      facts: _workingFacts,
+      session: _sessionState.redacted(_redactor.redact),
+      recentTurns: resumeContext(
+        conversation: _lumenConversation,
+        entries: state.entries,
+      ),
+      activeEntityIds: active,
+      planning: _buildGraphSummary(),
+      now: DateTime.now(),
+    );
+    vlog('rebuild', 'context ~${built.estimatedTokens} tokens, '
+        '${built.turns.length} turns');
+    return built;
   }
 
   void toggleMute() {
@@ -441,7 +534,75 @@ class JournalNotifier extends Notifier<JournalState> {
       if (_opening?.markOpeningHeard() ?? false) {
         vlog('session', 'greeting heard — user turn enabled');
       }
+      _scheduleRebuildCheck();
+    } else if (_replyAfterRebuild) {
+      _replyAfterRebuild = false;
+      // The client's reply-latency line just before this is the first turn
+      // after a rebuild (EC-10 compares it with normal turns).
+      vlog('rebuild', 'first reply after rebuild is playing');
     }
+    _notifyUi();
+  }
+
+  /// Lumen's voice stopped: once the grace period passes with the floor
+  /// still free, rebuild if the policy says the budget is spent.
+  void _scheduleRebuildCheck() {
+    if (_rebuildPolicy == null) return;
+    _rebuildCheckTimer?.cancel();
+    _rebuildCheckTimer = Timer(_rebuildCheckDelay, () {
+      _rebuildCheckTimer = null;
+      final policy = _rebuildPolicy;
+      if (policy == null || _session == null) return;
+      final reason = policy.check(
+        DateTime.now(),
+        FloorState(
+          // Paused only stops the mic: the connection stays, and typed turns
+          // still use it, so its context still needs rebuilding.
+          live: _status == SessionStatus.live ||
+              _status == SessionStatus.paused,
+          agentSpeaking: _agentSpeaking,
+          // A grace timer still running means the user spoke moments ago.
+          userSpeaking: _speechEndTimer != null,
+          awaitingReply: _awaitingReply,
+          reconnecting: _reconnecting,
+          offTheRecord: offTheRecord,
+        ),
+      );
+      if (reason != null) unawaited(_rebuildContext(reason));
+    });
+  }
+
+  /// Replaces the connection with one seeded from saved context (EC-01),
+  /// through the same fresh-reconnect path a Forget uses. Mic audio said
+  /// meanwhile is held and sent once the new session is seeded. Logs timing
+  /// only, never content.
+  Future<void> _rebuildContext(RebuildReason reason) async {
+    final session = _session;
+    final policy = _rebuildPolicy;
+    if (session == null || policy == null || _rebuilding) return;
+    final started = DateTime.now();
+    final turns = policy.turnsSinceRebuild;
+    final age = started.difference(policy.since);
+    policy.rebuilt(started);
+    _rebuilding = true;
+    vlog(
+      'rebuild',
+      'start reason=${reason.name} turns=$turns age=${age.inSeconds}s',
+    );
+    try {
+      await _reopenWithSavedContext(session, reason: 'context rebuild');
+    } finally {
+      _rebuilding = false;
+    }
+    final ok = identical(_session, session) &&
+        _status != SessionStatus.error &&
+        !_reconnecting;
+    _replyAfterRebuild = ok;
+    vlog(
+      'rebuild',
+      '${ok ? 'seeded' : 'did not complete'} in '
+          '${DateTime.now().difference(started).inMilliseconds}ms',
+    );
     _notifyUi();
   }
 
@@ -520,12 +681,70 @@ class JournalNotifier extends Notifier<JournalState> {
     _conversation
       ..clear()
       ..addAll(latest.conversation);
+    if (_sessionStartedAt != null) {
+      var stateChanged = false;
+      for (final turn in _conversation) {
+        if (_savedAtOpen.contains(turn.turnId)) continue;
+        if (turn.role == Speaker.assistant) {
+          _lumenSaidThisSession[turn.turnId] = turn.text;
+        }
+        if (_sessionStateTurnIds.add(turn.turnId)) {
+          // EC-05: what the turn added to the window, if Gemini doesn't say.
+          // Spoken audio costs ~25 tokens a second, far more than its text.
+          _unbudgetedTokens += estimateTokens(turn.text) *
+              (turn.input == TurnInput.voice ? 7 : 1);
+          _sessionState = _sessionState.observe(
+            speaker: turn.role,
+            text: _redactor.redact(turn.text),
+            known: state.entities.values.map((entity) => entity.name),
+          );
+          stateChanged = true;
+        }
+      }
+      if (stateChanged) _saveSessionState();
+    }
     _saveNewTurns(latest.notebookId);
     _inProgress
       ..clear()
       ..addAll(_turnMachine.inProgress);
     _extracting = latest.pending.isNotEmpty;
     _notifyUi();
+  }
+
+  /// EC-04: saves the session state record. Never off the record; a failed
+  /// save is logged and the next turn saves again.
+  void _saveSessionState() {
+    final notebookId = _activeNotebookId;
+    if (notebookId == null || offTheRecord) return;
+    final snapshot = _sessionState.redacted(_redactor.redact).toJson();
+    _sessionStateStored = true;
+    unawaited(() async {
+      try {
+        await ref
+            .read(conversationStateServiceProvider)
+            .save(notebookId, snapshot);
+      } catch (error) {
+        vlog('session', 'session state not saved: $error');
+      }
+    }());
+  }
+
+  /// EC-04: a conversation reopened (after a restart, say) picks up its
+  /// saved state, unless it already has its own.
+  Future<void> _restoreSessionState(String notebookId) async {
+    if (offTheRecord) return;
+    try {
+      final stored =
+          await ref.read(conversationStateServiceProvider).load(notebookId);
+      if (stored == null || notebookId != _activeNotebookId) return;
+      _sessionStateStored = true;
+      if (_sessionState.isEmpty) {
+        _sessionState =
+            SessionState.fromJson(stored).redacted(_redactor.redact);
+      }
+    } catch (error) {
+      vlog('session', 'session state not restored: $error');
+    }
   }
 
   /// Saves each newly finalized turn (both speakers) to the notebook's
@@ -535,7 +754,7 @@ class JournalNotifier extends Notifier<JournalState> {
     if (notebookId == null || notebookId != _activeNotebookId) return;
     final retryAfter = _saveRetryAfter;
     if (retryAfter != null && DateTime.now().isBefore(retryAfter)) return;
-    for (final turn in _conversation) {
+    for (final turn in [..._recordedGreetings, ..._conversation]) {
       if (!_savedTurnIds.add(turn.turnId)) continue;
       unawaited(_saveTurn(notebookId, turn));
     }
@@ -819,6 +1038,7 @@ class JournalNotifier extends Notifier<JournalState> {
             .toList(growable: false),
         retrievedEntityIds: retrieval.entityIds,
         answeringFollowUp: openFollowUps.isEmpty ? null : openFollowUps.last,
+        spokenAt: _spokenAt(effect.key.turnId),
       );
       vlog('timing', 'extract model +${clock.elapsedMilliseconds}ms');
       _lastPatches[effect.key.turnId] = patch;
@@ -833,6 +1053,47 @@ class JournalNotifier extends Notifier<JournalState> {
       _dispatchTurn(
           DurableExtractionFailed(key: effect.key, message: '$error'));
     }
+  }
+
+  /// When [turnId] was said, in local time (EC-03: relative dates in the
+  /// turn are resolved from it). A restored turn keeps its original time.
+  DateTime? _spokenAt(String turnId) {
+    final turn = _turnMachine.state.pending
+        .where((t) => t.turnId == turnId)
+        .firstOrNull;
+    return turn == null ? null : DateTime.tryParse(turn.finalizedAt)?.toLocal();
+  }
+
+  /// EC-07: whether [turn] is the user disputing a fact: a correction was
+  /// proposed just after it was said.
+  bool _disputesAFact(FinalizedTurn turn) {
+    final proposed = _correctionProposedAt;
+    final said = DateTime.tryParse(turn.finalizedAt);
+    if (proposed == null || said == null || turn.speaker != Speaker.user) {
+      return false;
+    }
+    final gap = proposed.difference(said);
+    return gap > const Duration(seconds: -15) && gap < const Duration(seconds: 60);
+  }
+
+  /// EC-03: the committed turn's facts, recorded against its real entry.
+  /// Best effort: a failure leaves the turn saved without facts (EC-09's
+  /// backfill can derive them later), never blocks the conversation.
+  void _recordFacts(String notebookId, String entryId, GraphPatch patch) {
+    final facts = factRecords(patch, suppressed: _suppressed);
+    if (facts.isEmpty) return;
+    unawaited(() async {
+      try {
+        await ref.read(memoryFactServiceProvider).recordFacts(
+              notebookId: notebookId,
+              entryId: entryId,
+              facts: facts,
+            );
+        vlog('session', 'facts recorded: ${facts.length}');
+      } catch (error) {
+        vlog('session', 'facts not recorded: $error');
+      }
+    }());
   }
 
   Future<void> _runCommit(FinalizedTurn turn) async {
@@ -908,6 +1169,10 @@ class JournalNotifier extends Notifier<JournalState> {
 
     if (outcome is commit_service.CommitCommitted) {
       _revision = outcome.revision;
+      final committedEntryId = outcome.entryId;
+      final storedPatch = turn.extraction;
+      final factPatch = _lastPatches[turn.turnId] ??
+          (storedPatch == null ? null : GraphPatch.fromJson(storedPatch));
       // The server dropped these: the device stops showing them, and a
       // relaunch (which has no list of them) can't add them back for long.
       for (final id in outcome.suppressedIds) {
@@ -935,6 +1200,11 @@ class JournalNotifier extends Notifier<JournalState> {
       }
       _preparedCommits.remove(turn.turnId);
       _lastPatches.remove(turn.turnId);
+      if (factPatch != null &&
+          committedEntryId != null &&
+          !_disputesAFact(turn)) {
+        _recordFacts(turn.notebookId, committedEntryId, factPatch);
+      }
       _dispatchTurn(
           CommitCommitted(turnId: turn.turnId, revision: outcome.revision));
       // The server dropped or renamed something (LM-63: an id that spells a
@@ -1127,6 +1397,9 @@ class JournalNotifier extends Notifier<JournalState> {
     _forgetSharedLog();
     _redactor.add(entityId, names);
     state = _redactor.redactState(withoutEntity(state, entityId));
+    // EC-04: the forgotten name leaves the session state too.
+    _sessionState = _sessionState.redacted(_redactor.redact);
+    if (_sessionStateStored) _saveSessionState();
     final session = _session;
     if (session != null &&
         (_status == SessionStatus.live || _status == SessionStatus.paused)) {
@@ -1275,37 +1548,135 @@ class JournalNotifier extends Notifier<JournalState> {
             },
           )
           .toList(),
-      'recentAgentQuestions': _conversation
+      'probedThisSession': probedThisSession(
+        lumenSaid: _lumenSaidThisSession.values.map(_redactor.redact),
+        known: state.entities.values.map((entity) => entity.name),
+        recalledIds: _recalledThisSession,
+      ),
+      'recentAgentQuestions': recentLines(_conversation
           .where((turn) => turn.role == Speaker.assistant)
           .map((turn) => _redactor.redact(turn.text))
-          .where((text) => text.isNotEmpty)
-          .take(8)
-          .toList(),
+          .where((text) => text.isNotEmpty)),
+      // EC-04: what is open, paused, promised and covered right now.
+      'sessionState': _sessionState.redacted(_redactor.redact).toSummary(),
       'sessionElapsedMin': sessionElapsedMin,
     };
   }
 
-  Future<Map<String, dynamic>> _retrieveMemory(
+  /// EC-07: the correction flow. propose stores a pending correction and
+  /// returns the read-back sentence the database built; confirm applies it
+  /// (only after the user's yes) and rebuilds the context at the next pause,
+  /// so the old value leaves Gemini's window; reject records a "no". Off the
+  /// record nothing is changed.
+  Future<Map<String, dynamic>> _correctMemory(Map<String, dynamic> args) async {
+    if (offTheRecord) {
+      return const {
+        'status': 'off_the_record',
+        'say': "I can't change what I remember while we're off the record.",
+      };
+    }
+    final service = ref.read(memoryCorrectionServiceProvider);
+    try {
+      switch (args['action']) {
+        case 'propose':
+          final about = args['about'];
+          final change = correctionChange(args);
+          if (about is! String || about.trim().isEmpty || change == null) {
+            return const {
+              'status': 'ask',
+              'question': 'Ask what exactly was wrong and what it should be.',
+            };
+          }
+          final attribute = args['attribute'];
+          _correctionProposedAt = DateTime.now();
+          final result = await service.propose(
+            about: _redactor.redact(about.trim()),
+            attribute: attribute is String ? attribute : null,
+            change: change,
+          );
+          switch (result['status']) {
+            case 'pending':
+              _pendingCorrectionId = result['correctionId'] as String?;
+              return {
+                'status': 'read_back',
+                'say': result['readBack'],
+                'next':
+                    'Say this, then wait. Confirm only after a clear yes; reject after a no.',
+              };
+            case 'ask':
+              return {'status': 'ask', 'question': result['question']};
+            default:
+              return const {
+                'status': 'not_found',
+                'next': 'Nothing to change. Carry on the conversation; do not mention this.',
+              };
+          }
+        case 'confirm':
+          final id = _pendingCorrectionId;
+          if (id == null) return const {'status': 'nothing_to_confirm'};
+          _pendingCorrectionId = null;
+          final result = await service.apply(id);
+          if (result['status'] != 'applied') {
+            return const {'status': 'not_applied', 'say': "That couldn't be changed just now."};
+          }
+          _rebuildPolicy?.request(RebuildReason.correction);
+          vlog('session', 'correction applied');
+          return const {'status': 'done'};
+        case 'reject':
+          final id = _pendingCorrectionId;
+          if (id == null) return const {'status': 'nothing_to_reject'};
+          _pendingCorrectionId = null;
+          final result = await service.reject(id);
+          final offer = result['offerRemoval'] == true;
+          return {
+            'status': 'rejected',
+            'offerRemoval': offer,
+            'next': offer
+                ? 'Offer to forget it instead (propose with remove true).'
+                : 'Ask what the right value is.',
+          };
+      }
+      return const {'status': 'ask', 'question': 'Use propose, confirm or reject.'};
+    } catch (error) {
+      vlog('session', 'correction failed: $error');
+      return const {'status': 'not_applied', 'say': "That couldn't be changed just now."};
+    }
+  }
+
+  Future<Map<String, dynamic>?> _retrieveMemory(
       Map<String, dynamic> args, bool Function() isCurrent) async {
     final notebookId = _activeNotebookId;
-    final query = _redactor.redact((args['query'] as String?)?.trim() ?? '');
+    final queryArg = args['query'];
+    final questionArg = args['question'];
+    final query = _redactor.redact(queryArg is String ? queryArg.trim() : '');
+    final question =
+        _redactor.redact(questionArg is String ? questionArg.trim() : '');
+    final dedupKey = memoryQueryRoutingEnabled ? question : query;
+    final generation = _memoryTurnGeneration;
+    const empty = memoryQueryRoutingEnabled
+        ? MemoryRetrieval.insufficient
+        : MemoryRetrieval.empty;
     // Over-call guardrails: tiny query, identical repeat (within turn), per-turn cap.
     if (notebookId == null ||
         query.length < 2 ||
-        query == _lastMemoryQuery ||
+        dedupKey.length < 2 ||
+        dedupKey == _lastMemoryQuery ||
         _memoryCallsThisTurn >= _maxMemoryCallsPerTurn) {
-      return memoryToolResult(MemoryRetrieval.empty);
+      return memoryToolResult(empty);
     }
     _memoryCallsThisTurn++;
-    _lastMemoryQuery = query;
+    _lastMemoryQuery = dedupKey;
     final service = ref.read(retrieveMemoryServiceProvider);
     // User scope: every conversation the user has had, not just this one.
     final retrieval = await service.retrieveResult(
       query: query,
+      question: memoryQueryRoutingEnabled ? question : null,
       notebookId: notebookId,
       scope: RetrievalScope.user,
     );
-    if (retrieval.entityIds.isNotEmpty && isCurrent()) {
+    if (!isCurrent() || generation != _memoryTurnGeneration) return null;
+    _recalledThisSession.addAll(retrieval.entityIds);
+    if (retrieval.entityIds.isNotEmpty || retrieval.quotes.isNotEmpty) {
       _recall = RecallActivity(
         seq: ++_recallSeq,
         entityIds: retrieval.entityIds,
@@ -1329,6 +1700,7 @@ class JournalNotifier extends Notifier<JournalState> {
     vlog('timing', 'open: snapshot +${clock.elapsedMilliseconds}ms');
     _activeNotebookId = notebookId;
     _greetingRows.clear();
+    _recordedGreetings.clear();
     _history
       ..clear()
       ..addAll(await history);
@@ -1592,6 +1964,10 @@ class JournalNotifier extends Notifier<JournalState> {
         (_status != SessionStatus.live && _status != SessionStatus.paused)) {
       return false;
     }
+    _memoryTurnGeneration++;
+    _memoryUserTurnOpen = true;
+    _memoryCallsThisTurn = 0;
+    _lastMemoryQuery = null;
     final reply = _turnMachine.state.activeAssistant;
     if (reply != null && !reply.interrupted) {
       // The machine cuts the reply at the heard prefix and flushes playback;
@@ -1660,7 +2036,25 @@ class JournalNotifier extends Notifier<JournalState> {
 
   /// A reconnect by resumption handle is in progress.
   bool _reconnecting = false;
-  bool get reconnecting => _reconnecting;
+
+  /// A planned rebuild (EC-01) is not a lost connection: the dock does not
+  /// show "Reconnecting" for it.
+  bool get reconnecting => _reconnecting && !_rebuilding;
+
+  /// EC-01 spike: rebuilds the session from saved context at a pause instead
+  /// of letting Gemini compress its window. Null unless the flag is on and a
+  /// session is live.
+  ContextRebuildPolicy? _rebuildPolicy;
+  Timer? _rebuildCheckTimer;
+  bool _rebuilding = false;
+
+  /// The next reply is the first after a rebuild; its latency is the one
+  /// EC-10 compares with normal turns.
+  bool _replyAfterRebuild = false;
+
+  /// Waits this long after Lumen stops speaking before checking, so a user
+  /// who answers at once is never cut into.
+  static const _rebuildCheckDelay = Duration(milliseconds: 800);
 
   /// The session the user is in (null while idle or connecting).
   _PreparedLive? _session;
@@ -1869,15 +2263,22 @@ class JournalNotifier extends Notifier<JournalState> {
         signal(const TurnCompleteSignal());
       }
       ..onToolCall = (name, args) async {
-        if (!isCurrent()) return const <String, dynamic>{};
-        Map<String, dynamic> result;
+        if (!isCurrent()) return null;
+        Map<String, dynamic>? result;
         if (name == 'get_relevant_memory') {
           result = await _retrieveMemory(args, isCurrent);
+        } else if (name == 'correct_memory') {
+          result = await _correctMemory(args);
         } else {
           result = const {};
         }
-        if (!isCurrent()) return const <String, dynamic>{};
-        return result;
+        if (!isCurrent()) return null;
+        final note = _sessionState.toToolNote();
+        if (result == null || result.isEmpty || note.isEmpty) return result;
+        return {...result, 'conversationSoFar': note};
+      }
+      ..onUsage = (promptTokens) {
+        if (isCurrent()) _rebuildPolicy?.observedWindow(promptTokens);
       }
       ..onGoAway = (timeLeft) {
         if (!isCurrent() || !identical(_session, prepared)) return;
@@ -1928,6 +2329,18 @@ class JournalNotifier extends Notifier<JournalState> {
     _typedTurnsAwaitingConnection.clear();
     _droppingCutOffReply = false;
     _sessionStartedAt = DateTime.now();
+    _recalledThisSession.clear();
+    _lumenSaidThisSession.clear();
+    _sessionState = SessionState.empty;
+    _sessionStateTurnIds.clear();
+    _sessionStateStored = false;
+    // Not awaited: the session starts at once; a saved state that arrives
+    // after the first turns is adopted only if this one is still empty.
+    unawaited(_restoreSessionState(prepared.notebookId));
+    final rebuildConfig = ref.read(contextRebuildConfigProvider);
+    _rebuildPolicy = rebuildConfig == null
+        ? null
+        : ContextRebuildPolicy(rebuildConfig, startedAt: _sessionStartedAt!);
     // A live Gemini socket and an active turn-processing session are two
     // separate states. Establish the turn-machine identity before anything
     // arrives so transcripts can be finalized, extracted, and committed
@@ -2039,23 +2452,23 @@ class JournalNotifier extends Notifier<JournalState> {
           if (fresh) {
             // Saved turns only: the off-record ones are not in this list.
             final continuing = _continuesConversation;
-            live
-              ..sendHistory(
-                continuing
-                    ? resumeContext(
-                        conversation: _lumenConversation,
-                        entries: state.entries,
-                      )
-                    : const [],
-                note: continuing ? resumeNote : null,
+            if (continuing) {
+              // EC-05: the same conversation goes on, from stored state.
+              final built = _materialisedContext();
+              live.sendHistory(built.turns,
+                  note: resumeNote, context: built.context);
+            } else {
+              live.sendHistory(
+                const [],
                 context: openingContext(
                   openingLine: null,
                   brief: null,
                   briefAlreadyRaised: true,
                   graphSummary: _buildGraphSummary(),
                 ),
-              )
-              ..releaseInput();
+              );
+            }
+            live.releaseInput();
             _turnMachine.holdAssistantOffRecord = false;
           }
           // A cut-off reply's turn ended with the old connection.
@@ -2114,13 +2527,26 @@ class JournalNotifier extends Notifier<JournalState> {
       return;
     }
     final now = DateTime.now().toUtc().toIso8601String();
-    _greetingRows.add(ConversationTurn(
+    final greeting = ConversationTurn(
       turnId: 'lumen-greeting-$now',
       role: Speaker.assistant,
       text: clip.text,
       createdAt: now,
       startedAt: now,
-    ));
+    );
+    _greetingRows.add(greeting);
+    if (!offTheRecord) {
+      // Saved like any Lumen turn, so the closing card and the next brief
+      // see what the greeting asked, and whether the user took it up.
+      _recordedGreetings.add(greeting);
+      _saveNewTurns(_activeNotebookId);
+      _sessionState = _sessionState.observe(
+        speaker: Speaker.assistant,
+        text: _redactor.redact(clip.text),
+        known: state.entities.values.map((entity) => entity.name),
+      );
+      _saveSessionState();
+    }
     var fed = false;
     if (player != null) {
       // The words ride on the pill while the voice plays and leave when it
@@ -2237,6 +2663,12 @@ class JournalNotifier extends Notifier<JournalState> {
       // interim text is replaceable, and only a finalized, immutable
       // transcript may reach the graph.
       case UserTranscript(:final text, :final isFinal):
+        if (text.trim().isNotEmpty && !_memoryUserTurnOpen) {
+          _memoryTurnGeneration++;
+          _memoryUserTurnOpen = true;
+          _memoryCallsThisTurn = 0;
+          _lastMemoryQuery = null;
+        }
         if (text.isEmpty && !isFinal) return;
         if (text.trim().isNotEmpty) _userStillSpeaking();
         final events =
@@ -2269,6 +2701,8 @@ class JournalNotifier extends Notifier<JournalState> {
             false;
         if (!fed) _markAgentSpeaking();
       case InterruptedSignal():
+        _memoryTurnGeneration++;
+        _memoryUserTurnOpen = false;
         // Gemini supplies audio and transcription without a trustworthy
         // word-level alignment. Queuing PCM therefore cannot prove any text
         // was physically heard. The null boundary safely skips durable
@@ -2278,9 +2712,15 @@ class JournalNotifier extends Notifier<JournalState> {
           _dispatchTurn(event);
         }
       case TurnCompleteSignal():
+        _memoryTurnGeneration++;
+        _memoryUserTurnOpen = false;
         // Lumen may end a turn without speaking; that ends the wait too,
         // unless it is the cut-off reply's own completion.
-        if (!_droppingCutOffReply) _setAwaitingReply(false);
+        if (!_droppingCutOffReply) {
+          _setAwaitingReply(false);
+          _rebuildPolicy?.turnCompleted(tokens: _unbudgetedTokens);
+          _unbudgetedTokens = 0;
+        }
         _droppingCutOffReply = false;
         _memoryCallsThisTurn = 0;
         _lastMemoryQuery = null;
@@ -2290,6 +2730,9 @@ class JournalNotifier extends Notifier<JournalState> {
         // With a playback clock, Lumen stops "speaking" when its queued
         // audio drains — usually seconds after Gemini's turn completes.
         if (_player == null) _clearAgentSpeaking();
+        // A turn with no audio still playing never flips speaking off, so
+        // it schedules the rebuild check itself (EC-01).
+        if (!_agentSpeaking) _scheduleRebuildCheck();
     }
   }
 
@@ -2363,7 +2806,7 @@ class JournalNotifier extends Notifier<JournalState> {
         {
           'name': 'get_relevant_memory',
           'description':
-              'Retrieve past memory relevant to a query: related entities and how they connect. Use when the user references something from earlier, or when grounding your reply in prior context would help. Distinct from the graph summary given at the start. For planning only — never read aloud.',
+              'Retrieve what the user said before about a topic: related entities and how they connect, and their own words from earlier conversations. Call it only when the user refers back to something from before or asks what they told you, not to find something to talk about. Distinct from the graph summary given at the start. For planning only — never read aloud.',
           'parameters': {
             'type': 'object',
             'properties': {
@@ -2372,8 +2815,62 @@ class JournalNotifier extends Notifier<JournalState> {
                 'description':
                     'A few words to recall: a name, a topic, or a phrase.',
               },
+              if (memoryQueryRoutingEnabled)
+                'question': {
+                  'type': 'string',
+                  'description':
+                      'The full current user question, preserving time and calculation wording.',
+                },
             },
-            'required': ['query'],
+            'required': ['query', if (memoryQueryRoutingEnabled) 'question'],
+          },
+        },
+        {
+          'name': 'correct_memory',
+          'description':
+              'Change or forget something stored about the user, only when they say something YOU said about them is wrong, or ask you to forget a detail. A new or changed value the user simply tells you ("my goal is 8k now") is not a correction: do not call this; it is recorded on its own. First call with action "propose": say the returned read-back sentence exactly and wait. Call "confirm" only after a clear yes, "reject" after a no. Never read this aloud.',
+          'parameters': {
+            'type': 'object',
+            'properties': {
+              'action': {
+                'type': 'string',
+                'enum': ['propose', 'confirm', 'reject'],
+              },
+              'about': {
+                'type': 'string',
+                'description':
+                    'The thing the fact is about, as the user names it ("savings goal").',
+              },
+              'attribute': {
+                'type': 'string',
+                'description':
+                    'Which detail, when the thing has several ("amount", "due day").',
+              },
+              'value': {
+                'type': 'string',
+                'description': 'The right value, as said ("7k", "the 2nd").',
+              },
+              'unit': {'type': 'string'},
+              'date': {
+                'type': 'string',
+                'description':
+                    'The right date, YYYY-MM-DD, when the date was wrong.',
+              },
+              'status': {
+                'type': 'string',
+                'enum': ['done', 'planned', 'called off'],
+              },
+              'belongs_to': {
+                'type': 'string',
+                'description':
+                    'Who or what it really belongs to, when it was attributed wrongly.',
+              },
+              'remove': {
+                'type': 'boolean',
+                'description': 'True to forget the fact instead of changing it.',
+              },
+            },
+            'required': ['action'],
           },
         },
       ],
@@ -2406,6 +2903,10 @@ class JournalNotifier extends Notifier<JournalState> {
     _opening = null;
     _session?.gate.dispose();
     _session = null;
+    _rebuildCheckTimer?.cancel();
+    _rebuildCheckTimer = null;
+    _rebuildPolicy = null;
+    _replyAfterRebuild = false;
     _connectionLapsed = false;
     _typedTurnsAwaitingConnection.clear();
     _droppingCutOffReply = false;
@@ -2576,6 +3077,24 @@ class JournalNotifier extends Notifier<JournalState> {
 
     _muted = false;
     _sessionStartedAt = null;
+    _recalledThisSession.clear();
+    _lumenSaidThisSession.clear();
+    // EC-04: the conversation is over; its state record goes with it.
+    final stateNotebookId = _activeNotebookId;
+    if (_sessionStateStored && stateNotebookId != null) {
+      unawaited(() async {
+        try {
+          await ref
+              .read(conversationStateServiceProvider)
+              .clear(stateNotebookId);
+        } catch (error) {
+          vlog('session', 'session state not cleared: $error');
+        }
+      }());
+    }
+    _sessionState = SessionState.empty;
+    _sessionStateTurnIds.clear();
+    _sessionStateStored = false;
     _activeNotebookId = null;
     _restoredNotebookId = null;
     _turnMachine.clearOffRecord();
@@ -2593,6 +3112,7 @@ class JournalNotifier extends Notifier<JournalState> {
     _lastTranscript = '';
     _lastMemoryQuery = null;
     _memoryCallsThisTurn = 0;
+    _memoryUserTurnOpen = false;
     _setStatus(SessionStatus.idle);
     if (userSpoke) ref.read(openingPrepProvider).markReturning();
     if (closedNotebookId != null) _writeSessionCard(closedNotebookId);
@@ -2681,6 +3201,18 @@ final speechEndGraceProvider = Provider<Duration>(
   (ref) => const Duration(milliseconds: 900),
 );
 
+/// EC-01 spike: how sessions are rebuilt from saved context, or null to let
+/// Gemini compress the window as before. Built from `--dart-define`s; tests
+/// override it.
+final contextRebuildConfigProvider = Provider<ContextRebuildConfig?>(
+  (ref) => Env.contextRebuildEnabled
+      ? ContextRebuildConfig.fromDefines(
+          maxTurns: Env.contextRebuildMaxTurns,
+          maxTokens: Env.contextRebuildMaxTokens,
+        )
+      : null,
+);
+
 /// Whether the platform removes Lumen's voice from the mic. Where it can't
 /// say (no voice engine, as in tests), the mic is trusted as before.
 final echoCancellationProvider = Provider<Future<bool> Function()>(
@@ -2706,6 +3238,9 @@ final liveClientFactoryProvider = Provider<
         systemInstruction: geminiLiveSystemInstruction,
         voice: 'Aoede',
         tools: JournalNotifier.liveTools,
+        // EC-01: the app rebuilds the session itself, so Gemini must not
+        // compress (and silently drop) parts of the window.
+        compressContext: ref.read(contextRebuildConfigProvider) == null,
       ),
 );
 

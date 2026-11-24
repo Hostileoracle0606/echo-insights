@@ -147,6 +147,7 @@ class _FakeExtractor implements ExtractGraphService {
     FollowUp? answeringFollowUp,
     int tokenBudget = defaultExtractionTokenBudget,
     int maxRetries = 2,
+    DateTime? spokenAt,
   }) async {
     texts.add(text);
     await hold?.future;
@@ -162,6 +163,7 @@ class _NoMemory implements RetrieveMemoryService {
   Future<MemoryRetrieval> retrieveResult({
     required String query,
     required String notebookId,
+    String? question,
     JournalState? state,
     RetrievalScope scope = RetrievalScope.notebook,
     Duration? timeout,
@@ -271,11 +273,14 @@ class _FakeBriefs implements SessionBriefService {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
+// Recent at run time: a brief over sessionBriefMaxAge (21 days) is stale.
+final _briefAt = DateTime.now().toUtc().subtract(const Duration(days: 1));
+
 SessionBrief _brief() => SessionBrief(
       focus: const ['Maya', 'the move'],
       openingThread: 'how the move to Lisbon went',
       openingLine: 'Hey, welcome back. How did the move to Lisbon go?',
-      createdAt: DateTime.utc(2026, 10, 27, 9, 30, 0, 0, 123),
+      createdAt: _briefAt,
       playedAt: null,
       pcm: Uint8List(24000), // 0.5 s at 24 kHz
       sampleRate: 24000,
@@ -442,7 +447,8 @@ void main() {
         startsWith('[opening said] "${_bundledText('lumen_returning')}"\n'));
     expect(context, isNot(contains('[session brief]')));
     expect(context.split('\n').last, startsWith('[graph summary] '));
-    expect(_toolNames(JournalNotifier.liveTools), ['get_relevant_memory']);
+    expect(_toolNames(JournalNotifier.liveTools),
+        ['get_relevant_memory', 'correct_memory']);
     expect(
       h.journal.transcriptRows
           .where((row) => row.turn.turnId.startsWith('lumen-greeting')),
@@ -892,7 +898,11 @@ void main() {
       ..serverSends({
         'serverContent': {'turnComplete': true},
       });
-    for (var i = 0; i < 50 && h.transcripts.saved.isEmpty; i++) {
+    // The greeting is saved first; wait for the user's turn.
+    for (var i = 0;
+        i < 50 &&
+            !h.transcripts.saved.any((t) => t.role == Speaker.user);
+        i++) {
       await Future<void>.delayed(const Duration(milliseconds: 5));
     }
     expect(h.transcripts.saved.map((t) => t.role), contains(Speaker.user));

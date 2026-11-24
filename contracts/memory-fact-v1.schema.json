@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://echo-insights.local/contracts/memory-fact-v1.schema.json",
+  "title": "Memory Fact V1",
+  "description": "What get_memory_fact ({fact}) and get_memory_fact_history ({facts}) return (EC-02). A fact is one typed value of an entity's attribute. Retracted facts are never returned. Fields may be added; removing or renaming one needs v2.",
+  "oneOf": [
+    {
+      "type": "object",
+      "required": ["fact"],
+      "properties": { "fact": { "oneOf": [{ "$ref": "#/$defs/fact" }, { "type": "null" }] } }
+    },
+    {
+      "type": "object",
+      "required": ["facts"],
+      "properties": { "facts": { "type": "array", "items": { "$ref": "#/$defs/fact" } } }
+    }
+  ],
+  "$defs": {
+    "fact": {
+      "type": "object",
+      "required": [
+        "id",
+        "entityId",
+        "attribute",
+        "valueNum",
+        "valueText",
+        "unit",
+        "status",
+        "eventAt",
+        "statedAt",
+        "supersedesFactId",
+        "provenance",
+        "sourceNotebookId",
+        "sourceEntryId"
+      ],
+      "properties": {
+        "id": { "type": "string", "format": "uuid" },
+        "entityId": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "attribute": {
+          "description": "Normalised: trimmed, lower case.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "valueNum": { "type": ["number", "null"] },
+        "valueText": { "type": ["string", "null"], "maxLength": 500 },
+        "unit": { "type": ["string", "null"], "maxLength": 40 },
+        "status": { "enum": ["confirmed", "proposed", "cancelled"] },
+        "eventAt": {
+          "description": "When it happened or takes effect, when the user said so. Versions are ordered by eventAt, else statedAt.",
+          "type": ["string", "null"],
+          "format": "date-time"
+        },
+        "statedAt": { "description": "When the user said it.", "type": "string", "format": "date-time" },
+        "supersedesFactId": {
+          "description": "The earlier version this real-world change replaced (kept as history).",
+          "type": ["string", "null"],
+          "format": "uuid"
+        },
+        "provenance": {
+          "description": "user_corrected facts are pinned: re-extraction never overwrites them.",
+          "enum": ["extracted", "user_corrected"]
+        },
+        "sourceNotebookId": { "type": ["string", "null"], "format": "uuid" },
+        "sourceEntryId": { "type": ["string", "null"], "format": "uuid" }
+      },
+      "anyOf": [
+        { "properties": { "valueNum": { "type": "number" } } },
+        { "properties": { "valueText": { "type": "string" } } }
+      ]
+    }
+  }
+}

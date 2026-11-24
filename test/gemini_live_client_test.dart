@@ -163,6 +163,20 @@ void main() {
       expect(timeLeft, const Duration(milliseconds: 12500));
     });
 
+    test('usage metadata reports the window size, alongside content (EC-05)',
+        () {
+      final seen = <int>[];
+      final client = makeClient()..onUsage = seen.add;
+      client.handleServerMessage(jsonEncode({
+        'serverContent': {'turnComplete': true},
+        'usageMetadata': {'promptTokenCount': 4210, 'totalTokenCount': 4400},
+      }));
+      client.handleServerMessage(jsonEncode({
+        'usageMetadata': {'totalTokenCount': 'x'},
+      }));
+      expect(seen, [4210]);
+    });
+
     test('goAway without a parseable timeLeft still fires', () {
       var fired = false;
       Duration? timeLeft = Duration.zero;
@@ -186,6 +200,53 @@ void main() {
       client.handleServerMessage(jsonEncode({'setupComplete': {}}));
       await Future<void>.delayed(Duration.zero);
       expect(done, isTrue);
+    });
+  });
+
+  group('context window (EC-01)', () {
+    Map<String, dynamic> setupSent({bool? compressContext}) {
+      late Map<String, dynamic> setup;
+      fakeAsync((async) {
+        FakeLiveSocket? socket;
+        final client = compressContext == null
+            ? GeminiLiveClient(
+                sessionToken: 't',
+                model: 'm',
+                systemInstruction: 's',
+                voice: 'Aoede',
+                tools: const [],
+                channelFactory: (uri) => socket = FakeLiveSocket(uri),
+              )
+            : GeminiLiveClient(
+                sessionToken: 't',
+                model: 'm',
+                systemInstruction: 's',
+                voice: 'Aoede',
+                tools: const [],
+                compressContext: compressContext,
+                channelFactory: (uri) => socket = FakeLiveSocket(uri),
+              );
+        client.connect();
+        async.flushMicrotasks();
+        setup = socket!.sent.firstWhere((m) => m['setup'] != null)['setup']
+            as Map<String, dynamic>;
+      });
+      return setup;
+    }
+
+    test('Gemini compresses the window by default', () {
+      expect(setupSent()['context_window_compression'], {
+        'sliding_window': <String, dynamic>{},
+      });
+      expect(setupSent(compressContext: true)['context_window_compression'],
+          isNotNull);
+    });
+
+    test('a session rebuilt from saved context asks for no compression', () {
+      final setup = setupSent(compressContext: false);
+      expect(setup.containsKey('context_window_compression'), isFalse);
+      // Resumption stays: a dropped socket still comes back with its context.
+      expect(setup.containsKey('session_resumption'), isTrue);
     });
   });
 
@@ -267,6 +328,37 @@ void main() {
             'output': {'context': 'Priya climbs'},
           },
         ]);
+      });
+    });
+
+    test('a stale null result is not sent', () {
+      fakeAsync((async) {
+        final pending = Completer<Map<String, dynamic>?>();
+        final socket = connectedClient(async, (name, args) => pending.future);
+        socket().serverSends(toolCall('stale'));
+        pending.complete(null);
+        async.flushMicrotasks();
+        async.elapse(const Duration(seconds: 5));
+        expect(toolResponses(socket()), isEmpty);
+      });
+    });
+
+    test('provider cancellation suppresses late result and timeout', () {
+      fakeAsync((async) {
+        final pending = Completer<Map<String, dynamic>?>();
+        final socket = connectedClient(async, (name, args) => pending.future);
+        socket().serverSends(toolCall('canceled'));
+        async.flushMicrotasks();
+        socket().serverSends({
+          'toolCallCancellation': {
+            'ids': ['canceled']
+          }
+        });
+        async.flushMicrotasks();
+        pending.complete({'answer': 'stale'});
+        async.flushMicrotasks();
+        async.elapse(const Duration(seconds: 5));
+        expect(toolResponses(socket()), isEmpty);
       });
     });
 

@@ -424,3 +424,69 @@ Deno.test("clip caps at 280 UTF-16 units without splitting an emoji", () => {
   assertEquals(clipped, "x".repeat(279));
   assert(clipped.length <= 280);
 });
+
+// ── selective recall (live tool) ─────────────────────────────
+
+Deno.test(
+  "user scope returns only close matches and their quotes, not the whole graph",
+  async () => {
+    const graph = {
+      entityCount: 5,
+      relationCount: 2,
+      entities: [
+        ent("lumen-app", "Lumen app", "project", "the user's iOS app"),
+        ent("launch-checklist", "launch checklist", "project"),
+        ent("samsung", "Samsung", "organization"),
+        ent("ai", "AI", "project", "enterprise AI project at work"),
+        ent("europe", "Europe", "place"),
+      ],
+      relations: [
+        { id: "r1", source: "lumen-app", target: "launch-checklist", label: "has" },
+        { id: "r2", source: "ai", target: "samsung", label: "at" },
+      ],
+    };
+    const h = harness(
+      {
+        get_user_graph: () => ({ data: graph, error: null }),
+        match_user_entity_embeddings: () => ({
+          data: [
+            { entity_id: "lumen-app", notebook_id: "nb-b", score: 0.86 },
+            { entity_id: "samsung", notebook_id: "nb-c", score: 0.74 },
+          ],
+          error: null,
+        }),
+        get_entity_mentions: (args) => ({
+          data: {
+            total: 1,
+            mentions: args.p_entity_id === "samsung"
+              ? [mention("s1", "nb-c", "2026-11-22T05:28:00Z", "enterprise AI at Samsung")]
+              : args.p_entity_id === "lumen-app"
+              ? [mention("l1", "nb-b", "2026-11-22T05:49:00Z", "Lumen should be out by mid December")]
+              : [],
+          },
+          error: null,
+        }),
+      },
+      { embedder: () => new StubEmbedder() },
+    );
+
+    const res = await h.call({ query: "Lumen project", notebookId: OPEN_NB, scope: "user" });
+
+    assertEquals(res.status, 200);
+    assert(isRetrieveMemoryResponseV2(res.body));
+    assertEquals(res.body.entityIds, ["lumen-app", "launch-checklist"]);
+    assert(!res.body.context.includes("Samsung"));
+    assertEquals(res.body.quotes.map((q) => q.entryId), ["l1"]);
+  },
+);
+
+Deno.test("user scope with no close match returns empty memory", async () => {
+  const h = harness(userScopeRpcs);
+  const res = await h.call({ query: "the weather lately", notebookId: OPEN_NB, scope: "user" });
+
+  assertEquals(res.status, 200);
+  assert(isRetrieveMemoryResponseV2(res.body));
+  assertEquals(res.body.entityIds, []);
+  assertEquals(res.body.context, "");
+  assertEquals(res.body.quotes, []);
+});

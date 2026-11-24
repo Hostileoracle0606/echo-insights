@@ -83,6 +83,53 @@ void main() {
     expect(patch.entities.map((entity) => entity.name), ['Maya']);
   });
 
+  test('sends when the turn was said, and returns its facts', () async {
+    late http.Request captured;
+    final service = ExtractGraphService(
+      baseUrl: 'https://runtime.example.com/',
+      accessTokenProvider: () async => 'signed-user-token',
+      pseudonyms: testPseudonyms(),
+      client: MockClient((request) async {
+        captured = request;
+        return http.Response(
+          jsonEncode({
+            'patch': {
+              'entities': [
+                {'name': 'savings goal', 'type': 'concept'},
+              ],
+              'relations': <dynamic>[],
+              'supersedes': <dynamic>[],
+              'facts': [
+                {
+                  'entity': 'savings goal',
+                  'attribute': 'amount',
+                  'valueNum': 8000,
+                  'unit': 'USD',
+                  'status': 'confirmed',
+                },
+              ],
+            },
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      }),
+    );
+    final patch = await service.extract(
+      notebookId: notebookId,
+      turnId: 'turn-9',
+      extractorVersion: 'gemini/extract_graph/v2',
+      text: 'My savings goal is 8k now.',
+      state: JournalState.empty(),
+      mode: 'granular',
+      spokenAt: DateTime.utc(2026, 11, 22, 22, 23),
+      maxRetries: 0,
+    );
+    final body = jsonDecode(captured.body) as Map<String, dynamic>;
+    expect(body['spokenAt'], '2026-11-22T22:23:00+00:00');
+    expect(patch.facts.single.valueNum, 8000);
+  });
+
   test('surfaces a rejected extraction request instead of returning empty',
       () async {
     final service = ExtractGraphService(
