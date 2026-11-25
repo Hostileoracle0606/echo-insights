@@ -1,0 +1,585 @@
+{
+ "note": "Synthetic, unrelated background memory restored into every probe notebook so retrieval ranks among ~50 distractors. No Gemini calls; same set for every scenario.",
+ "entities": [
+  {
+   "id": "bg-tomato-seedlings",
+   "name": "Tomato Seedlings",
+   "type": "project",
+   "description": "Seedlings started on the windowsill in March, waiting to go into the raised bed.",
+   "mentions": 3
+  },
+  {
+   "id": "bg-basil-pots",
+   "name": "Basil Pots",
+   "type": "project",
+   "description": "Three pots of Genovese basil on the balcony railing.",
+   "mentions": 2
+  },
+  {
+   "id": "bg-compost-bin",
+   "name": "Compost Bin",
+   "type": "project",
+   "description": "A tumbling compost bin fed with coffee grounds and vegetable peels.",
+   "mentions": 2
+  },
+  {
+   "id": "bg-raised-garden-bed",
+   "name": "Raised Garden Bed",
+   "type": "project",
+   "description": "A cedar raised bed built for tomatoes and peppers.",
+   "mentions": 2
+  },
+  {
+   "id": "bg-fernhollow-community-garden",
+   "name": "Fernhollow Community Garden",
+   "type": "place",
+   "description": "Shared allotments with a tool shed and a rain barrel.",
+   "mentions": 3
+  },
+  {
+   "id": "bg-hollis-grady",
+   "name": "Hollis Grady",
+   "type": "person",
+   "description": "Organizes the spring seed swap at Fernhollow Community Garden.",
+   "mentions": 2
+  },
+  {
+   "id": "bg-lavender-hedge",
+   "name": "Lavender Hedge",
+   "type": "project",
+   "description": "A row of lavender planted along the front path.",
+   "mentions": 1
+  },
+  {
+   "id": "bg-sourdough-starter",
+   "name": "Sourdough Starter",
+   "type": "project",
+   "description": "A rye-fed starter named Bubbles, kept on the counter.",
+   "mentions": 4
+  },
+  {
+   "id": "bg-rye-flour",
+   "name": "Rye Flour",
+   "type": "concept",
+   "description": "Stone-ground rye used to feed the starter.",
+   "mentions": 1
+  },
+  {
+   "id": "bg-dutch-oven",
+   "name": "Dutch Oven",
+   "type": "other",
+   "description": "Cast-iron pot used for baking boules at high heat.",
+   "mentions": 2
+  },
+  {
+   "id": "bg-bread-scoring",
+   "name": "Bread Scoring",
+   "type": "activity",
+   "description": "Practicing wheat-ear cuts with a lame before baking.",
+   "mentions": 1
+  },
+  {
+   "id": "bg-banneton-basket",
+   "name": "Banneton Basket",
+   "type": "other",
+   "description": "Cane proofing basket that leaves spiral flour rings on loaves.",
+   "mentions": 1
+  },
+  {
+   "id": "bg-backyard-telescope",
+   "name": "Backyard Telescope",
+   "type": "other",
+   "description": "An eight-inch Dobsonian set up on clear nights.",
+   "mentions": 3
+  },
+  {
+   "id": "bg-jupiter",
+   "name": "Jupiter",
+   "type": "place",
+   "description": "Gas giant watched for its four bright moons.",
+   "mentions": 2
+  },
+  {
+   "id": "bg-saturn-rings",
+   "name": "Saturn Rings",
+   "type": "concept",
+   "description": "Ring tilt seen through the telescope in late summer.",
+   "mentions": 1
+  },
+  {
+   "id": "bg-orion-nebula",
+   "name": "Orion Nebula",
+   "type": "place",
+   "description": "Glowing gas cloud below the belt of Orion.",
+   "mentions": 1
+  },
+  {
+   "id": "bg-perseid-meteor-shower",
+   "name": "Perseid Meteor Shower",
+   "type": "event",
+   "description": "August meteor shower watched from a hillside at night.",
+   "mentions": 2
+  },
+  {
+   "id": "bg-wendell-ashby",
+   "name": "Wendell Ashby",
+   "type": "person",
+   "description": "Runs the monthly stargazing night and lends out eyepieces.",
+   "mentions": 2
+  },
+  {
+   "id": "bg-quillmont-observatory",
+   "name": "Quillmont Observatory",
+   "type": "place",
+   "description": "Small hilltop observatory with a public viewing night.",
+   "mentions": 2
+  },
+  {
+   "id": "bg-chess-club",
+   "name": "Chess Club",
+   "type": "organization",
+   "description": "Thursday evening club that meets for rapid games.",
+   "mentions": 3
+  },
+  {
+   "id": "bg-sicilian-defense",
+   "name": "Sicilian Defense",
+   "type": "concept",
+   "description": "Sharp chess opening studied from a puzzle book.",
+   "mentions": 2
+  },
+  {
+   "id": "bg-endgame-puzzles",
+   "name": "Endgame Puzzles",
+   "type": "activity",
+   "description": "Daily rook-and-pawn endgame drills.",
+   "mentions": 1
+  },
+  {
+   "id": "bg-marguerite-fenn",
+   "name": "Marguerite Fenn",
+   "type": "person",
+   "description": "Captain of the chess club and a fierce blitz player.",
+   "mentions": 2
+  },
+  {
+   "id": "bg-quillmont-library",
+   "name": "Quillmont Library",
+   "type": "place",
+   "description": "Library whose reading room hosts the chess club.",
+   "mentions": 2
+  },
+  {
+   "id": "bg-freshwater-aquarium",
+   "name": "Freshwater Aquarium",
+   "type": "project",
+   "description": "A planted twenty-gallon tank in the living room.",
+   "mentions": 3
+  },
+  {
+   "id": "bg-neon-tetras",
+   "name": "Neon Tetras",
+   "type": "other",
+   "description": "A school of eight neon tetras in the tank.",
+   "mentions": 2
+  },
+  {
+   "id": "bg-java-fern",
+   "name": "Java Fern",
+   "type": "other",
+   "description": "Hardy aquatic plant tied to driftwood in the tank.",
+   "mentions": 1
+  },
+  {
+   "id": "bg-water-testing-kit",
+   "name": "Water Testing Kit",
+   "type": "other",
+   "description": "Drops for checking ammonia, nitrite and pH weekly.",
+   "mentions": 1
+  },
+  {
+   "id": "bg-acoustic-guitar",
+   "name": "Acoustic Guitar",
+   "type": "other",
+   "description": "A secondhand steel-string guitar with a cracked pickguard.",
+   "mentions": 3
+  },
+  {
+   "id": "bg-fingerpicking-practice",
+   "name": "Fingerpicking Practice",
+   "type": "activity",
+   "description": "Twenty minutes of Travis picking patterns each evening.",
+   "mentions": 2
+  },
+  {
+   "id": "bg-guitar-capo",
+   "name": "Guitar Capo",
+   "type": "other",
+   "description": "Spring capo clipped to the headstock.",
+   "mentions": 1
+  },
+  {
+   "id": "bg-metronome",
+   "name": "Metronome",
+   "type": "other",
+   "description": "Wind-up metronome set to sixty beats per minute.",
+   "mentions": 1
+  },
+  {
+   "id": "bg-wool-scarf",
+   "name": "Wool Scarf",
+   "type": "project",
+   "description": "A half-finished scarf in forest green.",
+   "mentions": 2
+  },
+  {
+   "id": "bg-cable-stitch",
+   "name": "Cable Stitch",
+   "type": "concept",
+   "description": "Twisted stitch pattern used on the scarf.",
+   "mentions": 1
+  },
+  {
+   "id": "bg-merino-yarn",
+   "name": "Merino Yarn",
+   "type": "other",
+   "description": "Soft merino skeins bought at a craft fair.",
+   "mentions": 1
+  },
+  {
+   "id": "bg-pickle",
+   "name": "Pickle",
+   "type": "person",
+   "description": "A grey tabby cat who sleeps on the radiator.",
+   "mentions": 4
+  },
+  {
+   "id": "bg-cat-tree",
+   "name": "Cat Tree",
+   "type": "other",
+   "description": "Carpeted climbing tower by the window for Pickle.",
+   "mentions": 1
+  },
+  {
+   "id": "bg-catnip-mice",
+   "name": "Catnip Mice",
+   "type": "other",
+   "description": "Felt toys stuffed with catnip.",
+   "mentions": 1
+  },
+  {
+   "id": "bg-monstera-plant",
+   "name": "Monstera Plant",
+   "type": "other",
+   "description": "Large monstera with split leaves near the bookcase.",
+   "mentions": 2
+  },
+  {
+   "id": "bg-fiddle-leaf-fig",
+   "name": "Fiddle Leaf Fig",
+   "type": "other",
+   "description": "Temperamental fig that drops leaves when moved from its spot.",
+   "mentions": 1
+  },
+  {
+   "id": "bg-repotting",
+   "name": "Repotting",
+   "type": "activity",
+   "description": "Spring repotting of the houseplants into bigger pots.",
+   "mentions": 1
+  },
+  {
+   "id": "bg-crossword-puzzles",
+   "name": "Crossword Puzzles",
+   "type": "activity",
+   "description": "Weekend crosswords done in pen.",
+   "mentions": 2
+  },
+  {
+   "id": "bg-jigsaw-puzzle",
+   "name": "Jigsaw Puzzle",
+   "type": "project",
+   "description": "A thousand-piece lighthouse puzzle on the dining table.",
+   "mentions": 1
+  },
+  {
+   "id": "bg-film-camera",
+   "name": "Film Camera",
+   "type": "other",
+   "description": "A manual rangefinder loaded with black-and-white film.",
+   "mentions": 2
+  },
+  {
+   "id": "bg-darkroom-chemistry",
+   "name": "Darkroom Chemistry",
+   "type": "concept",
+   "description": "Developer, stop bath and fixer mixed for home prints.",
+   "mentions": 1
+  },
+  {
+   "id": "bg-vintage-radio",
+   "name": "Vintage Radio",
+   "type": "project",
+   "description": "A valve radio being restored with new capacitors.",
+   "mentions": 2
+  },
+  {
+   "id": "bg-ignatius-polk",
+   "name": "Ignatius Polk",
+   "type": "person",
+   "description": "Restores old valve radios and swaps spare parts.",
+   "mentions": 1
+  },
+  {
+   "id": "bg-herbal-tea",
+   "name": "Herbal Tea",
+   "type": "other",
+   "description": "Chamomile and mint tea brewed before bed.",
+   "mentions": 1
+  },
+  {
+   "id": "bg-matcha-whisk",
+   "name": "Matcha Whisk",
+   "type": "other",
+   "description": "Bamboo whisk for frothing matcha.",
+   "mentions": 1
+  },
+  {
+   "id": "bg-seed-catalog",
+   "name": "Seed Catalog",
+   "type": "other",
+   "description": "Heirloom seed catalog with dog-eared pages.",
+   "mentions": 1
+  }
+ ],
+ "relations": [
+  {
+   "id": "bg-hollis-grady__organizes_seed_swap_at__bg-fernhollow-community-garden",
+   "source_id": "bg-hollis-grady",
+   "target_id": "bg-fernhollow-community-garden",
+   "label": "organizes_seed_swap_at"
+  },
+  {
+   "id": "bg-tomato-seedlings__planted_in__bg-raised-garden-bed",
+   "source_id": "bg-tomato-seedlings",
+   "target_id": "bg-raised-garden-bed",
+   "label": "planted_in"
+  },
+  {
+   "id": "bg-raised-garden-bed__located_at__bg-fernhollow-community-garden",
+   "source_id": "bg-raised-garden-bed",
+   "target_id": "bg-fernhollow-community-garden",
+   "label": "located_at"
+  },
+  {
+   "id": "bg-compost-bin__feeds__bg-raised-garden-bed",
+   "source_id": "bg-compost-bin",
+   "target_id": "bg-raised-garden-bed",
+   "label": "feeds"
+  },
+  {
+   "id": "bg-basil-pots__grown_from__bg-seed-catalog",
+   "source_id": "bg-basil-pots",
+   "target_id": "bg-seed-catalog",
+   "label": "grown_from"
+  },
+  {
+   "id": "bg-tomato-seedlings__grown_from__bg-seed-catalog",
+   "source_id": "bg-tomato-seedlings",
+   "target_id": "bg-seed-catalog",
+   "label": "grown_from"
+  },
+  {
+   "id": "bg-lavender-hedge__grown_from__bg-seed-catalog",
+   "source_id": "bg-lavender-hedge",
+   "target_id": "bg-seed-catalog",
+   "label": "grown_from"
+  },
+  {
+   "id": "bg-sourdough-starter__fed_with__bg-rye-flour",
+   "source_id": "bg-sourdough-starter",
+   "target_id": "bg-rye-flour",
+   "label": "fed_with"
+  },
+  {
+   "id": "bg-sourdough-starter__baked_in__bg-dutch-oven",
+   "source_id": "bg-sourdough-starter",
+   "target_id": "bg-dutch-oven",
+   "label": "baked_in"
+  },
+  {
+   "id": "bg-bread-scoring__practiced_on__bg-sourdough-starter",
+   "source_id": "bg-bread-scoring",
+   "target_id": "bg-sourdough-starter",
+   "label": "practiced_on"
+  },
+  {
+   "id": "bg-banneton-basket__proofs_dough_from__bg-sourdough-starter",
+   "source_id": "bg-banneton-basket",
+   "target_id": "bg-sourdough-starter",
+   "label": "proofs_dough_from"
+  },
+  {
+   "id": "bg-backyard-telescope__pointed_at__bg-jupiter",
+   "source_id": "bg-backyard-telescope",
+   "target_id": "bg-jupiter",
+   "label": "pointed_at"
+  },
+  {
+   "id": "bg-backyard-telescope__pointed_at__bg-saturn-rings",
+   "source_id": "bg-backyard-telescope",
+   "target_id": "bg-saturn-rings",
+   "label": "pointed_at"
+  },
+  {
+   "id": "bg-backyard-telescope__pointed_at__bg-orion-nebula",
+   "source_id": "bg-backyard-telescope",
+   "target_id": "bg-orion-nebula",
+   "label": "pointed_at"
+  },
+  {
+   "id": "bg-wendell-ashby__runs_stargazing_at__bg-quillmont-observatory",
+   "source_id": "bg-wendell-ashby",
+   "target_id": "bg-quillmont-observatory",
+   "label": "runs_stargazing_at"
+  },
+  {
+   "id": "bg-perseid-meteor-shower__watched_with__bg-wendell-ashby",
+   "source_id": "bg-perseid-meteor-shower",
+   "target_id": "bg-wendell-ashby",
+   "label": "watched_with"
+  },
+  {
+   "id": "bg-wendell-ashby__lent_eyepiece_for__bg-backyard-telescope",
+   "source_id": "bg-wendell-ashby",
+   "target_id": "bg-backyard-telescope",
+   "label": "lent_eyepiece_for"
+  },
+  {
+   "id": "bg-chess-club__meets_at__bg-quillmont-library",
+   "source_id": "bg-chess-club",
+   "target_id": "bg-quillmont-library",
+   "label": "meets_at"
+  },
+  {
+   "id": "bg-marguerite-fenn__captains__bg-chess-club",
+   "source_id": "bg-marguerite-fenn",
+   "target_id": "bg-chess-club",
+   "label": "captains"
+  },
+  {
+   "id": "bg-sicilian-defense__studied_for__bg-chess-club",
+   "source_id": "bg-sicilian-defense",
+   "target_id": "bg-chess-club",
+   "label": "studied_for"
+  },
+  {
+   "id": "bg-endgame-puzzles__practiced_for__bg-chess-club",
+   "source_id": "bg-endgame-puzzles",
+   "target_id": "bg-chess-club",
+   "label": "practiced_for"
+  },
+  {
+   "id": "bg-neon-tetras__live_in__bg-freshwater-aquarium",
+   "source_id": "bg-neon-tetras",
+   "target_id": "bg-freshwater-aquarium",
+   "label": "live_in"
+  },
+  {
+   "id": "bg-java-fern__grows_in__bg-freshwater-aquarium",
+   "source_id": "bg-java-fern",
+   "target_id": "bg-freshwater-aquarium",
+   "label": "grows_in"
+  },
+  {
+   "id": "bg-water-testing-kit__used_on__bg-freshwater-aquarium",
+   "source_id": "bg-water-testing-kit",
+   "target_id": "bg-freshwater-aquarium",
+   "label": "used_on"
+  },
+  {
+   "id": "bg-fingerpicking-practice__played_on__bg-acoustic-guitar",
+   "source_id": "bg-fingerpicking-practice",
+   "target_id": "bg-acoustic-guitar",
+   "label": "played_on"
+  },
+  {
+   "id": "bg-guitar-capo__clipped_on__bg-acoustic-guitar",
+   "source_id": "bg-guitar-capo",
+   "target_id": "bg-acoustic-guitar",
+   "label": "clipped_on"
+  },
+  {
+   "id": "bg-metronome__keeps_time_for__bg-fingerpicking-practice",
+   "source_id": "bg-metronome",
+   "target_id": "bg-fingerpicking-practice",
+   "label": "keeps_time_for"
+  },
+  {
+   "id": "bg-wool-scarf__knitted_in__bg-cable-stitch",
+   "source_id": "bg-wool-scarf",
+   "target_id": "bg-cable-stitch",
+   "label": "knitted_in"
+  },
+  {
+   "id": "bg-wool-scarf__knitted_from__bg-merino-yarn",
+   "source_id": "bg-wool-scarf",
+   "target_id": "bg-merino-yarn",
+   "label": "knitted_from"
+  },
+  {
+   "id": "bg-pickle__sleeps_on__bg-cat-tree",
+   "source_id": "bg-pickle",
+   "target_id": "bg-cat-tree",
+   "label": "sleeps_on"
+  },
+  {
+   "id": "bg-pickle__plays_with__bg-catnip-mice",
+   "source_id": "bg-pickle",
+   "target_id": "bg-catnip-mice",
+   "label": "plays_with"
+  },
+  {
+   "id": "bg-repotting__done_for__bg-monstera-plant",
+   "source_id": "bg-repotting",
+   "target_id": "bg-monstera-plant",
+   "label": "done_for"
+  },
+  {
+   "id": "bg-repotting__done_for__bg-fiddle-leaf-fig",
+   "source_id": "bg-repotting",
+   "target_id": "bg-fiddle-leaf-fig",
+   "label": "done_for"
+  },
+  {
+   "id": "bg-film-camera__developed_with__bg-darkroom-chemistry",
+   "source_id": "bg-film-camera",
+   "target_id": "bg-darkroom-chemistry",
+   "label": "developed_with"
+  },
+  {
+   "id": "bg-ignatius-polk__swaps_parts_for__bg-vintage-radio",
+   "source_id": "bg-ignatius-polk",
+   "target_id": "bg-vintage-radio",
+   "label": "swaps_parts_for"
+  },
+  {
+   "id": "bg-herbal-tea__brewed_alongside__bg-matcha-whisk",
+   "source_id": "bg-herbal-tea",
+   "target_id": "bg-matcha-whisk",
+   "label": "brewed_alongside"
+  },
+  {
+   "id": "bg-jigsaw-puzzle__done_alongside__bg-crossword-puzzles",
+   "source_id": "bg-jigsaw-puzzle",
+   "target_id": "bg-crossword-puzzles",
+   "label": "done_alongside"
+  },
+  {
+   "id": "bg-pickle__naps_by__bg-monstera-plant",
+   "source_id": "bg-pickle",
+   "target_id": "bg-monstera-plant",
+   "label": "naps_by"
+  }
+ ]
+}

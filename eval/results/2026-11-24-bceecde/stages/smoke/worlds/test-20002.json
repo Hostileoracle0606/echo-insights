@@ -1,0 +1,497 @@
+{
+  "worldId": "test-20002",
+  "replay": {
+    "worldId": "test-20002",
+    "extraction": {
+      "entities": {
+        "tp": 8,
+        "fp": 2,
+        "fn": 0
+      },
+      "pairs": {
+        "tp": 6,
+        "fp": 4,
+        "fn": 0
+      },
+      "typed": {
+        "tp": 6,
+        "fp": 4,
+        "fn": 0
+      },
+      "attributes": {
+        "hit": 2,
+        "of": 4
+      },
+      "extractedNames": [
+        "Lysander Tolliver",
+        "office",
+        "Benedikt Vandermeer",
+        "climbing",
+        "Otterburn",
+        "farmers market stall",
+        "Bramblewood Theatre",
+        "Fennimore",
+        "Saltcote",
+        "film premiere"
+      ],
+      "matched": {
+        "lysander tolliver": "lysander-tolliver",
+        "benedikt vandermeer": "benedikt-vandermeer",
+        "otterburn": "otterburn",
+        "farmers market stall": "farmers-market-stall",
+        "bramblewood theatre": "bramblewood-theatre",
+        "fennimore": "fennimore",
+        "saltcote": "saltcote",
+        "film premiere": "film-premiere"
+      }
+    },
+    "admission": [
+      {
+        "name": "Lysander Tolliver",
+        "gold": "lysander-tolliver",
+        "outcome": "persisted",
+        "turnId": "test-20002-s1-t1"
+      },
+      {
+        "name": "Benedikt Vandermeer",
+        "gold": "benedikt-vandermeer",
+        "outcome": "persisted",
+        "turnId": "test-20002-s1-t2"
+      },
+      {
+        "name": "Otterburn",
+        "gold": "otterburn",
+        "outcome": "persisted",
+        "turnId": "test-20002-s1-t2"
+      },
+      {
+        "name": "farmers market stall",
+        "gold": "farmers-market-stall",
+        "outcome": "persisted",
+        "turnId": "test-20002-s2-t1"
+      },
+      {
+        "name": "Lysander Tolliver",
+        "gold": "lysander-tolliver",
+        "outcome": "rejected",
+        "turnId": "test-20002-s3-t1"
+      },
+      {
+        "name": "Bramblewood Theatre",
+        "gold": "bramblewood-theatre",
+        "outcome": "persisted",
+        "turnId": "test-20002-s3-t2"
+      },
+      {
+        "name": "Fennimore",
+        "gold": "fennimore",
+        "outcome": "persisted",
+        "turnId": "test-20002-s4-t1"
+      },
+      {
+        "name": "Saltcote",
+        "gold": "saltcote",
+        "outcome": "persisted",
+        "turnId": "test-20002-s4-t2"
+      },
+      {
+        "name": "film premiere",
+        "gold": "film-premiere",
+        "outcome": "persisted",
+        "turnId": "test-20002-s5-t1"
+      }
+    ],
+    "latency": [
+      {
+        "turnId": "test-20002-s1-t1",
+        "extraction": 2244,
+        "commit": 22
+      },
+      {
+        "turnId": "test-20002-s1-t2",
+        "extraction": 2430,
+        "commit": 21
+      },
+      {
+        "turnId": "test-20002-s2-t1",
+        "extraction": 1173,
+        "commit": 13
+      },
+      {
+        "turnId": "test-20002-s3-t1",
+        "extraction": 820,
+        "commit": 12
+      },
+      {
+        "turnId": "test-20002-s3-t2",
+        "extraction": 1039,
+        "commit": 26
+      },
+      {
+        "turnId": "test-20002-s4-t1",
+        "extraction": 1009,
+        "commit": 9
+      },
+      {
+        "turnId": "test-20002-s4-t2",
+        "extraction": 959,
+        "commit": 13
+      },
+      {
+        "turnId": "test-20002-s5-t1",
+        "extraction": 1410,
+        "commit": 9
+      }
+    ],
+    "lostTurns": [
+      {
+        "turnId": "test-20002-s3-t1",
+        "reason": "commit invalidChange",
+        "undeclaredEndpoints": [
+          "chef"
+        ],
+        "patch": {
+          "entities": [
+            {
+              "name": "Lysander Tolliver",
+              "description": "Lysander Tolliver is a chef.",
+              "type": "person"
+            }
+          ],
+          "relations": [
+            {
+              "target": "chef",
+              "source": "Lysander Tolliver",
+              "label": "is_a"
+            }
+          ],
+          "supersedes": [
+            "lysander-tolliver__works_at__office"
+          ]
+        }
+      }
+    ],
+    "actions": [],
+    "providerCalls": 8,
+    "extractedGold": [
+      "lysander-tolliver",
+      "benedikt-vandermeer",
+      "otterburn",
+      "farmers-market-stall",
+      "bramblewood-theatre",
+      "fennimore",
+      "saltcote",
+      "film-premiere"
+    ],
+    "storedGold": [
+      "saltcote",
+      "fennimore",
+      "otterburn",
+      "film-premiere",
+      "lysander-tolliver",
+      "benedikt-vandermeer",
+      "bramblewood-theatre",
+      "farmers-market-stall"
+    ]
+  },
+  "e2e": [
+    {
+      "worldId": "test-20002",
+      "queryId": "test-20002-q1",
+      "family": "temporal_change",
+      "answerable": true,
+      "answer": "He lives in Otterburn. I remember you mentioning he moved there for a bit. How's Otterburn been treating him?",
+      "verdict": "wrong",
+      "reason": "The correct answer is \"Fennimore,\" but Lumen said \"He lives in Otterburn,\" an incorrect specific place.",
+      "correct": false,
+      "foundAnswersTop10": false,
+      "stage": "retrieval",
+      "latencyMs": {
+        "retrieval": 265,
+        "answer": 1069
+      }
+    },
+    {
+      "worldId": "test-20002",
+      "queryId": "test-20002-q2",
+      "family": "temporal_change",
+      "answerable": true,
+      "answer": "It sounds like Benedikt moved from Otterburn to Fennimore. I'm curious, what was the move like for him?",
+      "verdict": "correct",
+      "reason": "The answer states Benedikt \"moved from Otterburn to Fennimore,\" correctly naming Otterburn as where he lived before.",
+      "correct": true,
+      "foundAnswersTop10": true,
+      "stage": null,
+      "latencyMs": {
+        "retrieval": 177,
+        "answer": 596
+      }
+    },
+    {
+      "worldId": "test-20002",
+      "queryId": "test-20002-q3",
+      "family": "contradiction",
+      "answerable": true,
+      "answer": "Lysander handles the accounting side of things at your office.",
+      "verdict": "wrong",
+      "reason": "The correct answer is \"chef,\" but Lumen said Lysander \"handles the accounting side of things at your office,\" a wrong invented specific answer.",
+      "correct": false,
+      "foundAnswersTop10": true,
+      "stage": "answer",
+      "latencyMs": {
+        "retrieval": 178,
+        "answer": 526
+      }
+    },
+    {
+      "worldId": "test-20002",
+      "queryId": "test-20002-q4",
+      "family": "multi_hop",
+      "answerable": true,
+      "answer": "Benedikt lives in Fennimore, but the Bramblewood Theatre where he works is in Saltcote. Did you mean to ask about where he works, or where he lives?",
+      "verdict": "correct",
+      "reason": "Lumen says \"the Bramblewood Theatre where he works is in Saltcote,\" which matches the correct answer, and the extra detail about living in Fennimore doesn't contradict it.",
+      "correct": true,
+      "foundAnswersTop10": false,
+      "stage": null,
+      "latencyMs": {
+        "retrieval": 177,
+        "answer": 774
+      }
+    }
+  ],
+  "oracle": [
+    {
+      "worldId": "test-20002",
+      "queryId": "test-20002-q1",
+      "family": "temporal_change",
+      "mode": "hybrid",
+      "answerable": true,
+      "ranked": [
+        "benedikt-vandermeer",
+        "bg-sourdough-starter",
+        "fennimore",
+        "bg-fiddle-leaf-fig",
+        "bg-chess-club",
+        "bg-jupiter",
+        "bg-backyard-telescope",
+        "bg-fernhollow-community-garden",
+        "bg-merino-yarn",
+        "bg-dutch-oven"
+      ],
+      "context": "## Entities\n- Benedikt Vandermeer (person): Benedikt Vandermeer is the user's climbing partner, who works as a chef. Benedikt Vandermeer lives in Fennimore. Benedikt Vandermeer works at Bramblewood Theatre. Benedikt Vandermeer went to farmers market stall. Benedikt Vandermeer went to film premiere. [mentions: 1]\n- Sourdough Starter (project): A rye-fed starter named Bubbles, kept on the counter. [mentions: 4]\n- Fennimore (place): Fennimore is a place the user mentioned. Benedikt Vandermeer lives in Fennimore. [mentions: 1]\n- Fiddle Leaf Fig (other): Temperamental fig that drops leaves when moved from its spot. [mentions: 1]\n- Chess Club (organization): Thursday evening club that meets for rapid games. [mentions: 3]\n- Jupiter (place): Gas giant watched for its four bright moons. [mentions: 2]\n- Backyard Telescope (other): An eight-inch Dobsonian set up on clear nights. [mentions: 3]\n- Fernhollow Community Garden (place): Shared allotments with a tool shed and a rain barrel. [mentions: 3]\n- Merino Yarn (other): Soft merino skeins bought at a craft fair. [mentions: 1]\n- Dutch Oven (other): Cast-iron pot used for baking boules at high heat. [mentions: 2]\n- Wool Scarf (project): A half-finished scarf in forest green. [mentions: 2]\n- Quillmont Library (place): Library whose reading room hosts the chess club. [mentions: 2]\n- Marguerite Fenn (person): Captain of the chess club and a fierce blitz player. [mentions: 2]\n- Sicilian Defense (concept): Sharp chess opening studied from a puzzle book. [mentions: 2]\n- Perseid Meteor Shower (event): August meteor shower watched from a hillside at night. [mentions: 2]\n- Quillmont Observatory (place): Small hilltop observatory with a public viewing night. [mentions: 2]\n- Vintage Radio (project): A valve radio being restored with new capacitors. [mentions: 2]\n- Raised Garden Bed (project): A cedar raised bed built for tomatoes and peppers. [mentions: 2]\n- film premiere (event): film premiere is an event the user mentioned. Benedikt Vandermeer went to film premiere. [mentions: 1]\n- farmers market stall (event): farmers market stall is an event the user mentioned. Benedikt Vandermeer went to farmers market stall. [mentions: 1]\n- Tomato Seedlings (project): Seedlings started on the windowsill in March, waiting to go into the raised bed. [mentions: 3]\n- Bramblewood Theatre (organization): Bramblewood Theatre is an organisation the user mentioned. Benedikt Vandermeer works at Bramblewood Theatre. Bramblewood Theatre is based in Saltcote. [mentions: 1]\n- Bread Scoring (activity): Practicing wheat-ear cuts with a lame before baking. [mentions: 1]\n- Rye Flour (concept): Stone-ground rye used to feed the starter. [mentions: 1]\n## Relations\n- Benedikt Vandermeer --lives_in--> Fennimore\n- Benedikt Vandermeer --went_to--> farmers market stall\n- Benedikt Vandermeer --went_to--> film premiere\n- Benedikt Vandermeer --works_at--> Bramblewood Theatre\n- Backyard Telescope --pointed_at--> Jupiter\n- Bread Scoring --practiced_on--> Sourdough Starter\n- Chess Club --meets_at--> Quillmont Library\n- Marguerite Fenn --captains--> Chess Club\n- Raised Garden Bed --located_at--> Fernhollow Community Garden\n- Sicilian Defense --studied_for--> Chess Club\n- Sourdough Starter --baked_in--> Dutch Oven\n- Sourdough Starter --fed_with--> Rye Flour\n- Tomato Seedlings --planted_in--> Raised Garden Bed\n- Wool Scarf --knitted_from--> Merino Yarn",
+      "quotes": [],
+      "latencyMs": 292,
+      "metrics": {
+        "recallAt1": 0,
+        "recallAt5": 1,
+        "recallAt10": 1,
+        "mrr": 0.3333333333333333,
+        "ndcg10": 0.6885288809404666
+      }
+    },
+    {
+      "worldId": "test-20002",
+      "queryId": "test-20002-q2",
+      "family": "temporal_change",
+      "mode": "hybrid",
+      "answerable": true,
+      "ranked": [
+        "bg-herbal-tea",
+        "bg-sourdough-starter",
+        "benedikt-vandermeer",
+        "bg-lavender-hedge",
+        "bg-freshwater-aquarium",
+        "bg-pickle",
+        "bg-guitar-capo",
+        "bg-seed-catalog",
+        "bg-acoustic-guitar",
+        "bg-fernhollow-community-garden"
+      ],
+      "context": "## Entities\n- Herbal Tea (other): Chamomile and mint tea brewed before bed. [mentions: 1]\n- Sourdough Starter (project): A rye-fed starter named Bubbles, kept on the counter. [mentions: 4]\n- Benedikt Vandermeer (person): Benedikt Vandermeer is the user's climbing partner, who works as a chef. Benedikt Vandermeer lives in Fennimore. Benedikt Vandermeer works at Bramblewood Theatre. Benedikt Vandermeer went to farmers market stall. Benedikt Vandermeer went to film premiere. [mentions: 1]\n- Lavender Hedge (project): A row of lavender planted along the front path. [mentions: 1]\n- Freshwater Aquarium (project): A planted twenty-gallon tank in the living room. [mentions: 3]\n- Pickle (person): A grey tabby cat who sleeps on the radiator. [mentions: 4]\n- Guitar Capo (other): Spring capo clipped to the headstock. [mentions: 1]\n- Seed Catalog (other): Heirloom seed catalog with dog-eared pages. [mentions: 1]\n- Acoustic Guitar (other): A secondhand steel-string guitar with a cracked pickguard. [mentions: 3]\n- Fernhollow Community Garden (place): Shared allotments with a tool shed and a rain barrel. [mentions: 3]\n- Dutch Oven (other): Cast-iron pot used for baking boules at high heat. [mentions: 2]\n- Merino Yarn (other): Soft merino skeins bought at a craft fair. [mentions: 1]\n- Basil Pots (project): Three pots of Genovese basil on the balcony railing. [mentions: 2]\n- Neon Tetras (other): A school of eight neon tetras in the tank. [mentions: 2]\n- Wool Scarf (project): A half-finished scarf in forest green. [mentions: 2]\n- Raised Garden Bed (project): A cedar raised bed built for tomatoes and peppers. [mentions: 2]\n- Vintage Radio (project): A valve radio being restored with new capacitors. [mentions: 2]\n- Bread Scoring (activity): Practicing wheat-ear cuts with a lame before baking. [mentions: 1]\n- Fiddle Leaf Fig (other): Temperamental fig that drops leaves when moved from its spot. [mentions: 1]\n- Tomato Seedlings (project): Seedlings started on the windowsill in March, waiting to go into the raised bed. [mentions: 3]\n- Matcha Whisk (other): Bamboo whisk for frothing matcha. [mentions: 1]\n- Banneton Basket (other): Cane proofing basket that leaves spiral flour rings on loaves. [mentions: 1]\n- Rye Flour (concept): Stone-ground rye used to feed the starter. [mentions: 1]\n- Java Fern (other): Hardy aquatic plant tied to driftwood in the tank. [mentions: 1]\n## Relations\n- Banneton Basket --proofs_dough_from--> Sourdough Starter\n- Basil Pots --grown_from--> Seed Catalog\n- Bread Scoring --practiced_on--> Sourdough Starter\n- Guitar Capo --clipped_on--> Acoustic Guitar\n- Herbal Tea --brewed_alongside--> Matcha Whisk\n- Java Fern --grows_in--> Freshwater Aquarium\n- Lavender Hedge --grown_from--> Seed Catalog\n- Neon Tetras --live_in--> Freshwater Aquarium\n- Raised Garden Bed --located_at--> Fernhollow Community Garden\n- Sourdough Starter --baked_in--> Dutch Oven\n- Sourdough Starter --fed_with--> Rye Flour\n- Tomato Seedlings --grown_from--> Seed Catalog\n- Tomato Seedlings --planted_in--> Raised Garden Bed\n- Wool Scarf --knitted_from--> Merino Yarn",
+      "quotes": [],
+      "latencyMs": 396,
+      "metrics": {
+        "recallAt1": 0,
+        "recallAt5": 0,
+        "recallAt10": 0,
+        "mrr": 0,
+        "ndcg10": 0.13770577618809332
+      }
+    },
+    {
+      "worldId": "test-20002",
+      "queryId": "test-20002-q3",
+      "family": "contradiction",
+      "mode": "hybrid",
+      "answerable": true,
+      "ranked": [
+        "bg-freshwater-aquarium",
+        "lysander-tolliver",
+        "bg-sourdough-starter",
+        "bg-acoustic-guitar",
+        "bg-wendell-ashby",
+        "bg-backyard-telescope",
+        "bg-fernhollow-community-garden",
+        "bg-water-testing-kit",
+        "bg-perseid-meteor-shower",
+        "bg-wool-scarf"
+      ],
+      "context": "## Entities\n- Freshwater Aquarium (project): A planted twenty-gallon tank in the living room. [mentions: 3]\n- Lysander Tolliver (person): Lysander Tolliver is the user's coworker, who works as a chef. [mentions: 1]\n- Sourdough Starter (project): A rye-fed starter named Bubbles, kept on the counter. [mentions: 4]\n- Acoustic Guitar (other): A secondhand steel-string guitar with a cracked pickguard. [mentions: 3]\n- Wendell Ashby (person): Runs the monthly stargazing night and lends out eyepieces. [mentions: 2]\n- Backyard Telescope (other): An eight-inch Dobsonian set up on clear nights. [mentions: 3]\n- Fernhollow Community Garden (place): Shared allotments with a tool shed and a rain barrel. [mentions: 3]\n- Water Testing Kit (other): Drops for checking ammonia, nitrite and pH weekly. [mentions: 1]\n- Perseid Meteor Shower (event): August meteor shower watched from a hillside at night. [mentions: 2]\n- Wool Scarf (project): A half-finished scarf in forest green. [mentions: 2]\n- Merino Yarn (other): Soft merino skeins bought at a craft fair. [mentions: 1]\n- Crossword Puzzles (activity): Weekend crosswords done in pen. [mentions: 2]\n- Tomato Seedlings (project): Seedlings started on the windowsill in March, waiting to go into the raised bed. [mentions: 3]\n- Raised Garden Bed (project): A cedar raised bed built for tomatoes and peppers. [mentions: 2]\n- Dutch Oven (other): Cast-iron pot used for baking boules at high heat. [mentions: 2]\n- Seed Catalog (other): Heirloom seed catalog with dog-eared pages. [mentions: 1]\n- Fingerpicking Practice (activity): Twenty minutes of Travis picking patterns each evening. [mentions: 2]\n- Basil Pots (project): Three pots of Genovese basil on the balcony railing. [mentions: 2]\n- Quillmont Library (place): Library whose reading room hosts the chess club. [mentions: 2]\n- Monstera Plant (other): Large monstera with split leaves near the bookcase. [mentions: 2]\n- Lavender Hedge (project): A row of lavender planted along the front path. [mentions: 1]\n- Chess Club (organization): Thursday evening club that meets for rapid games. [mentions: 3]\n- Darkroom Chemistry (concept): Developer, stop bath and fixer mixed for home prints. [mentions: 1]\n- Guitar Capo (other): Spring capo clipped to the headstock. [mentions: 1]\n## Relations\n- Basil Pots --grown_from--> Seed Catalog\n- Chess Club --meets_at--> Quillmont Library\n- Fingerpicking Practice --played_on--> Acoustic Guitar\n- Guitar Capo --clipped_on--> Acoustic Guitar\n- Lavender Hedge --grown_from--> Seed Catalog\n- Perseid Meteor Shower --watched_with--> Wendell Ashby\n- Raised Garden Bed --located_at--> Fernhollow Community Garden\n- Sourdough Starter --baked_in--> Dutch Oven\n- Tomato Seedlings --grown_from--> Seed Catalog\n- Tomato Seedlings --planted_in--> Raised Garden Bed\n- Water Testing Kit --used_on--> Freshwater Aquarium\n- Wendell Ashby --lent_eyepiece_for--> Backyard Telescope\n- Wool Scarf --knitted_from--> Merino Yarn",
+      "quotes": [],
+      "latencyMs": 360,
+      "metrics": {
+        "recallAt1": 0,
+        "recallAt5": 1,
+        "recallAt10": 1,
+        "mrr": 0.5,
+        "ndcg10": 0.6309297535714574
+      }
+    },
+    {
+      "worldId": "test-20002",
+      "queryId": "test-20002-q4",
+      "family": "multi_hop",
+      "mode": "hybrid",
+      "answerable": true,
+      "ranked": [
+        "bramblewood-theatre",
+        "benedikt-vandermeer",
+        "bg-sourdough-starter",
+        "saltcote",
+        "fennimore",
+        "bg-fernhollow-community-garden",
+        "bg-backyard-telescope",
+        "bg-acoustic-guitar",
+        "bg-chess-club",
+        "bg-merino-yarn"
+      ],
+      "context": "## Entities\n- Bramblewood Theatre (organization): Bramblewood Theatre is an organisation the user mentioned. Benedikt Vandermeer works at Bramblewood Theatre. Bramblewood Theatre is based in Saltcote. [mentions: 1]\n- Benedikt Vandermeer (person): Benedikt Vandermeer is the user's climbing partner, who works as a chef. Benedikt Vandermeer lives in Fennimore. Benedikt Vandermeer works at Bramblewood Theatre. Benedikt Vandermeer went to farmers market stall. Benedikt Vandermeer went to film premiere. [mentions: 1]\n- Sourdough Starter (project): A rye-fed starter named Bubbles, kept on the counter. [mentions: 4]\n- Saltcote (place): Saltcote is a place the user mentioned. Bramblewood Theatre is based in Saltcote. [mentions: 1]\n- Fennimore (place): Fennimore is a place the user mentioned. Benedikt Vandermeer lives in Fennimore. [mentions: 1]\n- Fernhollow Community Garden (place): Shared allotments with a tool shed and a rain barrel. [mentions: 3]\n- Backyard Telescope (other): An eight-inch Dobsonian set up on clear nights. [mentions: 3]\n- Acoustic Guitar (other): A secondhand steel-string guitar with a cracked pickguard. [mentions: 3]\n- Chess Club (organization): Thursday evening club that meets for rapid games. [mentions: 3]\n- Merino Yarn (other): Soft merino skeins bought at a craft fair. [mentions: 1]\n- Otterburn (place): Otterburn is a place the user mentioned. [mentions: 1]\n- Tomato Seedlings (project): Seedlings started on the windowsill in March, waiting to go into the raised bed. [mentions: 3]\n- Raised Garden Bed (project): A cedar raised bed built for tomatoes and peppers. [mentions: 2]\n- Quillmont Observatory (place): Small hilltop observatory with a public viewing night. [mentions: 2]\n- Film Camera (other): A manual rangefinder loaded with black-and-white film. [mentions: 2]\n- Freshwater Aquarium (project): A planted twenty-gallon tank in the living room. [mentions: 3]\n- Lysander Tolliver (person): Lysander Tolliver is the user's coworker, who works as a chef. [mentions: 1]\n- Banneton Basket (other): Cane proofing basket that leaves spiral flour rings on loaves. [mentions: 1]\n- Bread Scoring (activity): Practicing wheat-ear cuts with a lame before baking. [mentions: 1]\n- Fiddle Leaf Fig (other): Temperamental fig that drops leaves when moved from its spot. [mentions: 1]\n- Seed Catalog (other): Heirloom seed catalog with dog-eared pages. [mentions: 1]\n- Water Testing Kit (other): Drops for checking ammonia, nitrite and pH weekly. [mentions: 1]\n- Catnip Mice (other): Felt toys stuffed with catnip. [mentions: 1]\n- Hollis Grady (person): Organizes the spring seed swap at Fernhollow Community Garden. [mentions: 2]\n## Relations\n- Benedikt Vandermeer --lives_in--> Fennimore\n- Benedikt Vandermeer --works_at--> Bramblewood Theatre\n- Banneton Basket --proofs_dough_from--> Sourdough Starter\n- Bread Scoring --practiced_on--> Sourdough Starter\n- Hollis Grady --organizes_seed_swap_at--> Fernhollow Community Garden\n- Raised Garden Bed --located_at--> Fernhollow Community Garden\n- Tomato Seedlings --grown_from--> Seed Catalog\n- Tomato Seedlings --planted_in--> Raised Garden Bed\n- Water Testing Kit --used_on--> Freshwater Aquarium\n- Bramblewood Theatre --located_in--> Saltcote",
+      "quotes": [],
+      "latencyMs": 420,
+      "metrics": {
+        "recallAt1": 0,
+        "recallAt5": 1,
+        "recallAt10": 1,
+        "mrr": 0.25,
+        "ndcg10": 0.7075790686744426
+      }
+    },
+    {
+      "worldId": "test-20002",
+      "queryId": "test-20002-q1",
+      "family": "temporal_change",
+      "mode": "lexical",
+      "answerable": true,
+      "ranked": [
+        "benedikt-vandermeer",
+        "bg-sourdough-starter",
+        "fennimore",
+        "bg-fiddle-leaf-fig",
+        "bg-chess-club",
+        "bg-jupiter",
+        "bg-backyard-telescope",
+        "bg-merino-yarn",
+        "bg-dutch-oven",
+        "bg-wool-scarf"
+      ],
+      "context": "## Entities\n- Benedikt Vandermeer (person): Benedikt Vandermeer is the user's climbing partner, who works as a chef. Benedikt Vandermeer lives in Fennimore. Benedikt Vandermeer works at Bramblewood Theatre. Benedikt Vandermeer went to farmers market stall. Benedikt Vandermeer went to film premiere. [mentions: 1]\n- Sourdough Starter (project): A rye-fed starter named Bubbles, kept on the counter. [mentions: 4]\n- Fennimore (place): Fennimore is a place the user mentioned. Benedikt Vandermeer lives in Fennimore. [mentions: 1]\n- Fiddle Leaf Fig (other): Temperamental fig that drops leaves when moved from its spot. [mentions: 1]\n- Chess Club (organization): Thursday evening club that meets for rapid games. [mentions: 3]\n- Jupiter (place): Gas giant watched for its four bright moons. [mentions: 2]\n- Backyard Telescope (other): An eight-inch Dobsonian set up on clear nights. [mentions: 3]\n- Merino Yarn (other): Soft merino skeins bought at a craft fair. [mentions: 1]\n- Dutch Oven (other): Cast-iron pot used for baking boules at high heat. [mentions: 2]\n- Wool Scarf (project): A half-finished scarf in forest green. [mentions: 2]\n- Quillmont Library (place): Library whose reading room hosts the chess club. [mentions: 2]\n- Marguerite Fenn (person): Captain of the chess club and a fierce blitz player. [mentions: 2]\n- Sicilian Defense (concept): Sharp chess opening studied from a puzzle book. [mentions: 2]\n- film premiere (event): film premiere is an event the user mentioned. Benedikt Vandermeer went to film premiere. [mentions: 1]\n- farmers market stall (event): farmers market stall is an event the user mentioned. Benedikt Vandermeer went to farmers market stall. [mentions: 1]\n- Bramblewood Theatre (organization): Bramblewood Theatre is an organisation the user mentioned. Benedikt Vandermeer works at Bramblewood Theatre. Bramblewood Theatre is based in Saltcote. [mentions: 1]\n- Bread Scoring (activity): Practicing wheat-ear cuts with a lame before baking. [mentions: 1]\n- Rye Flour (concept): Stone-ground rye used to feed the starter. [mentions: 1]\n- Repotting (activity): Spring repotting of the houseplants into bigger pots. [mentions: 1]\n- Endgame Puzzles (activity): Daily rook-and-pawn endgame drills. [mentions: 1]\n- Banneton Basket (other): Cane proofing basket that leaves spiral flour rings on loaves. [mentions: 1]\n- Monstera Plant (other): Large monstera with split leaves near the bookcase. [mentions: 2]\n- Wendell Ashby (person): Runs the monthly stargazing night and lends out eyepieces. [mentions: 2]\n- Otterburn (place): Otterburn is a place the user mentioned. [mentions: 1]\n## Relations\n- Benedikt Vandermeer --lives_in--> Fennimore\n- Benedikt Vandermeer --went_to--> farmers market stall\n- Benedikt Vandermeer --went_to--> film premiere\n- Benedikt Vandermeer --works_at--> Bramblewood Theatre\n- Backyard Telescope --pointed_at--> Jupiter\n- Banneton Basket --proofs_dough_from--> Sourdough Starter\n- Bread Scoring --practiced_on--> Sourdough Starter\n- Chess Club --meets_at--> Quillmont Library\n- Endgame Puzzles --practiced_for--> Chess Club\n- Marguerite Fenn --captains--> Chess Club\n- Repotting --done_for--> Fiddle Leaf Fig\n- Repotting --done_for--> Monstera Plant\n- Sicilian Defense --studied_for--> Chess Club\n- Sourdough Starter --baked_in--> Dutch Oven\n- Sourdough Starter --fed_with--> Rye Flour\n- Wendell Ashby --lent_eyepiece_for--> Backyard Telescope\n- Wool Scarf --knitted_from--> Merino Yarn",
+      "quotes": [],
+      "latencyMs": 295,
+      "metrics": {
+        "recallAt1": 0,
+        "recallAt5": 1,
+        "recallAt10": 1,
+        "mrr": 0.3333333333333333,
+        "ndcg10": 0.6885288809404666
+      }
+    },
+    {
+      "worldId": "test-20002",
+      "queryId": "test-20002-q2",
+      "family": "temporal_change",
+      "mode": "lexical",
+      "answerable": true,
+      "ranked": [
+        "bg-herbal-tea",
+        "bg-sourdough-starter",
+        "benedikt-vandermeer",
+        "bg-lavender-hedge",
+        "bg-freshwater-aquarium",
+        "bg-guitar-capo",
+        "bg-seed-catalog",
+        "bg-acoustic-guitar",
+        "bg-tomato-seedlings",
+        "bg-dutch-oven"
+      ],
+      "context": "## Entities\n- Herbal Tea (other): Chamomile and mint tea brewed before bed. [mentions: 1]\n- Sourdough Starter (project): A rye-fed starter named Bubbles, kept on the counter. [mentions: 4]\n- Benedikt Vandermeer (person): Benedikt Vandermeer is the user's climbing partner, who works as a chef. Benedikt Vandermeer lives in Fennimore. Benedikt Vandermeer works at Bramblewood Theatre. Benedikt Vandermeer went to farmers market stall. Benedikt Vandermeer went to film premiere. [mentions: 1]\n- Lavender Hedge (project): A row of lavender planted along the front path. [mentions: 1]\n- Freshwater Aquarium (project): A planted twenty-gallon tank in the living room. [mentions: 3]\n- Guitar Capo (other): Spring capo clipped to the headstock. [mentions: 1]\n- Seed Catalog (other): Heirloom seed catalog with dog-eared pages. [mentions: 1]\n- Acoustic Guitar (other): A secondhand steel-string guitar with a cracked pickguard. [mentions: 3]\n- Tomato Seedlings (project): Seedlings started on the windowsill in March, waiting to go into the raised bed. [mentions: 3]\n- Dutch Oven (other): Cast-iron pot used for baking boules at high heat. [mentions: 2]\n- Merino Yarn (other): Soft merino skeins bought at a craft fair. [mentions: 1]\n- Basil Pots (project): Three pots of Genovese basil on the balcony railing. [mentions: 2]\n- Neon Tetras (other): A school of eight neon tetras in the tank. [mentions: 2]\n- Wool Scarf (project): A half-finished scarf in forest green. [mentions: 2]\n- Bread Scoring (activity): Practicing wheat-ear cuts with a lame before baking. [mentions: 1]\n- Fiddle Leaf Fig (other): Temperamental fig that drops leaves when moved from its spot. [mentions: 1]\n- Saltcote (place): Saltcote is a place the user mentioned. Bramblewood Theatre is based in Saltcote. [mentions: 1]\n- Matcha Whisk (other): Bamboo whisk for frothing matcha. [mentions: 1]\n- Banneton Basket (other): Cane proofing basket that leaves spiral flour rings on loaves. [mentions: 1]\n- Rye Flour (concept): Stone-ground rye used to feed the starter. [mentions: 1]\n- Java Fern (other): Hardy aquatic plant tied to driftwood in the tank. [mentions: 1]\n- Water Testing Kit (other): Drops for checking ammonia, nitrite and pH weekly. [mentions: 1]\n- Repotting (activity): Spring repotting of the houseplants into bigger pots. [mentions: 1]\n- Fingerpicking Practice (activity): Twenty minutes of Travis picking patterns each evening. [mentions: 2]\n## Relations\n- Banneton Basket --proofs_dough_from--> Sourdough Starter\n- Basil Pots --grown_from--> Seed Catalog\n- Bread Scoring --practiced_on--> Sourdough Starter\n- Fingerpicking Practice --played_on--> Acoustic Guitar\n- Guitar Capo --clipped_on--> Acoustic Guitar\n- Herbal Tea --brewed_alongside--> Matcha Whisk\n- Java Fern --grows_in--> Freshwater Aquarium\n- Lavender Hedge --grown_from--> Seed Catalog\n- Neon Tetras --live_in--> Freshwater Aquarium\n- Repotting --done_for--> Fiddle Leaf Fig\n- Sourdough Starter --baked_in--> Dutch Oven\n- Sourdough Starter --fed_with--> Rye Flour\n- Tomato Seedlings --grown_from--> Seed Catalog\n- Water Testing Kit --used_on--> Freshwater Aquarium\n- Wool Scarf --knitted_from--> Merino Yarn",
+      "quotes": [],
+      "latencyMs": 262,
+      "metrics": {
+        "recallAt1": 0,
+        "recallAt5": 0,
+        "recallAt10": 0,
+        "mrr": 0,
+        "ndcg10": 0.13770577618809332
+      }
+    },
+    {
+      "worldId": "test-20002",
+      "queryId": "test-20002-q3",
+      "family": "contradiction",
+      "mode": "lexical",
+      "answerable": true,
+      "ranked": [
+        "bg-freshwater-aquarium",
+        "lysander-tolliver",
+        "bg-sourdough-starter",
+        "bg-acoustic-guitar",
+        "bg-wendell-ashby",
+        "bg-backyard-telescope",
+        "bg-fernhollow-community-garden",
+        "bg-water-testing-kit",
+        "bg-perseid-meteor-shower",
+        "bg-wool-scarf"
+      ],
+      "context": "## Entities\n- Freshwater Aquarium (project): A planted twenty-gallon tank in the living room. [mentions: 3]\n- Lysander Tolliver (person): Lysander Tolliver is the user's coworker, who works as a chef. [mentions: 1]\n- Sourdough Starter (project): A rye-fed starter named Bubbles, kept on the counter. [mentions: 4]\n- Acoustic Guitar (other): A secondhand steel-string guitar with a cracked pickguard. [mentions: 3]\n- Wendell Ashby (person): Runs the monthly stargazing night and lends out eyepieces. [mentions: 2]\n- Backyard Telescope (other): An eight-inch Dobsonian set up on clear nights. [mentions: 3]\n- Fernhollow Community Garden (place): Shared allotments with a tool shed and a rain barrel. [mentions: 3]\n- Water Testing Kit (other): Drops for checking ammonia, nitrite and pH weekly. [mentions: 1]\n- Perseid Meteor Shower (event): August meteor shower watched from a hillside at night. [mentions: 2]\n- Wool Scarf (project): A half-finished scarf in forest green. [mentions: 2]\n- Merino Yarn (other): Soft merino skeins bought at a craft fair. [mentions: 1]\n- Crossword Puzzles (activity): Weekend crosswords done in pen. [mentions: 2]\n- Tomato Seedlings (project): Seedlings started on the windowsill in March, waiting to go into the raised bed. [mentions: 3]\n- Raised Garden Bed (project): A cedar raised bed built for tomatoes and peppers. [mentions: 2]\n- Dutch Oven (other): Cast-iron pot used for baking boules at high heat. [mentions: 2]\n- Seed Catalog (other): Heirloom seed catalog with dog-eared pages. [mentions: 1]\n- Fingerpicking Practice (activity): Twenty minutes of Travis picking patterns each evening. [mentions: 2]\n- Basil Pots (project): Three pots of Genovese basil on the balcony railing. [mentions: 2]\n- Quillmont Library (place): Library whose reading room hosts the chess club. [mentions: 2]\n- Monstera Plant (other): Large monstera with split leaves near the bookcase. [mentions: 2]\n- Lavender Hedge (project): A row of lavender planted along the front path. [mentions: 1]\n- Chess Club (organization): Thursday evening club that meets for rapid games. [mentions: 3]\n- Darkroom Chemistry (concept): Developer, stop bath and fixer mixed for home prints. [mentions: 1]\n- Guitar Capo (other): Spring capo clipped to the headstock. [mentions: 1]\n## Relations\n- Basil Pots --grown_from--> Seed Catalog\n- Chess Club --meets_at--> Quillmont Library\n- Fingerpicking Practice --played_on--> Acoustic Guitar\n- Guitar Capo --clipped_on--> Acoustic Guitar\n- Lavender Hedge --grown_from--> Seed Catalog\n- Perseid Meteor Shower --watched_with--> Wendell Ashby\n- Raised Garden Bed --located_at--> Fernhollow Community Garden\n- Sourdough Starter --baked_in--> Dutch Oven\n- Tomato Seedlings --grown_from--> Seed Catalog\n- Tomato Seedlings --planted_in--> Raised Garden Bed\n- Water Testing Kit --used_on--> Freshwater Aquarium\n- Wendell Ashby --lent_eyepiece_for--> Backyard Telescope\n- Wool Scarf --knitted_from--> Merino Yarn",
+      "quotes": [],
+      "latencyMs": 391,
+      "metrics": {
+        "recallAt1": 0,
+        "recallAt5": 1,
+        "recallAt10": 1,
+        "mrr": 0.5,
+        "ndcg10": 0.6309297535714574
+      }
+    },
+    {
+      "worldId": "test-20002",
+      "queryId": "test-20002-q4",
+      "family": "multi_hop",
+      "mode": "lexical",
+      "answerable": true,
+      "ranked": [
+        "bramblewood-theatre",
+        "benedikt-vandermeer",
+        "bg-sourdough-starter",
+        "saltcote",
+        "fennimore",
+        "bg-fernhollow-community-garden",
+        "bg-backyard-telescope",
+        "bg-acoustic-guitar",
+        "bg-chess-club",
+        "bg-merino-yarn"
+      ],
+      "context": "## Entities\n- Bramblewood Theatre (organization): Bramblewood Theatre is an organisation the user mentioned. Benedikt Vandermeer works at Bramblewood Theatre. Bramblewood Theatre is based in Saltcote. [mentions: 1]\n- Benedikt Vandermeer (person): Benedikt Vandermeer is the user's climbing partner, who works as a chef. Benedikt Vandermeer lives in Fennimore. Benedikt Vandermeer works at Bramblewood Theatre. Benedikt Vandermeer went to farmers market stall. Benedikt Vandermeer went to film premiere. [mentions: 1]\n- Sourdough Starter (project): A rye-fed starter named Bubbles, kept on the counter. [mentions: 4]\n- Saltcote (place): Saltcote is a place the user mentioned. Bramblewood Theatre is based in Saltcote. [mentions: 1]\n- Fennimore (place): Fennimore is a place the user mentioned. Benedikt Vandermeer lives in Fennimore. [mentions: 1]\n- Fernhollow Community Garden (place): Shared allotments with a tool shed and a rain barrel. [mentions: 3]\n- Backyard Telescope (other): An eight-inch Dobsonian set up on clear nights. [mentions: 3]\n- Acoustic Guitar (other): A secondhand steel-string guitar with a cracked pickguard. [mentions: 3]\n- Chess Club (organization): Thursday evening club that meets for rapid games. [mentions: 3]\n- Merino Yarn (other): Soft merino skeins bought at a craft fair. [mentions: 1]\n- Otterburn (place): Otterburn is a place the user mentioned. [mentions: 1]\n- Tomato Seedlings (project): Seedlings started on the windowsill in March, waiting to go into the raised bed. [mentions: 3]\n- Raised Garden Bed (project): A cedar raised bed built for tomatoes and peppers. [mentions: 2]\n- Quillmont Observatory (place): Small hilltop observatory with a public viewing night. [mentions: 2]\n- Freshwater Aquarium (project): A planted twenty-gallon tank in the living room. [mentions: 3]\n- Lysander Tolliver (person): Lysander Tolliver is the user's coworker, who works as a chef. [mentions: 1]\n- Banneton Basket (other): Cane proofing basket that leaves spiral flour rings on loaves. [mentions: 1]\n- Bread Scoring (activity): Practicing wheat-ear cuts with a lame before baking. [mentions: 1]\n- Fiddle Leaf Fig (other): Temperamental fig that drops leaves when moved from its spot. [mentions: 1]\n- Seed Catalog (other): Heirloom seed catalog with dog-eared pages. [mentions: 1]\n- Water Testing Kit (other): Drops for checking ammonia, nitrite and pH weekly. [mentions: 1]\n- Catnip Mice (other): Felt toys stuffed with catnip. [mentions: 1]\n- Hollis Grady (person): Organizes the spring seed swap at Fernhollow Community Garden. [mentions: 2]\n- Repotting (activity): Spring repotting of the houseplants into bigger pots. [mentions: 1]\n## Relations\n- Benedikt Vandermeer --lives_in--> Fennimore\n- Benedikt Vandermeer --works_at--> Bramblewood Theatre\n- Banneton Basket --proofs_dough_from--> Sourdough Starter\n- Bread Scoring --practiced_on--> Sourdough Starter\n- Hollis Grady --organizes_seed_swap_at--> Fernhollow Community Garden\n- Raised Garden Bed --located_at--> Fernhollow Community Garden\n- Repotting --done_for--> Fiddle Leaf Fig\n- Tomato Seedlings --grown_from--> Seed Catalog\n- Tomato Seedlings --planted_in--> Raised Garden Bed\n- Water Testing Kit --used_on--> Freshwater Aquarium\n- Bramblewood Theatre --located_in--> Saltcote",
+      "quotes": [],
+      "latencyMs": 241,
+      "metrics": {
+        "recallAt1": 0,
+        "recallAt5": 1,
+        "recallAt10": 1,
+        "mrr": 0.25,
+        "ndcg10": 0.7075790686744426
+      }
+    }
+  ]
+}

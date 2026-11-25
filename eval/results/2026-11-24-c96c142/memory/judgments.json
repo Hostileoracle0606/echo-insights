@@ -1,0 +1,1388 @@
+{
+  "model": "claude-opus-5-5",
+  "rubricVersion": 2,
+  "calibration": [
+    {
+      "id": "brief-denial-is-not-stale",
+      "agreed": true,
+      "disagreements": [],
+      "reason": "The brief mentions Dayton only as the corrected error (\"Imogen moved to Dalton, not Dayton\") and presents Dalton as the current fact."
+    },
+    {
+      "id": "brief-old-job-is-stale",
+      "agreed": true,
+      "disagreements": [],
+      "reason": "The brief still says \"Felix Navarro is a pediatric nurse at Saint Corin hospital\", but the user edited this to \"physical therapist\" and an old college friend."
+    },
+    {
+      "id": "retrieval-old-city-in-description",
+      "agreed": true,
+      "disagreements": [],
+      "reason": "Memory still presents \"Imogen moved to Dayton last month\" as a live fact, with no note that it was corrected to Dalton."
+    },
+    {
+      "id": "retrieval-corrected-city-only",
+      "agreed": true,
+      "disagreements": [],
+      "reason": "The memory never mentions Dayton and only says Imogen \"moved to Dalton last month.\""
+    },
+    {
+      "id": "order-kept",
+      "agreed": true,
+      "disagreements": [],
+      "reason": "Not applicable for this case."
+    },
+    {
+      "id": "order-lost",
+      "agreed": true,
+      "disagreements": [],
+      "reason": "The stale check is marked not applicable for this question."
+    },
+    {
+      "id": "two-sams-distinct",
+      "agreed": true,
+      "disagreements": [],
+      "reason": "Not applicable for this item."
+    },
+    {
+      "id": "two-sams-merged",
+      "agreed": true,
+      "disagreements": [],
+      "reason": "Not applicable for this case."
+    }
+  ],
+  "briefs": {
+    "continuity-indirect-reference": {
+      "stale": "clean",
+      "reason": "The script contains no corrections, reversals or removals, and the brief's \"Maren opened a pottery studio called Clayhouse in Bellport\" and \"The kiln room was packed\" both match the script."
+    },
+    "correction-city-same-session": {
+      "stale": "clean",
+      "reason": "The brief only mentions Dayton as the corrected error (\"moved to Dalton, not Dayton\"), and it states the current fact as \"Imogen moved to Dalton last month.\""
+    },
+    "deletion-forget-person": {
+      "stale": "stale",
+      "reason": "Although the name is gone, the brief still keeps the forgotten Dana Whitfield's details as live memory in \"had lunch with someone who is thinking about moving to Oslo\" and asks \"How are things with Oslo?\"."
+    },
+    "changing-decided-then-reversed": {
+      "stale": "clean",
+      "reason": "The brief mentions only the current plan, \"anniversary trip to Kyoto,\" and never presents the cancelled Lisbon booking as live; the June date was not contradicted by the user."
+    },
+    "continuity-paraphrase": {
+      "stale": "clean",
+      "reason": "The script never corrects or reverses anything, and the brief's \"Tobias advised two days of rest\" and \"Ridgeline half marathon with running coach Tobias Wren\" match the current facts."
+    },
+    "correction-edit-description": {
+      "stale": "stale",
+      "reason": "The brief still says \"Felix Navarro is a pediatric nurse at Saint Corin hospital\", but the user edited this to \"physical therapist\"."
+    },
+    "deletion-remove-project": {
+      "stale": "stale",
+      "reason": "The brief still says \"Building a birdhouse project called Wren Box for nephew Otto\" as live memory, even though the user removed \"Wren Box\" from Lumen's memory in Session 1."
+    },
+    "changing-similar-names": {
+      "stale": "clean",
+      "reason": "The script contains no corrections, reversals or removals, and the brief's \"Priya Shah is leading the Atlas migration\" and \"Priyanka Rao from finance approved the Atlas budget\" both match the script, so nothing stale is presented as current."
+    },
+    "continuity-two-alexes": {
+      "stale": "clean",
+      "reason": "The brief's \"Alex Brandt lent an extension ladder for gutters\" is a past event the script never corrected (the ladder's later return doesn't make it false), and \"Alex Moreau is visiting from Quebec next week\" was never reversed."
+    },
+    "correction-job-title-next-session": {
+      "stale": "clean",
+      "reason": "The brief only says \"promoted to staff analyst at Larkfield Bank\" and never presents the corrected \"senior analyst\" title as current."
+    },
+    "changing-tentative-to-decided": {
+      "stale": "clean",
+      "reason": "The brief states the current decision, \"Decided to stay at Northwind,\" and never presents the earlier \"might leave Northwind\" as live; the difficult commute was never corrected."
+    },
+    "continuity-two-sams": {
+      "stale": "clean",
+      "reason": "The script never corrects, reverses or removes anything, and the brief accurately keeps \"Sam Ortiz reviewed design doc\" and \"Bouldering with Sam Lee at Granite Hall\" as separate, still-current facts."
+    }
+  },
+  "probes": {
+    "continuity-indirect-reference:0": {
+      "stale": "n/a",
+      "stale_reason": "Not applicable: the script contains no correction, reversal, or removal request to check against.",
+      "status": "n/a",
+      "status_reason": "Not applicable: this topic has no earlier or undecided state that could compete with a current one.",
+      "order": "n/a",
+      "order_reason": "Not applicable: there is no change over time for the memory to sequence.",
+      "ambiguity": "n/a",
+      "ambiguity_reason": "Not applicable: only one Maren appears, so there are no same-name people to keep apart."
+    },
+    "continuity-indirect-reference:1": {
+      "stale": "n/a",
+      "stale_reason": "Not applicable for this check.",
+      "status": "n/a",
+      "status_reason": "Not applicable for this check.",
+      "order": "n/a",
+      "order_reason": "Not applicable for this check.",
+      "ambiguity": "n/a",
+      "ambiguity_reason": "Not applicable for this check."
+    },
+    "continuity-indirect-reference:2": {
+      "stale": "n/a",
+      "stale_reason": "Marked not applicable, since the script never corrects or removes anything and Maren's studio stays \"in Bellport\" throughout.",
+      "status": "n/a",
+      "status_reason": "Marked not applicable, since there is no change of state to judge and the location is simply \"Clayhouse situated_at Bellport\".",
+      "order": "n/a",
+      "order_reason": "Marked not applicable, since there is no earlier and later state, only the single fact \"Clayhouse in Bellport\".",
+      "ambiguity": "n/a",
+      "ambiguity_reason": "Marked not applicable, since only one person named \"Maren\" appears in the conversation."
+    },
+    "continuity-indirect-reference:3": {
+      "stale": "n/a",
+      "stale_reason": "Not applicable to this case: the script contains no later correction, reversal, or removal request.",
+      "status": "n/a",
+      "status_reason": "Not applicable to this case: no change of state is scripted for Clayhouse or Maren.",
+      "order": "n/a",
+      "order_reason": "Not applicable to this case: there is no earlier and later state to sequence.",
+      "ambiguity": "n/a",
+      "ambiguity_reason": "Not applicable to this case: only one person named Maren appears, so there is no shared first name to keep apart."
+    },
+    "correction-city-same-session:0": {
+      "stale": "stale",
+      "stale_reason": "Memory still presents \"Imogen moved_to Dayton\" and \"Imogen moved to Dayton last month\" as live facts, even though the user corrected it to \"Dalton, not Dayton.\"",
+      "status": "wrong",
+      "status_reason": "The current fact \"Imogen moved_to Dalton\" is present, but the live contradicting statement \"Imogen moved_to Dayton\" sits right beside it.",
+      "order": "n/a",
+      "order_reason": "Order check is marked not applicable.",
+      "ambiguity": "n/a",
+      "ambiguity_reason": "Ambiguity check is marked not applicable."
+    },
+    "correction-city-same-session:1": {
+      "stale": "n/a",
+      "stale_reason": "This check is marked not applicable for this item.",
+      "status": "n/a",
+      "status_reason": "This check is marked not applicable for this item.",
+      "order": "n/a",
+      "order_reason": "This check is marked not applicable for this item.",
+      "ambiguity": "n/a",
+      "ambiguity_reason": "This check is marked not applicable for this item."
+    },
+    "correction-city-same-session:2": {
+      "stale": "stale",
+      "stale_reason": "The memory still states \"Imogen moved to Dayton last month\" and \"Imogen moved_to Dayton\" as live facts, even though the user corrected this to \"Dalton, not Dayton.\"",
+      "status": "n/a",
+      "status_reason": "Status check is marked not applicable.",
+      "order": "n/a",
+      "order_reason": "Order check is marked not applicable.",
+      "ambiguity": "n/a",
+      "ambiguity_reason": "Ambiguity check is marked not applicable."
+    },
+    "correction-city-same-session:3": {
+      "stale": "stale",
+      "stale_reason": "Memory still presents \"Imogen moved_to Dayton\" as a live fact even though the user corrected it to \"Dalton, not Dayton.\"",
+      "status": "n/a",
+      "status_reason": "Status check is marked not applicable.",
+      "order": "n/a",
+      "order_reason": "Order check is marked not applicable.",
+      "ambiguity": "n/a",
+      "ambiguity_reason": "Ambiguity check is marked not applicable."
+    },
+    "deletion-forget-person:0": {
+      "stale": "clean",
+      "stale_reason": "The memory returned \"(nothing from this conversation)\", so the forgotten \"Dana Whitfield\" does not appear anywhere.",
+      "status": "n/a",
+      "status_reason": "Status is marked not applicable for this item.",
+      "order": "n/a",
+      "order_reason": "Order is marked not applicable for this item.",
+      "ambiguity": "n/a",
+      "ambiguity_reason": "Ambiguity is marked not applicable for this item."
+    },
+    "deletion-forget-person:1": {
+      "stale": "clean",
+      "stale_reason": "The memory returns only \"Oslo\" and never names the forgotten \"Dana Whitfield\" or \"Whitfield\".",
+      "status": "n/a",
+      "status_reason": "Status is not applicable for this question.",
+      "order": "n/a",
+      "order_reason": "Order is not applicable for this question.",
+      "ambiguity": "n/a",
+      "ambiguity_reason": "Ambiguity is not applicable for this question."
+    },
+    "deletion-forget-person:2": {
+      "stale": "n/a",
+      "stale_reason": "This check is marked not applicable.",
+      "status": "n/a",
+      "status_reason": "This check is marked not applicable.",
+      "order": "n/a",
+      "order_reason": "This check is marked not applicable.",
+      "ambiguity": "n/a",
+      "ambiguity_reason": "This check is marked not applicable."
+    },
+    "deletion-forget-person:3": {
+      "stale": "clean",
+      "stale_reason": "The memory mentions only \"A report worked on with Ruth Okafor\" and contains no trace of the forgotten \"Dana Whitfield\".",
+      "status": "n/a",
+      "status_reason": "Not applicable per the checks.",
+      "order": "n/a",
+      "order_reason": "Not applicable per the checks.",
+      "ambiguity": "n/a",
+      "ambiguity_reason": "Not applicable per the checks."
+    },
+    "changing-decided-then-reversed:0": {
+      "stale": "n/a",
+      "stale_reason": "Not applicable for this item.",
+      "status": "n/a",
+      "status_reason": "Not applicable for this item.",
+      "order": "lost",
+      "order_reason": "The memory lists \"anniversary trip to Kyoto\" before \"anniversary trip to Lisbon\" and never says Lisbon was cancelled, so the Lisbon-to-Kyoto change cannot be recovered.",
+      "ambiguity": "n/a",
+      "ambiguity_reason": "Not applicable for this item."
+    },
+    "changing-decided-then-reversed:1": {
+      "stale": "n/a",
+      "stale_reason": "Not applicable for this question.",
+      "status": "n/a",
+      "status_reason": "Not applicable for this question.",
+      "order": "lost",
+      "order_reason": "The memory lists \"anniversary trip to Kyoto\" and \"anniversary trip to Lisbon\" side by side with no sequence or cancellation marker, Kyoto even appearing first, so it cannot show that Lisbon came first and was replaced by Kyoto.",
+      "ambiguity": "n/a",
+      "ambiguity_reason": "Not applicable for this question."
+    },
+    "changing-decided-then-reversed:2": {
+      "stale": "n/a",
+      "stale_reason": "This check is marked not applicable for this case.",
+      "status": "n/a",
+      "status_reason": "This check is marked not applicable for this case.",
+      "order": "n/a",
+      "order_reason": "This check is marked not applicable for this case.",
+      "ambiguity": "n/a",
+      "ambiguity_reason": "This check is marked not applicable for this case."
+    },
+    "changing-decided-then-reversed:3": {
+      "stale": "n/a",
+      "stale_reason": "This check is marked not applicable, and the memory returned \"(nothing from this conversation)\" anyway.",
+      "status": "n/a",
+      "status_reason": "This check is marked not applicable for this item.",
+      "order": "n/a",
+      "order_reason": "This check is marked not applicable for this item.",
+      "ambiguity": "n/a",
+      "ambiguity_reason": "This check is marked not applicable, and the script has no two people sharing a first name."
+    },
+    "continuity-paraphrase:0": {
+      "stale": "n/a",
+      "stale_reason": "This check is marked not applicable because nothing in the script was corrected, reversed or removed.",
+      "status": "n/a",
+      "status_reason": "This check is marked not applicable because the script has no decision that changes over time.",
+      "order": "n/a",
+      "order_reason": "This check is marked not applicable because there is no earlier and later state to put in sequence.",
+      "ambiguity": "n/a",
+      "ambiguity_reason": "This check is marked not applicable because only one person, \"Tobias Wren,\" appears in the script."
+    },
+    "continuity-paraphrase:1": {
+      "stale": "n/a",
+      "stale_reason": "Not applicable: the user never corrected, reversed, or removed anything about Tobias or their training.",
+      "status": "n/a",
+      "status_reason": "Not applicable: there is no changed or tentative state to evaluate.",
+      "order": "n/a",
+      "order_reason": "Not applicable: the history has no earlier-to-later change to sequence.",
+      "ambiguity": "n/a",
+      "ambiguity_reason": "Not applicable: only one Tobias (\"Tobias Wren\") appears, so there is no shared-name confusion to check."
+    },
+    "continuity-paraphrase:2": {
+      "stale": "n/a",
+      "stale_reason": "Not applicable: the script contains no corrections, reversals or removals to check against.",
+      "status": "n/a",
+      "status_reason": "Not applicable: this check was marked not applicable for this item.",
+      "order": "n/a",
+      "order_reason": "Not applicable: this check was marked not applicable for this item.",
+      "ambiguity": "n/a",
+      "ambiguity_reason": "Not applicable: only one Tobias appears, so there are no two same-named people to keep apart."
+    },
+    "continuity-paraphrase:3": {
+      "stale": "n/a",
+      "stale_reason": "Not applicable for this question, and the memory returned \"(nothing from this conversation)\" anyway.",
+      "status": "n/a",
+      "status_reason": "Not applicable, since the user only said they have \"been training for the Ridgeline half marathon\" and never stated a registration decision to track.",
+      "order": "n/a",
+      "order_reason": "Not applicable, since there is no earlier and later state to put in order.",
+      "ambiguity": "n/a",
+      "ambiguity_reason": "Not applicable, since only one person, \"Tobias Wren\", is mentioned."
+    },
+    "correction-edit-description:0": {
+      "stale": "clean",
+      "stale_reason": "The memory says only \"Felix Navarro is a physical therapist at Saint Corin hospital\" and never mentions \"pediatric nurse\".",
+      "status": "correct",
+      "status_reason": "The corrected fact \"physical therapist at Saint Corin hospital\" is stated, and no live statement contradicts it.",
+      "order": "n/a",
+      "order_reason": "Order check is not applicable.",
+      "ambiguity": "n/a",
+      "ambiguity_reason": "Ambiguity check is not applicable."
+    },
+    "correction-edit-description:1": {
+      "stale": "n/a",
+      "stale_reason": "This check is marked not applicable for this case.",
+      "status": "n/a",
+      "status_reason": "This check is marked not applicable for this case.",
+      "order": "n/a",
+      "order_reason": "This check is marked not applicable for this case.",
+      "ambiguity": "n/a",
+      "ambiguity_reason": "This check is marked not applicable for this case."
+    },
+    "correction-edit-description:2": {
+      "stale": "n/a",
+      "stale_reason": "This check is marked not applicable for this conversation.",
+      "status": "n/a",
+      "status_reason": "This check is marked not applicable for this conversation.",
+      "order": "n/a",
+      "order_reason": "This check is marked not applicable for this conversation.",
+      "ambiguity": "n/a",
+      "ambiguity_reason": "This check is marked not applicable for this conversation."
+    },
+    "correction-edit-description:3": {
+      "stale": "n/a",
+      "stale_reason": "Not applicable for this check.",
+      "status": "correct",
+      "status_reason": "The memory states the edited fact \"Felix Navarro is a physical therapist at Saint Corin hospital and an old friend from college\" with no live mention of the earlier \"pediatric nurse\" description.",
+      "order": "n/a",
+      "order_reason": "Not applicable for this check.",
+      "ambiguity": "n/a",
+      "ambiguity_reason": "Not applicable for this check."
+    },
+    "deletion-remove-project:0": {
+      "stale": "clean",
+      "stale_reason": "Memory returned \"(nothing from this conversation)\", so the removed \"Wren Box\" does not appear as live memory.",
+      "status": "n/a",
+      "status_reason": "Status check is marked not applicable.",
+      "order": "n/a",
+      "order_reason": "Order check is marked not applicable.",
+      "ambiguity": "n/a",
+      "ambiguity_reason": "Ambiguity check is marked not applicable."
+    },
+    "deletion-remove-project:1": {
+      "stale": "clean",
+      "stale_reason": "The memory mentions only \"my nephew\" and \"Otto plays_on soccer team\", and \"Wren Box\" does not appear anywhere.",
+      "status": "n/a",
+      "status_reason": "Not applicable for this item.",
+      "order": "n/a",
+      "order_reason": "Not applicable for this item.",
+      "ambiguity": "n/a",
+      "ambiguity_reason": "Not applicable for this item."
+    },
+    "deletion-remove-project:2": {
+      "stale": "clean",
+      "stale_reason": "The retrieved memory says \"(nothing from this conversation)\", so the removed \"Wren Box\" project does not appear as live memory.",
+      "status": "n/a",
+      "status_reason": "Status is marked not applicable for this question.",
+      "order": "n/a",
+      "order_reason": "Order is marked not applicable for this question.",
+      "ambiguity": "n/a",
+      "ambiguity_reason": "Ambiguity is marked not applicable for this question."
+    },
+    "deletion-remove-project:3": {
+      "stale": "n/a",
+      "stale_reason": "This check is marked not applicable for this case.",
+      "status": "n/a",
+      "status_reason": "This check is marked not applicable for this case.",
+      "order": "n/a",
+      "order_reason": "This check is marked not applicable for this case.",
+      "ambiguity": "n/a",
+      "ambiguity_reason": "This check is marked not applicable for this case."
+    },
+    "changing-similar-names:0": {
+      "stale": "n/a",
+      "stale_reason": "Check marked not applicable.",
+      "status": "n/a",
+      "status_reason": "Check marked not applicable.",
+      "order": "n/a",
+      "order_reason": "Check marked not applicable.",
+      "ambiguity": "n/a",
+      "ambiguity_reason": "Check marked not applicable."
+    },
+    "changing-similar-names:1": {
+      "stale": "n/a",
+      "stale_reason": "Not applicable for this item.",
+      "status": "n/a",
+      "status_reason": "Not applicable for this item.",
+      "order": "n/a",
+      "order_reason": "Not applicable for this item.",
+      "ambiguity": "n/a",
+      "ambiguity_reason": "Not applicable for this item."
+    },
+    "changing-similar-names:2": {
+      "stale": "n/a",
+      "stale_reason": "This check is marked not applicable, since nothing in the script was corrected or removed.",
+      "status": "n/a",
+      "status_reason": "This check is marked not applicable, since the question asks for a plain fact rather than a decision state.",
+      "order": "n/a",
+      "order_reason": "This check is marked not applicable, since there is no earlier-versus-later change to track.",
+      "ambiguity": "n/a",
+      "ambiguity_reason": "This check is marked not applicable, since \"Priya Shah\" and \"Priyanka Rao\" do not share a first name."
+    },
+    "changing-similar-names:3": {
+      "stale": "n/a",
+      "stale_reason": "Not applicable for this case.",
+      "status": "n/a",
+      "status_reason": "Not applicable for this case.",
+      "order": "n/a",
+      "order_reason": "Not applicable for this case.",
+      "ambiguity": "n/a",
+      "ambiguity_reason": "Not applicable for this case."
+    },
+    "continuity-two-alexes:0": {
+      "stale": "n/a",
+      "stale_reason": "This check is marked not applicable for this conversation.",
+      "status": "n/a",
+      "status_reason": "This check is marked not applicable for this conversation.",
+      "order": "n/a",
+      "order_reason": "This check is marked not applicable for this conversation.",
+      "ambiguity": "n/a",
+      "ambiguity_reason": "This check is marked not applicable for this conversation."
+    },
+    "continuity-two-alexes:1": {
+      "stale": "n/a",
+      "stale_reason": "Not applicable for this item.",
+      "status": "n/a",
+      "status_reason": "Not applicable for this item.",
+      "order": "n/a",
+      "order_reason": "Not applicable for this item.",
+      "ambiguity": "n/a",
+      "ambiguity_reason": "Not applicable for this item."
+    },
+    "continuity-two-alexes:2": {
+      "stale": "n/a",
+      "stale_reason": "Not applicable for this conversation.",
+      "status": "n/a",
+      "status_reason": "Not applicable for this conversation.",
+      "order": "n/a",
+      "order_reason": "Not applicable for this conversation.",
+      "ambiguity": "acknowledged",
+      "ambiguity_reason": "The memory keeps two separate entries, \"Alex Brandt\" with the ladder and \"Alex Brandt received cookies\" and \"Alex Moreau visiting_from Quebec\", so the neighbor and the cousin stay distinct with the ladder return correctly tied to Brandt."
+    },
+    "continuity-two-alexes:3": {
+      "stale": "n/a",
+      "stale_reason": "This check is marked not applicable for this conversation.",
+      "status": "n/a",
+      "status_reason": "This check is marked not applicable for this conversation.",
+      "order": "n/a",
+      "order_reason": "This check is marked not applicable for this conversation.",
+      "ambiguity": "n/a",
+      "ambiguity_reason": "This check is marked not applicable for this conversation."
+    },
+    "correction-job-title-next-session:0": {
+      "stale": "stale",
+      "stale_reason": "Entry #3 still presents \"The user's new role at Larkfield Bank\" as \"senior analyst\", even though the user corrected this to staff analyst.",
+      "status": "wrong",
+      "status_reason": "Entry #1 states \"staff analyst at Larkfield Bank\", but entries #2 and #3 still assert \"promoted to senior analyst\" as live facts that contradict it.",
+      "order": "n/a",
+      "order_reason": "Not applicable for this check.",
+      "ambiguity": "n/a",
+      "ambiguity_reason": "Not applicable for this check."
+    },
+    "correction-job-title-next-session:1": {
+      "stale": "n/a",
+      "stale_reason": "This check is marked not applicable for this item.",
+      "status": "n/a",
+      "status_reason": "This check is marked not applicable for this item.",
+      "order": "n/a",
+      "order_reason": "This check is marked not applicable for this item.",
+      "ambiguity": "n/a",
+      "ambiguity_reason": "This check is marked not applicable for this item."
+    },
+    "correction-job-title-next-session:2": {
+      "stale": "stale",
+      "stale_reason": "The memory still states \"The user was promoted to senior analyst at Larkfield Bank\" as live fact, even though the user corrected the title to staff analyst.",
+      "status": "n/a",
+      "status_reason": "Status check is not applicable for this item.",
+      "order": "n/a",
+      "order_reason": "Order check is not applicable for this item.",
+      "ambiguity": "n/a",
+      "ambiguity_reason": "Ambiguity check is not applicable for this item."
+    },
+    "correction-job-title-next-session:3": {
+      "stale": "n/a",
+      "stale_reason": "Not applicable for this item.",
+      "status": "wrong",
+      "status_reason": "Although \"staff analyst at Larkfield Bank\" is present, the memory still states \"The user was promoted to senior analyst at Larkfield Bank\" and calls senior analyst \"The user's new role,\" contradicting the correction.",
+      "order": "n/a",
+      "order_reason": "Not applicable for this item.",
+      "ambiguity": "n/a",
+      "ambiguity_reason": "Not applicable for this item."
+    },
+    "changing-tentative-to-decided:0": {
+      "stale": "n/a",
+      "stale_reason": "Not applicable for this item.",
+      "status": "wrong",
+      "status_reason": "The memory states \"The user might leave Northwind\" as live and never records the final decision to stay, so the current decided state is missing and contradicted.",
+      "order": "lost",
+      "order_reason": "Only the earlier state \"might leave Northwind\" is kept, and the later decision to stay at Northwind does not appear, so the change cannot be traced.",
+      "ambiguity": "n/a",
+      "ambiguity_reason": "Not applicable for this item."
+    },
+    "changing-tentative-to-decided:1": {
+      "stale": "n/a",
+      "stale_reason": "Not applicable for this check.",
+      "status": "wrong",
+      "status_reason": "The memory says only that \"The user's commute is causing them distress\" and never states the final decision to stay at Northwind.",
+      "order": "n/a",
+      "order_reason": "Not applicable for this check.",
+      "ambiguity": "n/a",
+      "ambiguity_reason": "Not applicable for this check."
+    },
+    "changing-tentative-to-decided:2": {
+      "stale": "n/a",
+      "stale_reason": "This check is marked not applicable for this case.",
+      "status": "n/a",
+      "status_reason": "This check is marked not applicable for this case.",
+      "order": "n/a",
+      "order_reason": "This check is marked not applicable for this case.",
+      "ambiguity": "n/a",
+      "ambiguity_reason": "This check is marked not applicable for this case."
+    },
+    "changing-tentative-to-decided:3": {
+      "stale": "n/a",
+      "stale_reason": "This check is marked not applicable for this case.",
+      "status": "n/a",
+      "status_reason": "This check is marked not applicable for this case.",
+      "order": "n/a",
+      "order_reason": "This check is marked not applicable for this case.",
+      "ambiguity": "n/a",
+      "ambiguity_reason": "This check is marked not applicable for this case."
+    },
+    "continuity-two-sams:0": {
+      "stale": "n/a",
+      "stale_reason": "Not applicable for this question.",
+      "status": "n/a",
+      "status_reason": "Not applicable for this question.",
+      "order": "n/a",
+      "order_reason": "Not applicable for this question.",
+      "ambiguity": "missed",
+      "ambiguity_reason": "The memory returns only \"Sam Lee at Granite Hall\" for a question about the doc and never mentions Sam Ortiz or that he \"liked the caching section\", so the two Sams are not kept distinct."
+    },
+    "continuity-two-sams:1": {
+      "stale": "n/a",
+      "stale_reason": "Not applicable: no correction, reversal or removal is involved, and the memory returned \"(nothing from this conversation)\".",
+      "status": "n/a",
+      "status_reason": "Not applicable: the memory returned \"(nothing from this conversation)\", so there is no current state to judge for this question.",
+      "order": "n/a",
+      "order_reason": "Not applicable: the memory returned \"(nothing from this conversation)\", so there is no earlier or later state to put in order.",
+      "ambiguity": "n/a",
+      "ambiguity_reason": "Not applicable: the memory returned \"(nothing from this conversation)\", so neither \"Sam Ortiz\" nor \"Sam Lee\" appears and nothing could be merged."
+    },
+    "continuity-two-sams:2": {
+      "stale": "n/a",
+      "stale_reason": "Not applicable to this case.",
+      "status": "n/a",
+      "status_reason": "Not applicable to this case.",
+      "order": "n/a",
+      "order_reason": "Not applicable to this case.",
+      "ambiguity": "missed",
+      "ambiguity_reason": "The memory holds only \"Sam Lee\" with \"bouldering with Sam Lee\" and never mentions Sam Ortiz \"from work\", so the two Sams are not kept as distinct people and the coworker cannot be told apart."
+    },
+    "continuity-two-sams:3": {
+      "stale": "n/a",
+      "stale_reason": "This check is marked not applicable because the script contains no correction, reversal, or removal request.",
+      "status": "n/a",
+      "status_reason": "This check is marked not applicable because the question has no changing state to track.",
+      "order": "n/a",
+      "order_reason": "This check is marked not applicable because there is no earlier and later state to put in order.",
+      "ambiguity": "n/a",
+      "ambiguity_reason": "This check is marked not applicable, though the memory does keep \"Sam Lee\" at \"Granite Hall\" without mixing in Sam Ortiz."
+    }
+  },
+  "cache": {
+    "e562a66f3d96ef688e0ef740d7eccf66779dd5cb93374a7d1a733b4f54ea7e86": {
+      "verdict": {
+        "stale": "clean",
+        "reason": "The brief mentions Dayton only as the corrected error (\"Imogen moved to Dalton, not Dayton\") and presents Dalton as the current fact."
+      },
+      "model": "claude-opus-5-5"
+    },
+    "11fe18f6b6ed9931d931dc337fb167b4decb1bdb4ff5435556cff08a0dd84c6f": {
+      "verdict": {
+        "stale": "stale",
+        "reason": "The brief still says \"Felix Navarro is a pediatric nurse at Saint Corin hospital\", but the user edited this to \"physical therapist\" and an old college friend."
+      },
+      "model": "claude-opus-5-5"
+    },
+    "0c10a4beae2e16d8ea16b812730d953ff7b3bf3e5242cba7a86780ed672b1566": {
+      "verdict": {
+        "stale": "stale",
+        "stale_reason": "Memory still presents \"Imogen moved to Dayton last month\" as a live fact, with no note that it was corrected to Dalton.",
+        "status": "wrong",
+        "status_reason": "Although \"Imogen moved_to Dalton\" is stated, the live contradicting line \"Imogen moved to Dayton last month\" remains.",
+        "order": "n/a",
+        "order_reason": "Order check is marked not applicable.",
+        "ambiguity": "n/a",
+        "ambiguity_reason": "Ambiguity check is marked not applicable."
+      },
+      "model": "claude-opus-5-5"
+    },
+    "f087c88ad24a577ba90ebddab7d708c250da7405a3834b89652acb79473e9388": {
+      "verdict": {
+        "stale": "clean",
+        "stale_reason": "The memory never mentions Dayton and only says Imogen \"moved to Dalton last month.\"",
+        "status": "correct",
+        "status_reason": "The corrected fact \"Imogen moved_to Dalton\" is stated, and nothing in the memory contradicts it.",
+        "order": "n/a",
+        "order_reason": "Order is marked not applicable for this question.",
+        "ambiguity": "n/a",
+        "ambiguity_reason": "Ambiguity is marked not applicable, since only one Imogen appears."
+      },
+      "model": "claude-opus-5-5"
+    },
+    "85d5d27aa49199d6732b1b70b360467b16e14b2b6b4cfd6b8eaaad292b4356e9": {
+      "verdict": {
+        "stale": "n/a",
+        "stale_reason": "Not applicable for this case.",
+        "status": "correct",
+        "status_reason": "The memory states the final decision \"decided to stay\" and the earlier idea is framed only as past consideration (\"considered leaving\"), not as a live contradicting state.",
+        "order": "kept",
+        "order_reason": "The memory keeps both states in sequence: \"considered leaving Northwind over the commute, then decided to stay.\"",
+        "ambiguity": "n/a",
+        "ambiguity_reason": "Not applicable for this case."
+      },
+      "model": "claude-opus-5-5"
+    },
+    "1a0eb15aafd568f5902d680b815438087da1e3cd529df399226650d1bd68818a": {
+      "verdict": {
+        "stale": "n/a",
+        "stale_reason": "The stale check is marked not applicable for this question.",
+        "status": "correct",
+        "status_reason": "The memory states the current decision, \"decided to stay,\" with no live statement that the user might leave.",
+        "order": "lost",
+        "order_reason": "The memory keeps only \"decided to stay\" and drops the earlier \"I might leave Northwind,\" so the change from leave to stay cannot be told.",
+        "ambiguity": "n/a",
+        "ambiguity_reason": "The ambiguity check is marked not applicable for this question."
+      },
+      "model": "claude-opus-5-5"
+    },
+    "0ba3419dc2542b645f634e3e8681bcfa22926ea67c457c16dae763992fe9bb3b": {
+      "verdict": {
+        "stale": "n/a",
+        "stale_reason": "Not applicable for this item.",
+        "status": "n/a",
+        "status_reason": "Not applicable for this item.",
+        "order": "n/a",
+        "order_reason": "Not applicable for this item.",
+        "ambiguity": "acknowledged",
+        "ambiguity_reason": "Memory keeps \"Sam Ortiz\" as the coworker who \"liked the caching section\" separate from \"Sam Lee\", the \"Climbing partner at Granite Hall\"."
+      },
+      "model": "claude-opus-5-5"
+    },
+    "97a939b9bb357573a988a2cd0a0bb2d196c8a93d07f692ad8103bedd25da1aa7": {
+      "verdict": {
+        "stale": "n/a",
+        "stale_reason": "Not applicable for this case.",
+        "status": "n/a",
+        "status_reason": "Not applicable for this case.",
+        "order": "n/a",
+        "order_reason": "Not applicable for this case.",
+        "ambiguity": "missed",
+        "ambiguity_reason": "The memory merges Sam Ortiz and Sam Lee into a single \"Sam\" who \"reviewed the design doc and goes bouldering at Granite Hall\", so the two people are not kept distinct."
+      },
+      "model": "claude-opus-5-5"
+    },
+    "f4aa5bc566efafd7212bc63b2ed1ac0bc63c0b794b077057fec870304f2fa7b9": {
+      "verdict": {
+        "stale": "clean",
+        "reason": "The script contains no corrections, reversals or removals, and the brief's \"Maren opened a pottery studio called Clayhouse in Bellport\" and \"The kiln room was packed\" both match the script."
+      },
+      "model": "claude-opus-5-5"
+    },
+    "49443f9f852dd95bf0a792c3335294eb0e34e67e140ab2eb251224e8ca2155bb": {
+      "verdict": {
+        "stale": "clean",
+        "reason": "The brief only mentions Dayton as the corrected error (\"moved to Dalton, not Dayton\"), and it states the current fact as \"Imogen moved to Dalton last month.\""
+      },
+      "model": "claude-opus-5-5"
+    },
+    "beea2c01730327d84a75fcefa10065149d21bbc6c94293c24a46b7d99a0024eb": {
+      "verdict": {
+        "stale": "stale",
+        "reason": "Although the name is gone, the brief still keeps the forgotten Dana Whitfield's details as live memory in \"had lunch with someone who is thinking about moving to Oslo\" and asks \"How are things with Oslo?\"."
+      },
+      "model": "claude-opus-5-5"
+    },
+    "0457d6f5a355a722fb796863ac96cdbd48b7b797dbb8d09459a747de36cd0af6": {
+      "verdict": {
+        "stale": "clean",
+        "reason": "The brief mentions only the current plan, \"anniversary trip to Kyoto,\" and never presents the cancelled Lisbon booking as live; the June date was not contradicted by the user."
+      },
+      "model": "claude-opus-5-5"
+    },
+    "1a48681b2b0a544b4109bddcfee03fa01b0ab66f9858e37371f3b91016477352": {
+      "verdict": {
+        "stale": "clean",
+        "reason": "The script never corrects or reverses anything, and the brief's \"Tobias advised two days of rest\" and \"Ridgeline half marathon with running coach Tobias Wren\" match the current facts."
+      },
+      "model": "claude-opus-5-5"
+    },
+    "5b3d329a5eadef59224c213a0d0c9a652a5c2a7d6b471617b463c567b9b088dd": {
+      "verdict": {
+        "stale": "stale",
+        "reason": "The brief still says \"Felix Navarro is a pediatric nurse at Saint Corin hospital\", but the user edited this to \"physical therapist\"."
+      },
+      "model": "claude-opus-5-5"
+    },
+    "802bc16abf2f81734e9da44ef02dffa6bdc7385bc45a88ae68ce454a77dc2002": {
+      "verdict": {
+        "stale": "stale",
+        "reason": "The brief still says \"Building a birdhouse project called Wren Box for nephew Otto\" as live memory, even though the user removed \"Wren Box\" from Lumen's memory in Session 1."
+      },
+      "model": "claude-opus-5-5"
+    },
+    "027ca20650c24162422725bcf866f1986b9b829baf33bc9e3411eb2734411f2d": {
+      "verdict": {
+        "stale": "clean",
+        "reason": "The script contains no corrections, reversals or removals, and the brief's \"Priya Shah is leading the Atlas migration\" and \"Priyanka Rao from finance approved the Atlas budget\" both match the script, so nothing stale is presented as current."
+      },
+      "model": "claude-opus-5-5"
+    },
+    "eacadf70669e25713e208f67cb2c66460d22c1091065e3efc511f4bae52606a7": {
+      "verdict": {
+        "stale": "clean",
+        "reason": "The brief's \"Alex Brandt lent an extension ladder for gutters\" is a past event the script never corrected (the ladder's later return doesn't make it false), and \"Alex Moreau is visiting from Quebec next week\" was never reversed."
+      },
+      "model": "claude-opus-5-5"
+    },
+    "0c7ab81e675c9e1b8f5ba5e9c5fece1adc4ab37f9579b63335c0bad96d0acac9": {
+      "verdict": {
+        "stale": "clean",
+        "reason": "The brief only says \"promoted to staff analyst at Larkfield Bank\" and never presents the corrected \"senior analyst\" title as current."
+      },
+      "model": "claude-opus-5-5"
+    },
+    "7417ec88f5045b1b2444d20b5f4f6b9ce18b609c6940b6b6cd9eb1c1669914d0": {
+      "verdict": {
+        "stale": "clean",
+        "reason": "The brief states the current decision, \"Decided to stay at Northwind,\" and never presents the earlier \"might leave Northwind\" as live; the difficult commute was never corrected."
+      },
+      "model": "claude-opus-5-5"
+    },
+    "856be1ba32846b160afcce88596f45fcd87b381cfcb0fdf19e248efd9719301a": {
+      "verdict": {
+        "stale": "clean",
+        "reason": "The script never corrects, reverses or removes anything, and the brief accurately keeps \"Sam Ortiz reviewed design doc\" and \"Bouldering with Sam Lee at Granite Hall\" as separate, still-current facts."
+      },
+      "model": "claude-opus-5-5"
+    },
+    "c0843eef174f4ca5d93d9a8f52a545069e05c883d2390a1dd9b6684dbf83e130": {
+      "verdict": {
+        "stale": "n/a",
+        "stale_reason": "Not applicable: the script contains no correction, reversal, or removal request to check against.",
+        "status": "n/a",
+        "status_reason": "Not applicable: this topic has no earlier or undecided state that could compete with a current one.",
+        "order": "n/a",
+        "order_reason": "Not applicable: there is no change over time for the memory to sequence.",
+        "ambiguity": "n/a",
+        "ambiguity_reason": "Not applicable: only one Maren appears, so there are no same-name people to keep apart."
+      },
+      "model": "claude-opus-5-5"
+    },
+    "d4bd5db69537932fe3586ca32ba4da60ed89212dffcee14707c46c846773e1da": {
+      "verdict": {
+        "stale": "n/a",
+        "stale_reason": "Not applicable for this check.",
+        "status": "n/a",
+        "status_reason": "Not applicable for this check.",
+        "order": "n/a",
+        "order_reason": "Not applicable for this check.",
+        "ambiguity": "n/a",
+        "ambiguity_reason": "Not applicable for this check."
+      },
+      "model": "claude-opus-5-5"
+    },
+    "13249e5b3af7747a722144ee3cea1b8be210768f7d21c56c9ff679673c943ea0": {
+      "verdict": {
+        "stale": "n/a",
+        "stale_reason": "Marked not applicable, since the script never corrects or removes anything and Maren's studio stays \"in Bellport\" throughout.",
+        "status": "n/a",
+        "status_reason": "Marked not applicable, since there is no change of state to judge and the location is simply \"Clayhouse situated_at Bellport\".",
+        "order": "n/a",
+        "order_reason": "Marked not applicable, since there is no earlier and later state, only the single fact \"Clayhouse in Bellport\".",
+        "ambiguity": "n/a",
+        "ambiguity_reason": "Marked not applicable, since only one person named \"Maren\" appears in the conversation."
+      },
+      "model": "claude-opus-5-5"
+    },
+    "e9c36d702c8335787a1d53c17f6acfe2b8a46c775e408dfe555869e77a04537a": {
+      "verdict": {
+        "stale": "n/a",
+        "stale_reason": "Not applicable to this case: the script contains no later correction, reversal, or removal request.",
+        "status": "n/a",
+        "status_reason": "Not applicable to this case: no change of state is scripted for Clayhouse or Maren.",
+        "order": "n/a",
+        "order_reason": "Not applicable to this case: there is no earlier and later state to sequence.",
+        "ambiguity": "n/a",
+        "ambiguity_reason": "Not applicable to this case: only one person named Maren appears, so there is no shared first name to keep apart."
+      },
+      "model": "claude-opus-5-5"
+    },
+    "72450e354278ff26b0abeb906c0a32ce641feeef407e5c7803b42df0e79e5f84": {
+      "verdict": {
+        "stale": "stale",
+        "stale_reason": "Memory still presents \"Imogen moved_to Dayton\" and \"Imogen moved to Dayton last month\" as live facts, even though the user corrected it to \"Dalton, not Dayton.\"",
+        "status": "wrong",
+        "status_reason": "The current fact \"Imogen moved_to Dalton\" is present, but the live contradicting statement \"Imogen moved_to Dayton\" sits right beside it.",
+        "order": "n/a",
+        "order_reason": "Order check is marked not applicable.",
+        "ambiguity": "n/a",
+        "ambiguity_reason": "Ambiguity check is marked not applicable."
+      },
+      "model": "claude-opus-5-5"
+    },
+    "fc21da5c9215392f0ab1a67c79d54bbde5cfb23838e26d8c1769a217219c82ec": {
+      "verdict": {
+        "stale": "n/a",
+        "stale_reason": "This check is marked not applicable for this item.",
+        "status": "n/a",
+        "status_reason": "This check is marked not applicable for this item.",
+        "order": "n/a",
+        "order_reason": "This check is marked not applicable for this item.",
+        "ambiguity": "n/a",
+        "ambiguity_reason": "This check is marked not applicable for this item."
+      },
+      "model": "claude-opus-5-5"
+    },
+    "15980a6cc50b2eef5d2886e80a598f6d7b9f30412eec22501d4a0766656ddd17": {
+      "verdict": {
+        "stale": "stale",
+        "stale_reason": "The memory still states \"Imogen moved to Dayton last month\" and \"Imogen moved_to Dayton\" as live facts, even though the user corrected this to \"Dalton, not Dayton.\"",
+        "status": "n/a",
+        "status_reason": "Status check is marked not applicable.",
+        "order": "n/a",
+        "order_reason": "Order check is marked not applicable.",
+        "ambiguity": "n/a",
+        "ambiguity_reason": "Ambiguity check is marked not applicable."
+      },
+      "model": "claude-opus-5-5"
+    },
+    "e1f05974fbdf0b1341e904e4e4a0d62a5585d0f6d7a8e9eb1747a3f0000d026a": {
+      "verdict": {
+        "stale": "stale",
+        "stale_reason": "Memory still presents \"Imogen moved_to Dayton\" as a live fact even though the user corrected it to \"Dalton, not Dayton.\"",
+        "status": "n/a",
+        "status_reason": "Status check is marked not applicable.",
+        "order": "n/a",
+        "order_reason": "Order check is marked not applicable.",
+        "ambiguity": "n/a",
+        "ambiguity_reason": "Ambiguity check is marked not applicable."
+      },
+      "model": "claude-opus-5-5"
+    },
+    "b4f07fa4f445f13d1c3efa710f49913c86ae6a1e6728f7bb337b534d81147d8e": {
+      "verdict": {
+        "stale": "clean",
+        "stale_reason": "The memory returned \"(nothing from this conversation)\", so the forgotten \"Dana Whitfield\" does not appear anywhere.",
+        "status": "n/a",
+        "status_reason": "Status is marked not applicable for this item.",
+        "order": "n/a",
+        "order_reason": "Order is marked not applicable for this item.",
+        "ambiguity": "n/a",
+        "ambiguity_reason": "Ambiguity is marked not applicable for this item."
+      },
+      "model": "claude-opus-5-5"
+    },
+    "f13508f5b5eab9c164df98906cb05e37b4044e143bd4267092fe086abb75adf9": {
+      "verdict": {
+        "stale": "clean",
+        "stale_reason": "The memory returns only \"Oslo\" and never names the forgotten \"Dana Whitfield\" or \"Whitfield\".",
+        "status": "n/a",
+        "status_reason": "Status is not applicable for this question.",
+        "order": "n/a",
+        "order_reason": "Order is not applicable for this question.",
+        "ambiguity": "n/a",
+        "ambiguity_reason": "Ambiguity is not applicable for this question."
+      },
+      "model": "claude-opus-5-5"
+    },
+    "77ce2205bfd3573ffef3cb701309f8ec99b1f9ee0ddd2d27e5730532a1dccde6": {
+      "verdict": {
+        "stale": "n/a",
+        "stale_reason": "This check is marked not applicable.",
+        "status": "n/a",
+        "status_reason": "This check is marked not applicable.",
+        "order": "n/a",
+        "order_reason": "This check is marked not applicable.",
+        "ambiguity": "n/a",
+        "ambiguity_reason": "This check is marked not applicable."
+      },
+      "model": "claude-opus-5-5"
+    },
+    "fb0118043fd4b5829fbc98022e39065c8d3c43808af677fb012729a246cc20bb": {
+      "verdict": {
+        "stale": "clean",
+        "stale_reason": "The memory mentions only \"A report worked on with Ruth Okafor\" and contains no trace of the forgotten \"Dana Whitfield\".",
+        "status": "n/a",
+        "status_reason": "Not applicable per the checks.",
+        "order": "n/a",
+        "order_reason": "Not applicable per the checks.",
+        "ambiguity": "n/a",
+        "ambiguity_reason": "Not applicable per the checks."
+      },
+      "model": "claude-opus-5-5"
+    },
+    "810d6f67eef43b04d0c5a61f30d83018455204929d995d6eb07f0cf696260ff9": {
+      "verdict": {
+        "stale": "n/a",
+        "stale_reason": "Not applicable for this item.",
+        "status": "n/a",
+        "status_reason": "Not applicable for this item.",
+        "order": "lost",
+        "order_reason": "The memory lists \"anniversary trip to Kyoto\" before \"anniversary trip to Lisbon\" and never says Lisbon was cancelled, so the Lisbon-to-Kyoto change cannot be recovered.",
+        "ambiguity": "n/a",
+        "ambiguity_reason": "Not applicable for this item."
+      },
+      "model": "claude-opus-5-5"
+    },
+    "794f7056d9eb0feadd1817630e26992290b620231e9e5e938c17b0262cb4725e": {
+      "verdict": {
+        "stale": "n/a",
+        "stale_reason": "Not applicable for this question.",
+        "status": "n/a",
+        "status_reason": "Not applicable for this question.",
+        "order": "lost",
+        "order_reason": "The memory lists \"anniversary trip to Kyoto\" and \"anniversary trip to Lisbon\" side by side with no sequence or cancellation marker, Kyoto even appearing first, so it cannot show that Lisbon came first and was replaced by Kyoto.",
+        "ambiguity": "n/a",
+        "ambiguity_reason": "Not applicable for this question."
+      },
+      "model": "claude-opus-5-5"
+    },
+    "0bba4390153f88797675856836cb66c25f4fc92d749be3abfc1df18abf5f53fd": {
+      "verdict": {
+        "stale": "n/a",
+        "stale_reason": "This check is marked not applicable for this case.",
+        "status": "n/a",
+        "status_reason": "This check is marked not applicable for this case.",
+        "order": "n/a",
+        "order_reason": "This check is marked not applicable for this case.",
+        "ambiguity": "n/a",
+        "ambiguity_reason": "This check is marked not applicable for this case."
+      },
+      "model": "claude-opus-5-5"
+    },
+    "30d6f0f059543ae67713e10020f7a9a7881e11d43509cfc6e9f73e5bbf259851": {
+      "verdict": {
+        "stale": "n/a",
+        "stale_reason": "This check is marked not applicable, and the memory returned \"(nothing from this conversation)\" anyway.",
+        "status": "n/a",
+        "status_reason": "This check is marked not applicable for this item.",
+        "order": "n/a",
+        "order_reason": "This check is marked not applicable for this item.",
+        "ambiguity": "n/a",
+        "ambiguity_reason": "This check is marked not applicable, and the script has no two people sharing a first name."
+      },
+      "model": "claude-opus-5-5"
+    },
+    "88f12a63440af9afb48a1c9301c76345605568ad4d1fbb526f915b78fe891c8c": {
+      "verdict": {
+        "stale": "n/a",
+        "stale_reason": "This check is marked not applicable because nothing in the script was corrected, reversed or removed.",
+        "status": "n/a",
+        "status_reason": "This check is marked not applicable because the script has no decision that changes over time.",
+        "order": "n/a",
+        "order_reason": "This check is marked not applicable because there is no earlier and later state to put in sequence.",
+        "ambiguity": "n/a",
+        "ambiguity_reason": "This check is marked not applicable because only one person, \"Tobias Wren,\" appears in the script."
+      },
+      "model": "claude-opus-5-5"
+    },
+    "26e9b02bb28e3611725f17c628897abc6aec840a48bc4d7146ed4be48a6292b0": {
+      "verdict": {
+        "stale": "n/a",
+        "stale_reason": "Not applicable: the user never corrected, reversed, or removed anything about Tobias or their training.",
+        "status": "n/a",
+        "status_reason": "Not applicable: there is no changed or tentative state to evaluate.",
+        "order": "n/a",
+        "order_reason": "Not applicable: the history has no earlier-to-later change to sequence.",
+        "ambiguity": "n/a",
+        "ambiguity_reason": "Not applicable: only one Tobias (\"Tobias Wren\") appears, so there is no shared-name confusion to check."
+      },
+      "model": "claude-opus-5-5"
+    },
+    "e036644e634167ce98ffafd19fe5a9e4beb0d295d37c94b12f6e0865b5445455": {
+      "verdict": {
+        "stale": "n/a",
+        "stale_reason": "Not applicable: the script contains no corrections, reversals or removals to check against.",
+        "status": "n/a",
+        "status_reason": "Not applicable: this check was marked not applicable for this item.",
+        "order": "n/a",
+        "order_reason": "Not applicable: this check was marked not applicable for this item.",
+        "ambiguity": "n/a",
+        "ambiguity_reason": "Not applicable: only one Tobias appears, so there are no two same-named people to keep apart."
+      },
+      "model": "claude-opus-5-5"
+    },
+    "cb265ceb36989b3a772d4266a08f52186dd2c39ad6a8320c184fa5fa2ed9ff9c": {
+      "verdict": {
+        "stale": "n/a",
+        "stale_reason": "Not applicable for this question, and the memory returned \"(nothing from this conversation)\" anyway.",
+        "status": "n/a",
+        "status_reason": "Not applicable, since the user only said they have \"been training for the Ridgeline half marathon\" and never stated a registration decision to track.",
+        "order": "n/a",
+        "order_reason": "Not applicable, since there is no earlier and later state to put in order.",
+        "ambiguity": "n/a",
+        "ambiguity_reason": "Not applicable, since only one person, \"Tobias Wren\", is mentioned."
+      },
+      "model": "claude-opus-5-5"
+    },
+    "3a9539d5dc97e75cebfe6c5807c5dcd9e8f61b0e803f97d7754a71a4df4afefe": {
+      "verdict": {
+        "stale": "clean",
+        "stale_reason": "The memory says only \"Felix Navarro is a physical therapist at Saint Corin hospital\" and never mentions \"pediatric nurse\".",
+        "status": "correct",
+        "status_reason": "The corrected fact \"physical therapist at Saint Corin hospital\" is stated, and no live statement contradicts it.",
+        "order": "n/a",
+        "order_reason": "Order check is not applicable.",
+        "ambiguity": "n/a",
+        "ambiguity_reason": "Ambiguity check is not applicable."
+      },
+      "model": "claude-opus-5-5"
+    },
+    "d958b2022d71465e582e01cee09e93dfdf400df839e129df760716ec6bcb9fb0": {
+      "verdict": {
+        "stale": "n/a",
+        "stale_reason": "This check is marked not applicable for this case.",
+        "status": "n/a",
+        "status_reason": "This check is marked not applicable for this case.",
+        "order": "n/a",
+        "order_reason": "This check is marked not applicable for this case.",
+        "ambiguity": "n/a",
+        "ambiguity_reason": "This check is marked not applicable for this case."
+      },
+      "model": "claude-opus-5-5"
+    },
+    "f1ce29c7fa538560dbcfd94a406f165c8007fcad56b4dad01bbe78fdd8d0a920": {
+      "verdict": {
+        "stale": "n/a",
+        "stale_reason": "This check is marked not applicable for this conversation.",
+        "status": "n/a",
+        "status_reason": "This check is marked not applicable for this conversation.",
+        "order": "n/a",
+        "order_reason": "This check is marked not applicable for this conversation.",
+        "ambiguity": "n/a",
+        "ambiguity_reason": "This check is marked not applicable for this conversation."
+      },
+      "model": "claude-opus-5-5"
+    },
+    "f5229339afe955831386d638196e2a61ad7f3ab18c1b97b1bc53b0cfa2d0aa91": {
+      "verdict": {
+        "stale": "n/a",
+        "stale_reason": "Not applicable for this check.",
+        "status": "correct",
+        "status_reason": "The memory states the edited fact \"Felix Navarro is a physical therapist at Saint Corin hospital and an old friend from college\" with no live mention of the earlier \"pediatric nurse\" description.",
+        "order": "n/a",
+        "order_reason": "Not applicable for this check.",
+        "ambiguity": "n/a",
+        "ambiguity_reason": "Not applicable for this check."
+      },
+      "model": "claude-opus-5-5"
+    },
+    "9473edd12a3f0e29f515cbf4f9d4c2b849923955e5a8b90d50f0b9368e10856d": {
+      "verdict": {
+        "stale": "clean",
+        "stale_reason": "Memory returned \"(nothing from this conversation)\", so the removed \"Wren Box\" does not appear as live memory.",
+        "status": "n/a",
+        "status_reason": "Status check is marked not applicable.",
+        "order": "n/a",
+        "order_reason": "Order check is marked not applicable.",
+        "ambiguity": "n/a",
+        "ambiguity_reason": "Ambiguity check is marked not applicable."
+      },
+      "model": "claude-opus-5-5"
+    },
+    "5262ef046c6afa74cedc643354a4137b8c49b5597b06a45d394832ab223ad4a2": {
+      "verdict": {
+        "stale": "clean",
+        "stale_reason": "The memory mentions only \"my nephew\" and \"Otto plays_on soccer team\", and \"Wren Box\" does not appear anywhere.",
+        "status": "n/a",
+        "status_reason": "Not applicable for this item.",
+        "order": "n/a",
+        "order_reason": "Not applicable for this item.",
+        "ambiguity": "n/a",
+        "ambiguity_reason": "Not applicable for this item."
+      },
+      "model": "claude-opus-5-5"
+    },
+    "ab70204fd1be528f26c86d66a3b7a2a745e6cb949403cc8c70524c8e1a0f9d05": {
+      "verdict": {
+        "stale": "clean",
+        "stale_reason": "The retrieved memory says \"(nothing from this conversation)\", so the removed \"Wren Box\" project does not appear as live memory.",
+        "status": "n/a",
+        "status_reason": "Status is marked not applicable for this question.",
+        "order": "n/a",
+        "order_reason": "Order is marked not applicable for this question.",
+        "ambiguity": "n/a",
+        "ambiguity_reason": "Ambiguity is marked not applicable for this question."
+      },
+      "model": "claude-opus-5-5"
+    },
+    "c0fca8f118def5465526698aa546141d172fd978e24bd66e4b3071d04c0bb777": {
+      "verdict": {
+        "stale": "n/a",
+        "stale_reason": "This check is marked not applicable for this case.",
+        "status": "n/a",
+        "status_reason": "This check is marked not applicable for this case.",
+        "order": "n/a",
+        "order_reason": "This check is marked not applicable for this case.",
+        "ambiguity": "n/a",
+        "ambiguity_reason": "This check is marked not applicable for this case."
+      },
+      "model": "claude-opus-5-5"
+    },
+    "05f0dc838efbf45e8999dd690e21440de0cdb64b569a9bdba8e2acaf6722f022": {
+      "verdict": {
+        "stale": "n/a",
+        "stale_reason": "Check marked not applicable.",
+        "status": "n/a",
+        "status_reason": "Check marked not applicable.",
+        "order": "n/a",
+        "order_reason": "Check marked not applicable.",
+        "ambiguity": "n/a",
+        "ambiguity_reason": "Check marked not applicable."
+      },
+      "model": "claude-opus-5-5"
+    },
+    "e058d3286b4459720ba3e96ce2606cd4b71b22624f6ad25246c5292e96b1eeeb": {
+      "verdict": {
+        "stale": "n/a",
+        "stale_reason": "Not applicable for this item.",
+        "status": "n/a",
+        "status_reason": "Not applicable for this item.",
+        "order": "n/a",
+        "order_reason": "Not applicable for this item.",
+        "ambiguity": "n/a",
+        "ambiguity_reason": "Not applicable for this item."
+      },
+      "model": "claude-opus-5-5"
+    },
+    "03a2ee102aed2dd15f6d2fe71cc2fbc4f5ef956280b40ec292c165a298a8d7a5": {
+      "verdict": {
+        "stale": "n/a",
+        "stale_reason": "This check is marked not applicable, since nothing in the script was corrected or removed.",
+        "status": "n/a",
+        "status_reason": "This check is marked not applicable, since the question asks for a plain fact rather than a decision state.",
+        "order": "n/a",
+        "order_reason": "This check is marked not applicable, since there is no earlier-versus-later change to track.",
+        "ambiguity": "n/a",
+        "ambiguity_reason": "This check is marked not applicable, since \"Priya Shah\" and \"Priyanka Rao\" do not share a first name."
+      },
+      "model": "claude-opus-5-5"
+    },
+    "1fbfebee4b1416307ed94dfcf645dc3ba24d500d5293eb7de63d71db04a6fd09": {
+      "verdict": {
+        "stale": "n/a",
+        "stale_reason": "Not applicable for this case.",
+        "status": "n/a",
+        "status_reason": "Not applicable for this case.",
+        "order": "n/a",
+        "order_reason": "Not applicable for this case.",
+        "ambiguity": "n/a",
+        "ambiguity_reason": "Not applicable for this case."
+      },
+      "model": "claude-opus-5-5"
+    },
+    "07d07dfd08cce5e2fff82449b213670bfe9e7855131114b8764f66cf58fa26b2": {
+      "verdict": {
+        "stale": "n/a",
+        "stale_reason": "This check is marked not applicable for this conversation.",
+        "status": "n/a",
+        "status_reason": "This check is marked not applicable for this conversation.",
+        "order": "n/a",
+        "order_reason": "This check is marked not applicable for this conversation.",
+        "ambiguity": "n/a",
+        "ambiguity_reason": "This check is marked not applicable for this conversation."
+      },
+      "model": "claude-opus-5-5"
+    },
+    "c74f7c5bd9213fd5272bcfe74513708b8138320b70047fd53914f51a66b54e03": {
+      "verdict": {
+        "stale": "n/a",
+        "stale_reason": "Not applicable for this item.",
+        "status": "n/a",
+        "status_reason": "Not applicable for this item.",
+        "order": "n/a",
+        "order_reason": "Not applicable for this item.",
+        "ambiguity": "n/a",
+        "ambiguity_reason": "Not applicable for this item."
+      },
+      "model": "claude-opus-5-5"
+    },
+    "9be9ec670122a93e726058155a8409ce083761a2454fc2ff7738a3a76e4426fa": {
+      "verdict": {
+        "stale": "n/a",
+        "stale_reason": "Not applicable for this conversation.",
+        "status": "n/a",
+        "status_reason": "Not applicable for this conversation.",
+        "order": "n/a",
+        "order_reason": "Not applicable for this conversation.",
+        "ambiguity": "acknowledged",
+        "ambiguity_reason": "The memory keeps two separate entries, \"Alex Brandt\" with the ladder and \"Alex Brandt received cookies\" and \"Alex Moreau visiting_from Quebec\", so the neighbor and the cousin stay distinct with the ladder return correctly tied to Brandt."
+      },
+      "model": "claude-opus-5-5"
+    },
+    "07a97a6dd844b7289caf421a256b1251eae89b731a673475494632870da5c68a": {
+      "verdict": {
+        "stale": "n/a",
+        "stale_reason": "This check is marked not applicable for this conversation.",
+        "status": "n/a",
+        "status_reason": "This check is marked not applicable for this conversation.",
+        "order": "n/a",
+        "order_reason": "This check is marked not applicable for this conversation.",
+        "ambiguity": "n/a",
+        "ambiguity_reason": "This check is marked not applicable for this conversation."
+      },
+      "model": "claude-opus-5-5"
+    },
+    "1b39232eab592abb9d73d27adaf458ca7a9ce5f7e8aaa6dad0a749984fb8a98f": {
+      "verdict": {
+        "stale": "stale",
+        "stale_reason": "Entry #3 still presents \"The user's new role at Larkfield Bank\" as \"senior analyst\", even though the user corrected this to staff analyst.",
+        "status": "wrong",
+        "status_reason": "Entry #1 states \"staff analyst at Larkfield Bank\", but entries #2 and #3 still assert \"promoted to senior analyst\" as live facts that contradict it.",
+        "order": "n/a",
+        "order_reason": "Not applicable for this check.",
+        "ambiguity": "n/a",
+        "ambiguity_reason": "Not applicable for this check."
+      },
+      "model": "claude-opus-5-5"
+    },
+    "30055911f4bdd34e985d7acc5f7f2fbde163d1ded72a24424887f8acd9515699": {
+      "verdict": {
+        "stale": "n/a",
+        "stale_reason": "This check is marked not applicable for this item.",
+        "status": "n/a",
+        "status_reason": "This check is marked not applicable for this item.",
+        "order": "n/a",
+        "order_reason": "This check is marked not applicable for this item.",
+        "ambiguity": "n/a",
+        "ambiguity_reason": "This check is marked not applicable for this item."
+      },
+      "model": "claude-opus-5-5"
+    },
+    "50dd060cdb86a1342901490e85fe3bf415b45a20d2dfb694376c28fa6102934b": {
+      "verdict": {
+        "stale": "stale",
+        "stale_reason": "The memory still states \"The user was promoted to senior analyst at Larkfield Bank\" as live fact, even though the user corrected the title to staff analyst.",
+        "status": "n/a",
+        "status_reason": "Status check is not applicable for this item.",
+        "order": "n/a",
+        "order_reason": "Order check is not applicable for this item.",
+        "ambiguity": "n/a",
+        "ambiguity_reason": "Ambiguity check is not applicable for this item."
+      },
+      "model": "claude-opus-5-5"
+    },
+    "07e2ac43cd0bf11ab45f6fd158a8e5583aaa0fbdc35d15b0f88dbf1b41e73e0b": {
+      "verdict": {
+        "stale": "n/a",
+        "stale_reason": "Not applicable for this item.",
+        "status": "wrong",
+        "status_reason": "Although \"staff analyst at Larkfield Bank\" is present, the memory still states \"The user was promoted to senior analyst at Larkfield Bank\" and calls senior analyst \"The user's new role,\" contradicting the correction.",
+        "order": "n/a",
+        "order_reason": "Not applicable for this item.",
+        "ambiguity": "n/a",
+        "ambiguity_reason": "Not applicable for this item."
+      },
+      "model": "claude-opus-5-5"
+    },
+    "fac40396fc0de29af7b231e80e7e7f8faa4b4945ff3d8e63db0a7f8eb1d6d634": {
+      "verdict": {
+        "stale": "n/a",
+        "stale_reason": "Not applicable for this item.",
+        "status": "wrong",
+        "status_reason": "The memory states \"The user might leave Northwind\" as live and never records the final decision to stay, so the current decided state is missing and contradicted.",
+        "order": "lost",
+        "order_reason": "Only the earlier state \"might leave Northwind\" is kept, and the later decision to stay at Northwind does not appear, so the change cannot be traced.",
+        "ambiguity": "n/a",
+        "ambiguity_reason": "Not applicable for this item."
+      },
+      "model": "claude-opus-5-5"
+    },
+    "811755ee246a8884767c663d1ff683422ec29b66774c9e782c2fe20d42592761": {
+      "verdict": {
+        "stale": "n/a",
+        "stale_reason": "Not applicable for this check.",
+        "status": "wrong",
+        "status_reason": "The memory says only that \"The user's commute is causing them distress\" and never states the final decision to stay at Northwind.",
+        "order": "n/a",
+        "order_reason": "Not applicable for this check.",
+        "ambiguity": "n/a",
+        "ambiguity_reason": "Not applicable for this check."
+      },
+      "model": "claude-opus-5-5"
+    },
+    "898fe2c400c9f042fdc47ad02ef5e0c4fe47aec9d539546df9a0f1221484b76c": {
+      "verdict": {
+        "stale": "n/a",
+        "stale_reason": "This check is marked not applicable for this case.",
+        "status": "n/a",
+        "status_reason": "This check is marked not applicable for this case.",
+        "order": "n/a",
+        "order_reason": "This check is marked not applicable for this case.",
+        "ambiguity": "n/a",
+        "ambiguity_reason": "This check is marked not applicable for this case."
+      },
+      "model": "claude-opus-5-5"
+    },
+    "6747fa633c81c6a16114a26ce9d1865f4ca7e60d8fe36611c618ed958cc5fbf4": {
+      "verdict": {
+        "stale": "n/a",
+        "stale_reason": "This check is marked not applicable for this case.",
+        "status": "n/a",
+        "status_reason": "This check is marked not applicable for this case.",
+        "order": "n/a",
+        "order_reason": "This check is marked not applicable for this case.",
+        "ambiguity": "n/a",
+        "ambiguity_reason": "This check is marked not applicable for this case."
+      },
+      "model": "claude-opus-5-5"
+    },
+    "13a53d9cf56a90a9b32851b359a16d3fa6cdb311a4fb9994714ce95690263991": {
+      "verdict": {
+        "stale": "n/a",
+        "stale_reason": "Not applicable for this question.",
+        "status": "n/a",
+        "status_reason": "Not applicable for this question.",
+        "order": "n/a",
+        "order_reason": "Not applicable for this question.",
+        "ambiguity": "missed",
+        "ambiguity_reason": "The memory returns only \"Sam Lee at Granite Hall\" for a question about the doc and never mentions Sam Ortiz or that he \"liked the caching section\", so the two Sams are not kept distinct."
+      },
+      "model": "claude-opus-5-5"
+    },
+    "3152e0b98f9d1730ae185e2f4cc4ddc81df40084f14c703daa555e30a20bb7b5": {
+      "verdict": {
+        "stale": "n/a",
+        "stale_reason": "Not applicable: no correction, reversal or removal is involved, and the memory returned \"(nothing from this conversation)\".",
+        "status": "n/a",
+        "status_reason": "Not applicable: the memory returned \"(nothing from this conversation)\", so there is no current state to judge for this question.",
+        "order": "n/a",
+        "order_reason": "Not applicable: the memory returned \"(nothing from this conversation)\", so there is no earlier or later state to put in order.",
+        "ambiguity": "n/a",
+        "ambiguity_reason": "Not applicable: the memory returned \"(nothing from this conversation)\", so neither \"Sam Ortiz\" nor \"Sam Lee\" appears and nothing could be merged."
+      },
+      "model": "claude-opus-5-5"
+    },
+    "90b4847b5219f993a165628638cebc7ee832b1ff96b7ab0a7d912281c3aff789": {
+      "verdict": {
+        "stale": "n/a",
+        "stale_reason": "Not applicable to this case.",
+        "status": "n/a",
+        "status_reason": "Not applicable to this case.",
+        "order": "n/a",
+        "order_reason": "Not applicable to this case.",
+        "ambiguity": "missed",
+        "ambiguity_reason": "The memory holds only \"Sam Lee\" with \"bouldering with Sam Lee\" and never mentions Sam Ortiz \"from work\", so the two Sams are not kept as distinct people and the coworker cannot be told apart."
+      },
+      "model": "claude-opus-5-5"
+    },
+    "6a153de0091823f95f20e8815c05eb3b417299774c046cc8339d54a0ec211a00": {
+      "verdict": {
+        "stale": "n/a",
+        "stale_reason": "This check is marked not applicable because the script contains no correction, reversal, or removal request.",
+        "status": "n/a",
+        "status_reason": "This check is marked not applicable because the question has no changing state to track.",
+        "order": "n/a",
+        "order_reason": "This check is marked not applicable because there is no earlier and later state to put in order.",
+        "ambiguity": "n/a",
+        "ambiguity_reason": "This check is marked not applicable, though the memory does keep \"Sam Lee\" at \"Granite Hall\" without mixing in Sam Ortiz."
+      },
+      "model": "claude-opus-5-5"
+    }
+  }
+}

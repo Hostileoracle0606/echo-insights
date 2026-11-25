@@ -1,0 +1,867 @@
+{
+  "version": 1,
+  "target": "local",
+  "commit": "f4e7de1",
+  "scoredAt": "2026-11-18T21:20:03.637Z",
+  "method": {
+    "extractionRunsPerScenario": 1,
+    "model": "gemini-2.5-flash (thinking off), extraction Lambda in-process",
+    "retrieval": "retrieve-memory, scope notebook, k=8, local gte-small embeddings",
+    "pathAttribution": "combined: retrieve-memory returns one ranked list and does not say which path found an item",
+    "statusRule": "decided is correct when a retrieved entity description or active relation contains a decided marker and none contains a tentative marker; Lumen stores no tentative/decided field, so this scores the stored text",
+    "limitation": "N=1 extraction per scenario: no run-to-run spread is claimed"
+  },
+  "scenarios": {
+    "total": 12,
+    "scored": 5,
+    "probesScored": 20,
+    "probesTotal": 48,
+    "notScored": [
+      "continuity-paraphrase",
+      "deletion-remove-project",
+      "changing-similar-names",
+      "continuity-two-alexes",
+      "correction-job-title-next-session",
+      "changing-tentative-to-decided",
+      "continuity-two-sams"
+    ],
+    "briefs": {
+      "continuity-indirect-reference": "ready",
+      "correction-city-same-session": "ready",
+      "deletion-forget-person": "ready",
+      "changing-decided-then-reversed": "ready",
+      "continuity-paraphrase": "not_run",
+      "correction-edit-description": "ready",
+      "deletion-remove-project": "not_run",
+      "changing-similar-names": "not_run",
+      "continuity-two-alexes": "not_run",
+      "correction-job-title-next-session": "not_run",
+      "changing-tentative-to-decided": "not_run",
+      "continuity-two-sams": "not_run"
+    },
+    "actions": {
+      "deletion-forget-person": [
+        {
+          "after_session": 1,
+          "kind": "forget",
+          "name": "Dana Whitfield",
+          "entityId": "dana-whitfield",
+          "outcome": "applied"
+        }
+      ],
+      "correction-edit-description": [
+        {
+          "after_session": 1,
+          "kind": "correct",
+          "name": "Felix Navarro",
+          "description": "Felix Navarro is a physical therapist at Saint Corin hospital and an old friend from college.",
+          "entityId": "felix-navarro",
+          "outcome": "applied"
+        }
+      ]
+    }
+  },
+  "summary": {
+    "total": {
+      "probes": 20,
+      "recall": {
+        "hit": 20,
+        "of": 20
+      },
+      "extractionMisses": {
+        "count": 0,
+        "ofExpected": 20
+      },
+      "precision": {
+        "hit": 20,
+        "of": 76
+      },
+      "inserted": {
+        "items": 54,
+        "probes": 20
+      },
+      "stale": {
+        "probes": 4,
+        "of": 7,
+        "retrieval": 3,
+        "brief": 4,
+        "briefChecked": 7
+      },
+      "status": {
+        "correct": 2,
+        "of": 3
+      },
+      "order": {
+        "kept": 2,
+        "of": 2
+      },
+      "ambiguity": {
+        "acknowledged": 0,
+        "of": 0
+      }
+    },
+    "byCategory": {
+      "continuity": {
+        "probes": 4,
+        "recall": {
+          "hit": 5,
+          "of": 5
+        },
+        "extractionMisses": {
+          "count": 0,
+          "ofExpected": 5
+        },
+        "precision": {
+          "hit": 5,
+          "of": 24
+        },
+        "inserted": {
+          "items": 19,
+          "probes": 4
+        },
+        "stale": {
+          "probes": 0,
+          "of": 0,
+          "retrieval": 0,
+          "brief": 0,
+          "briefChecked": 0
+        },
+        "status": {
+          "correct": 0,
+          "of": 0
+        },
+        "order": {
+          "kept": 0,
+          "of": 0
+        },
+        "ambiguity": {
+          "acknowledged": 0,
+          "of": 0
+        }
+      },
+      "correction": {
+        "probes": 8,
+        "recall": {
+          "hit": 8,
+          "of": 8
+        },
+        "extractionMisses": {
+          "count": 0,
+          "ofExpected": 8
+        },
+        "precision": {
+          "hit": 8,
+          "of": 24
+        },
+        "inserted": {
+          "items": 14,
+          "probes": 8
+        },
+        "stale": {
+          "probes": 4,
+          "of": 4,
+          "retrieval": 3,
+          "brief": 4,
+          "briefChecked": 4
+        },
+        "status": {
+          "correct": 2,
+          "of": 3
+        },
+        "order": {
+          "kept": 0,
+          "of": 0
+        },
+        "ambiguity": {
+          "acknowledged": 0,
+          "of": 0
+        }
+      },
+      "deletion": {
+        "probes": 4,
+        "recall": {
+          "hit": 2,
+          "of": 2
+        },
+        "extractionMisses": {
+          "count": 0,
+          "ofExpected": 2
+        },
+        "precision": {
+          "hit": 2,
+          "of": 12
+        },
+        "inserted": {
+          "items": 10,
+          "probes": 4
+        },
+        "stale": {
+          "probes": 0,
+          "of": 3,
+          "retrieval": 0,
+          "brief": 0,
+          "briefChecked": 3
+        },
+        "status": {
+          "correct": 0,
+          "of": 0
+        },
+        "order": {
+          "kept": 0,
+          "of": 0
+        },
+        "ambiguity": {
+          "acknowledged": 0,
+          "of": 0
+        }
+      },
+      "changing_facts": {
+        "probes": 4,
+        "recall": {
+          "hit": 5,
+          "of": 5
+        },
+        "extractionMisses": {
+          "count": 0,
+          "ofExpected": 5
+        },
+        "precision": {
+          "hit": 5,
+          "of": 16
+        },
+        "inserted": {
+          "items": 11,
+          "probes": 4
+        },
+        "stale": {
+          "probes": 0,
+          "of": 0,
+          "retrieval": 0,
+          "brief": 0,
+          "briefChecked": 0
+        },
+        "status": {
+          "correct": 0,
+          "of": 0
+        },
+        "order": {
+          "kept": 2,
+          "of": 2
+        },
+        "ambiguity": {
+          "acknowledged": 0,
+          "of": 0
+        }
+      }
+    }
+  },
+  "probes": [
+    {
+      "scenario": "continuity-indirect-reference",
+      "category": "continuity",
+      "probeIndex": 0,
+      "ask": "How did my sister's opening go?",
+      "retrievedNames": [
+        "studio opening",
+        "Maren",
+        "Clayhouse",
+        "kiln room",
+        "Bellport",
+        "pottery studio"
+      ],
+      "brief": "ready",
+      "recall": [
+        2,
+        2
+      ],
+      "precision": [
+        2,
+        6
+      ],
+      "inserted": 4,
+      "stale": null,
+      "staleIn": [],
+      "briefChecked": false,
+      "status": "n/a",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [],
+      "expectedCount": 2
+    },
+    {
+      "scenario": "continuity-indirect-reference",
+      "category": "continuity",
+      "probeIndex": 1,
+      "ask": "What is the pottery place called?",
+      "retrievedNames": [
+        "pottery studio",
+        "Clayhouse",
+        "Maren",
+        "kiln room",
+        "studio opening",
+        "Bellport"
+      ],
+      "brief": "ready",
+      "recall": [
+        1,
+        1
+      ],
+      "precision": [
+        1,
+        6
+      ],
+      "inserted": 5,
+      "stale": null,
+      "staleIn": [],
+      "briefChecked": false,
+      "status": "n/a",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [],
+      "expectedCount": 1
+    },
+    {
+      "scenario": "continuity-indirect-reference",
+      "category": "continuity",
+      "probeIndex": 2,
+      "ask": "Which town is Maren's studio in?",
+      "retrievedNames": [
+        "Maren",
+        "Clayhouse",
+        "Bellport",
+        "studio opening",
+        "kiln room",
+        "pottery studio"
+      ],
+      "brief": "ready",
+      "recall": [
+        1,
+        1
+      ],
+      "precision": [
+        1,
+        6
+      ],
+      "inserted": 5,
+      "stale": null,
+      "staleIn": [],
+      "briefChecked": false,
+      "status": "n/a",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [],
+      "expectedCount": 1
+    },
+    {
+      "scenario": "continuity-indirect-reference",
+      "category": "continuity",
+      "probeIndex": 3,
+      "ask": "Who runs Clayhouse?",
+      "retrievedNames": [
+        "Clayhouse",
+        "Maren",
+        "studio opening",
+        "kiln room",
+        "pottery studio",
+        "Bellport"
+      ],
+      "brief": "ready",
+      "recall": [
+        1,
+        1
+      ],
+      "precision": [
+        1,
+        6
+      ],
+      "inserted": 5,
+      "stale": null,
+      "staleIn": [],
+      "briefChecked": false,
+      "status": "n/a",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [],
+      "expectedCount": 1
+    },
+    {
+      "scenario": "correction-city-same-session",
+      "category": "correction",
+      "probeIndex": 0,
+      "ask": "Where does Imogen live now?",
+      "retrievedNames": [
+        "Imogen",
+        "Dayton",
+        "Dalton"
+      ],
+      "brief": "ready",
+      "recall": [
+        2,
+        2
+      ],
+      "precision": [
+        2,
+        3
+      ],
+      "inserted": 0,
+      "stale": true,
+      "staleIn": [
+        "combined",
+        "brief"
+      ],
+      "briefChecked": true,
+      "status": "wrong",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [],
+      "expectedCount": 2
+    },
+    {
+      "scenario": "correction-city-same-session",
+      "category": "correction",
+      "probeIndex": 1,
+      "ask": "Which of my friends moved recently?",
+      "retrievedNames": [
+        "Imogen",
+        "Dayton",
+        "Dalton"
+      ],
+      "brief": "ready",
+      "recall": [
+        1,
+        1
+      ],
+      "precision": [
+        1,
+        3
+      ],
+      "inserted": 2,
+      "stale": null,
+      "staleIn": [],
+      "briefChecked": false,
+      "status": "n/a",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [],
+      "expectedCount": 1
+    },
+    {
+      "scenario": "correction-city-same-session",
+      "category": "correction",
+      "probeIndex": 2,
+      "ask": "Do I know anyone in Dayton?",
+      "retrievedNames": [
+        "Imogen",
+        "Dayton",
+        "Dalton"
+      ],
+      "brief": "ready",
+      "recall": [
+        0,
+        0
+      ],
+      "precision": [
+        0,
+        3
+      ],
+      "inserted": 2,
+      "stale": true,
+      "staleIn": [
+        "combined",
+        "brief"
+      ],
+      "briefChecked": true,
+      "status": "n/a",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [],
+      "expectedCount": 0
+    },
+    {
+      "scenario": "correction-city-same-session",
+      "category": "correction",
+      "probeIndex": 3,
+      "ask": "Tell me about Imogen.",
+      "retrievedNames": [
+        "Imogen",
+        "Dayton",
+        "Dalton"
+      ],
+      "brief": "ready",
+      "recall": [
+        1,
+        1
+      ],
+      "precision": [
+        1,
+        3
+      ],
+      "inserted": 2,
+      "stale": true,
+      "staleIn": [
+        "combined",
+        "brief"
+      ],
+      "briefChecked": true,
+      "status": "n/a",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [],
+      "expectedCount": 1
+    },
+    {
+      "scenario": "deletion-forget-person",
+      "category": "deletion",
+      "probeIndex": 0,
+      "ask": "Who did I have lunch with?",
+      "retrievedNames": [
+        "Ruth Okafor",
+        "quarterly report",
+        "Oslo"
+      ],
+      "brief": "ready",
+      "recall": [
+        0,
+        0
+      ],
+      "precision": [
+        0,
+        3
+      ],
+      "inserted": 3,
+      "stale": false,
+      "staleIn": [],
+      "briefChecked": true,
+      "status": "n/a",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [],
+      "expectedCount": 0
+    },
+    {
+      "scenario": "deletion-forget-person",
+      "category": "deletion",
+      "probeIndex": 1,
+      "ask": "Who is moving to Oslo?",
+      "retrievedNames": [
+        "Oslo",
+        "Ruth Okafor",
+        "quarterly report"
+      ],
+      "brief": "ready",
+      "recall": [
+        0,
+        0
+      ],
+      "precision": [
+        0,
+        3
+      ],
+      "inserted": 3,
+      "stale": false,
+      "staleIn": [],
+      "briefChecked": true,
+      "status": "n/a",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [],
+      "expectedCount": 0
+    },
+    {
+      "scenario": "deletion-forget-person",
+      "category": "deletion",
+      "probeIndex": 2,
+      "ask": "Who is my manager?",
+      "retrievedNames": [
+        "Ruth Okafor",
+        "quarterly report",
+        "Oslo"
+      ],
+      "brief": "ready",
+      "recall": [
+        1,
+        1
+      ],
+      "precision": [
+        1,
+        3
+      ],
+      "inserted": 2,
+      "stale": null,
+      "staleIn": [],
+      "briefChecked": false,
+      "status": "n/a",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [],
+      "expectedCount": 1
+    },
+    {
+      "scenario": "deletion-forget-person",
+      "category": "deletion",
+      "probeIndex": 3,
+      "ask": "Who did I work with this week?",
+      "retrievedNames": [
+        "quarterly report",
+        "Ruth Okafor",
+        "Oslo"
+      ],
+      "brief": "ready",
+      "recall": [
+        1,
+        1
+      ],
+      "precision": [
+        1,
+        3
+      ],
+      "inserted": 2,
+      "stale": false,
+      "staleIn": [],
+      "briefChecked": true,
+      "status": "n/a",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [],
+      "expectedCount": 1
+    },
+    {
+      "scenario": "changing-decided-then-reversed",
+      "category": "changing_facts",
+      "probeIndex": 0,
+      "ask": "Where are we going for our anniversary?",
+      "retrievedNames": [
+        "anniversary trip",
+        "Kyoto",
+        "June",
+        "Lisbon"
+      ],
+      "brief": "ready",
+      "recall": [
+        1,
+        1
+      ],
+      "precision": [
+        1,
+        4
+      ],
+      "inserted": 3,
+      "stale": null,
+      "staleIn": [],
+      "briefChecked": false,
+      "status": "n/a",
+      "order": "kept",
+      "ambiguity": "n/a",
+      "misses": [],
+      "expectedCount": 1
+    },
+    {
+      "scenario": "changing-decided-then-reversed",
+      "category": "changing_facts",
+      "probeIndex": 1,
+      "ask": "Is the Lisbon trip still on?",
+      "retrievedNames": [
+        "Lisbon",
+        "anniversary trip",
+        "Kyoto",
+        "June"
+      ],
+      "brief": "ready",
+      "recall": [
+        2,
+        2
+      ],
+      "precision": [
+        2,
+        4
+      ],
+      "inserted": 2,
+      "stale": null,
+      "staleIn": [],
+      "briefChecked": false,
+      "status": "n/a",
+      "order": "kept",
+      "ambiguity": "n/a",
+      "misses": [],
+      "expectedCount": 2
+    },
+    {
+      "scenario": "changing-decided-then-reversed",
+      "category": "changing_facts",
+      "probeIndex": 2,
+      "ask": "What did we book for June?",
+      "retrievedNames": [
+        "June",
+        "anniversary trip",
+        "Kyoto",
+        "Lisbon"
+      ],
+      "brief": "ready",
+      "recall": [
+        1,
+        1
+      ],
+      "precision": [
+        1,
+        4
+      ],
+      "inserted": 3,
+      "stale": null,
+      "staleIn": [],
+      "briefChecked": false,
+      "status": "n/a",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [],
+      "expectedCount": 1
+    },
+    {
+      "scenario": "changing-decided-then-reversed",
+      "category": "changing_facts",
+      "probeIndex": 3,
+      "ask": "Do we have any travel plans?",
+      "retrievedNames": [
+        "anniversary trip",
+        "Kyoto",
+        "June",
+        "Lisbon"
+      ],
+      "brief": "ready",
+      "recall": [
+        1,
+        1
+      ],
+      "precision": [
+        1,
+        4
+      ],
+      "inserted": 3,
+      "stale": null,
+      "staleIn": [],
+      "briefChecked": false,
+      "status": "n/a",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [],
+      "expectedCount": 1
+    },
+    {
+      "scenario": "correction-edit-description",
+      "category": "correction",
+      "probeIndex": 0,
+      "ask": "What does Felix do for work?",
+      "retrievedNames": [
+        "Felix Navarro",
+        "birthday dinner",
+        "Saint Corin hospital"
+      ],
+      "brief": "ready",
+      "recall": [
+        1,
+        1
+      ],
+      "precision": [
+        1,
+        3
+      ],
+      "inserted": 2,
+      "stale": true,
+      "staleIn": [
+        "brief"
+      ],
+      "briefChecked": true,
+      "status": "correct",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [],
+      "expectedCount": 1
+    },
+    {
+      "scenario": "correction-edit-description",
+      "category": "correction",
+      "probeIndex": 1,
+      "ask": "Where does Felix work?",
+      "retrievedNames": [
+        "Felix Navarro",
+        "birthday dinner",
+        "Saint Corin hospital"
+      ],
+      "brief": "ready",
+      "recall": [
+        1,
+        1
+      ],
+      "precision": [
+        1,
+        3
+      ],
+      "inserted": 2,
+      "stale": null,
+      "staleIn": [],
+      "briefChecked": false,
+      "status": "n/a",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [],
+      "expectedCount": 1
+    },
+    {
+      "scenario": "correction-edit-description",
+      "category": "correction",
+      "probeIndex": 2,
+      "ask": "Whose birthday is coming up?",
+      "retrievedNames": [
+        "birthday dinner",
+        "Felix Navarro",
+        "Saint Corin hospital"
+      ],
+      "brief": "ready",
+      "recall": [
+        1,
+        1
+      ],
+      "precision": [
+        1,
+        3
+      ],
+      "inserted": 2,
+      "stale": null,
+      "staleIn": [],
+      "briefChecked": false,
+      "status": "n/a",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [],
+      "expectedCount": 1
+    },
+    {
+      "scenario": "correction-edit-description",
+      "category": "correction",
+      "probeIndex": 3,
+      "ask": "How do I know Felix?",
+      "retrievedNames": [
+        "Felix Navarro",
+        "birthday dinner",
+        "Saint Corin hospital"
+      ],
+      "brief": "ready",
+      "recall": [
+        1,
+        1
+      ],
+      "precision": [
+        1,
+        3
+      ],
+      "inserted": 2,
+      "stale": null,
+      "staleIn": [],
+      "briefChecked": false,
+      "status": "correct",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [],
+      "expectedCount": 1
+    }
+  ]
+}

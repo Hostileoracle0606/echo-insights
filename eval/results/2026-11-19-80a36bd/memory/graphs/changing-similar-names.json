@@ -1,0 +1,206 @@
+{
+  "meta": {
+    "scenario": "changing-similar-names",
+    "extractorVersion": "memory-eval/v1",
+    "mode": "wiki",
+    "model": "gemini-2.5-flash",
+    "turns": 2,
+    "providerCalls": 2,
+    "actions": [],
+    "lostTurns": [],
+    "extractedAt": "2026-11-19T18:40:07.263Z",
+    "commit": "80a36bd"
+  },
+  "digest": "347bdf1ccdf3b445b86ac48c4f0fa52003fc9b040d16cbc7318db4f76ff77549",
+  "snapshot": {
+    "version": 1,
+    "notebook": {
+      "title": "memory eval: changing-similar-names",
+      "title_source": "auto",
+      "started_at": "2026-11-19T18:39:53.352+00:00",
+      "ended_at": null,
+      "duration_seconds": null,
+      "entity_count": 5,
+      "summary": null,
+      "archived_at": null,
+      "revision": 2,
+      "conversation_mode": "just_talk",
+      "mode_context": {},
+      "transcript_forgotten_at": null
+    },
+    "suppressionKey": null,
+    "tables": {
+      "journal_entries": [
+        {
+          "id": "$entry-1",
+          "text": "My colleague Priya Shah is leading the Atlas migration.",
+          "created_at": "2026-11-19T18:39:59.55591+00:00",
+          "entity_ids": [
+            "priya-shah",
+            "atlas-migration"
+          ],
+          "relation_ids": [
+            "priya-shah__leading__atlas-migration"
+          ]
+        },
+        {
+          "id": "$entry-2",
+          "text": "Priyanka Rao from finance approved the Atlas budget today.",
+          "created_at": "2026-11-19T18:40:07.224642+00:00",
+          "entity_ids": [
+            "priyanka-rao",
+            "finance",
+            "atlas-budget",
+            "atlas-migration"
+          ],
+          "relation_ids": [
+            "priyanka-rao__from__finance",
+            "priyanka-rao__approved__atlas-budget",
+            "atlas-budget__part_of__atlas-migration"
+          ]
+        }
+      ],
+      "entities": [
+        {
+          "id": "atlas-budget",
+          "name": "Atlas budget",
+          "type": "project",
+          "description": "The Atlas budget was approved by Priyanka Rao.",
+          "metadata": {},
+          "mentions": 1,
+          "first_seen": "2026-11-19T18:40:07.222+00:00",
+          "last_seen": "2026-11-19T18:40:07.222+00:00",
+          "questions": [
+            "What does the Atlas budget cover?",
+            "What were the challenges in getting the Atlas budget approved?",
+            "How does the Atlas budget impact the Atlas migration project?"
+          ],
+          "description_source": "extracted"
+        },
+        {
+          "id": "atlas-migration",
+          "name": "Atlas migration",
+          "type": "project",
+          "description": "Priya Shah is leading the Atlas migration.",
+          "metadata": {},
+          "mentions": 2,
+          "first_seen": "2026-11-19T18:39:59.552+00:00",
+          "last_seen": "2026-11-19T18:40:07.222+00:00",
+          "questions": [
+            "What is the Atlas migration about?",
+            "What are the goals of the migration?",
+            "What challenges are you facing with the migration?",
+            "How is the migration progressing?"
+          ],
+          "description_source": "extracted"
+        },
+        {
+          "id": "finance",
+          "name": "finance",
+          "type": "organization",
+          "description": "Priyanka Rao works in finance.",
+          "metadata": {},
+          "mentions": 1,
+          "first_seen": "2026-11-19T18:40:07.222+00:00",
+          "last_seen": "2026-11-19T18:40:07.222+00:00",
+          "questions": [
+            "What is the structure of the finance department?",
+            "What's your general impression of the finance team?",
+            "How does finance interact with your department?"
+          ],
+          "description_source": "extracted"
+        },
+        {
+          "id": "priya-shah",
+          "name": "Priya Shah",
+          "type": "person",
+          "description": "My colleague Priya Shah is leading the Atlas migration.",
+          "metadata": {},
+          "mentions": 1,
+          "first_seen": "2026-11-19T18:39:59.552+00:00",
+          "last_seen": "2026-11-19T18:39:59.552+00:00",
+          "questions": [
+            "What's Priya like to work with?",
+            "How long have you two been colleagues?",
+            "What's her background?",
+            "What are her strengths as a leader?"
+          ],
+          "description_source": "extracted"
+        },
+        {
+          "id": "priyanka-rao",
+          "name": "Priyanka Rao",
+          "type": "person",
+          "description": "Priyanka Rao is from finance and approved the Atlas budget.",
+          "metadata": {},
+          "mentions": 1,
+          "first_seen": "2026-11-19T18:40:07.222+00:00",
+          "last_seen": "2026-11-19T18:40:07.222+00:00",
+          "questions": [
+            "What is Priyanka's role in finance?",
+            "How often do you interact with Priyanka?",
+            "What's your working relationship with Priyanka like?"
+          ],
+          "description_source": "extracted"
+        }
+      ],
+      "relations": [
+        {
+          "id": "atlas-budget__part_of__atlas-migration",
+          "source_id": "atlas-budget",
+          "target_id": "atlas-migration",
+          "label": "part_of",
+          "metadata": {},
+          "created_at": "2026-11-19T18:40:07.222+00:00",
+          "superseded_at": null
+        },
+        {
+          "id": "priya-shah__leading__atlas-migration",
+          "source_id": "priya-shah",
+          "target_id": "atlas-migration",
+          "label": "leading",
+          "metadata": {},
+          "created_at": "2026-11-19T18:39:59.552+00:00",
+          "superseded_at": null
+        },
+        {
+          "id": "priyanka-rao__approved__atlas-budget",
+          "source_id": "priyanka-rao",
+          "target_id": "atlas-budget",
+          "label": "approved",
+          "metadata": {},
+          "created_at": "2026-11-19T18:40:07.222+00:00",
+          "superseded_at": null
+        },
+        {
+          "id": "priyanka-rao__from__finance",
+          "source_id": "priyanka-rao",
+          "target_id": "finance",
+          "label": "from",
+          "metadata": {},
+          "created_at": "2026-11-19T18:40:07.222+00:00",
+          "superseded_at": null
+        }
+      ],
+      "entity_suppressions": [],
+      "conversation_turns": [
+        {
+          "turn_id": "changing-similar-names-s1-t1",
+          "speaker": "user",
+          "text": "My colleague Priya Shah is leading the Atlas migration.",
+          "spoken_at": "2026-11-19T18:39:53.364+00:00",
+          "created_at": "2026-11-19T18:39:53.365355+00:00",
+          "input": "typed"
+        },
+        {
+          "turn_id": "changing-similar-names-s2-t1",
+          "speaker": "user",
+          "text": "Priyanka Rao from finance approved the Atlas budget today.",
+          "spoken_at": "2026-11-19T18:39:59.569+00:00",
+          "created_at": "2026-11-19T18:39:59.572198+00:00",
+          "input": "typed"
+        }
+      ]
+    }
+  }
+}

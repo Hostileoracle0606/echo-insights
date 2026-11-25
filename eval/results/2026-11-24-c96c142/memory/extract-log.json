@@ -1,0 +1,133 @@
+[
+  {
+    "scenario": "continuity-two-alexes",
+    "outcome": "saved",
+    "providerCalls": 3,
+    "actions": [],
+    "lostTurns": []
+  },
+  {
+    "scenario": "correction-job-title-next-session",
+    "outcome": "saved",
+    "providerCalls": 2,
+    "actions": [],
+    "lostTurns": []
+  },
+  {
+    "scenario": "changing-tentative-to-decided",
+    "outcome": "saved",
+    "providerCalls": 2,
+    "actions": [],
+    "lostTurns": [
+      {
+        "turnId": "changing-tentative-to-decided-s2-t1",
+        "reason": "commit invalidChange",
+        "undeclaredEndpoints": [
+          "talked"
+        ],
+        "patch": {
+          "entities": [
+            {
+              "questions": [
+                "How do you know Priya?",
+                "What is Priya like?",
+                "How often do you talk to Priya?"
+              ],
+              "type": "person",
+              "name": "Priya"
+            },
+            {
+              "name": "Northwind",
+              "type": "organization"
+            }
+          ],
+          "relations": [
+            {
+              "source": "Talked",
+              "label": "with",
+              "target": "Priya"
+            },
+            {
+              "target": "Northwind",
+              "label": "discussed",
+              "source": "Priya"
+            }
+          ],
+          "supersedes": []
+        }
+      }
+    ]
+  },
+  {
+    "scenario": "continuity-two-sams",
+    "outcome": "saved",
+    "providerCalls": 2,
+    "actions": [],
+    "lostTurns": [
+      {
+        "turnId": "continuity-two-sams-s1-t1",
+        "reason": "commit invalidChange",
+        "undeclaredEndpoints": [
+          "work"
+        ],
+        "patch": {
+          "entities": [
+            {
+              "description": "Reviewed my design doc today and liked the caching section.",
+              "name": "Sam Ortiz",
+              "questions": [
+                "What's Sam like to work with?",
+                "How long have you known Sam?",
+                "What's Sam's role at work?"
+              ],
+              "type": "person"
+            },
+            {
+              "description": "A document that Sam Ortiz reviewed and liked the caching section of.",
+              "type": "other",
+              "questions": [
+                "What is the design doc about?",
+                "What problem does this design doc address?",
+                "What's the overall status of this design doc?"
+              ],
+              "name": "design doc"
+            },
+            {
+              "type": "other",
+              "description": "A section within the design doc that Sam Ortiz liked.",
+              "questions": [
+                "What specific caching strategy did you propose?",
+                "What made you decide on that particular caching approach?",
+                "What are the potential benefits of this caching section?"
+              ],
+              "name": "caching section"
+            }
+          ],
+          "relations": [
+            {
+              "target": "work",
+              "source": "Sam Ortiz",
+              "label": "colleague_from"
+            },
+            {
+              "target": "design doc",
+              "source": "Sam Ortiz",
+              "label": "reviewed"
+            },
+            {
+              "source": "Sam Ortiz",
+              "label": "liked",
+              "target": "caching section"
+            },
+            {
+              "source": "design doc",
+              "label": "has_section",
+              "target": "caching section"
+            }
+          ],
+          "supersedes": []
+        }
+      }
+    ]
+  }
+]

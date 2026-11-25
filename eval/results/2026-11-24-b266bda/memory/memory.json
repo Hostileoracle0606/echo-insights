@@ -1,0 +1,2517 @@
+{
+  "version": 1,
+  "target": "local",
+  "commit": "b266bda",
+  "scoredAt": "2026-11-24T17:52:10.321Z",
+  "method": {
+    "extractionRunsPerScenario": 1,
+    "model": "gemini-2.5-flash (thinking off), extraction Lambda in-process",
+    "retrieval": "retrieve-memory, scope notebook, k=8, local gte-small embeddings; every probe notebook also holds the same 50 synthetic unrelated background entities (eval/memory/fixtures/background.json), so ranking is among distractors",
+    "insertions": "unrelated insertion = a retrieved background entity; other scenario entities are counted as sameStory; probe `related` names are left out of precision",
+    "staleNegation": "a stale term counts only where asserted: not after not/never/instead of/rather than/no longer, nor in a sentence saying misspoke/corrected/correction",
+    "pathAttribution": "combined: retrieve-memory returns one ranked list and does not say which path found an item",
+    "statusRule": "decided is correct when a retrieved entity description or active relation contains a decided marker and none contains a tentative marker; Lumen stores no tentative/decided field, so this scores the stored text",
+    "limitation": "N=1 extraction per scenario: no run-to-run spread is claimed",
+    "judge": {
+      "model": "claude-opus-5-5",
+      "servedBy": [
+        "claude-opus-5-5"
+      ],
+      "rubricVersion": 2,
+      "calibrated": true,
+      "calibration": "8/8",
+      "newCalls": 45,
+      "usage": {
+        "input_tokens": 55046,
+        "output_tokens": 7429
+      },
+      "scope": "stale (retrieval and brief), status, order and ambiguity are Claude's verdicts only; recall, rank and precision stay deterministic",
+      "rubric": "eval/memory/judge.mjs SYSTEM_PROMPT; calibration cases in eval/memory/judge-calibration.mjs",
+      "ruleAgreement": {
+        "stale": "10/10",
+        "status": "3/3",
+        "order": "0/2",
+        "ambiguity": "0/0"
+      }
+    }
+  },
+  "scenarios": {
+    "total": 12,
+    "scored": 8,
+    "probesScored": 32,
+    "probesTotal": 48,
+    "failed": [],
+    "pending": [
+      "continuity-two-alexes",
+      "correction-job-title-next-session",
+      "changing-tentative-to-decided",
+      "continuity-two-sams"
+    ],
+    "lostTurns": {
+      "continuity-paraphrase": [
+        {
+          "turnId": "continuity-paraphrase-s1-t1",
+          "reason": "commit invalidChange",
+          "undeclaredEndpoints": [
+            "training"
+          ],
+          "patch": {
+            "entities": [
+              {
+                "name": "Ridgeline half marathon",
+                "type": "event",
+                "questions": [
+                  "When is the Ridgeline half marathon?",
+                  "Where is the Ridgeline half marathon taking place?",
+                  "How long have you been training for it?",
+                  "What are your goals for the race?"
+                ],
+                "description": "a half marathon event"
+              },
+              {
+                "name": "Tobias Wren",
+                "type": "person",
+                "description": "my running coach",
+                "questions": [
+                  "How long have you been working with Tobias?",
+                  "What's Tobias's coaching style like?",
+                  "How did you find Tobias?",
+                  "What kind of training plan has Tobias put together for you?"
+                ]
+              },
+              {
+                "name": "running",
+                "type": "activity",
+                "questions": [
+                  "What do you enjoy most about running?",
+                  "What are your running goals beyond the half marathon?",
+                  "How often do you typically run?",
+                  "What challenges have you faced with running?"
+                ]
+              }
+            ],
+            "relations": [
+              {
+                "target": "Ridgeline half marathon",
+                "label": "for",
+                "source": "training"
+              },
+              {
+                "source": "training",
+                "label": "with",
+                "target": "Tobias Wren"
+              },
+              {
+                "target": "running",
+                "label": "coaches",
+                "source": "Tobias Wren"
+              }
+            ],
+            "supersedes": []
+          }
+        }
+      ]
+    },
+    "briefs": {
+      "continuity-indirect-reference": "ready",
+      "correction-city-same-session": "ready",
+      "deletion-forget-person": "ready",
+      "changing-decided-then-reversed": "ready",
+      "continuity-paraphrase": "not_run: BudgetExhausted",
+      "correction-edit-description": "ready",
+      "deletion-remove-project": "not_run: BudgetExhausted",
+      "changing-similar-names": "not_run: BudgetExhausted",
+      "continuity-two-alexes": "not_run",
+      "correction-job-title-next-session": "not_run",
+      "changing-tentative-to-decided": "not_run",
+      "continuity-two-sams": "not_run"
+    },
+    "actions": {
+      "deletion-forget-person": [
+        {
+          "after_session": 1,
+          "kind": "forget",
+          "name": "Dana Whitfield",
+          "entityId": "dana-whitfield",
+          "outcome": "applied"
+        }
+      ],
+      "correction-edit-description": [
+        {
+          "after_session": 1,
+          "kind": "correct",
+          "name": "Felix Navarro",
+          "description": "Felix Navarro is a physical therapist at Saint Corin hospital and an old friend from college.",
+          "entityId": "felix-navarro",
+          "outcome": "applied"
+        }
+      ],
+      "deletion-remove-project": [
+        {
+          "after_session": 1,
+          "kind": "remove",
+          "name": "Wren Box",
+          "entityId": "wren-box",
+          "outcome": "applied"
+        }
+      ]
+    }
+  },
+  "summary": {
+    "total": {
+      "probes": 32,
+      "recall": {
+        "hit": 23,
+        "of": 26
+      },
+      "recallAt1": {
+        "hit": 11,
+        "of": 26
+      },
+      "recallAt3": {
+        "hit": 19,
+        "of": 26
+      },
+      "coversGraph": {
+        "probes": 0,
+        "of": 32
+      },
+      "distractors": {
+        "confused": 1,
+        "of": 2
+      },
+      "staleVacuous": 0,
+      "briefs": {
+        "stale": 2,
+        "of": 3
+      },
+      "extractionMisses": {
+        "count": 4,
+        "ofExpected": 30
+      },
+      "precision": {
+        "hit": 24,
+        "of": 256
+      },
+      "inserted": {
+        "items": 184,
+        "probes": 32
+      },
+      "precisionAt3": {
+        "hit": 20,
+        "of": 96
+      },
+      "sameStory": 45,
+      "firstRank": {
+        "at1": 11,
+        "at2to3": 6,
+        "later": 3,
+        "none": 7
+      },
+      "stale": {
+        "probes": 7,
+        "of": 10,
+        "retrieval": 3,
+        "brief": 4,
+        "briefChecked": 7
+      },
+      "status": {
+        "correct": 2,
+        "of": 3
+      },
+      "order": {
+        "kept": 0,
+        "of": 2
+      },
+      "ambiguity": {
+        "acknowledged": 0,
+        "of": 0
+      }
+    },
+    "byCategory": {
+      "continuity": {
+        "probes": 8,
+        "recall": {
+          "hit": 5,
+          "of": 5
+        },
+        "recallAt1": {
+          "hit": 1,
+          "of": 5
+        },
+        "recallAt3": {
+          "hit": 3,
+          "of": 5
+        },
+        "coversGraph": {
+          "probes": 0,
+          "of": 8
+        },
+        "distractors": {
+          "confused": 0,
+          "of": 0
+        },
+        "staleVacuous": 0,
+        "briefs": {
+          "stale": 0,
+          "of": 0
+        },
+        "extractionMisses": {
+          "count": 4,
+          "ofExpected": 9
+        },
+        "precision": {
+          "hit": 5,
+          "of": 64
+        },
+        "inserted": {
+          "items": 42,
+          "probes": 8
+        },
+        "precisionAt3": {
+          "hit": 3,
+          "of": 24
+        },
+        "sameStory": 17,
+        "firstRank": {
+          "at1": 1,
+          "at2to3": 2,
+          "later": 1,
+          "none": 4
+        },
+        "stale": {
+          "probes": 0,
+          "of": 0,
+          "retrieval": 0,
+          "brief": 0,
+          "briefChecked": 0
+        },
+        "status": {
+          "correct": 0,
+          "of": 0
+        },
+        "order": {
+          "kept": 0,
+          "of": 0
+        },
+        "ambiguity": {
+          "acknowledged": 0,
+          "of": 0
+        }
+      },
+      "correction": {
+        "probes": 8,
+        "recall": {
+          "hit": 8,
+          "of": 8
+        },
+        "recallAt1": {
+          "hit": 5,
+          "of": 8
+        },
+        "recallAt3": {
+          "hit": 7,
+          "of": 8
+        },
+        "coversGraph": {
+          "probes": 0,
+          "of": 8
+        },
+        "distractors": {
+          "confused": 0,
+          "of": 0
+        },
+        "staleVacuous": 0,
+        "briefs": {
+          "stale": 1,
+          "of": 2
+        },
+        "extractionMisses": {
+          "count": 0,
+          "ofExpected": 8
+        },
+        "precision": {
+          "hit": 8,
+          "of": 64
+        },
+        "inserted": {
+          "items": 44,
+          "probes": 8
+        },
+        "precisionAt3": {
+          "hit": 7,
+          "of": 24
+        },
+        "sameStory": 10,
+        "firstRank": {
+          "at1": 5,
+          "at2to3": 1,
+          "later": 1,
+          "none": 0
+        },
+        "stale": {
+          "probes": 4,
+          "of": 4,
+          "retrieval": 3,
+          "brief": 1,
+          "briefChecked": 4
+        },
+        "status": {
+          "correct": 2,
+          "of": 3
+        },
+        "order": {
+          "kept": 0,
+          "of": 0
+        },
+        "ambiguity": {
+          "acknowledged": 0,
+          "of": 0
+        }
+      },
+      "deletion": {
+        "probes": 8,
+        "recall": {
+          "hit": 3,
+          "of": 4
+        },
+        "recallAt1": {
+          "hit": 2,
+          "of": 4
+        },
+        "recallAt3": {
+          "hit": 3,
+          "of": 4
+        },
+        "coversGraph": {
+          "probes": 0,
+          "of": 8
+        },
+        "distractors": {
+          "confused": 0,
+          "of": 0
+        },
+        "staleVacuous": 0,
+        "briefs": {
+          "stale": 1,
+          "of": 1
+        },
+        "extractionMisses": {
+          "count": 0,
+          "ofExpected": 4
+        },
+        "precision": {
+          "hit": 3,
+          "of": 64
+        },
+        "inserted": {
+          "items": 55,
+          "probes": 8
+        },
+        "precisionAt3": {
+          "hit": 3,
+          "of": 24
+        },
+        "sameStory": 6,
+        "firstRank": {
+          "at1": 2,
+          "at2to3": 1,
+          "later": 0,
+          "none": 1
+        },
+        "stale": {
+          "probes": 3,
+          "of": 6,
+          "retrieval": 0,
+          "brief": 3,
+          "briefChecked": 3
+        },
+        "status": {
+          "correct": 0,
+          "of": 0
+        },
+        "order": {
+          "kept": 0,
+          "of": 0
+        },
+        "ambiguity": {
+          "acknowledged": 0,
+          "of": 0
+        }
+      },
+      "changing_facts": {
+        "probes": 8,
+        "recall": {
+          "hit": 7,
+          "of": 9
+        },
+        "recallAt1": {
+          "hit": 3,
+          "of": 9
+        },
+        "recallAt3": {
+          "hit": 6,
+          "of": 9
+        },
+        "coversGraph": {
+          "probes": 0,
+          "of": 8
+        },
+        "distractors": {
+          "confused": 1,
+          "of": 2
+        },
+        "staleVacuous": 0,
+        "briefs": {
+          "stale": 0,
+          "of": 0
+        },
+        "extractionMisses": {
+          "count": 0,
+          "ofExpected": 9
+        },
+        "precision": {
+          "hit": 8,
+          "of": 64
+        },
+        "inserted": {
+          "items": 43,
+          "probes": 8
+        },
+        "precisionAt3": {
+          "hit": 7,
+          "of": 24
+        },
+        "sameStory": 12,
+        "firstRank": {
+          "at1": 3,
+          "at2to3": 2,
+          "later": 1,
+          "none": 2
+        },
+        "stale": {
+          "probes": 0,
+          "of": 0,
+          "retrieval": 0,
+          "brief": 0,
+          "briefChecked": 0
+        },
+        "status": {
+          "correct": 0,
+          "of": 0
+        },
+        "order": {
+          "kept": 0,
+          "of": 2
+        },
+        "ambiguity": {
+          "acknowledged": 0,
+          "of": 0
+        }
+      }
+    }
+  },
+  "probes": [
+    {
+      "scenario": "continuity-indirect-reference",
+      "category": "continuity",
+      "probeIndex": 0,
+      "ask": "How did my sister's opening go?",
+      "retrievedNames": [
+        "studio opening",
+        "Sicilian Defense",
+        "Tomato Seedlings",
+        "Maren",
+        "kiln room",
+        "Pickle",
+        "Clayhouse",
+        "Chess Club"
+      ],
+      "brief": "ready",
+      "recall": [
+        2,
+        2
+      ],
+      "recallAt1": [
+        0,
+        2
+      ],
+      "recallAt3": [
+        0,
+        2
+      ],
+      "firstRank": 4,
+      "coversGraph": false,
+      "precision": [
+        2,
+        8
+      ],
+      "precisionAt3": [
+        0,
+        3
+      ],
+      "inserted": 4,
+      "sameStory": 2,
+      "confused": null,
+      "stale": null,
+      "staleVacuous": false,
+      "staleIn": [],
+      "briefChecked": false,
+      "status": "n/a",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [],
+      "expectedCount": 2,
+      "judge": {
+        "stale": "n/a",
+        "stale_reason": "Not applicable: the script never corrects, reverses, or removes any fact.",
+        "status": "n/a",
+        "status_reason": "Not applicable: there is no decision or change of state to track for this topic.",
+        "order": "n/a",
+        "order_reason": "Not applicable: there is no earlier and later state whose sequence needs preserving.",
+        "ambiguity": "n/a",
+        "ambiguity_reason": "Not applicable: only one Maren appears, so there is no shared first name to keep apart."
+      }
+    },
+    {
+      "scenario": "continuity-indirect-reference",
+      "category": "continuity",
+      "probeIndex": 1,
+      "ask": "What is the pottery place called?",
+      "retrievedNames": [
+        "pottery studio",
+        "Maren",
+        "Clayhouse",
+        "Acoustic Guitar",
+        "Backyard Telescope",
+        "Chess Club",
+        "Wool Scarf",
+        "Crossword Puzzles"
+      ],
+      "brief": "ready",
+      "recall": [
+        1,
+        1
+      ],
+      "recallAt1": [
+        0,
+        1
+      ],
+      "recallAt3": [
+        1,
+        1
+      ],
+      "firstRank": 3,
+      "coversGraph": false,
+      "precision": [
+        1,
+        8
+      ],
+      "precisionAt3": [
+        1,
+        3
+      ],
+      "inserted": 5,
+      "sameStory": 2,
+      "confused": null,
+      "stale": null,
+      "staleVacuous": false,
+      "staleIn": [],
+      "briefChecked": false,
+      "status": "n/a",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [],
+      "expectedCount": 1,
+      "judge": {
+        "stale": "n/a",
+        "stale_reason": "Not applicable: the script contains no corrections, reversals, or removal requests about Clayhouse or Maren.",
+        "status": "n/a",
+        "status_reason": "Not applicable: the topic has no change of state, and the memory simply states \"Clayhouse is_a pottery studio\".",
+        "order": "n/a",
+        "order_reason": "Not applicable: there is only a single state, Maren \"just opened a pottery studio called Clayhouse\", with no earlier or later version to sequence.",
+        "ambiguity": "n/a",
+        "ambiguity_reason": "Not applicable: only one person, \"Maren\", is named, so no shared first names need to be kept apart."
+      }
+    },
+    {
+      "scenario": "continuity-indirect-reference",
+      "category": "continuity",
+      "probeIndex": 2,
+      "ask": "Which town is Maren's studio in?",
+      "retrievedNames": [
+        "Bellport",
+        "Clayhouse",
+        "studio opening",
+        "pottery studio",
+        "Maren",
+        "Tomato Seedlings",
+        "Crossword Puzzles",
+        "Pickle"
+      ],
+      "brief": "ready",
+      "recall": [
+        1,
+        1
+      ],
+      "recallAt1": [
+        1,
+        1
+      ],
+      "recallAt3": [
+        1,
+        1
+      ],
+      "firstRank": 1,
+      "coversGraph": false,
+      "precision": [
+        1,
+        8
+      ],
+      "precisionAt3": [
+        1,
+        3
+      ],
+      "inserted": 3,
+      "sameStory": 4,
+      "confused": null,
+      "stale": null,
+      "staleVacuous": false,
+      "staleIn": [],
+      "briefChecked": false,
+      "status": "n/a",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [],
+      "expectedCount": 1,
+      "judge": {
+        "stale": "n/a",
+        "stale_reason": "This check is marked not applicable because the user never corrected or removed any fact about Maren or Clayhouse.",
+        "status": "n/a",
+        "status_reason": "This check is marked not applicable because the question asks a simple location fact, \"Clayhouse situated_at Bellport\", with no decision state involved.",
+        "order": "n/a",
+        "order_reason": "This check is marked not applicable because there is no earlier and later state of the studio's location to sequence.",
+        "ambiguity": "n/a",
+        "ambiguity_reason": "This check is marked not applicable because only one Maren, \"The user's sister\", appears in the conversation."
+      }
+    },
+    {
+      "scenario": "continuity-indirect-reference",
+      "category": "continuity",
+      "probeIndex": 3,
+      "ask": "Who runs Clayhouse?",
+      "retrievedNames": [
+        "Clayhouse",
+        "Maren",
+        "kiln room",
+        "Pickle",
+        "pottery studio",
+        "Quillmont Library",
+        "Chess Club",
+        "Backyard Telescope"
+      ],
+      "brief": "ready",
+      "recall": [
+        1,
+        1
+      ],
+      "recallAt1": [
+        0,
+        1
+      ],
+      "recallAt3": [
+        1,
+        1
+      ],
+      "firstRank": 2,
+      "coversGraph": false,
+      "precision": [
+        1,
+        8
+      ],
+      "precisionAt3": [
+        1,
+        3
+      ],
+      "inserted": 4,
+      "sameStory": 3,
+      "confused": null,
+      "stale": null,
+      "staleVacuous": false,
+      "staleIn": [],
+      "briefChecked": false,
+      "status": "n/a",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [],
+      "expectedCount": 1,
+      "judge": {
+        "stale": "n/a",
+        "stale_reason": "Not applicable for this item.",
+        "status": "n/a",
+        "status_reason": "Not applicable for this item.",
+        "order": "n/a",
+        "order_reason": "Not applicable for this item.",
+        "ambiguity": "n/a",
+        "ambiguity_reason": "Not applicable for this item."
+      }
+    },
+    {
+      "scenario": "correction-city-same-session",
+      "category": "correction",
+      "probeIndex": 0,
+      "ask": "Where does Imogen live now?",
+      "retrievedNames": [
+        "Imogen",
+        "Dalton",
+        "Dayton",
+        "Fernhollow Community Garden",
+        "Film Camera",
+        "Wool Scarf",
+        "Wendell Ashby",
+        "Tomato Seedlings"
+      ],
+      "brief": "ready",
+      "recall": [
+        2,
+        2
+      ],
+      "recallAt1": [
+        1,
+        2
+      ],
+      "recallAt3": [
+        2,
+        2
+      ],
+      "firstRank": 1,
+      "coversGraph": false,
+      "precision": [
+        2,
+        8
+      ],
+      "precisionAt3": [
+        2,
+        3
+      ],
+      "inserted": 5,
+      "sameStory": 0,
+      "confused": null,
+      "stale": true,
+      "staleVacuous": false,
+      "staleIn": [
+        "retrieval"
+      ],
+      "briefChecked": true,
+      "status": "wrong",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [],
+      "expectedCount": 2,
+      "judge": {
+        "stale": "stale",
+        "stale_reason": "Memory still presents \"Imogen moved_to Dayton\" and \"Imogen moved to Dayton last month\" as live facts, even though the user corrected it to \"Dalton, not Dayton.\"",
+        "status": "wrong",
+        "status_reason": "The current fact \"Imogen moved_to Dalton\" is present, but the live contradicting statement \"Imogen moved_to Dayton\" sits right beside it.",
+        "order": "n/a",
+        "order_reason": "Order check is marked not applicable.",
+        "ambiguity": "n/a",
+        "ambiguity_reason": "Ambiguity check is marked not applicable."
+      }
+    },
+    {
+      "scenario": "correction-city-same-session",
+      "category": "correction",
+      "probeIndex": 1,
+      "ask": "Which of my friends moved recently?",
+      "retrievedNames": [
+        "Imogen",
+        "Dayton",
+        "Dalton",
+        "Pickle",
+        "Backyard Telescope",
+        "Acoustic Guitar",
+        "Freshwater Aquarium",
+        "Chess Club"
+      ],
+      "brief": "ready",
+      "recall": [
+        1,
+        1
+      ],
+      "recallAt1": [
+        1,
+        1
+      ],
+      "recallAt3": [
+        1,
+        1
+      ],
+      "firstRank": 1,
+      "coversGraph": false,
+      "precision": [
+        1,
+        8
+      ],
+      "precisionAt3": [
+        1,
+        3
+      ],
+      "inserted": 5,
+      "sameStory": 2,
+      "confused": null,
+      "stale": null,
+      "staleVacuous": false,
+      "staleIn": [],
+      "briefChecked": false,
+      "status": "n/a",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [],
+      "expectedCount": 1,
+      "judge": {
+        "stale": "n/a",
+        "stale_reason": "Not applicable for this item.",
+        "status": "n/a",
+        "status_reason": "Not applicable for this item.",
+        "order": "n/a",
+        "order_reason": "Not applicable for this item.",
+        "ambiguity": "n/a",
+        "ambiguity_reason": "Not applicable for this item."
+      }
+    },
+    {
+      "scenario": "correction-city-same-session",
+      "category": "correction",
+      "probeIndex": 2,
+      "ask": "Do I know anyone in Dayton?",
+      "retrievedNames": [
+        "Dayton",
+        "Imogen",
+        "Crossword Puzzles",
+        "Tomato Seedlings",
+        "Fernhollow Community Garden",
+        "Pickle",
+        "Raised Garden Bed",
+        "Monstera Plant"
+      ],
+      "brief": "ready",
+      "recall": [
+        0,
+        0
+      ],
+      "recallAt1": [
+        0,
+        0
+      ],
+      "recallAt3": [
+        0,
+        0
+      ],
+      "firstRank": null,
+      "coversGraph": false,
+      "precision": [
+        0,
+        8
+      ],
+      "precisionAt3": [
+        0,
+        3
+      ],
+      "inserted": 6,
+      "sameStory": 1,
+      "confused": null,
+      "stale": true,
+      "staleVacuous": false,
+      "staleIn": [
+        "retrieval"
+      ],
+      "briefChecked": true,
+      "status": "n/a",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [],
+      "expectedCount": 0,
+      "judge": {
+        "stale": "stale",
+        "stale_reason": "The memory still states \"Imogen moved to Dayton last month\" and \"Imogen moved_to Dayton\" as live facts, even though the user corrected this to \"Dalton, not Dayton.\"",
+        "status": "n/a",
+        "status_reason": "Status check is marked not applicable.",
+        "order": "n/a",
+        "order_reason": "Order check is marked not applicable.",
+        "ambiguity": "n/a",
+        "ambiguity_reason": "Ambiguity check is marked not applicable."
+      }
+    },
+    {
+      "scenario": "correction-city-same-session",
+      "category": "correction",
+      "probeIndex": 3,
+      "ask": "Tell me about Imogen.",
+      "retrievedNames": [
+        "Imogen",
+        "Metronome",
+        "Merino Yarn",
+        "Perseid Meteor Shower",
+        "Pickle",
+        "Dayton",
+        "Freshwater Aquarium",
+        "Chess Club"
+      ],
+      "brief": "ready",
+      "recall": [
+        1,
+        1
+      ],
+      "recallAt1": [
+        1,
+        1
+      ],
+      "recallAt3": [
+        1,
+        1
+      ],
+      "firstRank": 1,
+      "coversGraph": false,
+      "precision": [
+        1,
+        8
+      ],
+      "precisionAt3": [
+        1,
+        3
+      ],
+      "inserted": 6,
+      "sameStory": 1,
+      "confused": null,
+      "stale": true,
+      "staleVacuous": false,
+      "staleIn": [
+        "retrieval"
+      ],
+      "briefChecked": true,
+      "status": "n/a",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [],
+      "expectedCount": 1,
+      "judge": {
+        "stale": "stale",
+        "stale_reason": "The memory still presents \"Imogen moved_to Dayton\" and \"My best friend Imogen moved to Dayton last month\" as live facts, even though the user corrected this to Dalton.",
+        "status": "n/a",
+        "status_reason": "Not applicable for this item.",
+        "order": "n/a",
+        "order_reason": "Not applicable for this item.",
+        "ambiguity": "n/a",
+        "ambiguity_reason": "Not applicable for this item."
+      }
+    },
+    {
+      "scenario": "deletion-forget-person",
+      "category": "deletion",
+      "probeIndex": 0,
+      "ask": "Who did I have lunch with?",
+      "retrievedNames": [
+        "Ignatius Polk",
+        "Pickle",
+        "Quillmont Library",
+        "Tomato Seedlings",
+        "Jupiter",
+        "Crossword Puzzles",
+        "Wool Scarf",
+        "quarterly report"
+      ],
+      "brief": "ready",
+      "recall": [
+        0,
+        0
+      ],
+      "recallAt1": [
+        0,
+        0
+      ],
+      "recallAt3": [
+        0,
+        0
+      ],
+      "firstRank": null,
+      "coversGraph": false,
+      "precision": [
+        0,
+        8
+      ],
+      "precisionAt3": [
+        0,
+        3
+      ],
+      "inserted": 7,
+      "sameStory": 1,
+      "confused": null,
+      "stale": true,
+      "staleVacuous": false,
+      "staleIn": [
+        "brief"
+      ],
+      "briefChecked": true,
+      "status": "n/a",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [],
+      "expectedCount": 0,
+      "judge": {
+        "stale": "clean",
+        "stale_reason": "The memory only holds \"A report worked on with Ruth Okafor\" and never mentions the forgotten Dana Whitfield.",
+        "status": "n/a",
+        "status_reason": "Status is marked not applicable for this item.",
+        "order": "n/a",
+        "order_reason": "Order is marked not applicable for this item.",
+        "ambiguity": "n/a",
+        "ambiguity_reason": "Ambiguity is marked not applicable for this item."
+      }
+    },
+    {
+      "scenario": "deletion-forget-person",
+      "category": "deletion",
+      "probeIndex": 1,
+      "ask": "Who is moving to Oslo?",
+      "retrievedNames": [
+        "Oslo",
+        "Tomato Seedlings",
+        "Catnip Mice",
+        "Pickle",
+        "Sourdough Starter",
+        "Fernhollow Community Garden",
+        "Quillmont Library",
+        "Chess Club"
+      ],
+      "brief": "ready",
+      "recall": [
+        0,
+        0
+      ],
+      "recallAt1": [
+        0,
+        0
+      ],
+      "recallAt3": [
+        0,
+        0
+      ],
+      "firstRank": null,
+      "coversGraph": false,
+      "precision": [
+        0,
+        8
+      ],
+      "precisionAt3": [
+        0,
+        3
+      ],
+      "inserted": 7,
+      "sameStory": 1,
+      "confused": null,
+      "stale": true,
+      "staleVacuous": false,
+      "staleIn": [
+        "brief"
+      ],
+      "briefChecked": true,
+      "status": "n/a",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [],
+      "expectedCount": 0,
+      "judge": {
+        "stale": "clean",
+        "stale_reason": "The memory returns only \"Oslo\" and never names the forgotten \"Dana Whitfield\" or \"Whitfield\".",
+        "status": "n/a",
+        "status_reason": "Status is not applicable for this question.",
+        "order": "n/a",
+        "order_reason": "Order is not applicable for this question.",
+        "ambiguity": "n/a",
+        "ambiguity_reason": "Ambiguity is not applicable for this question."
+      }
+    },
+    {
+      "scenario": "deletion-forget-person",
+      "category": "deletion",
+      "probeIndex": 2,
+      "ask": "Who is my manager?",
+      "retrievedNames": [
+        "Ruth Okafor",
+        "Pickle",
+        "Quillmont Library",
+        "Chess Club",
+        "Backyard Telescope",
+        "Fernhollow Community Garden",
+        "quarterly report",
+        "Monstera Plant"
+      ],
+      "brief": "ready",
+      "recall": [
+        1,
+        1
+      ],
+      "recallAt1": [
+        1,
+        1
+      ],
+      "recallAt3": [
+        1,
+        1
+      ],
+      "firstRank": 1,
+      "coversGraph": false,
+      "precision": [
+        1,
+        8
+      ],
+      "precisionAt3": [
+        1,
+        3
+      ],
+      "inserted": 6,
+      "sameStory": 1,
+      "confused": null,
+      "stale": null,
+      "staleVacuous": false,
+      "staleIn": [],
+      "briefChecked": false,
+      "status": "n/a",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [],
+      "expectedCount": 1,
+      "judge": {
+        "stale": "n/a",
+        "stale_reason": "This check is marked not applicable for this case.",
+        "status": "n/a",
+        "status_reason": "This check is marked not applicable for this case.",
+        "order": "n/a",
+        "order_reason": "This check is marked not applicable for this case.",
+        "ambiguity": "n/a",
+        "ambiguity_reason": "This check is marked not applicable for this case."
+      }
+    },
+    {
+      "scenario": "deletion-forget-person",
+      "category": "deletion",
+      "probeIndex": 3,
+      "ask": "Who did I work with this week?",
+      "retrievedNames": [
+        "Crossword Puzzles",
+        "quarterly report",
+        "Ignatius Polk",
+        "Pickle",
+        "Tomato Seedlings",
+        "Quillmont Library",
+        "Chess Club",
+        "Backyard Telescope"
+      ],
+      "brief": "ready",
+      "recall": [
+        0,
+        1
+      ],
+      "recallAt1": [
+        0,
+        1
+      ],
+      "recallAt3": [
+        0,
+        1
+      ],
+      "firstRank": null,
+      "coversGraph": false,
+      "precision": [
+        0,
+        8
+      ],
+      "precisionAt3": [
+        0,
+        3
+      ],
+      "inserted": 7,
+      "sameStory": 1,
+      "confused": null,
+      "stale": true,
+      "staleVacuous": false,
+      "staleIn": [
+        "brief"
+      ],
+      "briefChecked": true,
+      "status": "n/a",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [
+        {
+          "name": "Ruth Okafor",
+          "why": "not_retrieved"
+        }
+      ],
+      "expectedCount": 1,
+      "judge": {
+        "stale": "clean",
+        "stale_reason": "The memory mentions only \"A report worked on with Ruth Okafor\" and contains no trace of the forgotten \"Dana Whitfield\".",
+        "status": "n/a",
+        "status_reason": "Not applicable per the checks.",
+        "order": "n/a",
+        "order_reason": "Not applicable per the checks.",
+        "ambiguity": "n/a",
+        "ambiguity_reason": "Not applicable per the checks."
+      }
+    },
+    {
+      "scenario": "changing-decided-then-reversed",
+      "category": "changing_facts",
+      "probeIndex": 0,
+      "ask": "Where are we going for our anniversary?",
+      "retrievedNames": [
+        "anniversary trip",
+        "Wendell Ashby",
+        "Crossword Puzzles",
+        "Water Testing Kit",
+        "Wool Scarf",
+        "Pickle",
+        "Sourdough Starter",
+        "Chess Club"
+      ],
+      "brief": "ready",
+      "recall": [
+        0,
+        1
+      ],
+      "recallAt1": [
+        0,
+        1
+      ],
+      "recallAt3": [
+        0,
+        1
+      ],
+      "firstRank": null,
+      "coversGraph": false,
+      "precision": [
+        0,
+        8
+      ],
+      "precisionAt3": [
+        0,
+        3
+      ],
+      "inserted": 7,
+      "sameStory": 1,
+      "confused": null,
+      "stale": null,
+      "staleVacuous": false,
+      "staleIn": [],
+      "briefChecked": false,
+      "status": "n/a",
+      "order": "lost",
+      "ambiguity": "n/a",
+      "misses": [
+        {
+          "name": "Kyoto",
+          "why": "not_retrieved"
+        }
+      ],
+      "expectedCount": 1,
+      "judge": {
+        "stale": "n/a",
+        "stale_reason": "Not applicable for this item.",
+        "status": "n/a",
+        "status_reason": "Not applicable for this item.",
+        "order": "lost",
+        "order_reason": "The memory lists \"anniversary trip to Kyoto\" before \"anniversary trip to Lisbon\" and never says Lisbon was cancelled, so the Lisbon-to-Kyoto change cannot be recovered.",
+        "ambiguity": "n/a",
+        "ambiguity_reason": "Not applicable for this item."
+      }
+    },
+    {
+      "scenario": "changing-decided-then-reversed",
+      "category": "changing_facts",
+      "probeIndex": 1,
+      "ask": "Is the Lisbon trip still on?",
+      "retrievedNames": [
+        "Lisbon",
+        "anniversary trip",
+        "Kyoto",
+        "Pickle",
+        "Sourdough Starter",
+        "Acoustic Guitar",
+        "Chess Club",
+        "Fernhollow Community Garden"
+      ],
+      "brief": "ready",
+      "recall": [
+        2,
+        2
+      ],
+      "recallAt1": [
+        1,
+        2
+      ],
+      "recallAt3": [
+        2,
+        2
+      ],
+      "firstRank": 1,
+      "coversGraph": false,
+      "precision": [
+        2,
+        8
+      ],
+      "precisionAt3": [
+        2,
+        3
+      ],
+      "inserted": 5,
+      "sameStory": 1,
+      "confused": null,
+      "stale": null,
+      "staleVacuous": false,
+      "staleIn": [],
+      "briefChecked": false,
+      "status": "n/a",
+      "order": "lost",
+      "ambiguity": "n/a",
+      "misses": [],
+      "expectedCount": 2,
+      "judge": {
+        "stale": "n/a",
+        "stale_reason": "Not applicable for this question.",
+        "status": "n/a",
+        "status_reason": "Not applicable for this question.",
+        "order": "lost",
+        "order_reason": "The memory lists \"anniversary trip to Kyoto\" and \"anniversary trip to Lisbon\" side by side with no sequence or cancellation marker, Kyoto even appearing first, so it cannot show that Lisbon came first and was replaced by Kyoto.",
+        "ambiguity": "n/a",
+        "ambiguity_reason": "Not applicable for this question."
+      }
+    },
+    {
+      "scenario": "changing-decided-then-reversed",
+      "category": "changing_facts",
+      "probeIndex": 2,
+      "ask": "What did we book for June?",
+      "retrievedNames": [
+        "June",
+        "Wendell Ashby",
+        "Crossword Puzzles",
+        "Wool Scarf",
+        "Water Testing Kit",
+        "Kyoto",
+        "Pickle",
+        "Sourdough Starter"
+      ],
+      "brief": "ready",
+      "recall": [
+        1,
+        1
+      ],
+      "recallAt1": [
+        0,
+        1
+      ],
+      "recallAt3": [
+        0,
+        1
+      ],
+      "firstRank": 6,
+      "coversGraph": false,
+      "precision": [
+        1,
+        8
+      ],
+      "precisionAt3": [
+        0,
+        3
+      ],
+      "inserted": 6,
+      "sameStory": 1,
+      "confused": null,
+      "stale": null,
+      "staleVacuous": false,
+      "staleIn": [],
+      "briefChecked": false,
+      "status": "n/a",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [],
+      "expectedCount": 1,
+      "judge": {
+        "stale": "n/a",
+        "stale_reason": "Not applicable for this item.",
+        "status": "n/a",
+        "status_reason": "Not applicable for this item.",
+        "order": "n/a",
+        "order_reason": "Not applicable for this item.",
+        "ambiguity": "n/a",
+        "ambiguity_reason": "Not applicable for this item."
+      }
+    },
+    {
+      "scenario": "changing-decided-then-reversed",
+      "category": "changing_facts",
+      "probeIndex": 3,
+      "ask": "Do we have any travel plans?",
+      "retrievedNames": [
+        "Crossword Puzzles",
+        "Wendell Ashby",
+        "Backyard Telescope",
+        "Tomato Seedlings",
+        "Freshwater Aquarium",
+        "Fernhollow Community Garden",
+        "Chess Club",
+        "Seed Catalog"
+      ],
+      "brief": "ready",
+      "recall": [
+        0,
+        1
+      ],
+      "recallAt1": [
+        0,
+        1
+      ],
+      "recallAt3": [
+        0,
+        1
+      ],
+      "firstRank": null,
+      "coversGraph": false,
+      "precision": [
+        0,
+        8
+      ],
+      "precisionAt3": [
+        0,
+        3
+      ],
+      "inserted": 8,
+      "sameStory": 0,
+      "confused": null,
+      "stale": null,
+      "staleVacuous": false,
+      "staleIn": [],
+      "briefChecked": false,
+      "status": "n/a",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [
+        {
+          "name": "Kyoto",
+          "why": "not_retrieved"
+        }
+      ],
+      "expectedCount": 1,
+      "judge": {
+        "stale": "n/a",
+        "stale_reason": "This check is marked not applicable, and the memory returned \"(nothing from this conversation)\" anyway.",
+        "status": "n/a",
+        "status_reason": "This check is marked not applicable for this item.",
+        "order": "n/a",
+        "order_reason": "This check is marked not applicable for this item.",
+        "ambiguity": "n/a",
+        "ambiguity_reason": "This check is marked not applicable, and the script has no two people sharing a first name."
+      }
+    },
+    {
+      "scenario": "continuity-paraphrase",
+      "category": "continuity",
+      "probeIndex": 0,
+      "ask": "How is the race prep going?",
+      "retrievedNames": [
+        "running",
+        "Chess Club",
+        "Tomato Seedlings",
+        "Sicilian Defense",
+        "Fingerpicking Practice",
+        "Crossword Puzzles",
+        "Hollis Grady",
+        "Bread Scoring"
+      ],
+      "brief": "not_run: BudgetExhausted",
+      "recall": [
+        0,
+        0
+      ],
+      "recallAt1": [
+        0,
+        0
+      ],
+      "recallAt3": [
+        0,
+        0
+      ],
+      "firstRank": null,
+      "coversGraph": false,
+      "precision": [
+        0,
+        8
+      ],
+      "precisionAt3": [
+        0,
+        3
+      ],
+      "inserted": 7,
+      "sameStory": 1,
+      "confused": null,
+      "stale": null,
+      "staleVacuous": false,
+      "staleIn": [],
+      "briefChecked": false,
+      "status": "n/a",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [
+        {
+          "name": "Ridgeline",
+          "why": "not_extracted"
+        }
+      ],
+      "expectedCount": 1,
+      "judge": {
+        "stale": "n/a",
+        "stale_reason": "This check is marked not applicable because nothing in the script was corrected, reversed or removed.",
+        "status": "n/a",
+        "status_reason": "This check is marked not applicable because the script has no decision that changes over time.",
+        "order": "n/a",
+        "order_reason": "This check is marked not applicable because there is no earlier and later state to put in sequence.",
+        "ambiguity": "n/a",
+        "ambiguity_reason": "This check is marked not applicable because only one person, \"Tobias Wren,\" appears in the script."
+      }
+    },
+    {
+      "scenario": "continuity-paraphrase",
+      "category": "continuity",
+      "probeIndex": 1,
+      "ask": "Who is helping me get ready to run?",
+      "retrievedNames": [
+        "running",
+        "Metronome",
+        "Tobias",
+        "Tomato Seedlings",
+        "Merino Yarn",
+        "Perseid Meteor Shower",
+        "Backyard Telescope",
+        "Acoustic Guitar"
+      ],
+      "brief": "not_run: BudgetExhausted",
+      "recall": [
+        0,
+        0
+      ],
+      "recallAt1": [
+        0,
+        0
+      ],
+      "recallAt3": [
+        0,
+        0
+      ],
+      "firstRank": null,
+      "coversGraph": false,
+      "precision": [
+        0,
+        8
+      ],
+      "precisionAt3": [
+        0,
+        3
+      ],
+      "inserted": 6,
+      "sameStory": 2,
+      "confused": null,
+      "stale": null,
+      "staleVacuous": false,
+      "staleIn": [],
+      "briefChecked": false,
+      "status": "n/a",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [
+        {
+          "name": "Tobias Wren",
+          "why": "not_extracted"
+        }
+      ],
+      "expectedCount": 1,
+      "judge": {
+        "stale": "n/a",
+        "stale_reason": "Not applicable: the user never corrected, reversed, or removed anything about Tobias or their training.",
+        "status": "n/a",
+        "status_reason": "Not applicable: there is no changed or tentative state to evaluate.",
+        "order": "n/a",
+        "order_reason": "Not applicable: the history has no earlier-to-later change to sequence.",
+        "ambiguity": "n/a",
+        "ambiguity_reason": "Not applicable: only one Tobias (\"Tobias Wren\") appears, so there is no shared-name confusion to check."
+      }
+    },
+    {
+      "scenario": "continuity-paraphrase",
+      "category": "continuity",
+      "probeIndex": 2,
+      "ask": "What did my coach say about my injury?",
+      "retrievedNames": [
+        "running",
+        "Tobias",
+        "Tomato Seedlings",
+        "Fingerpicking Practice",
+        "Sicilian Defense",
+        "Marguerite Fenn",
+        "Raised Garden Bed",
+        "Bread Scoring"
+      ],
+      "brief": "not_run: BudgetExhausted",
+      "recall": [
+        0,
+        0
+      ],
+      "recallAt1": [
+        0,
+        0
+      ],
+      "recallAt3": [
+        0,
+        0
+      ],
+      "firstRank": null,
+      "coversGraph": false,
+      "precision": [
+        0,
+        8
+      ],
+      "precisionAt3": [
+        0,
+        3
+      ],
+      "inserted": 6,
+      "sameStory": 2,
+      "confused": null,
+      "stale": null,
+      "staleVacuous": false,
+      "staleIn": [],
+      "briefChecked": false,
+      "status": "n/a",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [
+        {
+          "name": "Tobias Wren",
+          "why": "not_extracted"
+        }
+      ],
+      "expectedCount": 1,
+      "judge": {
+        "stale": "n/a",
+        "stale_reason": "Not applicable: the script contains no corrections, reversals or removals to check against.",
+        "status": "n/a",
+        "status_reason": "Not applicable: this check was marked not applicable for this item.",
+        "order": "n/a",
+        "order_reason": "Not applicable: this check was marked not applicable for this item.",
+        "ambiguity": "n/a",
+        "ambiguity_reason": "Not applicable: only one Tobias appears, so there are no two same-named people to keep apart."
+      }
+    },
+    {
+      "scenario": "continuity-paraphrase",
+      "category": "continuity",
+      "probeIndex": 3,
+      "ask": "Have I signed up for any races?",
+      "retrievedNames": [
+        "Wool Scarf",
+        "Ignatius Polk",
+        "Jupiter",
+        "Backyard Telescope",
+        "Tomato Seedlings",
+        "Tobias",
+        "Pickle",
+        "Sourdough Starter"
+      ],
+      "brief": "not_run: BudgetExhausted",
+      "recall": [
+        0,
+        0
+      ],
+      "recallAt1": [
+        0,
+        0
+      ],
+      "recallAt3": [
+        0,
+        0
+      ],
+      "firstRank": null,
+      "coversGraph": false,
+      "precision": [
+        0,
+        8
+      ],
+      "precisionAt3": [
+        0,
+        3
+      ],
+      "inserted": 7,
+      "sameStory": 1,
+      "confused": null,
+      "stale": null,
+      "staleVacuous": false,
+      "staleIn": [],
+      "briefChecked": false,
+      "status": "n/a",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [
+        {
+          "name": "Ridgeline",
+          "why": "not_extracted"
+        }
+      ],
+      "expectedCount": 1,
+      "judge": {
+        "stale": "n/a",
+        "stale_reason": "Not applicable: the script contains no corrections or removals, so nothing in \"Tobias gives_advice_about running\" can be stale.",
+        "status": "n/a",
+        "status_reason": "Not applicable: this question involves no decision or state change to judge.",
+        "order": "n/a",
+        "order_reason": "Not applicable: the history has no earlier and later states to put in sequence.",
+        "ambiguity": "n/a",
+        "ambiguity_reason": "Not applicable: only one person, \"Tobias Wren\", appears, so there is no shared first name to tell apart."
+      }
+    },
+    {
+      "scenario": "correction-edit-description",
+      "category": "correction",
+      "probeIndex": 0,
+      "ask": "What does Felix do for work?",
+      "retrievedNames": [
+        "Felix Navarro",
+        "Crossword Puzzles",
+        "birthday dinner",
+        "Wool Scarf",
+        "Backyard Telescope",
+        "Seed Catalog",
+        "Pickle",
+        "Sourdough Starter"
+      ],
+      "brief": "ready",
+      "recall": [
+        1,
+        1
+      ],
+      "recallAt1": [
+        1,
+        1
+      ],
+      "recallAt3": [
+        1,
+        1
+      ],
+      "firstRank": 1,
+      "coversGraph": false,
+      "precision": [
+        1,
+        8
+      ],
+      "precisionAt3": [
+        1,
+        3
+      ],
+      "inserted": 6,
+      "sameStory": 1,
+      "confused": null,
+      "stale": true,
+      "staleVacuous": false,
+      "staleIn": [
+        "brief"
+      ],
+      "briefChecked": true,
+      "status": "correct",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [],
+      "expectedCount": 1,
+      "judge": {
+        "stale": "clean",
+        "stale_reason": "The memory says only \"Felix Navarro is a physical therapist at Saint Corin hospital\" and never mentions \"pediatric nurse\".",
+        "status": "correct",
+        "status_reason": "The corrected fact \"physical therapist at Saint Corin hospital\" is stated, and no live statement contradicts it.",
+        "order": "n/a",
+        "order_reason": "Order check is not applicable.",
+        "ambiguity": "n/a",
+        "ambiguity_reason": "Ambiguity check is not applicable."
+      }
+    },
+    {
+      "scenario": "correction-edit-description",
+      "category": "correction",
+      "probeIndex": 1,
+      "ask": "Where does Felix work?",
+      "retrievedNames": [
+        "Felix Navarro",
+        "birthday dinner",
+        "Pickle",
+        "Backyard Telescope",
+        "Acoustic Guitar",
+        "Fernhollow Community Garden",
+        "Saint Corin hospital",
+        "Perseid Meteor Shower"
+      ],
+      "brief": "ready",
+      "recall": [
+        1,
+        1
+      ],
+      "recallAt1": [
+        0,
+        1
+      ],
+      "recallAt3": [
+        0,
+        1
+      ],
+      "firstRank": 7,
+      "coversGraph": false,
+      "precision": [
+        1,
+        8
+      ],
+      "precisionAt3": [
+        0,
+        3
+      ],
+      "inserted": 5,
+      "sameStory": 2,
+      "confused": null,
+      "stale": null,
+      "staleVacuous": false,
+      "staleIn": [],
+      "briefChecked": false,
+      "status": "n/a",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [],
+      "expectedCount": 1,
+      "judge": {
+        "stale": "n/a",
+        "stale_reason": "Marked not applicable for this case.",
+        "status": "n/a",
+        "status_reason": "Marked not applicable for this case.",
+        "order": "n/a",
+        "order_reason": "Marked not applicable for this case.",
+        "ambiguity": "n/a",
+        "ambiguity_reason": "Marked not applicable for this case."
+      }
+    },
+    {
+      "scenario": "correction-edit-description",
+      "category": "correction",
+      "probeIndex": 2,
+      "ask": "Whose birthday is coming up?",
+      "retrievedNames": [
+        "birthday dinner",
+        "Backyard Telescope",
+        "Felix Navarro",
+        "Chess Club",
+        "Acoustic Guitar",
+        "Fernhollow Community Garden",
+        "Quillmont Library",
+        "Saint Corin hospital"
+      ],
+      "brief": "ready",
+      "recall": [
+        1,
+        1
+      ],
+      "recallAt1": [
+        0,
+        1
+      ],
+      "recallAt3": [
+        1,
+        1
+      ],
+      "firstRank": 3,
+      "coversGraph": false,
+      "precision": [
+        1,
+        8
+      ],
+      "precisionAt3": [
+        1,
+        3
+      ],
+      "inserted": 5,
+      "sameStory": 2,
+      "confused": null,
+      "stale": null,
+      "staleVacuous": false,
+      "staleIn": [],
+      "briefChecked": false,
+      "status": "n/a",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [],
+      "expectedCount": 1,
+      "judge": {
+        "stale": "n/a",
+        "stale_reason": "This check is marked not applicable for this case.",
+        "status": "n/a",
+        "status_reason": "This check is marked not applicable for this case.",
+        "order": "n/a",
+        "order_reason": "This check is marked not applicable for this case.",
+        "ambiguity": "n/a",
+        "ambiguity_reason": "This check is marked not applicable for this case."
+      }
+    },
+    {
+      "scenario": "correction-edit-description",
+      "category": "correction",
+      "probeIndex": 3,
+      "ask": "How do I know Felix?",
+      "retrievedNames": [
+        "Felix Navarro",
+        "Crossword Puzzles",
+        "birthday dinner",
+        "Ignatius Polk",
+        "Backyard Telescope",
+        "Tomato Seedlings",
+        "Seed Catalog",
+        "Acoustic Guitar"
+      ],
+      "brief": "ready",
+      "recall": [
+        1,
+        1
+      ],
+      "recallAt1": [
+        1,
+        1
+      ],
+      "recallAt3": [
+        1,
+        1
+      ],
+      "firstRank": 1,
+      "coversGraph": false,
+      "precision": [
+        1,
+        8
+      ],
+      "precisionAt3": [
+        1,
+        3
+      ],
+      "inserted": 6,
+      "sameStory": 1,
+      "confused": null,
+      "stale": null,
+      "staleVacuous": false,
+      "staleIn": [],
+      "briefChecked": false,
+      "status": "correct",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [],
+      "expectedCount": 1,
+      "judge": {
+        "stale": "n/a",
+        "stale_reason": "Not applicable for this case.",
+        "status": "correct",
+        "status_reason": "Memory states the edited fact \"Felix Navarro is a physical therapist at Saint Corin hospital and an old friend from college\" and nowhere presents the earlier \"pediatric nurse\" description as live.",
+        "order": "n/a",
+        "order_reason": "Not applicable for this case.",
+        "ambiguity": "n/a",
+        "ambiguity_reason": "Not applicable for this case."
+      }
+    },
+    {
+      "scenario": "deletion-remove-project",
+      "category": "deletion",
+      "probeIndex": 0,
+      "ask": "What am I building?",
+      "retrievedNames": [
+        "Ignatius Polk",
+        "Tomato Seedlings",
+        "Jupiter",
+        "Water Testing Kit",
+        "Crossword Puzzles",
+        "Wool Scarf",
+        "Pickle",
+        "Sourdough Starter"
+      ],
+      "brief": "not_run: BudgetExhausted",
+      "recall": [
+        0,
+        0
+      ],
+      "recallAt1": [
+        0,
+        0
+      ],
+      "recallAt3": [
+        0,
+        0
+      ],
+      "firstRank": null,
+      "coversGraph": false,
+      "precision": [
+        0,
+        8
+      ],
+      "precisionAt3": [
+        0,
+        3
+      ],
+      "inserted": 8,
+      "sameStory": 0,
+      "confused": null,
+      "stale": false,
+      "staleVacuous": false,
+      "staleIn": [],
+      "briefChecked": false,
+      "status": "n/a",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [],
+      "expectedCount": 0,
+      "judge": {
+        "stale": "clean",
+        "stale_reason": "Memory returned \"(nothing from this conversation)\", so the removed \"Wren Box\" does not appear as live memory.",
+        "status": "n/a",
+        "status_reason": "Status check is marked not applicable.",
+        "order": "n/a",
+        "order_reason": "Order check is marked not applicable.",
+        "ambiguity": "n/a",
+        "ambiguity_reason": "Ambiguity check is marked not applicable."
+      }
+    },
+    {
+      "scenario": "deletion-remove-project",
+      "category": "deletion",
+      "probeIndex": 1,
+      "ask": "What's going on with Otto?",
+      "retrievedNames": [
+        "Otto",
+        "soccer team",
+        "Chess Club",
+        "Wool Scarf",
+        "Fingerpicking Practice",
+        "Crossword Puzzles",
+        "Jupiter",
+        "Dutch Oven"
+      ],
+      "brief": "not_run: BudgetExhausted",
+      "recall": [
+        1,
+        1
+      ],
+      "recallAt1": [
+        1,
+        1
+      ],
+      "recallAt3": [
+        1,
+        1
+      ],
+      "firstRank": 1,
+      "coversGraph": false,
+      "precision": [
+        1,
+        8
+      ],
+      "precisionAt3": [
+        1,
+        3
+      ],
+      "inserted": 6,
+      "sameStory": 1,
+      "confused": null,
+      "stale": false,
+      "staleVacuous": false,
+      "staleIn": [],
+      "briefChecked": false,
+      "status": "n/a",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [],
+      "expectedCount": 1,
+      "judge": {
+        "stale": "clean",
+        "stale_reason": "The memory mentions only \"my nephew\" and \"Otto plays_on soccer team\", and \"Wren Box\" does not appear anywhere.",
+        "status": "n/a",
+        "status_reason": "Not applicable for this item.",
+        "order": "n/a",
+        "order_reason": "Not applicable for this item.",
+        "ambiguity": "n/a",
+        "ambiguity_reason": "Not applicable for this item."
+      }
+    },
+    {
+      "scenario": "deletion-remove-project",
+      "category": "deletion",
+      "probeIndex": 2,
+      "ask": "Do I have any woodworking projects?",
+      "retrievedNames": [
+        "Crossword Puzzles",
+        "Ignatius Polk",
+        "Backyard Telescope",
+        "Seed Catalog",
+        "Tomato Seedlings",
+        "Sourdough Starter",
+        "Pickle",
+        "Chess Club"
+      ],
+      "brief": "not_run: BudgetExhausted",
+      "recall": [
+        0,
+        0
+      ],
+      "recallAt1": [
+        0,
+        0
+      ],
+      "recallAt3": [
+        0,
+        0
+      ],
+      "firstRank": null,
+      "coversGraph": false,
+      "precision": [
+        0,
+        8
+      ],
+      "precisionAt3": [
+        0,
+        3
+      ],
+      "inserted": 8,
+      "sameStory": 0,
+      "confused": null,
+      "stale": false,
+      "staleVacuous": false,
+      "staleIn": [],
+      "briefChecked": false,
+      "status": "n/a",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [],
+      "expectedCount": 0,
+      "judge": {
+        "stale": "clean",
+        "stale_reason": "The retrieved memory says \"(nothing from this conversation)\", so the removed \"Wren Box\" project does not appear as live memory.",
+        "status": "n/a",
+        "status_reason": "Status is marked not applicable for this question.",
+        "order": "n/a",
+        "order_reason": "Order is marked not applicable for this question.",
+        "ambiguity": "n/a",
+        "ambiguity_reason": "Ambiguity is marked not applicable for this question."
+      }
+    },
+    {
+      "scenario": "deletion-remove-project",
+      "category": "deletion",
+      "probeIndex": 3,
+      "ask": "How did the soccer game go?",
+      "retrievedNames": [
+        "soccer team",
+        "Otto",
+        "Acoustic Guitar",
+        "Backyard Telescope",
+        "Fernhollow Community Garden",
+        "Chess Club",
+        "Raised Garden Bed",
+        "Wool Scarf"
+      ],
+      "brief": "not_run: BudgetExhausted",
+      "recall": [
+        1,
+        1
+      ],
+      "recallAt1": [
+        0,
+        1
+      ],
+      "recallAt3": [
+        1,
+        1
+      ],
+      "firstRank": 2,
+      "coversGraph": false,
+      "precision": [
+        1,
+        8
+      ],
+      "precisionAt3": [
+        1,
+        3
+      ],
+      "inserted": 6,
+      "sameStory": 1,
+      "confused": null,
+      "stale": null,
+      "staleVacuous": false,
+      "staleIn": [],
+      "briefChecked": false,
+      "status": "n/a",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [],
+      "expectedCount": 1,
+      "judge": {
+        "stale": "n/a",
+        "stale_reason": "This check is marked not applicable for this case.",
+        "status": "n/a",
+        "status_reason": "This check is marked not applicable for this case.",
+        "order": "n/a",
+        "order_reason": "This check is marked not applicable for this case.",
+        "ambiguity": "n/a",
+        "ambiguity_reason": "This check is marked not applicable for this case."
+      }
+    },
+    {
+      "scenario": "changing-similar-names",
+      "category": "changing_facts",
+      "probeIndex": 0,
+      "ask": "What does Priya do?",
+      "retrievedNames": [
+        "Priyanka Rao",
+        "Priya Shah",
+        "Crossword Puzzles",
+        "finance",
+        "Atlas migration",
+        "Backyard Telescope",
+        "Atlas budget",
+        "Seed Catalog"
+      ],
+      "brief": "not_run: BudgetExhausted",
+      "recall": [
+        1,
+        1
+      ],
+      "recallAt1": [
+        0,
+        1
+      ],
+      "recallAt3": [
+        1,
+        1
+      ],
+      "firstRank": 2,
+      "coversGraph": false,
+      "precision": [
+        1,
+        8
+      ],
+      "precisionAt3": [
+        1,
+        3
+      ],
+      "inserted": 3,
+      "sameStory": 3,
+      "confused": true,
+      "stale": null,
+      "staleVacuous": false,
+      "staleIn": [],
+      "briefChecked": false,
+      "status": "n/a",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [],
+      "expectedCount": 1,
+      "judge": {
+        "stale": "n/a",
+        "stale_reason": "Not applicable for this case.",
+        "status": "n/a",
+        "status_reason": "Not applicable for this case.",
+        "order": "n/a",
+        "order_reason": "Not applicable for this case.",
+        "ambiguity": "n/a",
+        "ambiguity_reason": "Not applicable for this case."
+      }
+    },
+    {
+      "scenario": "changing-similar-names",
+      "category": "changing_facts",
+      "probeIndex": 1,
+      "ask": "Who approved the budget?",
+      "retrievedNames": [
+        "Atlas budget",
+        "Priyanka Rao",
+        "Pickle",
+        "Chess Club",
+        "Acoustic Guitar",
+        "Backyard Telescope",
+        "Fernhollow Community Garden",
+        "Quillmont Library"
+      ],
+      "brief": "not_run: BudgetExhausted",
+      "recall": [
+        1,
+        1
+      ],
+      "recallAt1": [
+        0,
+        1
+      ],
+      "recallAt3": [
+        1,
+        1
+      ],
+      "firstRank": 2,
+      "coversGraph": false,
+      "precision": [
+        1,
+        8
+      ],
+      "precisionAt3": [
+        1,
+        3
+      ],
+      "inserted": 6,
+      "sameStory": 1,
+      "confused": null,
+      "stale": null,
+      "staleVacuous": false,
+      "staleIn": [],
+      "briefChecked": false,
+      "status": "n/a",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [],
+      "expectedCount": 1,
+      "judge": {
+        "stale": "n/a",
+        "stale_reason": "Not applicable for this item.",
+        "status": "n/a",
+        "status_reason": "Not applicable for this item.",
+        "order": "n/a",
+        "order_reason": "Not applicable for this item.",
+        "ambiguity": "n/a",
+        "ambiguity_reason": "Not applicable for this item."
+      }
+    },
+    {
+      "scenario": "changing-similar-names",
+      "category": "changing_facts",
+      "probeIndex": 2,
+      "ask": "What team is Priyanka on?",
+      "retrievedNames": [
+        "Priyanka Rao",
+        "finance",
+        "Atlas migration",
+        "Atlas budget",
+        "Freshwater Aquarium",
+        "Fernhollow Community Garden",
+        "Wool Scarf",
+        "Crossword Puzzles"
+      ],
+      "brief": "not_run: BudgetExhausted",
+      "recall": [
+        1,
+        1
+      ],
+      "recallAt1": [
+        1,
+        1
+      ],
+      "recallAt3": [
+        1,
+        1
+      ],
+      "firstRank": 1,
+      "coversGraph": false,
+      "precision": [
+        1,
+        8
+      ],
+      "precisionAt3": [
+        1,
+        3
+      ],
+      "inserted": 4,
+      "sameStory": 3,
+      "confused": false,
+      "stale": null,
+      "staleVacuous": false,
+      "staleIn": [],
+      "briefChecked": false,
+      "status": "n/a",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [],
+      "expectedCount": 1,
+      "judge": {
+        "stale": "n/a",
+        "stale_reason": "This check is marked not applicable, since nothing in the script was corrected or removed.",
+        "status": "n/a",
+        "status_reason": "This check is marked not applicable, since the question asks for a plain fact rather than a decision state.",
+        "order": "n/a",
+        "order_reason": "This check is marked not applicable, since there is no earlier-versus-later change to track.",
+        "ambiguity": "n/a",
+        "ambiguity_reason": "This check is marked not applicable, since \"Priya Shah\" and \"Priyanka Rao\" do not share a first name."
+      }
+    },
+    {
+      "scenario": "changing-similar-names",
+      "category": "changing_facts",
+      "probeIndex": 3,
+      "ask": "What's happening with Atlas?",
+      "retrievedNames": [
+        "Atlas migration",
+        "Atlas budget",
+        "finance",
+        "Pickle",
+        "Sourdough Starter",
+        "Priyanka Rao",
+        "Tomato Seedlings",
+        "Backyard Telescope"
+      ],
+      "brief": "not_run: BudgetExhausted",
+      "recall": [
+        1,
+        1
+      ],
+      "recallAt1": [
+        1,
+        1
+      ],
+      "recallAt3": [
+        1,
+        1
+      ],
+      "firstRank": 1,
+      "coversGraph": false,
+      "precision": [
+        2,
+        8
+      ],
+      "precisionAt3": [
+        2,
+        3
+      ],
+      "inserted": 4,
+      "sameStory": 2,
+      "confused": null,
+      "stale": null,
+      "staleVacuous": false,
+      "staleIn": [],
+      "briefChecked": false,
+      "status": "n/a",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [],
+      "expectedCount": 1,
+      "judge": {
+        "stale": "n/a",
+        "stale_reason": "Not applicable for this conversation.",
+        "status": "n/a",
+        "status_reason": "Not applicable for this conversation.",
+        "order": "n/a",
+        "order_reason": "Not applicable for this conversation.",
+        "ambiguity": "n/a",
+        "ambiguity_reason": "Not applicable for this conversation."
+      }
+    }
+  ]
+}

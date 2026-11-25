@@ -20,6 +20,9 @@
     "eval:privacy": "node eval/privacy/run.mjs",
     "eval:recovery": "vite-node --config eval/recovery/vite.config.ts eval/recovery/run.ts",
     "eval:timing:summary": "node eval/timing/summarize.mjs",
+    "eval:memory": "vite-node --config eval/memory/vite.config.ts eval/memory/run.ts",
+    "eval:stages:gen": "vite-node --config eval/memory/vite.config.ts eval/stages/gen/build.ts",
+    "eval:stages": "vite-node --config eval/memory/vite.config.ts eval/stages/run.ts",
     "test:eval": "node --test \"eval/**/*.test.mjs\""
   },
   "dependencies": {

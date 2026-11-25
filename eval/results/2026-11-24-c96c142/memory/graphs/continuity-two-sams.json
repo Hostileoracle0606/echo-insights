@@ -1,0 +1,215 @@
+{
+  "meta": {
+    "scenario": "continuity-two-sams",
+    "extractorVersion": "memory-eval/v1",
+    "mode": "wiki",
+    "model": "gemini-2.5-flash",
+    "turns": 2,
+    "providerCalls": 2,
+    "actions": [],
+    "lostTurns": [
+      {
+        "turnId": "continuity-two-sams-s1-t1",
+        "reason": "commit invalidChange",
+        "undeclaredEndpoints": [
+          "work"
+        ],
+        "patch": {
+          "entities": [
+            {
+              "description": "Reviewed my design doc today and liked the caching section.",
+              "name": "Sam Ortiz",
+              "questions": [
+                "What's Sam like to work with?",
+                "How long have you known Sam?",
+                "What's Sam's role at work?"
+              ],
+              "type": "person"
+            },
+            {
+              "description": "A document that Sam Ortiz reviewed and liked the caching section of.",
+              "type": "other",
+              "questions": [
+                "What is the design doc about?",
+                "What problem does this design doc address?",
+                "What's the overall status of this design doc?"
+              ],
+              "name": "design doc"
+            },
+            {
+              "type": "other",
+              "description": "A section within the design doc that Sam Ortiz liked.",
+              "questions": [
+                "What specific caching strategy did you propose?",
+                "What made you decide on that particular caching approach?",
+                "What are the potential benefits of this caching section?"
+              ],
+              "name": "caching section"
+            }
+          ],
+          "relations": [
+            {
+              "target": "work",
+              "source": "Sam Ortiz",
+              "label": "colleague_from"
+            },
+            {
+              "target": "design doc",
+              "source": "Sam Ortiz",
+              "label": "reviewed"
+            },
+            {
+              "source": "Sam Ortiz",
+              "label": "liked",
+              "target": "caching section"
+            },
+            {
+              "source": "design doc",
+              "label": "has_section",
+              "target": "caching section"
+            }
+          ],
+          "supersedes": []
+        }
+      }
+    ],
+    "extractedAt": "2026-11-24T18:36:32.307Z",
+    "commit": "c96c142"
+  },
+  "digest": "7aac613869879c513ea9d861441f46f0b71ee3f9ea7af3928eb0bab77a8fa159",
+  "snapshot": {
+    "version": 1,
+    "notebook": {
+      "title": "memory eval: continuity-two-sams",
+      "title_source": "auto",
+      "started_at": "2026-11-24T18:36:27.067+00:00",
+      "ended_at": null,
+      "duration_seconds": null,
+      "entity_count": 3,
+      "summary": null,
+      "archived_at": null,
+      "revision": 1,
+      "conversation_mode": "just_talk",
+      "mode_context": {},
+      "transcript_forgotten_at": null
+    },
+    "suppressionKey": null,
+    "tables": {
+      "journal_entries": [
+        {
+          "id": "$entry-1",
+          "text": "Went bouldering with Sam Lee at Granite Hall, and he finally sent the purple route.",
+          "created_at": "2026-11-24T18:36:32.274182+00:00",
+          "entity_ids": [
+            "sam-lee",
+            "granite-hall",
+            "bouldering"
+          ],
+          "relation_ids": [
+            "bouldering__with__sam-lee",
+            "bouldering__at__granite-hall",
+            "sam-lee__at__granite-hall"
+          ]
+        }
+      ],
+      "entities": [
+        {
+          "id": "bouldering",
+          "name": "bouldering",
+          "type": "activity",
+          "description": null,
+          "metadata": {},
+          "mentions": 1,
+          "first_seen": "2026-11-24T18:36:32.271+00:00",
+          "last_seen": "2026-11-24T18:36:32.271+00:00",
+          "questions": [
+            "What do you enjoy about bouldering?",
+            "How long have you been bouldering?",
+            "What are your bouldering goals?"
+          ],
+          "description_source": "extracted"
+        },
+        {
+          "id": "granite-hall",
+          "name": "Granite Hall",
+          "type": "place",
+          "description": "a bouldering gym",
+          "metadata": {},
+          "mentions": 1,
+          "first_seen": "2026-11-24T18:36:32.271+00:00",
+          "last_seen": "2026-11-24T18:36:32.271+00:00",
+          "questions": [
+            "What's Granite Hall like?",
+            "How often do you go to Granite Hall?",
+            "What other places do you boulder at?"
+          ],
+          "description_source": "extracted"
+        },
+        {
+          "id": "sam-lee",
+          "name": "Sam Lee",
+          "type": "person",
+          "description": null,
+          "metadata": {},
+          "mentions": 1,
+          "first_seen": "2026-11-24T18:36:32.271+00:00",
+          "last_seen": "2026-11-24T18:36:32.271+00:00",
+          "questions": [
+            "How long have you known Sam?",
+            "What's your relationship with Sam?",
+            "What's Sam like?"
+          ],
+          "description_source": "extracted"
+        }
+      ],
+      "relations": [
+        {
+          "id": "bouldering__at__granite-hall",
+          "source_id": "bouldering",
+          "target_id": "granite-hall",
+          "label": "at",
+          "metadata": {},
+          "created_at": "2026-11-24T18:36:32.271+00:00",
+          "superseded_at": null
+        },
+        {
+          "id": "bouldering__with__sam-lee",
+          "source_id": "bouldering",
+          "target_id": "sam-lee",
+          "label": "with",
+          "metadata": {},
+          "created_at": "2026-11-24T18:36:32.271+00:00",
+          "superseded_at": null
+        },
+        {
+          "id": "sam-lee__at__granite-hall",
+          "source_id": "sam-lee",
+          "target_id": "granite-hall",
+          "label": "at",
+          "metadata": {},
+          "created_at": "2026-11-24T18:36:32.271+00:00",
+          "superseded_at": null
+        }
+      ],
+      "entity_suppressions": [],
+      "conversation_turns": [
+        {
+          "turn_id": "continuity-two-sams-s1-t1",
+          "speaker": "user",
+          "text": "Sam Ortiz from work reviewed my design doc today and liked the caching section.",
+          "spoken_at": "2026-11-24T18:36:27.076+00:00",
+          "created_at": "2026-11-24T18:36:27.078515+00:00",
+          "input": "typed"
+        },
+        {
+          "turn_id": "continuity-two-sams-s2-t1",
+          "speaker": "user",
+          "text": "Went bouldering with Sam Lee at Granite Hall, and he finally sent the purple route.",
+          "spoken_at": "2026-11-24T18:36:30.133+00:00",
+          "created_at": "2026-11-24T18:36:30.135601+00:00",
+          "input": "typed"
+        }
+      ]
+    }
+  }
+}

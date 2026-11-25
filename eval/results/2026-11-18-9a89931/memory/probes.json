@@ -1,0 +1,873 @@
+{
+  "commit": "9a89931",
+  "k": 8,
+  "sources": {
+    "continuity-indirect-reference": {
+      "graph": "eval/results/2026-11-18-e099990/memory/graphs/continuity-indirect-reference.json",
+      "extractCommit": "e099990",
+      "actions": [],
+      "lostTurns": [],
+      "brief": "ready"
+    },
+    "correction-city-same-session": {
+      "graph": "eval/results/2026-11-18-e099990/memory/graphs/correction-city-same-session.json",
+      "extractCommit": "e099990",
+      "actions": [],
+      "lostTurns": [],
+      "brief": "ready"
+    },
+    "deletion-forget-person": {
+      "graph": "eval/results/2026-11-18-e099990/memory/graphs/deletion-forget-person.json",
+      "extractCommit": "e099990",
+      "actions": [
+        {
+          "after_session": 1,
+          "kind": "forget",
+          "name": "Dana Whitfield",
+          "entityId": "dana-whitfield",
+          "outcome": "applied"
+        }
+      ],
+      "lostTurns": [],
+      "brief": "ready"
+    },
+    "changing-decided-then-reversed": {
+      "graph": "eval/results/2026-11-18-e099990/memory/graphs/changing-decided-then-reversed.json",
+      "extractCommit": "e099990",
+      "actions": [],
+      "lostTurns": [],
+      "brief": "ready"
+    },
+    "continuity-paraphrase": {
+      "graph": null
+    },
+    "correction-edit-description": {
+      "graph": "eval/results/2026-11-18-e099990/memory/graphs/correction-edit-description.json",
+      "extractCommit": "e099990",
+      "actions": [
+        {
+          "after_session": 1,
+          "kind": "correct",
+          "name": "Felix Navarro",
+          "description": "Felix Navarro is a physical therapist at Saint Corin hospital and an old friend from college.",
+          "entityId": "felix-navarro",
+          "outcome": "applied"
+        }
+      ],
+      "lostTurns": [],
+      "brief": "ready"
+    },
+    "deletion-remove-project": {
+      "graph": null
+    },
+    "changing-similar-names": {
+      "graph": null
+    },
+    "continuity-two-alexes": {
+      "graph": null
+    },
+    "correction-job-title-next-session": {
+      "graph": null
+    },
+    "changing-tentative-to-decided": {
+      "graph": null
+    },
+    "continuity-two-sams": {
+      "graph": null
+    }
+  },
+  "results": [
+    {
+      "scenario": "continuity-indirect-reference",
+      "probeIndex": 0,
+      "retrieved": [
+        {
+          "name": "studio opening",
+          "text": "studio opening event_for Maren\nstudio opening event_for Clayhouse\nstudio opening involved_place kiln room",
+          "history": "",
+          "path": "combined"
+        },
+        {
+          "name": "Maren",
+          "text": "The user's sister who just opened a pottery studio.\nMaren opened Clayhouse\nMaren operates pottery studio\nstudio opening event_for Maren",
+          "history": "",
+          "path": "combined"
+        },
+        {
+          "name": "Clayhouse",
+          "text": "A pottery studio opened by Maren in Bellport.\nMaren opened Clayhouse\nkiln room part_of Clayhouse\nClayhouse is_a pottery studio\nClayhouse situated_at Bellport\nstudio opening event_for Clayhouse",
+          "history": "",
+          "path": "combined"
+        },
+        {
+          "name": "kiln room",
+          "text": "kiln room part_of Clayhouse\nstudio opening involved_place kiln room",
+          "history": "",
+          "path": "combined"
+        },
+        {
+          "name": "Bellport",
+          "text": "The location of Maren's new pottery studio, Clayhouse.\nClayhouse situated_at Bellport",
+          "history": "",
+          "path": "combined"
+        },
+        {
+          "name": "pottery studio",
+          "text": "A place for creating pottery, like Clayhouse.\nClayhouse is_a pottery studio\nMaren operates pottery studio",
+          "history": "",
+          "path": "combined"
+        }
+      ],
+      "context": "## Entities\n- studio opening (event) [mentions: 1]\n- Maren (person): The user's sister who just opened a pottery studio. [mentions: 2]\n- Clayhouse (organization): A pottery studio opened by Maren in Bellport. [mentions: 2]\n- kiln room (place) [mentions: 1]\n- Bellport (place): The location of Maren's new pottery studio, Clayhouse. [mentions: 1]\n- pottery studio (activity): A place for creating pottery, like Clayhouse. [mentions: 1]\n## Relations\n- Maren --opened--> Clayhouse\n- kiln room --part_of--> Clayhouse\n- Clayhouse --is_a--> pottery studio\n- Maren --operates--> pottery studio\n- Clayhouse --situated_at--> Bellport\n- studio opening --event_for--> Maren\n- studio opening --event_for--> Clayhouse\n- studio opening --involved_place--> kiln room",
+      "brief": {
+        "text": "Maren opened a pottery studio called Clayhouse in Bellport.\nThe kiln room was packed at the studio opening.\nHey, good to hear from you. How are things with Maren's studio opening?\nThe opening line asks about the studio opening, as it was a recent and significant event for Maren and the user."
+      },
+      "briefOutcome": "ready",
+      "extracted": [
+        "Maren",
+        "Bellport",
+        "Clayhouse",
+        "kiln room",
+        "pottery studio",
+        "studio opening"
+      ]
+    },
+    {
+      "scenario": "continuity-indirect-reference",
+      "probeIndex": 1,
+      "retrieved": [
+        {
+          "name": "pottery studio",
+          "text": "A place for creating pottery, like Clayhouse.\nClayhouse is_a pottery studio\nMaren operates pottery studio",
+          "history": "",
+          "path": "combined"
+        },
+        {
+          "name": "Clayhouse",
+          "text": "A pottery studio opened by Maren in Bellport.\nMaren opened Clayhouse\nkiln room part_of Clayhouse\nClayhouse is_a pottery studio\nClayhouse situated_at Bellport\nstudio opening event_for Clayhouse",
+          "history": "",
+          "path": "combined"
+        },
+        {
+          "name": "Maren",
+          "text": "The user's sister who just opened a pottery studio.\nMaren opened Clayhouse\nMaren operates pottery studio\nstudio opening event_for Maren",
+          "history": "",
+          "path": "combined"
+        },
+        {
+          "name": "kiln room",
+          "text": "kiln room part_of Clayhouse\nstudio opening involved_place kiln room",
+          "history": "",
+          "path": "combined"
+        },
+        {
+          "name": "studio opening",
+          "text": "studio opening event_for Maren\nstudio opening event_for Clayhouse\nstudio opening involved_place kiln room",
+          "history": "",
+          "path": "combined"
+        },
+        {
+          "name": "Bellport",
+          "text": "The location of Maren's new pottery studio, Clayhouse.\nClayhouse situated_at Bellport",
+          "history": "",
+          "path": "combined"
+        }
+      ],
+      "context": "## Entities\n- pottery studio (activity): A place for creating pottery, like Clayhouse. [mentions: 1]\n- Clayhouse (organization): A pottery studio opened by Maren in Bellport. [mentions: 2]\n- Maren (person): The user's sister who just opened a pottery studio. [mentions: 2]\n- kiln room (place) [mentions: 1]\n- studio opening (event) [mentions: 1]\n- Bellport (place): The location of Maren's new pottery studio, Clayhouse. [mentions: 1]\n## Relations\n- Maren --opened--> Clayhouse\n- kiln room --part_of--> Clayhouse\n- Clayhouse --is_a--> pottery studio\n- Maren --operates--> pottery studio\n- Clayhouse --situated_at--> Bellport\n- studio opening --event_for--> Maren\n- studio opening --event_for--> Clayhouse\n- studio opening --involved_place--> kiln room",
+      "brief": {
+        "text": "Maren opened a pottery studio called Clayhouse in Bellport.\nThe kiln room was packed at the studio opening.\nHey, good to hear from you. How are things with Maren's studio opening?\nThe opening line asks about the studio opening, as it was a recent and significant event for Maren and the user."
+      },
+      "briefOutcome": "ready",
+      "extracted": [
+        "Maren",
+        "Bellport",
+        "Clayhouse",
+        "kiln room",
+        "pottery studio",
+        "studio opening"
+      ]
+    },
+    {
+      "scenario": "continuity-indirect-reference",
+      "probeIndex": 2,
+      "retrieved": [
+        {
+          "name": "Maren",
+          "text": "The user's sister who just opened a pottery studio.\nMaren opened Clayhouse\nMaren operates pottery studio\nstudio opening event_for Maren",
+          "history": "",
+          "path": "combined"
+        },
+        {
+          "name": "Clayhouse",
+          "text": "A pottery studio opened by Maren in Bellport.\nMaren opened Clayhouse\nkiln room part_of Clayhouse\nClayhouse is_a pottery studio\nClayhouse situated_at Bellport\nstudio opening event_for Clayhouse",
+          "history": "",
+          "path": "combined"
+        },
+        {
+          "name": "Bellport",
+          "text": "The location of Maren's new pottery studio, Clayhouse.\nClayhouse situated_at Bellport",
+          "history": "",
+          "path": "combined"
+        },
+        {
+          "name": "studio opening",
+          "text": "studio opening event_for Maren\nstudio opening event_for Clayhouse\nstudio opening involved_place kiln room",
+          "history": "",
+          "path": "combined"
+        },
+        {
+          "name": "kiln room",
+          "text": "kiln room part_of Clayhouse\nstudio opening involved_place kiln room",
+          "history": "",
+          "path": "combined"
+        },
+        {
+          "name": "pottery studio",
+          "text": "A place for creating pottery, like Clayhouse.\nClayhouse is_a pottery studio\nMaren operates pottery studio",
+          "history": "",
+          "path": "combined"
+        }
+      ],
+      "context": "## Entities\n- Maren (person): The user's sister who just opened a pottery studio. [mentions: 2]\n- Clayhouse (organization): A pottery studio opened by Maren in Bellport. [mentions: 2]\n- Bellport (place): The location of Maren's new pottery studio, Clayhouse. [mentions: 1]\n- studio opening (event) [mentions: 1]\n- kiln room (place) [mentions: 1]\n- pottery studio (activity): A place for creating pottery, like Clayhouse. [mentions: 1]\n## Relations\n- Maren --opened--> Clayhouse\n- kiln room --part_of--> Clayhouse\n- Clayhouse --is_a--> pottery studio\n- Maren --operates--> pottery studio\n- Clayhouse --situated_at--> Bellport\n- studio opening --event_for--> Maren\n- studio opening --event_for--> Clayhouse\n- studio opening --involved_place--> kiln room",
+      "brief": {
+        "text": "Maren opened a pottery studio called Clayhouse in Bellport.\nThe kiln room was packed at the studio opening.\nHey, good to hear from you. How are things with Maren's studio opening?\nThe opening line asks about the studio opening, as it was a recent and significant event for Maren and the user."
+      },
+      "briefOutcome": "ready",
+      "extracted": [
+        "Maren",
+        "Bellport",
+        "Clayhouse",
+        "kiln room",
+        "pottery studio",
+        "studio opening"
+      ]
+    },
+    {
+      "scenario": "continuity-indirect-reference",
+      "probeIndex": 3,
+      "retrieved": [
+        {
+          "name": "Clayhouse",
+          "text": "A pottery studio opened by Maren in Bellport.\nMaren opened Clayhouse\nkiln room part_of Clayhouse\nClayhouse is_a pottery studio\nClayhouse situated_at Bellport\nstudio opening event_for Clayhouse",
+          "history": "",
+          "path": "combined"
+        },
+        {
+          "name": "Maren",
+          "text": "The user's sister who just opened a pottery studio.\nMaren opened Clayhouse\nMaren operates pottery studio\nstudio opening event_for Maren",
+          "history": "",
+          "path": "combined"
+        },
+        {
+          "name": "studio opening",
+          "text": "studio opening event_for Maren\nstudio opening event_for Clayhouse\nstudio opening involved_place kiln room",
+          "history": "",
+          "path": "combined"
+        },
+        {
+          "name": "kiln room",
+          "text": "kiln room part_of Clayhouse\nstudio opening involved_place kiln room",
+          "history": "",
+          "path": "combined"
+        },
+        {
+          "name": "pottery studio",
+          "text": "A place for creating pottery, like Clayhouse.\nClayhouse is_a pottery studio\nMaren operates pottery studio",
+          "history": "",
+          "path": "combined"
+        },
+        {
+          "name": "Bellport",
+          "text": "The location of Maren's new pottery studio, Clayhouse.\nClayhouse situated_at Bellport",
+          "history": "",
+          "path": "combined"
+        }
+      ],
+      "context": "## Entities\n- Clayhouse (organization): A pottery studio opened by Maren in Bellport. [mentions: 2]\n- Maren (person): The user's sister who just opened a pottery studio. [mentions: 2]\n- studio opening (event) [mentions: 1]\n- kiln room (place) [mentions: 1]\n- pottery studio (activity): A place for creating pottery, like Clayhouse. [mentions: 1]\n- Bellport (place): The location of Maren's new pottery studio, Clayhouse. [mentions: 1]\n## Relations\n- Maren --opened--> Clayhouse\n- kiln room --part_of--> Clayhouse\n- Clayhouse --is_a--> pottery studio\n- Maren --operates--> pottery studio\n- Clayhouse --situated_at--> Bellport\n- studio opening --event_for--> Maren\n- studio opening --event_for--> Clayhouse\n- studio opening --involved_place--> kiln room",
+      "brief": {
+        "text": "Maren opened a pottery studio called Clayhouse in Bellport.\nThe kiln room was packed at the studio opening.\nHey, good to hear from you. How are things with Maren's studio opening?\nThe opening line asks about the studio opening, as it was a recent and significant event for Maren and the user."
+      },
+      "briefOutcome": "ready",
+      "extracted": [
+        "Maren",
+        "Bellport",
+        "Clayhouse",
+        "kiln room",
+        "pottery studio",
+        "studio opening"
+      ]
+    },
+    {
+      "scenario": "correction-city-same-session",
+      "probeIndex": 0,
+      "retrieved": [
+        {
+          "name": "Imogen",
+          "text": "My best friend Imogen moved to Dayton last month.\nImogen moved_to Dalton",
+          "history": "Imogen moved_to Dayton",
+          "path": "combined"
+        },
+        {
+          "name": "Dayton",
+          "text": "Imogen moved to Dayton last month.",
+          "history": "Imogen moved_to Dayton",
+          "path": "combined"
+        },
+        {
+          "name": "Dalton",
+          "text": "Imogen moved_to Dalton",
+          "history": "",
+          "path": "combined"
+        }
+      ],
+      "context": "## Entities\n- Imogen (person): My best friend Imogen moved to Dayton last month. [mentions: 2]\n- Dayton (place): Imogen moved to Dayton last month. [mentions: 1]\n- Dalton (place) [mentions: 1]\n## Relations\n- Imogen --moved_to--> Dalton",
+      "brief": {
+        "text": "Best friend Imogen moved to Dalton last month.\nHey, good to hear from you. How are things with Imogen's move to Dalton?\nThe person misspoke and corrected themselves, saying their best friend Imogen moved to Dalton, not Dayton. This is a good opportunity to acknowledge the correction and ask about Imogen's move."
+      },
+      "briefOutcome": "ready",
+      "extracted": [
+        "Dalton",
+        "Dayton",
+        "Imogen"
+      ]
+    },
+    {
+      "scenario": "correction-city-same-session",
+      "probeIndex": 1,
+      "retrieved": [
+        {
+          "name": "Imogen",
+          "text": "My best friend Imogen moved to Dayton last month.\nImogen moved_to Dalton",
+          "history": "Imogen moved_to Dayton",
+          "path": "combined"
+        },
+        {
+          "name": "Dayton",
+          "text": "Imogen moved to Dayton last month.",
+          "history": "Imogen moved_to Dayton",
+          "path": "combined"
+        },
+        {
+          "name": "Dalton",
+          "text": "Imogen moved_to Dalton",
+          "history": "",
+          "path": "combined"
+        }
+      ],
+      "context": "## Entities\n- Imogen (person): My best friend Imogen moved to Dayton last month. [mentions: 2]\n- Dayton (place): Imogen moved to Dayton last month. [mentions: 1]\n- Dalton (place) [mentions: 1]\n## Relations\n- Imogen --moved_to--> Dalton",
+      "brief": {
+        "text": "Best friend Imogen moved to Dalton last month.\nHey, good to hear from you. How are things with Imogen's move to Dalton?\nThe person misspoke and corrected themselves, saying their best friend Imogen moved to Dalton, not Dayton. This is a good opportunity to acknowledge the correction and ask about Imogen's move."
+      },
+      "briefOutcome": "ready",
+      "extracted": [
+        "Dalton",
+        "Dayton",
+        "Imogen"
+      ]
+    },
+    {
+      "scenario": "correction-city-same-session",
+      "probeIndex": 2,
+      "retrieved": [
+        {
+          "name": "Imogen",
+          "text": "My best friend Imogen moved to Dayton last month.\nImogen moved_to Dalton",
+          "history": "Imogen moved_to Dayton",
+          "path": "combined"
+        },
+        {
+          "name": "Dayton",
+          "text": "Imogen moved to Dayton last month.",
+          "history": "Imogen moved_to Dayton",
+          "path": "combined"
+        },
+        {
+          "name": "Dalton",
+          "text": "Imogen moved_to Dalton",
+          "history": "",
+          "path": "combined"
+        }
+      ],
+      "context": "## Entities\n- Imogen (person): My best friend Imogen moved to Dayton last month. [mentions: 2]\n- Dayton (place): Imogen moved to Dayton last month. [mentions: 1]\n- Dalton (place) [mentions: 1]\n## Relations\n- Imogen --moved_to--> Dalton",
+      "brief": {
+        "text": "Best friend Imogen moved to Dalton last month.\nHey, good to hear from you. How are things with Imogen's move to Dalton?\nThe person misspoke and corrected themselves, saying their best friend Imogen moved to Dalton, not Dayton. This is a good opportunity to acknowledge the correction and ask about Imogen's move."
+      },
+      "briefOutcome": "ready",
+      "extracted": [
+        "Dalton",
+        "Dayton",
+        "Imogen"
+      ]
+    },
+    {
+      "scenario": "correction-city-same-session",
+      "probeIndex": 3,
+      "retrieved": [
+        {
+          "name": "Imogen",
+          "text": "My best friend Imogen moved to Dayton last month.\nImogen moved_to Dalton",
+          "history": "Imogen moved_to Dayton",
+          "path": "combined"
+        },
+        {
+          "name": "Dayton",
+          "text": "Imogen moved to Dayton last month.",
+          "history": "Imogen moved_to Dayton",
+          "path": "combined"
+        },
+        {
+          "name": "Dalton",
+          "text": "Imogen moved_to Dalton",
+          "history": "",
+          "path": "combined"
+        }
+      ],
+      "context": "## Entities\n- Imogen (person): My best friend Imogen moved to Dayton last month. [mentions: 2]\n- Dayton (place): Imogen moved to Dayton last month. [mentions: 1]\n- Dalton (place) [mentions: 1]\n## Relations\n- Imogen --moved_to--> Dalton",
+      "brief": {
+        "text": "Best friend Imogen moved to Dalton last month.\nHey, good to hear from you. How are things with Imogen's move to Dalton?\nThe person misspoke and corrected themselves, saying their best friend Imogen moved to Dalton, not Dayton. This is a good opportunity to acknowledge the correction and ask about Imogen's move."
+      },
+      "briefOutcome": "ready",
+      "extracted": [
+        "Dalton",
+        "Dayton",
+        "Imogen"
+      ]
+    },
+    {
+      "scenario": "deletion-forget-person",
+      "probeIndex": 0,
+      "retrieved": [
+        {
+          "name": "Ruth Okafor",
+          "text": "The user's manager.\nquarterly report worked_on_with Ruth Okafor",
+          "history": "",
+          "path": "combined"
+        },
+        {
+          "name": "quarterly report",
+          "text": "A report worked on with Ruth Okafor.\nquarterly report worked_on_with Ruth Okafor",
+          "history": "",
+          "path": "combined"
+        },
+        {
+          "name": "Oslo",
+          "text": "",
+          "history": "",
+          "path": "combined"
+        }
+      ],
+      "context": "## Entities\n- Ruth Okafor (person): The user's manager. [mentions: 1]\n- quarterly report (project): A report worked on with Ruth Okafor. [mentions: 1]\n- Oslo (place) [mentions: 1]\n## Relations\n- quarterly report --worked_on_with--> Ruth Okafor",
+      "brief": {
+        "text": "Thinking about Oslo\nWorking on the quarterly report with Ruth Okafor\nHey, good to hear from you. How are things with Oslo?\nOslo: The person had lunch with someone who is thinking about moving to Oslo."
+      },
+      "briefOutcome": "ready",
+      "extracted": [
+        "Oslo",
+        "Ruth Okafor",
+        "quarterly report"
+      ]
+    },
+    {
+      "scenario": "deletion-forget-person",
+      "probeIndex": 1,
+      "retrieved": [
+        {
+          "name": "Oslo",
+          "text": "",
+          "history": "",
+          "path": "combined"
+        },
+        {
+          "name": "Ruth Okafor",
+          "text": "The user's manager.\nquarterly report worked_on_with Ruth Okafor",
+          "history": "",
+          "path": "combined"
+        },
+        {
+          "name": "quarterly report",
+          "text": "A report worked on with Ruth Okafor.\nquarterly report worked_on_with Ruth Okafor",
+          "history": "",
+          "path": "combined"
+        }
+      ],
+      "context": "## Entities\n- Oslo (place) [mentions: 1]\n- Ruth Okafor (person): The user's manager. [mentions: 1]\n- quarterly report (project): A report worked on with Ruth Okafor. [mentions: 1]\n## Relations\n- quarterly report --worked_on_with--> Ruth Okafor",
+      "brief": {
+        "text": "Thinking about Oslo\nWorking on the quarterly report with Ruth Okafor\nHey, good to hear from you. How are things with Oslo?\nOslo: The person had lunch with someone who is thinking about moving to Oslo."
+      },
+      "briefOutcome": "ready",
+      "extracted": [
+        "Oslo",
+        "Ruth Okafor",
+        "quarterly report"
+      ]
+    },
+    {
+      "scenario": "deletion-forget-person",
+      "probeIndex": 2,
+      "retrieved": [
+        {
+          "name": "Ruth Okafor",
+          "text": "The user's manager.\nquarterly report worked_on_with Ruth Okafor",
+          "history": "",
+          "path": "combined"
+        },
+        {
+          "name": "quarterly report",
+          "text": "A report worked on with Ruth Okafor.\nquarterly report worked_on_with Ruth Okafor",
+          "history": "",
+          "path": "combined"
+        },
+        {
+          "name": "Oslo",
+          "text": "",
+          "history": "",
+          "path": "combined"
+        }
+      ],
+      "context": "## Entities\n- Ruth Okafor (person): The user's manager. [mentions: 1]\n- quarterly report (project): A report worked on with Ruth Okafor. [mentions: 1]\n- Oslo (place) [mentions: 1]\n## Relations\n- quarterly report --worked_on_with--> Ruth Okafor",
+      "brief": {
+        "text": "Thinking about Oslo\nWorking on the quarterly report with Ruth Okafor\nHey, good to hear from you. How are things with Oslo?\nOslo: The person had lunch with someone who is thinking about moving to Oslo."
+      },
+      "briefOutcome": "ready",
+      "extracted": [
+        "Oslo",
+        "Ruth Okafor",
+        "quarterly report"
+      ]
+    },
+    {
+      "scenario": "deletion-forget-person",
+      "probeIndex": 3,
+      "retrieved": [
+        {
+          "name": "quarterly report",
+          "text": "A report worked on with Ruth Okafor.\nquarterly report worked_on_with Ruth Okafor",
+          "history": "",
+          "path": "combined"
+        },
+        {
+          "name": "Ruth Okafor",
+          "text": "The user's manager.\nquarterly report worked_on_with Ruth Okafor",
+          "history": "",
+          "path": "combined"
+        },
+        {
+          "name": "Oslo",
+          "text": "",
+          "history": "",
+          "path": "combined"
+        }
+      ],
+      "context": "## Entities\n- quarterly report (project): A report worked on with Ruth Okafor. [mentions: 1]\n- Ruth Okafor (person): The user's manager. [mentions: 1]\n- Oslo (place) [mentions: 1]\n## Relations\n- quarterly report --worked_on_with--> Ruth Okafor",
+      "brief": {
+        "text": "Thinking about Oslo\nWorking on the quarterly report with Ruth Okafor\nHey, good to hear from you. How are things with Oslo?\nOslo: The person had lunch with someone who is thinking about moving to Oslo."
+      },
+      "briefOutcome": "ready",
+      "extracted": [
+        "Oslo",
+        "Ruth Okafor",
+        "quarterly report"
+      ]
+    },
+    {
+      "scenario": "changing-decided-then-reversed",
+      "probeIndex": 0,
+      "retrieved": [
+        {
+          "name": "anniversary trip",
+          "text": "anniversary trip in June\nanniversary trip to Kyoto",
+          "history": "anniversary trip to Lisbon",
+          "path": "combined"
+        },
+        {
+          "name": "Kyoto",
+          "text": "anniversary trip to Kyoto",
+          "history": "",
+          "path": "combined"
+        },
+        {
+          "name": "June",
+          "text": "anniversary trip in June",
+          "history": "",
+          "path": "combined"
+        },
+        {
+          "name": "Lisbon",
+          "text": "",
+          "history": "anniversary trip to Lisbon",
+          "path": "combined"
+        }
+      ],
+      "context": "## Entities\n- anniversary trip (event) [mentions: 2]\n- Kyoto (place) [mentions: 1]\n- June (other) [mentions: 1]\n- Lisbon (place) [mentions: 1]\n## Relations\n- anniversary trip --in--> June\n- anniversary trip --to--> Kyoto",
+      "brief": {
+        "text": "Anniversary trip to Kyoto in June.\nHey, good to hear from you. How are things with the anniversary trip to Kyoto?\nThe anniversary trip to Kyoto in June."
+      },
+      "briefOutcome": "ready",
+      "extracted": [
+        "June",
+        "Kyoto",
+        "Lisbon",
+        "anniversary trip"
+      ]
+    },
+    {
+      "scenario": "changing-decided-then-reversed",
+      "probeIndex": 1,
+      "retrieved": [
+        {
+          "name": "Lisbon",
+          "text": "",
+          "history": "anniversary trip to Lisbon",
+          "path": "combined"
+        },
+        {
+          "name": "anniversary trip",
+          "text": "anniversary trip in June\nanniversary trip to Kyoto",
+          "history": "anniversary trip to Lisbon",
+          "path": "combined"
+        },
+        {
+          "name": "Kyoto",
+          "text": "anniversary trip to Kyoto",
+          "history": "",
+          "path": "combined"
+        },
+        {
+          "name": "June",
+          "text": "anniversary trip in June",
+          "history": "",
+          "path": "combined"
+        }
+      ],
+      "context": "## Entities\n- Lisbon (place) [mentions: 1]\n- anniversary trip (event) [mentions: 2]\n- Kyoto (place) [mentions: 1]\n- June (other) [mentions: 1]\n## Relations\n- anniversary trip --in--> June\n- anniversary trip --to--> Kyoto",
+      "brief": {
+        "text": "Anniversary trip to Kyoto in June.\nHey, good to hear from you. How are things with the anniversary trip to Kyoto?\nThe anniversary trip to Kyoto in June."
+      },
+      "briefOutcome": "ready",
+      "extracted": [
+        "June",
+        "Kyoto",
+        "Lisbon",
+        "anniversary trip"
+      ]
+    },
+    {
+      "scenario": "changing-decided-then-reversed",
+      "probeIndex": 2,
+      "retrieved": [
+        {
+          "name": "June",
+          "text": "anniversary trip in June",
+          "history": "",
+          "path": "combined"
+        },
+        {
+          "name": "anniversary trip",
+          "text": "anniversary trip in June\nanniversary trip to Kyoto",
+          "history": "anniversary trip to Lisbon",
+          "path": "combined"
+        },
+        {
+          "name": "Kyoto",
+          "text": "anniversary trip to Kyoto",
+          "history": "",
+          "path": "combined"
+        },
+        {
+          "name": "Lisbon",
+          "text": "",
+          "history": "anniversary trip to Lisbon",
+          "path": "combined"
+        }
+      ],
+      "context": "## Entities\n- June (other) [mentions: 1]\n- anniversary trip (event) [mentions: 2]\n- Kyoto (place) [mentions: 1]\n- Lisbon (place) [mentions: 1]\n## Relations\n- anniversary trip --in--> June\n- anniversary trip --to--> Kyoto",
+      "brief": {
+        "text": "Anniversary trip to Kyoto in June.\nHey, good to hear from you. How are things with the anniversary trip to Kyoto?\nThe anniversary trip to Kyoto in June."
+      },
+      "briefOutcome": "ready",
+      "extracted": [
+        "June",
+        "Kyoto",
+        "Lisbon",
+        "anniversary trip"
+      ]
+    },
+    {
+      "scenario": "changing-decided-then-reversed",
+      "probeIndex": 3,
+      "retrieved": [
+        {
+          "name": "anniversary trip",
+          "text": "anniversary trip in June\nanniversary trip to Kyoto",
+          "history": "anniversary trip to Lisbon",
+          "path": "combined"
+        },
+        {
+          "name": "Kyoto",
+          "text": "anniversary trip to Kyoto",
+          "history": "",
+          "path": "combined"
+        },
+        {
+          "name": "June",
+          "text": "anniversary trip in June",
+          "history": "",
+          "path": "combined"
+        },
+        {
+          "name": "Lisbon",
+          "text": "",
+          "history": "anniversary trip to Lisbon",
+          "path": "combined"
+        }
+      ],
+      "context": "## Entities\n- anniversary trip (event) [mentions: 2]\n- Kyoto (place) [mentions: 1]\n- June (other) [mentions: 1]\n- Lisbon (place) [mentions: 1]\n## Relations\n- anniversary trip --in--> June\n- anniversary trip --to--> Kyoto",
+      "brief": {
+        "text": "Anniversary trip to Kyoto in June.\nHey, good to hear from you. How are things with the anniversary trip to Kyoto?\nThe anniversary trip to Kyoto in June."
+      },
+      "briefOutcome": "ready",
+      "extracted": [
+        "June",
+        "Kyoto",
+        "Lisbon",
+        "anniversary trip"
+      ]
+    },
+    {
+      "scenario": "correction-edit-description",
+      "probeIndex": 0,
+      "retrieved": [
+        {
+          "name": "Felix Navarro",
+          "text": "Felix Navarro is a physical therapist at Saint Corin hospital and an old friend from college.\nFelix Navarro has_event birthday dinner\nbirthday dinner for_person Felix Navarro\nFelix Navarro works_at Saint Corin hospital",
+          "history": "",
+          "path": "combined"
+        },
+        {
+          "name": "birthday dinner",
+          "text": "Felix Navarro's birthday dinner on Friday.\nFelix Navarro has_event birthday dinner\nbirthday dinner for_person Felix Navarro",
+          "history": "",
+          "path": "combined"
+        },
+        {
+          "name": "Saint Corin hospital",
+          "text": "Felix Navarro works_at Saint Corin hospital",
+          "history": "",
+          "path": "combined"
+        }
+      ],
+      "context": "## Entities\n- Felix Navarro (person): Felix Navarro is a physical therapist at Saint Corin hospital and an old friend from college. [mentions: 2]\n- birthday dinner (event): Felix Navarro's birthday dinner on Friday. [mentions: 1]\n- Saint Corin hospital (organization) [mentions: 1]\n## Relations\n- Felix Navarro --has_event--> birthday dinner\n- birthday dinner --for_person--> Felix Navarro\n- Felix Navarro --works_at--> Saint Corin hospital",
+      "brief": {
+        "text": "Felix Navarro is a pediatric nurse at Saint Corin hospital.\nFelix invited them to his birthday dinner on Friday.\nHey, good to hear from you. How were things with Felix's birthday dinner?\nFelix's birthday dinner on Friday. They were invited and may have gone."
+      },
+      "briefOutcome": "ready",
+      "extracted": [
+        "Felix Navarro",
+        "birthday dinner",
+        "Saint Corin hospital"
+      ]
+    },
+    {
+      "scenario": "correction-edit-description",
+      "probeIndex": 1,
+      "retrieved": [
+        {
+          "name": "Felix Navarro",
+          "text": "Felix Navarro is a physical therapist at Saint Corin hospital and an old friend from college.\nFelix Navarro has_event birthday dinner\nbirthday dinner for_person Felix Navarro\nFelix Navarro works_at Saint Corin hospital",
+          "history": "",
+          "path": "combined"
+        },
+        {
+          "name": "birthday dinner",
+          "text": "Felix Navarro's birthday dinner on Friday.\nFelix Navarro has_event birthday dinner\nbirthday dinner for_person Felix Navarro",
+          "history": "",
+          "path": "combined"
+        },
+        {
+          "name": "Saint Corin hospital",
+          "text": "Felix Navarro works_at Saint Corin hospital",
+          "history": "",
+          "path": "combined"
+        }
+      ],
+      "context": "## Entities\n- Felix Navarro (person): Felix Navarro is a physical therapist at Saint Corin hospital and an old friend from college. [mentions: 2]\n- birthday dinner (event): Felix Navarro's birthday dinner on Friday. [mentions: 1]\n- Saint Corin hospital (organization) [mentions: 1]\n## Relations\n- Felix Navarro --has_event--> birthday dinner\n- birthday dinner --for_person--> Felix Navarro\n- Felix Navarro --works_at--> Saint Corin hospital",
+      "brief": {
+        "text": "Felix Navarro is a pediatric nurse at Saint Corin hospital.\nFelix invited them to his birthday dinner on Friday.\nHey, good to hear from you. How were things with Felix's birthday dinner?\nFelix's birthday dinner on Friday. They were invited and may have gone."
+      },
+      "briefOutcome": "ready",
+      "extracted": [
+        "Felix Navarro",
+        "birthday dinner",
+        "Saint Corin hospital"
+      ]
+    },
+    {
+      "scenario": "correction-edit-description",
+      "probeIndex": 2,
+      "retrieved": [
+        {
+          "name": "birthday dinner",
+          "text": "Felix Navarro's birthday dinner on Friday.\nFelix Navarro has_event birthday dinner\nbirthday dinner for_person Felix Navarro",
+          "history": "",
+          "path": "combined"
+        },
+        {
+          "name": "Felix Navarro",
+          "text": "Felix Navarro is a physical therapist at Saint Corin hospital and an old friend from college.\nFelix Navarro has_event birthday dinner\nbirthday dinner for_person Felix Navarro\nFelix Navarro works_at Saint Corin hospital",
+          "history": "",
+          "path": "combined"
+        },
+        {
+          "name": "Saint Corin hospital",
+          "text": "Felix Navarro works_at Saint Corin hospital",
+          "history": "",
+          "path": "combined"
+        }
+      ],
+      "context": "## Entities\n- birthday dinner (event): Felix Navarro's birthday dinner on Friday. [mentions: 1]\n- Felix Navarro (person): Felix Navarro is a physical therapist at Saint Corin hospital and an old friend from college. [mentions: 2]\n- Saint Corin hospital (organization) [mentions: 1]\n## Relations\n- Felix Navarro --has_event--> birthday dinner\n- birthday dinner --for_person--> Felix Navarro\n- Felix Navarro --works_at--> Saint Corin hospital",
+      "brief": {
+        "text": "Felix Navarro is a pediatric nurse at Saint Corin hospital.\nFelix invited them to his birthday dinner on Friday.\nHey, good to hear from you. How were things with Felix's birthday dinner?\nFelix's birthday dinner on Friday. They were invited and may have gone."
+      },
+      "briefOutcome": "ready",
+      "extracted": [
+        "Felix Navarro",
+        "birthday dinner",
+        "Saint Corin hospital"
+      ]
+    },
+    {
+      "scenario": "correction-edit-description",
+      "probeIndex": 3,
+      "retrieved": [
+        {
+          "name": "Felix Navarro",
+          "text": "Felix Navarro is a physical therapist at Saint Corin hospital and an old friend from college.\nFelix Navarro has_event birthday dinner\nbirthday dinner for_person Felix Navarro\nFelix Navarro works_at Saint Corin hospital",
+          "history": "",
+          "path": "combined"
+        },
+        {
+          "name": "birthday dinner",
+          "text": "Felix Navarro's birthday dinner on Friday.\nFelix Navarro has_event birthday dinner\nbirthday dinner for_person Felix Navarro",
+          "history": "",
+          "path": "combined"
+        },
+        {
+          "name": "Saint Corin hospital",
+          "text": "Felix Navarro works_at Saint Corin hospital",
+          "history": "",
+          "path": "combined"
+        }
+      ],
+      "context": "## Entities\n- Felix Navarro (person): Felix Navarro is a physical therapist at Saint Corin hospital and an old friend from college. [mentions: 2]\n- birthday dinner (event): Felix Navarro's birthday dinner on Friday. [mentions: 1]\n- Saint Corin hospital (organization) [mentions: 1]\n## Relations\n- Felix Navarro --has_event--> birthday dinner\n- birthday dinner --for_person--> Felix Navarro\n- Felix Navarro --works_at--> Saint Corin hospital",
+      "brief": {
+        "text": "Felix Navarro is a pediatric nurse at Saint Corin hospital.\nFelix invited them to his birthday dinner on Friday.\nHey, good to hear from you. How were things with Felix's birthday dinner?\nFelix's birthday dinner on Friday. They were invited and may have gone."
+      },
+      "briefOutcome": "ready",
+      "extracted": [
+        "Felix Navarro",
+        "birthday dinner",
+        "Saint Corin hospital"
+      ]
+    }
+  ]
+}

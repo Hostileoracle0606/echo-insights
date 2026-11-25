@@ -1,0 +1,250 @@
+{
+  "meta": {
+    "scenario": "continuity-two-alexes",
+    "extractorVersion": "memory-eval/v1",
+    "mode": "wiki",
+    "model": "gemini-2.5-flash",
+    "turns": 3,
+    "providerCalls": 3,
+    "actions": [],
+    "lostTurns": [],
+    "extractedAt": "2026-11-24T18:36:18.240Z",
+    "commit": "c96c142"
+  },
+  "digest": "13f0c0ec5c3781fd9e27aa56bb7ad57cb01851c35610a62af969b61ee0e071d9",
+  "snapshot": {
+    "version": 1,
+    "notebook": {
+      "title": "memory eval: continuity-two-alexes",
+      "title_source": "auto",
+      "started_at": "2026-11-24T18:36:12.563+00:00",
+      "ended_at": null,
+      "duration_seconds": null,
+      "entity_count": 6,
+      "summary": null,
+      "archived_at": null,
+      "revision": 3,
+      "conversation_mode": "just_talk",
+      "mode_context": {},
+      "transcript_forgotten_at": null
+    },
+    "suppressionKey": null,
+    "tables": {
+      "journal_entries": [
+        {
+          "id": "$entry-1",
+          "text": "My neighbor Alex Brandt lent me his extension ladder for the gutters.",
+          "created_at": "2026-11-24T18:36:15.083941+00:00",
+          "entity_ids": [
+            "alex-brandt",
+            "extension-ladder",
+            "gutters"
+          ],
+          "relation_ids": [
+            "alex-brandt__lent__extension-ladder",
+            "extension-ladder__for__gutters"
+          ]
+        },
+        {
+          "id": "$entry-2",
+          "text": "My cousin Alex Moreau is visiting from Quebec next week.",
+          "created_at": "2026-11-24T18:36:16.610815+00:00",
+          "entity_ids": [
+            "alex-moreau",
+            "quebec"
+          ],
+          "relation_ids": [
+            "alex-moreau__visiting_from__quebec"
+          ]
+        },
+        {
+          "id": "$entry-3",
+          "text": "Returned the ladder to Alex this morning and thanked him with some cookies.",
+          "created_at": "2026-11-24T18:36:18.198002+00:00",
+          "entity_ids": [
+            "cookies",
+            "alex-brandt",
+            "extension-ladder"
+          ],
+          "relation_ids": [
+            "alex-brandt__returned__extension-ladder",
+            "alex-brandt__received__cookies"
+          ]
+        }
+      ],
+      "entities": [
+        {
+          "id": "alex-brandt",
+          "name": "Alex Brandt",
+          "type": "person",
+          "description": "My neighbor Alex Brandt lent me his extension ladder for the gutters.",
+          "metadata": {},
+          "mentions": 2,
+          "first_seen": "2026-11-24T18:36:15.074+00:00",
+          "last_seen": "2026-11-24T18:36:18.192+00:00",
+          "questions": [
+            "How long have you known Alex?",
+            "What's Alex like?",
+            "How often do you interact with Alex?",
+            "Does Alex have any interesting hobbies or work?"
+          ],
+          "description_source": "extracted"
+        },
+        {
+          "id": "alex-moreau",
+          "name": "Alex Moreau",
+          "type": "person",
+          "description": "My cousin Alex Moreau is visiting from Quebec next week.",
+          "metadata": {},
+          "mentions": 1,
+          "first_seen": "2026-11-24T18:36:16.608+00:00",
+          "last_seen": "2026-11-24T18:36:16.608+00:00",
+          "questions": [
+            "What's your cousin Alex like?",
+            "How often do you see Alex?",
+            "What are your plans with Alex next week?"
+          ],
+          "description_source": "extracted"
+        },
+        {
+          "id": "cookies",
+          "name": "cookies",
+          "type": "other",
+          "description": null,
+          "metadata": {},
+          "mentions": 1,
+          "first_seen": "2026-11-24T18:36:18.192+00:00",
+          "last_seen": "2026-11-24T18:36:18.192+00:00",
+          "questions": [
+            "What kind of cookies did you give Alex?",
+            "Do you bake often?",
+            "What's your favorite cookie to bake?"
+          ],
+          "description_source": "extracted"
+        },
+        {
+          "id": "extension-ladder",
+          "name": "extension ladder",
+          "type": "other",
+          "description": "Alex Brandt lent me his extension ladder for the gutters.",
+          "metadata": {},
+          "mentions": 2,
+          "first_seen": "2026-11-24T18:36:15.074+00:00",
+          "last_seen": "2026-11-24T18:36:18.192+00:00",
+          "questions": [
+            "Do you own an extension ladder yourself?",
+            "What kind of work do you typically use an extension ladder for?",
+            "Is this the first time you've borrowed equipment from Alex?"
+          ],
+          "description_source": "extracted"
+        },
+        {
+          "id": "gutters",
+          "name": "gutters",
+          "type": "other",
+          "description": "Alex Brandt lent me his extension ladder for the gutters.",
+          "metadata": {},
+          "mentions": 1,
+          "first_seen": "2026-11-24T18:36:15.074+00:00",
+          "last_seen": "2026-11-24T18:36:15.074+00:00",
+          "questions": [
+            "Are you cleaning your gutters or repairing them?",
+            "Is this a regular chore for you?",
+            "Do you usually do your own gutter maintenance?"
+          ],
+          "description_source": "extracted"
+        },
+        {
+          "id": "quebec",
+          "name": "Quebec",
+          "type": "place",
+          "description": "Alex Moreau is visiting from Quebec next week.",
+          "metadata": {},
+          "mentions": 1,
+          "first_seen": "2026-11-24T18:36:16.608+00:00",
+          "last_seen": "2026-11-24T18:36:16.608+00:00",
+          "questions": [
+            "What's Quebec like?",
+            "Have you visited Quebec before?",
+            "What do you know about Quebec?"
+          ],
+          "description_source": "extracted"
+        }
+      ],
+      "relations": [
+        {
+          "id": "alex-brandt__lent__extension-ladder",
+          "source_id": "alex-brandt",
+          "target_id": "extension-ladder",
+          "label": "lent",
+          "metadata": {},
+          "created_at": "2026-11-24T18:36:15.074+00:00",
+          "superseded_at": null
+        },
+        {
+          "id": "alex-brandt__received__cookies",
+          "source_id": "alex-brandt",
+          "target_id": "cookies",
+          "label": "received",
+          "metadata": {},
+          "created_at": "2026-11-24T18:36:18.192+00:00",
+          "superseded_at": null
+        },
+        {
+          "id": "alex-brandt__returned__extension-ladder",
+          "source_id": "alex-brandt",
+          "target_id": "extension-ladder",
+          "label": "returned",
+          "metadata": {},
+          "created_at": "2026-11-24T18:36:18.192+00:00",
+          "superseded_at": null
+        },
+        {
+          "id": "alex-moreau__visiting_from__quebec",
+          "source_id": "alex-moreau",
+          "target_id": "quebec",
+          "label": "visiting_from",
+          "metadata": {},
+          "created_at": "2026-11-24T18:36:16.608+00:00",
+          "superseded_at": null
+        },
+        {
+          "id": "extension-ladder__for__gutters",
+          "source_id": "extension-ladder",
+          "target_id": "gutters",
+          "label": "for",
+          "metadata": {},
+          "created_at": "2026-11-24T18:36:15.074+00:00",
+          "superseded_at": null
+        }
+      ],
+      "entity_suppressions": [],
+      "conversation_turns": [
+        {
+          "turn_id": "continuity-two-alexes-s1-t1",
+          "speaker": "user",
+          "text": "My neighbor Alex Brandt lent me his extension ladder for the gutters.",
+          "spoken_at": "2026-11-24T18:36:12.644+00:00",
+          "created_at": "2026-11-24T18:36:12.645256+00:00",
+          "input": "typed"
+        },
+        {
+          "turn_id": "continuity-two-alexes-s2-t1",
+          "speaker": "user",
+          "text": "My cousin Alex Moreau is visiting from Quebec next week.",
+          "spoken_at": "2026-11-24T18:36:15.138+00:00",
+          "created_at": "2026-11-24T18:36:15.140391+00:00",
+          "input": "typed"
+        },
+        {
+          "turn_id": "continuity-two-alexes-s3-t1",
+          "speaker": "user",
+          "text": "Returned the ladder to Alex this morning and thanked him with some cookies.",
+          "spoken_at": "2026-11-24T18:36:16.617+00:00",
+          "created_at": "2026-11-24T18:36:16.617114+00:00",
+          "input": "typed"
+        }
+      ]
+    }
+  }
+}

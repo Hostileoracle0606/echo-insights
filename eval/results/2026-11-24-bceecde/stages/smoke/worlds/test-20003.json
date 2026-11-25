@@ -1,0 +1,352 @@
+{
+  "worldId": "test-20003",
+  "replay": {
+    "worldId": "test-20003",
+    "extraction": {
+      "entities": {
+        "tp": 5,
+        "fp": 3,
+        "fn": 0
+      },
+      "pairs": {
+        "tp": 3,
+        "fp": 6,
+        "fn": 0
+      },
+      "typed": {
+        "tp": 2,
+        "fp": 7,
+        "fn": 1
+      },
+      "attributes": {
+        "hit": 4,
+        "of": 4
+      },
+      "extractedNames": [
+        "Tobiah Tolliver",
+        "nurse",
+        "Fintan Achterberg",
+        "chef",
+        "violin restoration",
+        "varnish",
+        "Nethercott",
+        "Pellingham"
+      ],
+      "matched": {
+        "tobiah tolliver": "tobiah-tolliver",
+        "fintan achterberg": "fintan-achterberg",
+        "violin restoration": "violin-restoration",
+        "nethercott": "nethercott",
+        "pellingham": "pellingham"
+      }
+    },
+    "admission": [
+      {
+        "name": "Tobiah Tolliver",
+        "gold": "tobiah-tolliver",
+        "outcome": "persisted",
+        "turnId": "test-20003-s1-t1"
+      },
+      {
+        "name": "Fintan Achterberg",
+        "gold": "fintan-achterberg",
+        "outcome": "persisted",
+        "turnId": "test-20003-s1-t2"
+      },
+      {
+        "name": "violin restoration",
+        "gold": "violin-restoration",
+        "outcome": "persisted",
+        "turnId": "test-20003-s2-t1"
+      },
+      {
+        "name": "Nethercott",
+        "gold": "nethercott",
+        "outcome": "persisted",
+        "turnId": "test-20003-s2-t2"
+      },
+      {
+        "name": "violin restoration",
+        "gold": "violin-restoration",
+        "outcome": "merged_correct",
+        "turnId": "test-20003-s2-t2"
+      },
+      {
+        "name": "Pellingham",
+        "gold": "pellingham",
+        "outcome": "persisted",
+        "turnId": "test-20003-s3-t1"
+      }
+    ],
+    "latency": [
+      {
+        "turnId": "test-20003-s1-t1",
+        "extraction": 2201,
+        "commit": 21
+      },
+      {
+        "turnId": "test-20003-s1-t2",
+        "extraction": 1729,
+        "commit": 24
+      },
+      {
+        "turnId": "test-20003-s2-t1",
+        "extraction": 2089,
+        "commit": 16
+      },
+      {
+        "turnId": "test-20003-s2-t2",
+        "extraction": 1803,
+        "commit": 23
+      },
+      {
+        "turnId": "test-20003-s3-t1",
+        "extraction": 1104,
+        "commit": 15
+      }
+    ],
+    "lostTurns": [],
+    "actions": [],
+    "providerCalls": 5,
+    "extractedGold": [
+      "tobiah-tolliver",
+      "fintan-achterberg",
+      "violin-restoration",
+      "nethercott",
+      "pellingham"
+    ],
+    "storedGold": [
+      "nethercott",
+      "pellingham",
+      "tobiah-tolliver",
+      "fintan-achterberg",
+      "violin-restoration"
+    ]
+  },
+  "e2e": [
+    {
+      "worldId": "test-20003",
+      "queryId": "test-20003-q1",
+      "family": "temporal_change",
+      "answerable": true,
+      "answer": "It sounds like Tobiah moved from Nethercott to Pellingham. How has that move been for them?",
+      "verdict": "correct",
+      "reason": "The answer states Tobiah \"moved from Nethercott to Pellingham,\" correctly naming Pellingham as the current home.",
+      "correct": true,
+      "foundAnswersTop10": true,
+      "stage": null,
+      "latencyMs": {
+        "retrieval": 320,
+        "answer": 740
+      }
+    },
+    {
+      "worldId": "test-20003",
+      "queryId": "test-20003-q2",
+      "family": "temporal_change",
+      "answerable": true,
+      "answer": "Tobiah lived in Nethercott before he moved to Pellingham.",
+      "verdict": "correct",
+      "reason": "The answer states \"Tobiah lived in Nethercott before he moved,\" matching the correct answer.",
+      "correct": true,
+      "foundAnswersTop10": true,
+      "stage": null,
+      "latencyMs": {
+        "retrieval": 267,
+        "answer": 766
+      }
+    },
+    {
+      "worldId": "test-20003",
+      "queryId": "test-20003-q3",
+      "family": "paraphrase",
+      "answerable": true,
+      "answer": "It sounds like you're asking about the violin restoration you've been working on with your cousin Fintan. How has that been coming along?",
+      "verdict": "correct",
+      "reason": "The answer identifies \"the violin restoration you've been working on with your cousin Fintan,\" matching the correct answer.",
+      "correct": true,
+      "foundAnswersTop10": true,
+      "stage": null,
+      "latencyMs": {
+        "retrieval": 176,
+        "answer": 598
+      }
+    }
+  ],
+  "oracle": [
+    {
+      "worldId": "test-20003",
+      "queryId": "test-20003-q1",
+      "family": "temporal_change",
+      "mode": "hybrid",
+      "answerable": true,
+      "ranked": [
+        "bg-metronome",
+        "bg-merino-yarn",
+        "tobiah-tolliver",
+        "bg-perseid-meteor-shower",
+        "bg-chess-club",
+        "bg-pickle",
+        "bg-sourdough-starter",
+        "pellingham",
+        "bg-backyard-telescope",
+        "bg-fernhollow-community-garden"
+      ],
+      "context": "## Entities\n- Metronome (other): Wind-up metronome set to sixty beats per minute. [mentions: 1]\n- Merino Yarn (other): Soft merino skeins bought at a craft fair. [mentions: 1]\n- Tobiah Tolliver (person): Tobiah Tolliver is the user's old classmate, who works as a nurse. Tobiah Tolliver lives in Pellingham. [mentions: 1]\n- Perseid Meteor Shower (event): August meteor shower watched from a hillside at night. [mentions: 2]\n- Chess Club (organization): Thursday evening club that meets for rapid games. [mentions: 3]\n- Pickle (person): A grey tabby cat who sleeps on the radiator. [mentions: 4]\n- Sourdough Starter (project): A rye-fed starter named Bubbles, kept on the counter. [mentions: 4]\n- Pellingham (place): Pellingham is a place the user mentioned. Tobiah Tolliver lives in Pellingham. [mentions: 1]\n- Backyard Telescope (other): An eight-inch Dobsonian set up on clear nights. [mentions: 3]\n- Fernhollow Community Garden (place): Shared allotments with a tool shed and a rain barrel. [mentions: 3]\n- Tomato Seedlings (project): Seedlings started on the windowsill in March, waiting to go into the raised bed. [mentions: 3]\n- Wool Scarf (project): A half-finished scarf in forest green. [mentions: 2]\n- Freshwater Aquarium (project): A planted twenty-gallon tank in the living room. [mentions: 3]\n- Nethercott (place): Nethercott is a place the user mentioned. [mentions: 1]\n- Fingerpicking Practice (activity): Twenty minutes of Travis picking patterns each evening. [mentions: 2]\n- Wendell Ashby (person): Runs the monthly stargazing night and lends out eyepieces. [mentions: 2]\n- Quillmont Library (place): Library whose reading room hosts the chess club. [mentions: 2]\n- Marguerite Fenn (person): Captain of the chess club and a fierce blitz player. [mentions: 2]\n- Sicilian Defense (concept): Sharp chess opening studied from a puzzle book. [mentions: 2]\n- Neon Tetras (other): A school of eight neon tetras in the tank. [mentions: 2]\n- Compost Bin (project): A tumbling compost bin fed with coffee grounds and vegetable peels. [mentions: 2]\n- Film Camera (other): A manual rangefinder loaded with black-and-white film. [mentions: 2]\n- Vintage Radio (project): A valve radio being restored with new capacitors. [mentions: 2]\n- Acoustic Guitar (other): A secondhand steel-string guitar with a cracked pickguard. [mentions: 3]\n## Relations\n- Chess Club --meets_at--> Quillmont Library\n- Fingerpicking Practice --played_on--> Acoustic Guitar\n- Marguerite Fenn --captains--> Chess Club\n- Metronome --keeps_time_for--> Fingerpicking Practice\n- Neon Tetras --live_in--> Freshwater Aquarium\n- Perseid Meteor Shower --watched_with--> Wendell Ashby\n- Sicilian Defense --studied_for--> Chess Club\n- Wendell Ashby --lent_eyepiece_for--> Backyard Telescope\n- Wool Scarf --knitted_from--> Merino Yarn\n- Tobiah Tolliver --lives_in--> Pellingham",
+      "quotes": [],
+      "latencyMs": 725,
+      "metrics": {
+        "recallAt1": 0,
+        "recallAt5": 0,
+        "recallAt10": 1,
+        "mrr": 0.125,
+        "ndcg10": 0.3983537904952533
+      }
+    },
+    {
+      "worldId": "test-20003",
+      "queryId": "test-20003-q2",
+      "family": "temporal_change",
+      "mode": "hybrid",
+      "answerable": true,
+      "ranked": [
+        "tobiah-tolliver",
+        "bg-metronome",
+        "bg-pickle",
+        "bg-sourdough-starter",
+        "bg-tomato-seedlings",
+        "bg-acoustic-guitar",
+        "bg-merino-yarn",
+        "bg-perseid-meteor-shower",
+        "pellingham",
+        "bg-fingerpicking-practice"
+      ],
+      "context": "## Entities\n- Tobiah Tolliver (person): Tobiah Tolliver is the user's old classmate, who works as a nurse. Tobiah Tolliver lives in Pellingham. [mentions: 1]\n- Metronome (other): Wind-up metronome set to sixty beats per minute. [mentions: 1]\n- Pickle (person): A grey tabby cat who sleeps on the radiator. [mentions: 4]\n- Sourdough Starter (project): A rye-fed starter named Bubbles, kept on the counter. [mentions: 4]\n- Tomato Seedlings (project): Seedlings started on the windowsill in March, waiting to go into the raised bed. [mentions: 3]\n- Acoustic Guitar (other): A secondhand steel-string guitar with a cracked pickguard. [mentions: 3]\n- Merino Yarn (other): Soft merino skeins bought at a craft fair. [mentions: 1]\n- Perseid Meteor Shower (event): August meteor shower watched from a hillside at night. [mentions: 2]\n- Pellingham (place): Pellingham is a place the user mentioned. Tobiah Tolliver lives in Pellingham. [mentions: 1]\n- Fingerpicking Practice (activity): Twenty minutes of Travis picking patterns each evening. [mentions: 2]\n- Wool Scarf (project): A half-finished scarf in forest green. [mentions: 2]\n- Wendell Ashby (person): Runs the monthly stargazing night and lends out eyepieces. [mentions: 2]\n- Quillmont Library (place): Library whose reading room hosts the chess club. [mentions: 2]\n- Marguerite Fenn (person): Captain of the chess club and a fierce blitz player. [mentions: 2]\n- Sicilian Defense (concept): Sharp chess opening studied from a puzzle book. [mentions: 2]\n- Neon Tetras (other): A school of eight neon tetras in the tank. [mentions: 2]\n- Compost Bin (project): A tumbling compost bin fed with coffee grounds and vegetable peels. [mentions: 2]\n- Vintage Radio (project): A valve radio being restored with new capacitors. [mentions: 2]\n- Backyard Telescope (other): An eight-inch Dobsonian set up on clear nights. [mentions: 3]\n- Chess Club (organization): Thursday evening club that meets for rapid games. [mentions: 3]\n- Freshwater Aquarium (project): A planted twenty-gallon tank in the living room. [mentions: 3]\n- Fernhollow Community Garden (place): Shared allotments with a tool shed and a rain barrel. [mentions: 3]\n- Fintan Achterberg (person): Fintan Achterberg is the user's cousin, who works as a chef. Fintan Achterberg helps with violin restoration. [mentions: 1]\n- Seed Catalog (other): Heirloom seed catalog with dog-eared pages. [mentions: 1]\n## Relations\n- Chess Club --meets_at--> Quillmont Library\n- Fingerpicking Practice --played_on--> Acoustic Guitar\n- Marguerite Fenn --captains--> Chess Club\n- Metronome --keeps_time_for--> Fingerpicking Practice\n- Neon Tetras --live_in--> Freshwater Aquarium\n- Perseid Meteor Shower --watched_with--> Wendell Ashby\n- Sicilian Defense --studied_for--> Chess Club\n- Tomato Seedlings --grown_from--> Seed Catalog\n- Wendell Ashby --lent_eyepiece_for--> Backyard Telescope\n- Wool Scarf --knitted_from--> Merino Yarn\n- Tobiah Tolliver --lives_in--> Pellingham",
+      "quotes": [],
+      "latencyMs": 245,
+      "metrics": {
+        "recallAt1": 0,
+        "recallAt5": 0,
+        "recallAt10": 0,
+        "mrr": 0,
+        "ndcg10": 0.27541155237618664
+      }
+    },
+    {
+      "worldId": "test-20003",
+      "queryId": "test-20003-q3",
+      "family": "paraphrase",
+      "mode": "hybrid",
+      "answerable": true,
+      "ranked": [
+        "bg-backyard-telescope",
+        "fintan-achterberg",
+        "bg-fernhollow-community-garden",
+        "bg-jupiter",
+        "bg-pickle",
+        "bg-sourdough-starter",
+        "nethercott",
+        "violin-restoration",
+        "bg-cable-stitch",
+        "bg-compost-bin"
+      ],
+      "context": "## Entities\n- Backyard Telescope (other): An eight-inch Dobsonian set up on clear nights. [mentions: 3]\n- Fintan Achterberg (person): Fintan Achterberg is the user's cousin, who works as a chef. Fintan Achterberg helps with violin restoration. [mentions: 1]\n- Fernhollow Community Garden (place): Shared allotments with a tool shed and a rain barrel. [mentions: 3]\n- Jupiter (place): Gas giant watched for its four bright moons. [mentions: 2]\n- Pickle (person): A grey tabby cat who sleeps on the radiator. [mentions: 4]\n- Sourdough Starter (project): A rye-fed starter named Bubbles, kept on the counter. [mentions: 4]\n- Nethercott (place): Nethercott is a place the user mentioned. [mentions: 1]\n- violin restoration (project): violin restoration is a project the user mentioned. Fintan Achterberg helps with violin restoration. [mentions: 1]\n- Cable Stitch (concept): Twisted stitch pattern used on the scarf. [mentions: 1]\n- Compost Bin (project): A tumbling compost bin fed with coffee grounds and vegetable peels. [mentions: 2]\n- Basil Pots (project): Three pots of Genovese basil on the balcony railing. [mentions: 2]\n- Wendell Ashby (person): Runs the monthly stargazing night and lends out eyepieces. [mentions: 2]\n- Monstera Plant (other): Large monstera with split leaves near the bookcase. [mentions: 2]\n- Acoustic Guitar (other): A secondhand steel-string guitar with a cracked pickguard. [mentions: 3]\n- Jigsaw Puzzle (project): A thousand-piece lighthouse puzzle on the dining table. [mentions: 1]\n- Chess Club (organization): Thursday evening club that meets for rapid games. [mentions: 3]\n- Marguerite Fenn (person): Captain of the chess club and a fierce blitz player. [mentions: 2]\n- Tomato Seedlings (project): Seedlings started on the windowsill in March, waiting to go into the raised bed. [mentions: 3]\n- Fiddle Leaf Fig (other): Temperamental fig that drops leaves when moved from its spot. [mentions: 1]\n- Pellingham (place): Pellingham is a place the user mentioned. Tobiah Tolliver lives in Pellingham. [mentions: 1]\n- Catnip Mice (other): Felt toys stuffed with catnip. [mentions: 1]\n- Film Camera (other): A manual rangefinder loaded with black-and-white film. [mentions: 2]\n- Wool Scarf (project): A half-finished scarf in forest green. [mentions: 2]\n- Crossword Puzzles (activity): Weekend crosswords done in pen. [mentions: 2]\n## Relations\n- Backyard Telescope --pointed_at--> Jupiter\n- Jigsaw Puzzle --done_alongside--> Crossword Puzzles\n- Marguerite Fenn --captains--> Chess Club\n- Pickle --naps_by--> Monstera Plant\n- Pickle --plays_with--> Catnip Mice\n- Wendell Ashby --lent_eyepiece_for--> Backyard Telescope\n- Wool Scarf --knitted_in--> Cable Stitch\n- Fintan Achterberg --helps_with--> violin restoration",
+      "quotes": [],
+      "latencyMs": 184,
+      "metrics": {
+        "recallAt1": 0,
+        "recallAt5": 0,
+        "recallAt10": 1,
+        "mrr": 0.125,
+        "ndcg10": 0.43441335717859997
+      }
+    },
+    {
+      "worldId": "test-20003",
+      "queryId": "test-20003-q1",
+      "family": "temporal_change",
+      "mode": "lexical",
+      "answerable": true,
+      "ranked": [
+        "bg-metronome",
+        "bg-merino-yarn",
+        "tobiah-tolliver",
+        "bg-perseid-meteor-shower",
+        "bg-chess-club",
+        "bg-pickle",
+        "bg-sourdough-starter",
+        "pellingham",
+        "bg-backyard-telescope",
+        "bg-fernhollow-community-garden"
+      ],
+      "context": "## Entities\n- Metronome (other): Wind-up metronome set to sixty beats per minute. [mentions: 1]\n- Merino Yarn (other): Soft merino skeins bought at a craft fair. [mentions: 1]\n- Tobiah Tolliver (person): Tobiah Tolliver is the user's old classmate, who works as a nurse. Tobiah Tolliver lives in Pellingham. [mentions: 1]\n- Perseid Meteor Shower (event): August meteor shower watched from a hillside at night. [mentions: 2]\n- Chess Club (organization): Thursday evening club that meets for rapid games. [mentions: 3]\n- Pickle (person): A grey tabby cat who sleeps on the radiator. [mentions: 4]\n- Sourdough Starter (project): A rye-fed starter named Bubbles, kept on the counter. [mentions: 4]\n- Pellingham (place): Pellingham is a place the user mentioned. Tobiah Tolliver lives in Pellingham. [mentions: 1]\n- Backyard Telescope (other): An eight-inch Dobsonian set up on clear nights. [mentions: 3]\n- Fernhollow Community Garden (place): Shared allotments with a tool shed and a rain barrel. [mentions: 3]\n- Tomato Seedlings (project): Seedlings started on the windowsill in March, waiting to go into the raised bed. [mentions: 3]\n- Wool Scarf (project): A half-finished scarf in forest green. [mentions: 2]\n- Freshwater Aquarium (project): A planted twenty-gallon tank in the living room. [mentions: 3]\n- Nethercott (place): Nethercott is a place the user mentioned. [mentions: 1]\n- Fingerpicking Practice (activity): Twenty minutes of Travis picking patterns each evening. [mentions: 2]\n- Wendell Ashby (person): Runs the monthly stargazing night and lends out eyepieces. [mentions: 2]\n- Quillmont Library (place): Library whose reading room hosts the chess club. [mentions: 2]\n- Marguerite Fenn (person): Captain of the chess club and a fierce blitz player. [mentions: 2]\n- Sicilian Defense (concept): Sharp chess opening studied from a puzzle book. [mentions: 2]\n- Neon Tetras (other): A school of eight neon tetras in the tank. [mentions: 2]\n- Compost Bin (project): A tumbling compost bin fed with coffee grounds and vegetable peels. [mentions: 2]\n- Film Camera (other): A manual rangefinder loaded with black-and-white film. [mentions: 2]\n- Acoustic Guitar (other): A secondhand steel-string guitar with a cracked pickguard. [mentions: 3]\n- Endgame Puzzles (activity): Daily rook-and-pawn endgame drills. [mentions: 1]\n## Relations\n- Chess Club --meets_at--> Quillmont Library\n- Endgame Puzzles --practiced_for--> Chess Club\n- Fingerpicking Practice --played_on--> Acoustic Guitar\n- Marguerite Fenn --captains--> Chess Club\n- Metronome --keeps_time_for--> Fingerpicking Practice\n- Neon Tetras --live_in--> Freshwater Aquarium\n- Perseid Meteor Shower --watched_with--> Wendell Ashby\n- Sicilian Defense --studied_for--> Chess Club\n- Wendell Ashby --lent_eyepiece_for--> Backyard Telescope\n- Wool Scarf --knitted_from--> Merino Yarn\n- Tobiah Tolliver --lives_in--> Pellingham",
+      "quotes": [],
+      "latencyMs": 203,
+      "metrics": {
+        "recallAt1": 0,
+        "recallAt5": 0,
+        "recallAt10": 1,
+        "mrr": 0.125,
+        "ndcg10": 0.3983537904952533
+      }
+    },
+    {
+      "worldId": "test-20003",
+      "queryId": "test-20003-q2",
+      "family": "temporal_change",
+      "mode": "lexical",
+      "answerable": true,
+      "ranked": [
+        "tobiah-tolliver",
+        "bg-metronome",
+        "bg-pickle",
+        "bg-sourdough-starter",
+        "bg-tomato-seedlings",
+        "bg-acoustic-guitar",
+        "bg-merino-yarn",
+        "bg-perseid-meteor-shower",
+        "pellingham",
+        "bg-fingerpicking-practice"
+      ],
+      "context": "## Entities\n- Tobiah Tolliver (person): Tobiah Tolliver is the user's old classmate, who works as a nurse. Tobiah Tolliver lives in Pellingham. [mentions: 1]\n- Metronome (other): Wind-up metronome set to sixty beats per minute. [mentions: 1]\n- Pickle (person): A grey tabby cat who sleeps on the radiator. [mentions: 4]\n- Sourdough Starter (project): A rye-fed starter named Bubbles, kept on the counter. [mentions: 4]\n- Tomato Seedlings (project): Seedlings started on the windowsill in March, waiting to go into the raised bed. [mentions: 3]\n- Acoustic Guitar (other): A secondhand steel-string guitar with a cracked pickguard. [mentions: 3]\n- Merino Yarn (other): Soft merino skeins bought at a craft fair. [mentions: 1]\n- Perseid Meteor Shower (event): August meteor shower watched from a hillside at night. [mentions: 2]\n- Pellingham (place): Pellingham is a place the user mentioned. Tobiah Tolliver lives in Pellingham. [mentions: 1]\n- Fingerpicking Practice (activity): Twenty minutes of Travis picking patterns each evening. [mentions: 2]\n- Wool Scarf (project): A half-finished scarf in forest green. [mentions: 2]\n- Wendell Ashby (person): Runs the monthly stargazing night and lends out eyepieces. [mentions: 2]\n- Quillmont Library (place): Library whose reading room hosts the chess club. [mentions: 2]\n- Marguerite Fenn (person): Captain of the chess club and a fierce blitz player. [mentions: 2]\n- Sicilian Defense (concept): Sharp chess opening studied from a puzzle book. [mentions: 2]\n- Neon Tetras (other): A school of eight neon tetras in the tank. [mentions: 2]\n- Hollis Grady (person): Organizes the spring seed swap at Fernhollow Community Garden. [mentions: 2]\n- Compost Bin (project): A tumbling compost bin fed with coffee grounds and vegetable peels. [mentions: 2]\n- Backyard Telescope (other): An eight-inch Dobsonian set up on clear nights. [mentions: 3]\n- Chess Club (organization): Thursday evening club that meets for rapid games. [mentions: 3]\n- Freshwater Aquarium (project): A planted twenty-gallon tank in the living room. [mentions: 3]\n- Fernhollow Community Garden (place): Shared allotments with a tool shed and a rain barrel. [mentions: 3]\n- Fintan Achterberg (person): Fintan Achterberg is the user's cousin, who works as a chef. Fintan Achterberg helps with violin restoration. [mentions: 1]\n- Seed Catalog (other): Heirloom seed catalog with dog-eared pages. [mentions: 1]\n## Relations\n- Chess Club --meets_at--> Quillmont Library\n- Fingerpicking Practice --played_on--> Acoustic Guitar\n- Hollis Grady --organizes_seed_swap_at--> Fernhollow Community Garden\n- Marguerite Fenn --captains--> Chess Club\n- Metronome --keeps_time_for--> Fingerpicking Practice\n- Neon Tetras --live_in--> Freshwater Aquarium\n- Perseid Meteor Shower --watched_with--> Wendell Ashby\n- Sicilian Defense --studied_for--> Chess Club\n- Tomato Seedlings --grown_from--> Seed Catalog\n- Wendell Ashby --lent_eyepiece_for--> Backyard Telescope\n- Wool Scarf --knitted_from--> Merino Yarn\n- Tobiah Tolliver --lives_in--> Pellingham",
+      "quotes": [],
+      "latencyMs": 168,
+      "metrics": {
+        "recallAt1": 0,
+        "recallAt5": 0,
+        "recallAt10": 0,
+        "mrr": 0,
+        "ndcg10": 0.27541155237618664
+      }
+    },
+    {
+      "worldId": "test-20003",
+      "queryId": "test-20003-q3",
+      "family": "paraphrase",
+      "mode": "lexical",
+      "answerable": true,
+      "ranked": [
+        "bg-backyard-telescope",
+        "fintan-achterberg",
+        "bg-fernhollow-community-garden",
+        "bg-jupiter",
+        "bg-pickle",
+        "bg-sourdough-starter",
+        "nethercott",
+        "violin-restoration",
+        "bg-cable-stitch",
+        "bg-compost-bin"
+      ],
+      "context": "## Entities\n- Backyard Telescope (other): An eight-inch Dobsonian set up on clear nights. [mentions: 3]\n- Fintan Achterberg (person): Fintan Achterberg is the user's cousin, who works as a chef. Fintan Achterberg helps with violin restoration. [mentions: 1]\n- Fernhollow Community Garden (place): Shared allotments with a tool shed and a rain barrel. [mentions: 3]\n- Jupiter (place): Gas giant watched for its four bright moons. [mentions: 2]\n- Pickle (person): A grey tabby cat who sleeps on the radiator. [mentions: 4]\n- Sourdough Starter (project): A rye-fed starter named Bubbles, kept on the counter. [mentions: 4]\n- Nethercott (place): Nethercott is a place the user mentioned. [mentions: 1]\n- violin restoration (project): violin restoration is a project the user mentioned. Fintan Achterberg helps with violin restoration. [mentions: 1]\n- Cable Stitch (concept): Twisted stitch pattern used on the scarf. [mentions: 1]\n- Compost Bin (project): A tumbling compost bin fed with coffee grounds and vegetable peels. [mentions: 2]\n- Basil Pots (project): Three pots of Genovese basil on the balcony railing. [mentions: 2]\n- Wendell Ashby (person): Runs the monthly stargazing night and lends out eyepieces. [mentions: 2]\n- Monstera Plant (other): Large monstera with split leaves near the bookcase. [mentions: 2]\n- Acoustic Guitar (other): A secondhand steel-string guitar with a cracked pickguard. [mentions: 3]\n- Jigsaw Puzzle (project): A thousand-piece lighthouse puzzle on the dining table. [mentions: 1]\n- Chess Club (organization): Thursday evening club that meets for rapid games. [mentions: 3]\n- Marguerite Fenn (person): Captain of the chess club and a fierce blitz player. [mentions: 2]\n- Tomato Seedlings (project): Seedlings started on the windowsill in March, waiting to go into the raised bed. [mentions: 3]\n- Fiddle Leaf Fig (other): Temperamental fig that drops leaves when moved from its spot. [mentions: 1]\n- Pellingham (place): Pellingham is a place the user mentioned. Tobiah Tolliver lives in Pellingham. [mentions: 1]\n- Catnip Mice (other): Felt toys stuffed with catnip. [mentions: 1]\n- Film Camera (other): A manual rangefinder loaded with black-and-white film. [mentions: 2]\n- Wool Scarf (project): A half-finished scarf in forest green. [mentions: 2]\n- Crossword Puzzles (activity): Weekend crosswords done in pen. [mentions: 2]\n## Relations\n- Backyard Telescope --pointed_at--> Jupiter\n- Jigsaw Puzzle --done_alongside--> Crossword Puzzles\n- Marguerite Fenn --captains--> Chess Club\n- Pickle --naps_by--> Monstera Plant\n- Pickle --plays_with--> Catnip Mice\n- Wendell Ashby --lent_eyepiece_for--> Backyard Telescope\n- Wool Scarf --knitted_in--> Cable Stitch\n- Fintan Achterberg --helps_with--> violin restoration",
+      "quotes": [],
+      "latencyMs": 182,
+      "metrics": {
+        "recallAt1": 0,
+        "recallAt5": 0,
+        "recallAt10": 1,
+        "mrr": 0.125,
+        "ndcg10": 0.43441335717859997
+      }
+    }
+  ]
+}

@@ -1,0 +1,253 @@
+{
+  "version": 1,
+  "synthetic": true,
+  "split": "test",
+  "smoke": true,
+  "commit": "bceecde",
+  "finishedAt": "2026-11-24T19:56:48.976Z",
+  "worlds": 3,
+  "queries": 10,
+  "metrics": {
+    "Extraction · entity precision": {
+      "value": 0.7692307692307693,
+      "lo": 0.625,
+      "hi": 0.875,
+      "n": 3,
+      "histories": 3
+    },
+    "Extraction · entity recall": {
+      "value": 1,
+      "lo": 1,
+      "hi": 1,
+      "n": 3,
+      "histories": 3
+    },
+    "Extraction · entity F1": {
+      "value": 0.8695652173913044,
+      "lo": 0.7692307692307693,
+      "hi": 0.9333333333333333,
+      "n": 3,
+      "histories": 3
+    },
+    "Extraction · relation F1 (entity pairs)": {
+      "value": 0.6511627906976745,
+      "lo": 0.5,
+      "hi": 0.7499999999999999,
+      "n": 3,
+      "histories": 3
+    },
+    "Extraction · relation F1 (typed, Claude-judged labels)": {
+      "value": 0.6046511627906977,
+      "lo": 0.3333333333333333,
+      "hi": 0.7499999999999999,
+      "n": 3,
+      "histories": 3
+    },
+    "Extraction · attribute recall": {
+      "value": 0.75,
+      "lo": 0.5,
+      "hi": 1,
+      "n": 3,
+      "histories": 3
+    },
+    "Admission · valid memory persistence rate": {
+      "value": 0.84,
+      "lo": 0.7,
+      "hi": 1,
+      "n": 25,
+      "histories": 3
+    },
+    "Admission · false rejection rate": {
+      "value": 0.16,
+      "lo": 0,
+      "hi": 0.3,
+      "n": 25,
+      "histories": 3
+    },
+    "Admission · wrong merge rate": {
+      "value": 0,
+      "lo": 0,
+      "hi": 0,
+      "n": 25,
+      "histories": 3
+    },
+    "Oracle retrieval (hybrid, production) · Recall@1": {
+      "value": 0,
+      "lo": 0,
+      "hi": 0,
+      "n": 10,
+      "histories": 3
+    },
+    "Oracle retrieval (hybrid, production) · Recall@5": {
+      "value": 0.4,
+      "lo": 0,
+      "hi": 0.75,
+      "n": 10,
+      "histories": 3
+    },
+    "Oracle retrieval (hybrid, production) · Recall@10": {
+      "value": 0.6,
+      "lo": 0.3333333333333333,
+      "hi": 0.75,
+      "n": 10,
+      "histories": 3
+    },
+    "Oracle retrieval (hybrid, production) · MRR": {
+      "value": 0.16666666666666666,
+      "lo": 0.08333333333333333,
+      "hi": 0.2708333333333333,
+      "n": 10,
+      "histories": 3
+    },
+    "Oracle retrieval (hybrid, production) · NDCG@10": {
+      "value": 0.4053715191497564,
+      "lo": 0.26026433735768806,
+      "hi": 0.541185869843615,
+      "n": 10,
+      "histories": 3
+    },
+    "Oracle retrieval (lexical-only fallback) · Recall@1": {
+      "value": 0,
+      "lo": 0,
+      "hi": 0,
+      "n": 10,
+      "histories": 3
+    },
+    "Oracle retrieval (lexical-only fallback) · Recall@5": {
+      "value": 0.4,
+      "lo": 0,
+      "hi": 0.75,
+      "n": 10,
+      "histories": 3
+    },
+    "Oracle retrieval (lexical-only fallback) · Recall@10": {
+      "value": 0.6,
+      "lo": 0.3333333333333333,
+      "hi": 0.75,
+      "n": 10,
+      "histories": 3
+    },
+    "Oracle retrieval (lexical-only fallback) · MRR": {
+      "value": 0.16666666666666666,
+      "lo": 0.08333333333333333,
+      "hi": 0.2708333333333333,
+      "n": 10,
+      "histories": 3
+    },
+    "Oracle retrieval (lexical-only fallback) · NDCG@10": {
+      "value": 0.4053715191497564,
+      "lo": 0.26026433735768806,
+      "hi": 0.541185869843615,
+      "n": 10,
+      "histories": 3
+    },
+    "Oracle · hybrid − lexical, Recall@10 (paired)": {
+      "value": 0,
+      "lo": 0,
+      "hi": 0,
+      "n": 10,
+      "histories": 3
+    },
+    "Oracle · hybrid − lexical, MRR (paired)": {
+      "value": 0,
+      "lo": 0,
+      "hi": 0,
+      "n": 10,
+      "histories": 3
+    },
+    "End to end · answer accuracy (all questions)": {
+      "value": 0.7,
+      "lo": 0.5,
+      "hi": 1,
+      "n": 10,
+      "histories": 3
+    },
+    "End to end · answer accuracy (answerable)": {
+      "value": 0.7,
+      "lo": 0.5,
+      "hi": 1,
+      "n": 10,
+      "histories": 3
+    },
+    "End to end · answering memories retrieved in top 10": {
+      "value": 0.6,
+      "lo": 0.3333333333333333,
+      "hi": 1,
+      "n": 10,
+      "histories": 3
+    }
+  },
+  "attribution": {
+    "extraction": {
+      "count": 0,
+      "share": {
+        "value": 0,
+        "lo": 0,
+        "hi": 0,
+        "n": 3,
+        "histories": 2
+      }
+    },
+    "admission": {
+      "count": 1,
+      "share": {
+        "value": 0.3333333333333333,
+        "lo": 0,
+        "hi": 1,
+        "n": 3,
+        "histories": 2
+      }
+    },
+    "retrieval": {
+      "count": 1,
+      "share": {
+        "value": 0.3333333333333333,
+        "lo": 0,
+        "hi": 0.5,
+        "n": 3,
+        "histories": 2
+      }
+    },
+    "answer": {
+      "count": 1,
+      "share": {
+        "value": 0.3333333333333333,
+        "lo": 0,
+        "hi": 0.5,
+        "n": 3,
+        "histories": 2
+      }
+    }
+  },
+  "latency": {
+    "extraction": {
+      "p50": 1324,
+      "p95": 2430,
+      "n": 20
+    },
+    "commit": {
+      "p50": 21,
+      "p95": 38,
+      "n": 20
+    },
+    "retrieval": {
+      "p50": 241,
+      "p95": 453,
+      "n": 30
+    },
+    "answer": {
+      "p50": 740,
+      "p95": 1069,
+      "n": 10
+    }
+  },
+  "geminiCalls": 30,
+  "stoppedEarly": null,
+  "notes": [
+    "Synthetic benchmark (eval/stages/data); every history, name and question is generated, labelled in code, worded by Claude.",
+    "Extraction precision counts every extracted entity the gold has no label for, including reasonable concept entities.",
+    "Relation pair F1 is unordered; typed F1 uses Claude (on the plan) to decide label equivalence.",
+    "End-to-end answers are text from gemini-2.5-flash with the production Live prompt and the retrieved context in the system prompt; production uses Live audio and a tool call.",
+    "Oracle descriptions use one fixed template, so they read differently from extractor-written descriptions."
+  ]
+}
