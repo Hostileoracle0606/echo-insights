@@ -20,6 +20,7 @@ export function assertLocal(url) {
 
 // Every table, children before parents, so deletes do not trip foreign keys.
 const USER_TABLES = [
+  'memory_fact_corrections', 'memory_facts', 'conversation_state', 'memory_backfill_progress', 'account_deletion_requests',
   'entity_embeddings', 'relations', 'conversation_turns', 'journal_entries', 'follow_ups', 'asked_questions',
   'session_cards', 'session_briefs', 'entity_suppressions', 'suppression_keys', 'forget_erase_jobs',
   'conversation_runtime_sessions', 'entities', 'notebooks', 'profiles',
@@ -35,6 +36,8 @@ export function rowFilters({ userId, notebookIds, sessionIds }) {
   return {
     ...Object.fromEntries(USER_TABLES.map((t) => [t, `user_id=eq.${userId}`])),
     conversation_runtime_inbox: sessionIds.length ? `session_id=in.(${inList(sessionIds)})` : null,
+    // Cascades from forget_erase_jobs (no user_id of its own).
+    forget_erase_batches: null,
     notebook_commit_requests: notebookIds.length ? `notebook_id=in.(${inList(notebookIds)})` : null,
     retrieve_rate_limits: `scope=in.(${scopes.map((s) => `"${s}"`).join(',')})`,
   };
