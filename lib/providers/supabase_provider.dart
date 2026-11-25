@@ -3,6 +3,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../env.dart';
 import '../services/account_auth_service.dart';
+import '../services/account_deletion_service.dart';
+import '../services/deletion_pending_store.dart';
 import '../services/conversation_state_service.dart';
 import '../services/extract_graph_service.dart';
 import '../services/fresh_access_token.dart';
@@ -22,6 +24,7 @@ import '../services/transcript_store.dart';
 import 'forget_redactor_provider.dart';
 import 'pseudonym_provider.dart';
 import 'shared_log_provider.dart';
+import 'voice_services_provider.dart' show deletedAccountCleanupProvider;
 
 final supabaseClientProvider = Provider<SupabaseClient>((ref) {
   return Supabase.instance.client;
@@ -48,6 +51,21 @@ final supabaseServiceProvider = Provider<SupabaseService>((ref) {
 final accountAuthServiceProvider = Provider<AccountAuthService>((ref) {
   return AccountAuthService(
     SupabaseAuthGateway(ref.watch(supabaseClientProvider)),
+  );
+});
+
+/// The "deletion pending" marker (a deletion not yet confirmed as queued).
+final deletionPendingStoreProvider = Provider<DeletionPendingStore>((ref) {
+  return KeychainDeletionPendingStore();
+});
+
+/// "Delete my account" (LM-116): the `delete-account` edge function.
+final accountDeletionServiceProvider = Provider<AccountDeletionService>((ref) {
+  return AccountDeletionService(
+    auth: ref.watch(accountAuthServiceProvider),
+    gateway: SupabaseDeleteAccountGateway(ref.watch(supabaseClientProvider)),
+    store: ref.watch(deletionPendingStoreProvider),
+    cleanup: ref.watch(deletedAccountCleanupProvider),
   );
 });
 

@@ -36,6 +36,7 @@ void main() {
       'privacy.forget_marker',
       'privacy.app_lock_enabled',
       'privacy.quiet_mode',
+      'account.deletion_pending',
     ]);
     expect(flag.marked, 1);
   });

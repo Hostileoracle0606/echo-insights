@@ -1,6 +1,7 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+import '../services/deletion_pending_store.dart';
 import '../services/pseudonym_store.dart';
 import 'app_lock.dart';
 
@@ -42,14 +43,16 @@ class NativeInstallFlag implements InstallFlag {
 }
 
 /// The Lumen Keychain items that hold real names or privacy choices: the
-/// name map, the forgotten-name hashes, the forget marker and the app-lock
-/// and quiet-mode switches.
+/// name map, the forgotten-name hashes, the forget marker, the app-lock
+/// and quiet-mode switches, and the "deletion pending" marker (a reinstall
+/// must never resend an old deletion under a new sign-in).
 const lumenKeychainKeys = <String>[
   KeychainPseudonymStore.mapKey,
   KeychainPseudonymStore.forgottenKey,
   'privacy.forget_marker',
   lockEnabledKey,
   quietModeKey,
+  KeychainDeletionPendingStore.key,
 ];
 
 /// On the first launch after an install, deletes every item in

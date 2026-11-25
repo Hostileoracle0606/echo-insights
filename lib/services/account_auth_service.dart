@@ -1,3 +1,6 @@
+// The passkey API is experimental in supabase_flutter 2.15+ (LM-79).
+// ignore_for_file: experimental_member_use
+
 import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
@@ -14,10 +17,19 @@ enum SignInOutcome { signedIn, newAccount, cancelled }
 /// What Apple hands back for one sign-in. Name fields are only filled the
 /// first time a person authorises the app.
 class AppleCredential {
-  const AppleCredential({this.identityToken, this.givenName, this.familyName});
+  const AppleCredential({
+    this.identityToken,
+    this.givenName,
+    this.familyName,
+    this.authorizationCode,
+  });
   final String? identityToken;
   final String? givenName;
   final String? familyName;
+
+  /// Single-use, valid for 5 minutes: the server exchanges it to revoke the
+  /// account's Apple tokens on deletion (LM-115). Never logged or shown.
+  final String? authorizationCode;
 }
 
 /// Shows Apple's sheet with the already-hashed nonce. Null when the person
@@ -40,6 +52,7 @@ Future<AppleCredential?> systemAppleCredential(String hashedNonce) async {
       identityToken: c.identityToken,
       givenName: c.givenName,
       familyName: c.familyName,
+      authorizationCode: c.authorizationCode,
     );
   } on SignInWithAppleAuthorizationException catch (e) {
     if (e.code == AuthorizationErrorCode.canceled) return null;
@@ -143,8 +156,8 @@ class SupabaseAuthGateway implements AuthGateway {
   @override
   Future<List<UserIdentity>> identities() => _client.auth.getUserIdentities();
 
-  // The passkey API is experimental in supabase_flutter 2.15+.
-  // ignore_for_file: experimental_member_use
+  // The passkey API is experimental in supabase_flutter 2.15+; see the
+  // file-level ignore at the top of this file.
   @override
   Future<AuthResponse?> signInWithPasskey() async {
     try {
@@ -231,6 +244,11 @@ class AccountAuthService {
     await _gateway.linkAppleToken(token, rawNonce);
     return true;
   }
+
+  /// Shows Apple's sheet again for a fresh credential (its authorization
+  /// code is what account deletion sends, LM-116). Null when cancelled.
+  Future<AppleCredential?> reauthenticateWithApple() =>
+      _apple(hashNonce(_gateway.generateRawNonce()));
 
   Future<bool> hasAppleLinked() async => (await _gateway.identities())
       .any((identity) => identity.provider == 'apple');

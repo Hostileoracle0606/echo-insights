@@ -554,9 +554,11 @@ class PseudonymService {
   /// Sign-out: the map is erased from memory and the Keychain. If the
   /// Keychain delete fails the map is not read again (see [_wipePending]) and
   /// a map saved for another account is discarded at the next load anyway.
-  Future<void> clear() => _serial(() async {
+  Future<void> clear({bool requireDiskWipe = false}) => _serial(() async {
         await _drop();
-        if (!await _tryDelete()) _wipePending = true;
+        if (await _tryDelete()) return;
+        _wipePending = true;
+        if (requireDiskWipe) throw StateError('Could not erase the name map.');
       });
 
   Future<bool> _tryDelete() async {

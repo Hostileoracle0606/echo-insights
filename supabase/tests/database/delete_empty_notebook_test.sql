@@ -134,8 +134,8 @@ select is(
      from pg_constraint c
     where c.contype = 'f' and c.confrelid = 'public.notebooks'::regclass),
   array[
-    'asked_questions', 'conversation_runtime_sessions', 'conversation_turns',
-    'entities', 'entity_embeddings', 'follow_ups', 'journal_entries',
+    'asked_questions', 'conversation_runtime_sessions', 'conversation_state', 'conversation_turns',
+    'entities', 'entity_embeddings', 'follow_ups', 'journal_entries', 'memory_facts',
     'notebook_commit_requests', 'relations', 'session_briefs', 'session_cards'
   ],
   'every table with a foreign key to notebooks is checked by delete_empty_notebook');

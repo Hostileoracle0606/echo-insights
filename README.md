@@ -259,7 +259,7 @@ echo-insights/
 ├── ios/Runner/          VoiceEnginePlugin.swift: one AVAudioEngine for mic + voice
 ├── supabase/
 │   ├── migrations/      Schema, RLS, RPCs (commit_notebook, save_session_card…)
-│   └── functions/       retrieve-memory · embed-entities · extract-graph · speak-agent
+│   └── functions/       retrieve-memory · embed-entities · speak-agent
 ├── infra/               AWS CDK: authorizer, live-session, extract-graph, close-session
 ├── contracts/           Versioned JSON Schemas + fixtures shared by Dart, TS and Deno tests
 ├── src/                 Web client (TanStack Start + React), the original prototype

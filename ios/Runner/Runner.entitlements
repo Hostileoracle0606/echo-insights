@@ -6,6 +6,12 @@
 	<array>
 		<string>Default</string>
 	</array>
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<!-- The Supabase Relying Party ID (LM-127), chosen by the owner on
+		     2026-11-18. Changing it later breaks every enrolled passkey. -->
+		<string>webcredentials:lumen.trigo.workers.dev</string>
+	</array>
 	<key>com.apple.developer.default-data-protection</key>
 	<string>NSFileProtectionComplete</string>
 </dict>

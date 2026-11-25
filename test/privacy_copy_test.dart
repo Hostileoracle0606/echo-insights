@@ -9,6 +9,7 @@ const _files = [
   'lib/privacy/privacy_claims.dart',
   'lib/screens/privacy/who_hears_you_screen.dart',
   'src/routes/security.tsx',
+  'src/routes/privacy.tsx',
 ];
 
 const _banned = [
@@ -89,6 +90,8 @@ void main() {
   // and memory.
   test('the shipped controls claim only what they do', () {
     final forget = gatedClaims[PrivacyFeature.forgetPerson]!;
+    // Forget ships as a beta for the first release.
+    expect(forget, startsWith('Forget (beta):'));
     expect(forget, contains("Lumen won't bring them up again"));
     expect(forget, contains("they're gone from your maps"));
     expect(forget, contains('transcripts keep your words for you to read'));
@@ -143,5 +146,69 @@ void main() {
     final page = File('src/routes/security.tsx').readAsStringSync();
     expect(page, isNot(contains('rows from other accounts')));
     expect(page, isNot(contains('stops us yet')));
+  });
+
+  // LM-119: the /privacy page carries the same claims and no more than the
+  // `shipped` set and the verified flags allow.
+  group('the /privacy page', () {
+    late String page;
+    setUpAll(() => page = File('src/routes/privacy.tsx').readAsStringSync());
+
+    test('carries every always-on claim word for word', () {
+      for (final claim in [
+        googleClaim(verified: false),
+        googleDetail,
+        awsClaim,
+        reachClaim,
+        supabaseClaim,
+        usClaim,
+        phoneClaim,
+        exportClaim,
+        sharedLogClaim,
+      ]) {
+        expect(page, contains(claim));
+      }
+    });
+
+    test('carries gated claims only for shipped features', () {
+      for (final entry in gatedClaims.entries) {
+        if (shipped.contains(entry.key)) {
+          expect(page, contains(entry.value));
+        } else {
+          expect(page, isNot(contains(entry.value)),
+              reason: '${entry.key} is not shipped');
+        }
+      }
+    });
+
+    test('carries the sign-in records and account deletion lines', () {
+      expect(
+        page,
+        contains("Sign-in records in our provider's logs are kept for a "
+            'limited time set by the provider, then removed.'),
+      );
+      expect(page, contains('Delete my account: Privacy has'));
+      expect(page, contains('This cannot be undone.'));
+      // What the deletion screen promises and no more: no instant-erasure or
+      // "nothing is kept anywhere" claim, since backups can outlive a delete.
+      expect(page.toLowerCase(), isNot(contains('immediately')));
+      expect(page, contains(reachClaim));
+    });
+
+    test('does not claim what is unverified', () {
+      expect(paidTierVerified, isFalse);
+      expect(supabaseEncryptionVerified, isFalse);
+      expect(page, isNot(contains(googleClaim(verified: true))));
+      expect(page, isNot(contains(supabaseEncryptedClaim)));
+      expect(page.toLowerCase(), isNot(contains('train its models')));
+    });
+
+    test('says Forget is a beta and names ElevenLabs as web only', () {
+      expect(page, contains('"Forget (beta): you can forget'));
+      expect(page, contains('ElevenLabs (web app only)'));
+      // Release 1 deploys only /privacy and the passkey file, not /security.
+      expect(page, isNot(contains('href="/security"')));
+      expect(page, isNot(contains('security.txt')));
+    });
   });
 }

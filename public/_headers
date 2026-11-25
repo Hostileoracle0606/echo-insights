@@ -1,0 +1,5 @@
+# Apple fetches this file with no extension; the host must label it JSON.
+# See docs/superpowers/plans/2026-11-17-passkeys-results.md.
+/.well-known/apple-app-site-association
+  Content-Type: application/json
+  Cache-Control: public, max-age=300

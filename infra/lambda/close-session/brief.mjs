@@ -473,6 +473,9 @@ export function createSessionBriefHandler({
     });
     if (saved?.status === "saved") return "ready";
     if (saved?.status === "unchanged") return "unchanged";
+    // LM-102: a brief for this revision was stored first and this one differs
+    // (a model is not deterministic). Already done, not a failure.
+    if (saved?.code === "keyReused") return "unchanged";
     if (saved?.code === "notFound") throw new Rejection(404, "notFound");
     throw new Rejection(503, "providerUnavailable");
   }

@@ -9,6 +9,7 @@ import '../../theme/lumen_text.dart';
 import '../../widgets/transcript_retention.dart';
 import '../privacy/shared_log_screen.dart';
 import '../privacy/who_hears_you_screen.dart';
+import 'delete_account_screen.dart';
 import 'sign_in_security.dart';
 
 /// The dashboard's shield button: opens [PrivacySheet].
@@ -35,11 +36,13 @@ class PrivacyButton extends StatelessWidget {
   }
 }
 
-/// App lock, quiet mode, how long transcripts are kept, and "Export my
-/// journal": every privacy setting, in one place. Self-contained: it reads
-/// and writes only [appLockProvider] and [quietModeProvider], and exports
-/// through [journalExportServiceProvider] and [shareVaultProvider];
-/// [TranscriptRetentionChoices] handles its own setting.
+/// App lock, quiet mode, how long transcripts are kept, "Export my
+/// journal" and "Delete my account": every privacy setting, in one place.
+/// It reads and writes [appLockProvider] and [quietModeProvider], exports
+/// through [journalExportServiceProvider] and [shareVaultProvider], and
+/// leaves account deletion to [DeleteAccountScreen];
+/// [TranscriptRetentionChoices] and [SignInSecurity] handle their own
+/// settings.
 class PrivacySheet extends ConsumerStatefulWidget {
   const PrivacySheet({super.key});
 
@@ -96,6 +99,18 @@ class _PrivacySheetState extends ConsumerState<PrivacySheet> {
         });
       }
     }
+  }
+
+  /// LM-116: Face ID first (a failed or cancelled check opens nothing),
+  /// then the confirmation screen, which does the deleting. Its "Export my
+  /// journal first" comes back here and starts the export.
+  Future<void> _deleteAccount() async {
+    if (!await requireReauth(context, reason: 'Delete your account')) return;
+    if (!mounted) return;
+    final exit = await Navigator.of(context).push<DeleteAccountExit>(
+      MaterialPageRoute(builder: (_) => const DeleteAccountScreen()),
+    );
+    if (exit == DeleteAccountExit.export && mounted) await _export();
   }
 
   Future<void> _setLock(bool on) async {
@@ -221,6 +236,21 @@ class _PrivacySheetState extends ConsumerState<PrivacySheet> {
               ),
               trailing: Icon(Icons.chevron_right, color: colors.ink),
               onTap: () => showWhoHearsYou(context),
+            ),
+            ListTile(
+              key: const Key('deleteAccountTile'),
+              contentPadding: EdgeInsets.zero,
+              title: Text(
+                'Delete my account',
+                style: TextStyle(color: colors.destructive),
+              ),
+              subtitle: Text(
+                'Erases your journal and your account for good. Asks for '
+                'Face ID or your passcode first.',
+                style: small,
+              ),
+              trailing: Icon(Icons.chevron_right, color: colors.ink),
+              onTap: _deleteAccount,
             ),
           ],
         ),

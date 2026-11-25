@@ -191,6 +191,16 @@ test("a stored brief at the notebook's revision returns without a model call", a
   assert.equal(state.saves.length, 0);
 });
 
+test("a save refused as keyReused (another close stored a different brief first) is unchanged, not an error", async () => {
+  const { state, handle } = world({
+    "/rest/v1/rpc/save_session_brief": () => ok({ status: "rejected", code: "keyReused" }),
+  });
+  const response = await handle(requestEvent());
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(parse(response), { status: "unchanged" });
+  assert.equal(textCalls(state).length, 1);
+});
+
 test("a notebook auto-forget has trimmed leaves the brief alone: no model call, no save", async () => {
   const { state, handle } = world({
     state: {

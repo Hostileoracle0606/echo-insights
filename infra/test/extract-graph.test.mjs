@@ -809,6 +809,83 @@ for (const [label, answer] of [
   });
 }
 
+const emptyPatchResponse = (patch) => ({
+  ok: true,
+  status: 200,
+  json: async () => ({
+    candidates: [{ content: { parts: [{ functionCall: { name: "extract_graph", args: patch } }] } }],
+  }),
+});
+
+test("LM-102 extraction: the same turn id twice makes one model call and returns an identical patch", async () => {
+  const store = inMemoryExtractionStore();
+  const patch = { entities: [{ name: "Atlas", type: "project" }], relations: [], supersedes: [] };
+  let modelCalls = 0;
+  const handle = createExtractGraphHandler(
+    dependencies({
+      ...store,
+      fetchImpl: async (url) => {
+        if (String(url).includes("/rest/v1/notebooks")) {
+          return { ok: true, json: async () => [{ id: notebookId }] };
+        }
+        modelCalls += 1;
+        return emptyPatchResponse(patch);
+      },
+    }),
+  );
+
+  const first = await handle(requestEvent());
+  const second = await handle(requestEvent());
+
+  assert.equal(first.statusCode, 200);
+  assert.equal(second.statusCode, 200);
+  assert.equal(modelCalls, 1);
+  assert.deepEqual(JSON.parse(second.body), JSON.parse(first.body));
+});
+
+test("LM-102 extraction: a changed input under the same turn id is refused without a model call", async () => {
+  const store = inMemoryExtractionStore();
+  let modelCalls = 0;
+  const handle = createExtractGraphHandler(
+    dependencies({
+      ...store,
+      fetchImpl: async (url) => {
+        if (String(url).includes("/rest/v1/notebooks")) {
+          return { ok: true, json: async () => [{ id: notebookId }] };
+        }
+        modelCalls += 1;
+        return emptyPatchResponse({ entities: [], relations: [], supersedes: [] });
+      },
+    }),
+  );
+
+  assert.equal((await handle(requestEvent())).statusCode, 200);
+  const reused = await handle(requestEvent({ text: "A different thing entirely." }));
+
+  assert.equal(reused.statusCode, 409);
+  assert.equal(modelCalls, 1);
+});
+
+test("LM-102 extraction: the cache key is ids only and the input hash is not the text", async () => {
+  const text = "Maya and I discussed a very private matter.";
+  const seen = [];
+  const handle = createExtractGraphHandler(
+    dependencies({
+      acquireExtraction: async (args) => {
+        seen.push(args);
+        return { status: "completed", patch: { entities: [], relations: [], supersedes: [] } };
+      },
+    }),
+  );
+
+  await handle(requestEvent({ text }));
+
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0].id, `user-123:${notebookId}:turn-123:gemini/extract_graph/v2`);
+  assert.match(seen[0].inputHash, /^[0-9a-f]{64}$/);
+  assert.ok(!JSON.stringify(seen[0]).includes("private matter"));
+});
+
 // EC-03: extraction also returns typed facts, recorded after the turn commits.
 
 function geminiReturning(args, requests = []) {

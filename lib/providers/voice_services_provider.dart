@@ -4,8 +4,11 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../audio/audio_output.dart';
+import '../security/app_lock.dart' show AppLockStatus;
+import '../security/app_lock_provider.dart';
 import '../services/live_credentials.dart';
 import 'auth_provider.dart';
+import 'catch_up_provider.dart';
 import 'journal_provider.dart'
     show forgottenThisRunProvider, turnJournalServiceProvider;
 import 'forget_redactor_provider.dart';
@@ -32,24 +35,41 @@ final audioOutputProvider = Provider<AudioOutput>((ref) {
   return output;
 });
 
-/// Follows sign-in and the app lifecycle for the app-level voice services.
-/// What one account leaves behind in memory, dropped when it signs out.
-final signedOutCleanupProvider = Provider<void Function()>((ref) {
-  return () {
+/// Clears account data from memory and waits for the persistent wipes.
+final accountLocalCleanupProvider = Provider<Future<void> Function()>((ref) {
+  return () async {
+    ref.read(catchUpProvider.notifier).signedOut();
     ref.read(openingPrepProvider).clear();
     ref.read(forgottenThisRunProvider).clear();
-    // The hashes of the people they forgot, in memory and the Keychain.
-    unawaited(ref.read(forgetRedactorProvider).clear());
-    // The on-device name map holds real names: erased with the account.
-    unawaited(ref.read(pseudonymServiceProvider).clear());
-    // What Lumen shared (LM-57) is erased with it.
-    unawaited(
-      ref.read(sharedLogProvider).clearAll().catchError((Object error) {
-        // The type only; the next launch's sweep finishes it.
-        debugPrint('Clearing the shared log failed: ${error.runtimeType}');
-      }),
-    );
+    await Future.wait<void>([
+      Future.sync(
+          () => ref.read(forgetRedactorProvider).clear(requireDiskWipe: true)),
+      Future.sync(() =>
+          ref.read(pseudonymServiceProvider).clear(requireDiskWipe: true)),
+      Future.sync(() => ref.read(sharedLogProvider).clearAll()),
+    ]);
   };
+});
+
+/// Deletion also erases pending speech checkpoints from this phone.
+final deletedAccountCleanupProvider = Provider<Future<void> Function()>((ref) {
+  final cleanup = ref.watch(accountLocalCleanupProvider);
+  return () async {
+    await Future.wait<void>([
+      cleanup(),
+      Future.sync(() => ref.read(turnJournalServiceProvider).forgetAll()),
+    ]);
+  };
+});
+
+/// Drops the local state for an ordinary sign-out or account switch.
+final signedOutCleanupProvider = Provider<void Function()>((ref) {
+  final cleanup = ref.watch(accountLocalCleanupProvider);
+  // Auth can emit signedOut during deletion recovery. Only the deletion flow
+  // may clear its marker, after including the phone's durable turn journal.
+  return () => unawaited(cleanup().catchError((Object error) {
+        debugPrint('Local sign-out cleanup failed: ${error.runtimeType}');
+      }));
 });
 
 class VoiceServicesBinding {
@@ -175,6 +195,10 @@ class _VoiceServicesScopeState extends ConsumerState<VoiceServicesScope>
             // background: it never holds up a session.
             unawaited(runEraseResume(
                 () => ref.read(transcriptEraseProvider.notifier)));
+            // LM-103: finish what an earlier run left (turns, cards, the
+            // brief), in the background once the app lock is open. After
+            // the forget check, so nothing goes out with a forgotten name.
+            _requestCatchUp();
           });
         },
         // Coming back also re-asks for a brief that failed earlier.
@@ -185,7 +209,7 @@ class _VoiceServicesScopeState extends ConsumerState<VoiceServicesScope>
               () => ref.read(transcriptEraseProvider.notifier)))),
           openingPrep.refresh(),
           openingPrep.retryPendingBrief(),
-        ]),
+        ]).whenComplete(_requestCatchUp),
         onSignedOut: ref.read(signedOutCleanupProvider),
         // Fails closed: until a check after the next resume succeeds, the
         // held brief (it may name someone forgotten elsewhere) isn't played.
@@ -195,10 +219,32 @@ class _VoiceServicesScopeState extends ConsumerState<VoiceServicesScope>
     _binding!.signedInChanged(signedIn, userId: userId);
   }
 
+  /// Catch-up never fails a launch or a resume.
+  void _requestCatchUp() {
+    if (!mounted) return;
+    // A sign-out may have landed while the warm-up or resume work ran.
+    if (ref.read(authProvider).valueOrNull == null) return;
+    try {
+      ref.read(catchUpProvider.notifier).request();
+    } catch (error) {
+      debugPrint('Catch-up not started: ${error.runtimeType}');
+    }
+  }
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    // Catch-up runs only while the app lock is open (it waits for the
+    // unlock, and locking stops it). AppLockGate sees the lifecycle first, so
+    // a resume past the grace period is already locked when onResume asks.
+    ref.listenManual<AppLockStatus>(
+      appLockProvider.select((lock) => lock.status),
+      (_, status) => ref
+          .read(catchUpProvider.notifier)
+          .setUnlocked(status == AppLockStatus.unlocked),
+      fireImmediately: true,
+    );
     final user = ref.read(authProvider).valueOrNull;
     _signedInChanged(user != null, user?.id);
   }

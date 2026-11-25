@@ -109,6 +109,8 @@ Future<({_Journal journal, List<String> rpcs})> _open(
             return preview;
           case 'forget_erase_sample':
             return _sample;
+          case 'forget_erase_pending':
+            return const [];
           case 'forget_erase_step':
             if (failStep) throw Exception('offline');
             return {'rewritten': 12, 'total': 12, 'remaining': 0, 'finished': true};
@@ -141,8 +143,8 @@ Finder _labelled(String label) => find.byWidgetPredicate(
     );
 
 Future<void> _toConfirmation(WidgetTester tester) async {
-  await tester.ensureVisible(_labelled('Forget Priya'));
-  await tester.tap(_labelled('Forget Priya'));
+  await tester.ensureVisible(_labelled('Forget Priya, beta'));
+  await tester.tap(_labelled('Forget Priya, beta'));
   await tester.pumpAndSettle();
 }
 
@@ -162,10 +164,16 @@ void main() {
   testWidgets('the note sheet offers Forget with a 44 pt target',
       (tester) async {
     await _open(tester);
-    await tester.ensureVisible(_labelled('Forget Priya'));
-    final size = tester.getSize(_labelled('Forget Priya'));
+    await tester.ensureVisible(_labelled('Forget Priya, beta'));
+    final size = tester.getSize(_labelled('Forget Priya, beta'));
     expect(size.height, greaterThanOrEqualTo(44));
     expect(size.width, greaterThanOrEqualTo(44));
+  });
+
+  testWidgets('Forget is marked beta on the note', (tester) async {
+    await _open(tester);
+    await tester.ensureVisible(_labelled('Forget Priya, beta'));
+    expect(find.text('BETA'), findsOneWidget);
   });
 
   testWidgets('the confirmation lists what will be removed', (tester) async {
