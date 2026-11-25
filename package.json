@@ -19,6 +19,7 @@
     "test:watch": "vitest",
     "eval:privacy": "node eval/privacy/run.mjs",
     "eval:recovery": "vite-node --config eval/recovery/vite.config.ts eval/recovery/run.ts",
+    "eval:timing:summary": "node eval/timing/summarize.mjs",
     "test:eval": "node --test \"eval/**/*.test.mjs\""
   },
   "dependencies": {

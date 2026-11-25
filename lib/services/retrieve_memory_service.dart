@@ -5,17 +5,22 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../logic/relative_time.dart';
+import '../logic/timing_marks.dart';
 import '../models/entity.dart';
 import '../models/journal_entry.dart';
 import '../models/journal_state.dart';
 import '../models/memory_quote.dart';
 import '../models/relation.dart';
 import '../providers/supabase_provider.dart';
+import '../providers/timing_provider.dart';
 
 /// Memory retrieval for extraction and the get_relevant_memory tool; tests
 /// substitute a fake.
 final retrieveMemoryServiceProvider = Provider<RetrieveMemoryService>(
-  (ref) => RetrieveMemoryService(ref.watch(supabaseClientProvider)),
+  (ref) => RetrieveMemoryService(
+    ref.watch(supabaseClientProvider),
+    timing: ref.watch(timingMarksProvider),
+  ),
 );
 
 String _iso(DateTime d) => d.toUtc().toIso8601String();
@@ -219,15 +224,18 @@ typedef RetrieveMemoryInvoker = Future<dynamic> Function(
 /// fail closed so retrieval cannot break journaling.
 class RetrieveMemoryService {
   final RetrieveMemoryInvoker _invoke;
+  final TimingMarks _timing;
 
-  RetrieveMemoryService(SupabaseClient client)
+  RetrieveMemoryService(SupabaseClient client, {TimingMarks? timing})
       : _invoke = ((body) async =>
             (await client.functions.invoke('retrieve-memory', body: body))
-                .data);
+                .data),
+        _timing = timing ?? TimingMarks.instance;
 
   /// For tests only: [invoke] receives the request body and returns the
   /// response data.
-  RetrieveMemoryService.withInvoker(this._invoke);
+  RetrieveMemoryService.withInvoker(this._invoke, {TimingMarks? timing})
+      : _timing = timing ?? TimingMarks.instance;
 
   Future<String> retrieve({
     required String query,
@@ -262,6 +270,13 @@ class RetrieveMemoryService {
       return fallback;
     }
     final startedAt = DateTime.now();
+    final timedFrom = _timing.now;
+
+    // The wait, as a timing span: a timeout or error is ok:false, so it never
+    // passes for a fast (or a 3.5 s) successful answer.
+    void span(bool ok, int count) => _timing.span('retrieval',
+        since: timedFrom,
+        fields: {'scope': scope.index, 'count': count, 'ok': ok});
 
     // Non-sensitive telemetry: outcome + counts only, never query/context text.
     void emit(String outcome, int contextLength, [int quoteCount = 0]) =>
@@ -296,15 +311,19 @@ class RetrieveMemoryService {
         result.context.length,
         result.quotes.length,
       );
+      span(true, result.entityIds.length);
       return result;
     } on TimeoutException {
       emit('timeout', 0);
+      span(false, 0);
       return fallback;
     } on FormatException {
       emit('contractError', 0);
+      span(false, 0);
       return fallback;
     } catch (_) {
       emit('error', 0);
+      span(false, 0);
       return fallback;
     }
   }

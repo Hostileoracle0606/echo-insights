@@ -1,0 +1,56 @@
+{
+  "sim-cold-0": {
+    "device": "iPhone 17 Pro simulator, iOS 26.4, on MacBook Air M4 (Mac16,12), 16 GB, macOS 26.4",
+    "mode": "debug",
+    "network": "host loopback",
+    "history": 0,
+    "launch": "cold (terminate, wait 2 s, simctl launch)",
+    "build": "flutter build ios --simulator --debug, LUMEN_TIMING=1, Flutter 3.41.7",
+    "ran": "2026-11-18 16:21–16:52 local"
+  },
+  "retrieval-0": {
+    "device": "Node 22 → local Supabase (CLI 2.75, edge-runtime 1.70) on MacBook Air M4 (Mac16,12), 16 GB, macOS 26.4",
+    "mode": "node",
+    "network": "host loopback",
+    "history": 0,
+    "scope": "user",
+    "note": "edge functions served from this worktree only for this run; 5 warm-up calls discarded; paced under the 30/min user rate limit",
+    "ran": "2026-11-18 ~16:55 local"
+  },
+  "sim-cold-50": {
+    "device": "iPhone 17 Pro simulator, iOS 26.4, on MacBook Air M4 (Mac16,12), 16 GB, macOS 26.4",
+    "mode": "debug",
+    "network": "host loopback",
+    "history": 50,
+    "launch": "cold (terminate, wait 2 s, simctl launch)",
+    "build": "flutter build ios --simulator --debug, LUMEN_TIMING=1, Flutter 3.41.7",
+    "ran": "2026-11-18 16:21–16:52 local"
+  },
+  "retrieval-50": {
+    "device": "Node 22 → local Supabase (CLI 2.75, edge-runtime 1.70) on MacBook Air M4 (Mac16,12), 16 GB, macOS 26.4",
+    "mode": "node",
+    "network": "host loopback",
+    "history": 50,
+    "scope": "user",
+    "note": "edge functions served from this worktree only for this run; 5 warm-up calls discarded; paced under the 30/min user rate limit",
+    "ran": "2026-11-18 ~17:00 local"
+  },
+  "sim-cold-500": {
+    "device": "iPhone 17 Pro simulator, iOS 26.4, on MacBook Air M4 (Mac16,12), 16 GB, macOS 26.4",
+    "mode": "debug",
+    "network": "host loopback",
+    "history": 500,
+    "launch": "cold (terminate, wait 2 s, simctl launch)",
+    "build": "flutter build ios --simulator --debug, LUMEN_TIMING=1, Flutter 3.41.7",
+    "ran": "2026-11-18 16:21–16:52 local"
+  },
+  "retrieval-500": {
+    "device": "Node 22 → local Supabase (CLI 2.75, edge-runtime 1.70) on MacBook Air M4 (Mac16,12), 16 GB, macOS 26.4",
+    "mode": "node",
+    "network": "host loopback",
+    "history": 500,
+    "scope": "user",
+    "note": "edge functions served from this worktree only for this run; 5 warm-up calls discarded; paced under the 30/min user rate limit",
+    "ran": "2026-11-19 (rerun after the first attempt hit a dead function server; see excluded-edge-boot-error/)"
+  }
+}

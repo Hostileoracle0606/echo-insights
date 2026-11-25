@@ -5,10 +5,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../logic/relative_time.dart';
+import '../../logic/timing_marks.dart';
 import '../../models/notebook.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/notebooks_provider.dart';
 import '../../providers/supabase_provider.dart';
+import '../../providers/timing_provider.dart';
 import '../../theme/lumen_colors.dart';
 import '../../theme/lumen_text.dart';
 import '../../widgets/delete_session.dart';
@@ -90,6 +92,16 @@ class DashboardScreen extends ConsumerWidget {
                 : (name.isEmpty ? 'Welcome back' : 'Welcome back, $name');
             final totalEntities =
                 list.fold<int>(0, (sum, nb) => sum + nb.entityCount);
+            // The first time notebooks show, the home screen is usable.
+            final timing = ref.read(timingMarksProvider);
+            if (timing.enabled) {
+              WidgetsBinding.instance.addPostFrameCallback(
+                (_) => timing.markOnce('home_interactive', fields: {
+                  'count': list.length,
+                  'size': entityCountBucket(totalEntities),
+                }),
+              );
+            }
             final subtitle = isEmpty
                 ? null
                 : '${list.length} ${list.length == 1 ? 'session' : 'sessions'}'

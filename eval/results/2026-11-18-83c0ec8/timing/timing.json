@@ -1,0 +1,242 @@
+{
+  "generatedAt": "2026-11-19T05:57:20.710Z",
+  "groups": {
+    "retrieval-0": {
+      "stages": {
+        "retrieval_server": {
+          "n": 49,
+          "p50": 250,
+          "p95": 967,
+          "incomplete": 0,
+          "failed": 1
+        }
+      },
+      "overlapRate": {},
+      "meta": {
+        "device": "Node 22 → local Supabase (CLI 2.75, edge-runtime 1.70) on MacBook Air M4 (Mac16,12), 16 GB, macOS 26.4",
+        "mode": "node",
+        "network": "host loopback",
+        "history": 0,
+        "scope": "user",
+        "note": "edge functions served from this worktree only for this run; 5 warm-up calls discarded; paced under the 30/min user rate limit",
+        "ran": "2026-11-18 ~16:55 local"
+      },
+      "runs": 1,
+      "rejected": 0
+    },
+    "retrieval-50": {
+      "stages": {
+        "retrieval_server": {
+          "n": 50,
+          "p50": 208,
+          "p95": 462,
+          "incomplete": 0,
+          "failed": 0
+        }
+      },
+      "overlapRate": {},
+      "meta": {
+        "device": "Node 22 → local Supabase (CLI 2.75, edge-runtime 1.70) on MacBook Air M4 (Mac16,12), 16 GB, macOS 26.4",
+        "mode": "node",
+        "network": "host loopback",
+        "history": 50,
+        "scope": "user",
+        "note": "edge functions served from this worktree only for this run; 5 warm-up calls discarded; paced under the 30/min user rate limit",
+        "ran": "2026-11-18 ~17:00 local"
+      },
+      "runs": 1,
+      "rejected": 0
+    },
+    "retrieval-500": {
+      "stages": {
+        "retrieval_server": {
+          "n": 48,
+          "p50": 511,
+          "p95": 2419,
+          "incomplete": 0,
+          "failed": 2
+        }
+      },
+      "overlapRate": {},
+      "meta": {
+        "device": "Node 22 → local Supabase (CLI 2.75, edge-runtime 1.70) on MacBook Air M4 (Mac16,12), 16 GB, macOS 26.4",
+        "mode": "node",
+        "network": "host loopback",
+        "history": 500,
+        "scope": "user",
+        "note": "edge functions served from this worktree only for this run; 5 warm-up calls discarded; paced under the 30/min user rate limit",
+        "ran": "2026-11-19 (rerun after the first attempt hit a dead function server; see excluded-edge-boot-error/)"
+      },
+      "runs": 1,
+      "rejected": 0
+    },
+    "sim-cold-0": {
+      "stages": {
+        "process_start": {
+          "n": 20,
+          "p50": 1,
+          "p95": 2,
+          "incomplete": 0,
+          "failed": 0
+        },
+        "first_frame": {
+          "n": 20,
+          "p50": 1601,
+          "p95": 2470,
+          "incomplete": 0,
+          "failed": 0
+        },
+        "opening_prep": {
+          "n": 20,
+          "p50": 722,
+          "p95": 1049,
+          "incomplete": 0,
+          "failed": 0
+        },
+        "home_interactive": {
+          "n": 20,
+          "p50": 2571,
+          "p95": 3563,
+          "incomplete": 0,
+          "failed": 0
+        },
+        "launch_to_first_frame_host": {
+          "n": 20,
+          "p50": 4403,
+          "p95": 5904,
+          "incomplete": 0,
+          "failed": 0
+        }
+      },
+      "overlapRate": {
+        "opening_prep": [
+          0,
+          20
+        ]
+      },
+      "meta": {
+        "device": "iPhone 17 Pro simulator, iOS 26.4, on MacBook Air M4 (Mac16,12), 16 GB, macOS 26.4",
+        "mode": "debug",
+        "network": "host loopback",
+        "history": 0,
+        "launch": "cold (terminate, wait 2 s, simctl launch)",
+        "build": "flutter build ios --simulator --debug, LUMEN_TIMING=1, Flutter 3.41.7",
+        "ran": "2026-11-18 16:21–16:52 local"
+      },
+      "runs": 20,
+      "rejected": 0
+    },
+    "sim-cold-50": {
+      "stages": {
+        "process_start": {
+          "n": 20,
+          "p50": 1,
+          "p95": 2,
+          "incomplete": 0,
+          "failed": 0
+        },
+        "first_frame": {
+          "n": 20,
+          "p50": 1011,
+          "p95": 3579,
+          "incomplete": 0,
+          "failed": 0
+        },
+        "opening_prep": {
+          "n": 20,
+          "p50": 705,
+          "p95": 948,
+          "incomplete": 0,
+          "failed": 0
+        },
+        "home_interactive": {
+          "n": 20,
+          "p50": 1741,
+          "p95": 4565,
+          "incomplete": 0,
+          "failed": 0
+        },
+        "launch_to_first_frame_host": {
+          "n": 20,
+          "p50": 2973,
+          "p95": 6268,
+          "incomplete": 0,
+          "failed": 0
+        }
+      },
+      "overlapRate": {
+        "opening_prep": [
+          0,
+          20
+        ]
+      },
+      "meta": {
+        "device": "iPhone 17 Pro simulator, iOS 26.4, on MacBook Air M4 (Mac16,12), 16 GB, macOS 26.4",
+        "mode": "debug",
+        "network": "host loopback",
+        "history": 50,
+        "launch": "cold (terminate, wait 2 s, simctl launch)",
+        "build": "flutter build ios --simulator --debug, LUMEN_TIMING=1, Flutter 3.41.7",
+        "ran": "2026-11-18 16:21–16:52 local"
+      },
+      "runs": 20,
+      "rejected": 0
+    },
+    "sim-cold-500": {
+      "stages": {
+        "process_start": {
+          "n": 20,
+          "p50": 1,
+          "p95": 2,
+          "incomplete": 0,
+          "failed": 0
+        },
+        "first_frame": {
+          "n": 20,
+          "p50": 1240,
+          "p95": 1472,
+          "incomplete": 0,
+          "failed": 0
+        },
+        "opening_prep": {
+          "n": 20,
+          "p50": 695,
+          "p95": 850,
+          "incomplete": 0,
+          "failed": 0
+        },
+        "home_interactive": {
+          "n": 20,
+          "p50": 1997,
+          "p95": 2405,
+          "incomplete": 0,
+          "failed": 0
+        },
+        "launch_to_first_frame_host": {
+          "n": 20,
+          "p50": 3270,
+          "p95": 3677,
+          "incomplete": 0,
+          "failed": 0
+        }
+      },
+      "overlapRate": {
+        "opening_prep": [
+          0,
+          20
+        ]
+      },
+      "meta": {
+        "device": "iPhone 17 Pro simulator, iOS 26.4, on MacBook Air M4 (Mac16,12), 16 GB, macOS 26.4",
+        "mode": "debug",
+        "network": "host loopback",
+        "history": 500,
+        "launch": "cold (terminate, wait 2 s, simctl launch)",
+        "build": "flutter build ios --simulator --debug, LUMEN_TIMING=1, Flutter 3.41.7",
+        "ran": "2026-11-18 16:21–16:52 local"
+      },
+      "runs": 20,
+      "rejected": 0
+    }
+  }
+}
