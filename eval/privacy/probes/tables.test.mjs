@@ -1,12 +1,24 @@
+import { readdirSync, readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { USER_TABLES, OWNER_READABLE, expectedFor, classifySelect, classifyWrite, probeTables } from './tables.mjs';
 
 const A = { userId: 'aaaaaaaa-0000-4000-8000-000000000001', notebookId: 'bbbbbbbb-0000-4000-8000-000000000002' };
 
-test('covers every user table on main', () => {
-  assert.equal(USER_TABLES.length, 18);
-  for (const t of ['session_briefs', 'suppression_keys', 'forget_erase_jobs']) assert.ok(USER_TABLES.includes(t));
+// Every public table the migrations create is probed, or excluded here with a reason.
+const NOT_PROBED = {
+  forget_erase_batches: 'child of forget_erase_jobs with no user column; server-only, reached only through its job',
+};
+
+test('covers every public table the migrations create', () => {
+  const dir = new URL('../../../supabase/migrations/', import.meta.url);
+  const created = new Set();
+  for (const file of readdirSync(dir)) {
+    for (const m of readFileSync(new URL(file, dir), 'utf8').matchAll(/create table (?:if not exists )?public\.(\w+)/gi)) created.add(m[1]);
+  }
+  assert.ok(created.size > 10, 'found the migrations');
+  const missing = [...created].filter((t) => !USER_TABLES.includes(t) && !(t in NOT_PROBED)).sort();
+  assert.deepEqual(missing, [], 'new tables must be probed (USER_TABLES + fixtures.rowFor) or listed in NOT_PROBED');
 });
 
 test('owner may read owner-policy tables only; everyone else is denied', () => {

@@ -8,12 +8,17 @@ export const USER_TABLES = Object.freeze([
   'conversation_runtime_inbox', 'notebook_commit_requests', 'entity_embeddings',
   'retrieve_rate_limits', 'entity_suppressions', 'forget_erase_jobs', 'session_briefs',
   'session_cards', 'suppression_keys',
+  'memory_facts', 'memory_fact_corrections', 'conversation_state', 'memory_backfill_progress',
+  'account_deletion_requests',
 ]);
 
 // Tables with an owner SELECT policy on main. Every other table is server-only.
 export const OWNER_READABLE = new Set([
   'asked_questions', 'conversation_turns', 'entities', 'entity_suppressions', 'follow_ups',
   'journal_entries', 'notebooks', 'profiles', 'relations', 'session_briefs', 'session_cards',
+  // fact layer (EC-02..EC-08) and Release 1 deletion queue: owner SELECT only
+  'memory_facts', 'memory_fact_corrections', 'conversation_state', 'memory_backfill_progress',
+  'account_deletion_requests',
 ]);
 
 const WRITES = ['insert', 'update', 'delete'];

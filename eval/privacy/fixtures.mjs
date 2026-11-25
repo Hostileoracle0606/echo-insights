@@ -8,6 +8,8 @@ export const SEED_ORDER = Object.freeze([
   'asked_questions', 'session_cards', 'session_briefs', 'entity_suppressions', 'suppression_keys',
   'forget_erase_jobs', 'conversation_runtime_sessions', 'conversation_runtime_inbox',
   'notebook_commit_requests', 'entity_embeddings', 'retrieve_rate_limits',
+  'memory_facts', 'memory_fact_corrections', 'conversation_state', 'memory_backfill_progress',
+  'account_deletion_requests',
 ]);
 
 const uuidFrom = (seed) => {
@@ -37,6 +39,11 @@ export function rowFor(table, { userId, notebookId, sessionId, marker, unique })
     notebook_commit_requests: { notebook_id: notebookId, request_id: uuidFrom(`request-${unique}`), request_hash: marker, result: { note: marker } },
     entity_embeddings: { ...owned, entity_id: unique === 'seed' ? 'pm-entity-a' : 'pm-entity-b', embedding: JSON.stringify([1, ...Array(383).fill(0)]), embedding_model: 'gte-small@1', content_hash: marker },
     retrieve_rate_limits: { scope: `${marker}-${unique}`, window_start: now },
+    memory_facts: { id: uuidFrom(`fact-${unique}`), user_id: userId, entity_id: 'pm-entity-a', attribute: 'city', status: 'confirmed', stated_at: now, value_text: marker, source_notebook_id: notebookId },
+    memory_fact_corrections: { user_id: userId, fact_id: uuidFrom('fact-seed'), change: { note: marker }, read_back: marker },
+    conversation_state: { notebook_id: notebookId, user_id: userId, state: { note: marker } },
+    memory_backfill_progress: { user_id: userId, last_created_at: now, last_entry_id: uuidFrom(`entry-${unique}`) },
+    account_deletion_requests: { user_id: userId, request_id: uuidFrom(`deletion-${unique}`) },
   };
   if (!(table in rows)) throw new Error(`no fixture row for ${table}`);
   return rows[table];
