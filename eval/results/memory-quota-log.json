@@ -15,8 +15,10 @@
     ]
   },
   "2026-11-24": {
-    "used": 32,
+    "used": 69,
     "limit": 18,
-    "stops": []
+    "stops": [
+      "BudgetExhausted"
+    ]
   }
 }

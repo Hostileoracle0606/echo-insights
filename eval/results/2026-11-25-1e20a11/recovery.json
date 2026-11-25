@@ -1,0 +1,2885 @@
+{
+  "version": 1,
+  "target": "local",
+  "commit": "1e20a11",
+  "startedAt": "2026-11-25T02:19:43.104Z",
+  "finishedAt": "2026-11-25T02:21:07.787Z",
+  "method": {
+    "seeds": 10,
+    "turnsPerScenario": 3,
+    "faultOn": "turn 2",
+    "client": "src/lib/turn-state reducer + pipeline + web adapter, mergeExtraction, commitNotebook (real code, vite-node)",
+    "extraction": "infra/lambda/extract-graph handler in-process behind the real authorizer; in-memory claim store",
+    "brief": "infra/lambda/close-session brief handler, request version 1",
+    "provider": "stubbed: synthetic patches from eval/recovery/fixtures/patches.json; no model is called"
+  },
+  "notes": {
+    "providerRealCalls": 0,
+    "providerStubCalls": 260,
+    "leftoverUsersAtStart": 0,
+    "leftoverUsersAtEnd": 0,
+    "cleanupFailed": false,
+    "migrationsHead": "20261124000000_deletion_covers_fact_tables"
+  },
+  "summary": {
+    "faults": {
+      "extract_before": {
+        "runs": 10,
+        "pass": 10,
+        "fail": 0,
+        "not_triggered": 0,
+        "error": 0,
+        "partial_turn": {
+          "marked": 10
+        },
+        "duplicates": {
+          "journal_entries": 0,
+          "entities": 0,
+          "relations": 0,
+          "conversation_turns": 0,
+          "session_briefs": 0
+        },
+        "completed_turns_kept": {
+          "n": 20,
+          "of": 20
+        }
+      },
+      "extract_lost_ack": {
+        "runs": 10,
+        "pass": 10,
+        "fail": 0,
+        "not_triggered": 0,
+        "error": 0,
+        "partial_turn": {
+          "marked": 10
+        },
+        "duplicates": {
+          "journal_entries": 0,
+          "entities": 0,
+          "relations": 0,
+          "conversation_turns": 0,
+          "session_briefs": 0
+        },
+        "completed_turns_kept": {
+          "n": 20,
+          "of": 20
+        }
+      },
+      "commit_before": {
+        "runs": 10,
+        "pass": 10,
+        "fail": 0,
+        "not_triggered": 0,
+        "error": 0,
+        "partial_turn": {
+          "recovered": 10
+        },
+        "duplicates": {
+          "journal_entries": 0,
+          "entities": 0,
+          "relations": 0,
+          "conversation_turns": 0,
+          "session_briefs": 0
+        },
+        "completed_turns_kept": {
+          "n": 20,
+          "of": 20
+        }
+      },
+      "commit_lost_ack": {
+        "runs": 10,
+        "pass": 10,
+        "fail": 0,
+        "not_triggered": 0,
+        "error": 0,
+        "partial_turn": {
+          "recovered": 10
+        },
+        "duplicates": {
+          "journal_entries": 0,
+          "entities": 0,
+          "relations": 0,
+          "conversation_turns": 0,
+          "session_briefs": 0
+        },
+        "completed_turns_kept": {
+          "n": 20,
+          "of": 20
+        }
+      },
+      "kill_after_journal": {
+        "runs": 10,
+        "pass": 10,
+        "fail": 0,
+        "not_triggered": 0,
+        "error": 0,
+        "partial_turn": {
+          "recovered": 10
+        },
+        "duplicates": {
+          "journal_entries": 0,
+          "entities": 0,
+          "relations": 0,
+          "conversation_turns": 0,
+          "session_briefs": 0
+        },
+        "completed_turns_kept": {
+          "n": 20,
+          "of": 20
+        }
+      },
+      "kill_after_extract": {
+        "runs": 10,
+        "pass": 10,
+        "fail": 0,
+        "not_triggered": 0,
+        "error": 0,
+        "partial_turn": {
+          "recovered": 10
+        },
+        "duplicates": {
+          "journal_entries": 0,
+          "entities": 0,
+          "relations": 0,
+          "conversation_turns": 0,
+          "session_briefs": 0
+        },
+        "completed_turns_kept": {
+          "n": 20,
+          "of": 20
+        }
+      },
+      "concurrent_commit": {
+        "runs": 10,
+        "pass": 10,
+        "fail": 0,
+        "not_triggered": 0,
+        "error": 0,
+        "partial_turn": {
+          "recovered": 10
+        },
+        "duplicates": {
+          "journal_entries": 0,
+          "entities": 0,
+          "relations": 0,
+          "conversation_turns": 0,
+          "session_briefs": 0
+        },
+        "completed_turns_kept": {
+          "n": 20,
+          "of": 20
+        }
+      },
+      "brief_lost_ack": {
+        "runs": 10,
+        "pass": 10,
+        "fail": 0,
+        "not_triggered": 0,
+        "error": 0,
+        "partial_turn": {
+          "recovered": 10
+        },
+        "duplicates": {
+          "journal_entries": 0,
+          "entities": 0,
+          "relations": 0,
+          "conversation_turns": 0,
+          "session_briefs": 0
+        },
+        "completed_turns_kept": {
+          "n": 30,
+          "of": 30
+        }
+      }
+    },
+    "total": {
+      "runs": 80,
+      "pass": 80,
+      "fail": 0,
+      "not_triggered": 0,
+      "error": 0
+    }
+  },
+  "runs": [
+    {
+      "fault": "extract_before",
+      "seed": 1,
+      "variant": "before",
+      "triggered": true,
+      "outcome": "pass",
+      "pass": true,
+      "completed_turns_kept": {
+        "n": 2,
+        "of": 2
+      },
+      "partial_turn": "marked",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "counts": {
+        "journal_entries": 2,
+        "entities": 3,
+        "relations": 2,
+        "conversation_turns": 3,
+        "session_briefs": 0
+      },
+      "resumed": 0,
+      "turn2_extractions": 0,
+      "conflicts": 0,
+      "client_errors": 1,
+      "provider_real_calls": 0,
+      "provider_stub_calls": 2
+    },
+    {
+      "fault": "extract_before",
+      "seed": 2,
+      "variant": "before",
+      "triggered": true,
+      "outcome": "pass",
+      "pass": true,
+      "completed_turns_kept": {
+        "n": 2,
+        "of": 2
+      },
+      "partial_turn": "marked",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "counts": {
+        "journal_entries": 2,
+        "entities": 3,
+        "relations": 2,
+        "conversation_turns": 3,
+        "session_briefs": 0
+      },
+      "resumed": 0,
+      "turn2_extractions": 0,
+      "conflicts": 0,
+      "client_errors": 1,
+      "provider_real_calls": 0,
+      "provider_stub_calls": 2
+    },
+    {
+      "fault": "extract_before",
+      "seed": 3,
+      "variant": "before",
+      "triggered": true,
+      "outcome": "pass",
+      "pass": true,
+      "completed_turns_kept": {
+        "n": 2,
+        "of": 2
+      },
+      "partial_turn": "marked",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "counts": {
+        "journal_entries": 2,
+        "entities": 3,
+        "relations": 2,
+        "conversation_turns": 3,
+        "session_briefs": 0
+      },
+      "resumed": 0,
+      "turn2_extractions": 0,
+      "conflicts": 0,
+      "client_errors": 1,
+      "provider_real_calls": 0,
+      "provider_stub_calls": 2
+    },
+    {
+      "fault": "extract_before",
+      "seed": 4,
+      "variant": "before",
+      "triggered": true,
+      "outcome": "pass",
+      "pass": true,
+      "completed_turns_kept": {
+        "n": 2,
+        "of": 2
+      },
+      "partial_turn": "marked",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "counts": {
+        "journal_entries": 2,
+        "entities": 3,
+        "relations": 2,
+        "conversation_turns": 3,
+        "session_briefs": 0
+      },
+      "resumed": 0,
+      "turn2_extractions": 0,
+      "conflicts": 0,
+      "client_errors": 1,
+      "provider_real_calls": 0,
+      "provider_stub_calls": 2
+    },
+    {
+      "fault": "extract_before",
+      "seed": 5,
+      "variant": "before",
+      "triggered": true,
+      "outcome": "pass",
+      "pass": true,
+      "completed_turns_kept": {
+        "n": 2,
+        "of": 2
+      },
+      "partial_turn": "marked",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "counts": {
+        "journal_entries": 2,
+        "entities": 3,
+        "relations": 2,
+        "conversation_turns": 3,
+        "session_briefs": 0
+      },
+      "resumed": 0,
+      "turn2_extractions": 0,
+      "conflicts": 0,
+      "client_errors": 1,
+      "provider_real_calls": 0,
+      "provider_stub_calls": 2
+    },
+    {
+      "fault": "extract_before",
+      "seed": 6,
+      "variant": "before",
+      "triggered": true,
+      "outcome": "pass",
+      "pass": true,
+      "completed_turns_kept": {
+        "n": 2,
+        "of": 2
+      },
+      "partial_turn": "marked",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "counts": {
+        "journal_entries": 2,
+        "entities": 3,
+        "relations": 2,
+        "conversation_turns": 3,
+        "session_briefs": 0
+      },
+      "resumed": 0,
+      "turn2_extractions": 0,
+      "conflicts": 0,
+      "client_errors": 1,
+      "provider_real_calls": 0,
+      "provider_stub_calls": 2
+    },
+    {
+      "fault": "extract_before",
+      "seed": 7,
+      "variant": "before",
+      "triggered": true,
+      "outcome": "pass",
+      "pass": true,
+      "completed_turns_kept": {
+        "n": 2,
+        "of": 2
+      },
+      "partial_turn": "marked",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "counts": {
+        "journal_entries": 2,
+        "entities": 3,
+        "relations": 2,
+        "conversation_turns": 3,
+        "session_briefs": 0
+      },
+      "resumed": 0,
+      "turn2_extractions": 0,
+      "conflicts": 0,
+      "client_errors": 1,
+      "provider_real_calls": 0,
+      "provider_stub_calls": 2
+    },
+    {
+      "fault": "extract_before",
+      "seed": 8,
+      "variant": "before",
+      "triggered": true,
+      "outcome": "pass",
+      "pass": true,
+      "completed_turns_kept": {
+        "n": 2,
+        "of": 2
+      },
+      "partial_turn": "marked",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "counts": {
+        "journal_entries": 2,
+        "entities": 3,
+        "relations": 2,
+        "conversation_turns": 3,
+        "session_briefs": 0
+      },
+      "resumed": 0,
+      "turn2_extractions": 0,
+      "conflicts": 0,
+      "client_errors": 1,
+      "provider_real_calls": 0,
+      "provider_stub_calls": 2
+    },
+    {
+      "fault": "extract_before",
+      "seed": 9,
+      "variant": "before",
+      "triggered": true,
+      "outcome": "pass",
+      "pass": true,
+      "completed_turns_kept": {
+        "n": 2,
+        "of": 2
+      },
+      "partial_turn": "marked",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "counts": {
+        "journal_entries": 2,
+        "entities": 3,
+        "relations": 2,
+        "conversation_turns": 3,
+        "session_briefs": 0
+      },
+      "resumed": 0,
+      "turn2_extractions": 0,
+      "conflicts": 0,
+      "client_errors": 1,
+      "provider_real_calls": 0,
+      "provider_stub_calls": 2
+    },
+    {
+      "fault": "extract_before",
+      "seed": 10,
+      "variant": "before",
+      "triggered": true,
+      "outcome": "pass",
+      "pass": true,
+      "completed_turns_kept": {
+        "n": 2,
+        "of": 2
+      },
+      "partial_turn": "marked",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "counts": {
+        "journal_entries": 2,
+        "entities": 3,
+        "relations": 2,
+        "conversation_turns": 3,
+        "session_briefs": 0
+      },
+      "resumed": 0,
+      "turn2_extractions": 0,
+      "conflicts": 0,
+      "client_errors": 1,
+      "provider_real_calls": 0,
+      "provider_stub_calls": 2
+    },
+    {
+      "fault": "extract_lost_ack",
+      "seed": 1,
+      "variant": "lost_ack",
+      "triggered": true,
+      "outcome": "pass",
+      "pass": true,
+      "completed_turns_kept": {
+        "n": 2,
+        "of": 2
+      },
+      "partial_turn": "marked",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "counts": {
+        "journal_entries": 2,
+        "entities": 3,
+        "relations": 2,
+        "conversation_turns": 3,
+        "session_briefs": 0
+      },
+      "resumed": 0,
+      "turn2_extractions": 1,
+      "conflicts": 0,
+      "client_errors": 1,
+      "provider_real_calls": 0,
+      "provider_stub_calls": 3
+    },
+    {
+      "fault": "extract_lost_ack",
+      "seed": 2,
+      "variant": "lost_ack",
+      "triggered": true,
+      "outcome": "pass",
+      "pass": true,
+      "completed_turns_kept": {
+        "n": 2,
+        "of": 2
+      },
+      "partial_turn": "marked",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "counts": {
+        "journal_entries": 2,
+        "entities": 3,
+        "relations": 2,
+        "conversation_turns": 3,
+        "session_briefs": 0
+      },
+      "resumed": 0,
+      "turn2_extractions": 1,
+      "conflicts": 0,
+      "client_errors": 1,
+      "provider_real_calls": 0,
+      "provider_stub_calls": 3
+    },
+    {
+      "fault": "extract_lost_ack",
+      "seed": 3,
+      "variant": "lost_ack",
+      "triggered": true,
+      "outcome": "pass",
+      "pass": true,
+      "completed_turns_kept": {
+        "n": 2,
+        "of": 2
+      },
+      "partial_turn": "marked",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "counts": {
+        "journal_entries": 2,
+        "entities": 3,
+        "relations": 2,
+        "conversation_turns": 3,
+        "session_briefs": 0
+      },
+      "resumed": 0,
+      "turn2_extractions": 1,
+      "conflicts": 0,
+      "client_errors": 1,
+      "provider_real_calls": 0,
+      "provider_stub_calls": 3
+    },
+    {
+      "fault": "extract_lost_ack",
+      "seed": 4,
+      "variant": "lost_ack",
+      "triggered": true,
+      "outcome": "pass",
+      "pass": true,
+      "completed_turns_kept": {
+        "n": 2,
+        "of": 2
+      },
+      "partial_turn": "marked",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "counts": {
+        "journal_entries": 2,
+        "entities": 3,
+        "relations": 2,
+        "conversation_turns": 3,
+        "session_briefs": 0
+      },
+      "resumed": 0,
+      "turn2_extractions": 1,
+      "conflicts": 0,
+      "client_errors": 1,
+      "provider_real_calls": 0,
+      "provider_stub_calls": 3
+    },
+    {
+      "fault": "extract_lost_ack",
+      "seed": 5,
+      "variant": "lost_ack",
+      "triggered": true,
+      "outcome": "pass",
+      "pass": true,
+      "completed_turns_kept": {
+        "n": 2,
+        "of": 2
+      },
+      "partial_turn": "marked",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "counts": {
+        "journal_entries": 2,
+        "entities": 3,
+        "relations": 2,
+        "conversation_turns": 3,
+        "session_briefs": 0
+      },
+      "resumed": 0,
+      "turn2_extractions": 1,
+      "conflicts": 0,
+      "client_errors": 1,
+      "provider_real_calls": 0,
+      "provider_stub_calls": 3
+    },
+    {
+      "fault": "extract_lost_ack",
+      "seed": 6,
+      "variant": "lost_ack",
+      "triggered": true,
+      "outcome": "pass",
+      "pass": true,
+      "completed_turns_kept": {
+        "n": 2,
+        "of": 2
+      },
+      "partial_turn": "marked",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "counts": {
+        "journal_entries": 2,
+        "entities": 3,
+        "relations": 2,
+        "conversation_turns": 3,
+        "session_briefs": 0
+      },
+      "resumed": 0,
+      "turn2_extractions": 1,
+      "conflicts": 0,
+      "client_errors": 1,
+      "provider_real_calls": 0,
+      "provider_stub_calls": 3
+    },
+    {
+      "fault": "extract_lost_ack",
+      "seed": 7,
+      "variant": "lost_ack",
+      "triggered": true,
+      "outcome": "pass",
+      "pass": true,
+      "completed_turns_kept": {
+        "n": 2,
+        "of": 2
+      },
+      "partial_turn": "marked",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "counts": {
+        "journal_entries": 2,
+        "entities": 3,
+        "relations": 2,
+        "conversation_turns": 3,
+        "session_briefs": 0
+      },
+      "resumed": 0,
+      "turn2_extractions": 1,
+      "conflicts": 0,
+      "client_errors": 1,
+      "provider_real_calls": 0,
+      "provider_stub_calls": 3
+    },
+    {
+      "fault": "extract_lost_ack",
+      "seed": 8,
+      "variant": "lost_ack",
+      "triggered": true,
+      "outcome": "pass",
+      "pass": true,
+      "completed_turns_kept": {
+        "n": 2,
+        "of": 2
+      },
+      "partial_turn": "marked",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "counts": {
+        "journal_entries": 2,
+        "entities": 3,
+        "relations": 2,
+        "conversation_turns": 3,
+        "session_briefs": 0
+      },
+      "resumed": 0,
+      "turn2_extractions": 1,
+      "conflicts": 0,
+      "client_errors": 1,
+      "provider_real_calls": 0,
+      "provider_stub_calls": 3
+    },
+    {
+      "fault": "extract_lost_ack",
+      "seed": 9,
+      "variant": "lost_ack",
+      "triggered": true,
+      "outcome": "pass",
+      "pass": true,
+      "completed_turns_kept": {
+        "n": 2,
+        "of": 2
+      },
+      "partial_turn": "marked",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "counts": {
+        "journal_entries": 2,
+        "entities": 3,
+        "relations": 2,
+        "conversation_turns": 3,
+        "session_briefs": 0
+      },
+      "resumed": 0,
+      "turn2_extractions": 1,
+      "conflicts": 0,
+      "client_errors": 1,
+      "provider_real_calls": 0,
+      "provider_stub_calls": 3
+    },
+    {
+      "fault": "extract_lost_ack",
+      "seed": 10,
+      "variant": "lost_ack",
+      "triggered": true,
+      "outcome": "pass",
+      "pass": true,
+      "completed_turns_kept": {
+        "n": 2,
+        "of": 2
+      },
+      "partial_turn": "marked",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "counts": {
+        "journal_entries": 2,
+        "entities": 3,
+        "relations": 2,
+        "conversation_turns": 3,
+        "session_briefs": 0
+      },
+      "resumed": 0,
+      "turn2_extractions": 1,
+      "conflicts": 0,
+      "client_errors": 1,
+      "provider_real_calls": 0,
+      "provider_stub_calls": 3
+    },
+    {
+      "fault": "commit_before",
+      "seed": 1,
+      "variant": "before",
+      "triggered": true,
+      "outcome": "pass",
+      "pass": true,
+      "completed_turns_kept": {
+        "n": 2,
+        "of": 2
+      },
+      "partial_turn": "recovered",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "counts": {
+        "journal_entries": 3,
+        "entities": 4,
+        "relations": 3,
+        "conversation_turns": 3,
+        "session_briefs": 0
+      },
+      "resumed": 0,
+      "turn2_extractions": 1,
+      "conflicts": 0,
+      "client_errors": 0,
+      "provider_real_calls": 0,
+      "provider_stub_calls": 3
+    },
+    {
+      "fault": "commit_before",
+      "seed": 2,
+      "variant": "before",
+      "triggered": true,
+      "outcome": "pass",
+      "pass": true,
+      "completed_turns_kept": {
+        "n": 2,
+        "of": 2
+      },
+      "partial_turn": "recovered",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "counts": {
+        "journal_entries": 3,
+        "entities": 4,
+        "relations": 3,
+        "conversation_turns": 3,
+        "session_briefs": 0
+      },
+      "resumed": 0,
+      "turn2_extractions": 1,
+      "conflicts": 0,
+      "client_errors": 0,
+      "provider_real_calls": 0,
+      "provider_stub_calls": 3
+    },
+    {
+      "fault": "commit_before",
+      "seed": 3,
+      "variant": "before",
+      "triggered": true,
+      "outcome": "pass",
+      "pass": true,
+      "completed_turns_kept": {
+        "n": 2,
+        "of": 2
+      },
+      "partial_turn": "recovered",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "counts": {
+        "journal_entries": 3,
+        "entities": 4,
+        "relations": 3,
+        "conversation_turns": 3,
+        "session_briefs": 0
+      },
+      "resumed": 0,
+      "turn2_extractions": 1,
+      "conflicts": 0,
+      "client_errors": 0,
+      "provider_real_calls": 0,
+      "provider_stub_calls": 3
+    },
+    {
+      "fault": "commit_before",
+      "seed": 4,
+      "variant": "before",
+      "triggered": true,
+      "outcome": "pass",
+      "pass": true,
+      "completed_turns_kept": {
+        "n": 2,
+        "of": 2
+      },
+      "partial_turn": "recovered",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "counts": {
+        "journal_entries": 3,
+        "entities": 4,
+        "relations": 3,
+        "conversation_turns": 3,
+        "session_briefs": 0
+      },
+      "resumed": 0,
+      "turn2_extractions": 1,
+      "conflicts": 0,
+      "client_errors": 0,
+      "provider_real_calls": 0,
+      "provider_stub_calls": 3
+    },
+    {
+      "fault": "commit_before",
+      "seed": 5,
+      "variant": "before",
+      "triggered": true,
+      "outcome": "pass",
+      "pass": true,
+      "completed_turns_kept": {
+        "n": 2,
+        "of": 2
+      },
+      "partial_turn": "recovered",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "counts": {
+        "journal_entries": 3,
+        "entities": 4,
+        "relations": 3,
+        "conversation_turns": 3,
+        "session_briefs": 0
+      },
+      "resumed": 0,
+      "turn2_extractions": 1,
+      "conflicts": 0,
+      "client_errors": 0,
+      "provider_real_calls": 0,
+      "provider_stub_calls": 3
+    },
+    {
+      "fault": "commit_before",
+      "seed": 6,
+      "variant": "before",
+      "triggered": true,
+      "outcome": "pass",
+      "pass": true,
+      "completed_turns_kept": {
+        "n": 2,
+        "of": 2
+      },
+      "partial_turn": "recovered",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "counts": {
+        "journal_entries": 3,
+        "entities": 4,
+        "relations": 3,
+        "conversation_turns": 3,
+        "session_briefs": 0
+      },
+      "resumed": 0,
+      "turn2_extractions": 1,
+      "conflicts": 0,
+      "client_errors": 0,
+      "provider_real_calls": 0,
+      "provider_stub_calls": 3
+    },
+    {
+      "fault": "commit_before",
+      "seed": 7,
+      "variant": "before",
+      "triggered": true,
+      "outcome": "pass",
+      "pass": true,
+      "completed_turns_kept": {
+        "n": 2,
+        "of": 2
+      },
+      "partial_turn": "recovered",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "counts": {
+        "journal_entries": 3,
+        "entities": 4,
+        "relations": 3,
+        "conversation_turns": 3,
+        "session_briefs": 0
+      },
+      "resumed": 0,
+      "turn2_extractions": 1,
+      "conflicts": 0,
+      "client_errors": 0,
+      "provider_real_calls": 0,
+      "provider_stub_calls": 3
+    },
+    {
+      "fault": "commit_before",
+      "seed": 8,
+      "variant": "before",
+      "triggered": true,
+      "outcome": "pass",
+      "pass": true,
+      "completed_turns_kept": {
+        "n": 2,
+        "of": 2
+      },
+      "partial_turn": "recovered",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "counts": {
+        "journal_entries": 3,
+        "entities": 4,
+        "relations": 3,
+        "conversation_turns": 3,
+        "session_briefs": 0
+      },
+      "resumed": 0,
+      "turn2_extractions": 1,
+      "conflicts": 0,
+      "client_errors": 0,
+      "provider_real_calls": 0,
+      "provider_stub_calls": 3
+    },
+    {
+      "fault": "commit_before",
+      "seed": 9,
+      "variant": "before",
+      "triggered": true,
+      "outcome": "pass",
+      "pass": true,
+      "completed_turns_kept": {
+        "n": 2,
+        "of": 2
+      },
+      "partial_turn": "recovered",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "counts": {
+        "journal_entries": 3,
+        "entities": 4,
+        "relations": 3,
+        "conversation_turns": 3,
+        "session_briefs": 0
+      },
+      "resumed": 0,
+      "turn2_extractions": 1,
+      "conflicts": 0,
+      "client_errors": 0,
+      "provider_real_calls": 0,
+      "provider_stub_calls": 3
+    },
+    {
+      "fault": "commit_before",
+      "seed": 10,
+      "variant": "before",
+      "triggered": true,
+      "outcome": "pass",
+      "pass": true,
+      "completed_turns_kept": {
+        "n": 2,
+        "of": 2
+      },
+      "partial_turn": "recovered",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "counts": {
+        "journal_entries": 3,
+        "entities": 4,
+        "relations": 3,
+        "conversation_turns": 3,
+        "session_briefs": 0
+      },
+      "resumed": 0,
+      "turn2_extractions": 1,
+      "conflicts": 0,
+      "client_errors": 0,
+      "provider_real_calls": 0,
+      "provider_stub_calls": 3
+    },
+    {
+      "fault": "commit_lost_ack",
+      "seed": 1,
+      "variant": "lost_ack",
+      "triggered": true,
+      "outcome": "pass",
+      "pass": true,
+      "completed_turns_kept": {
+        "n": 2,
+        "of": 2
+      },
+      "partial_turn": "recovered",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "counts": {
+        "journal_entries": 3,
+        "entities": 4,
+        "relations": 3,
+        "conversation_turns": 3,
+        "session_briefs": 0
+      },
+      "resumed": 0,
+      "turn2_extractions": 1,
+      "conflicts": 0,
+      "client_errors": 0,
+      "provider_real_calls": 0,
+      "provider_stub_calls": 3
+    },
+    {
+      "fault": "commit_lost_ack",
+      "seed": 2,
+      "variant": "lost_ack",
+      "triggered": true,
+      "outcome": "pass",
+      "pass": true,
+      "completed_turns_kept": {
+        "n": 2,
+        "of": 2
+      },
+      "partial_turn": "recovered",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "counts": {
+        "journal_entries": 3,
+        "entities": 4,
+        "relations": 3,
+        "conversation_turns": 3,
+        "session_briefs": 0
+      },
+      "resumed": 0,
+      "turn2_extractions": 1,
+      "conflicts": 0,
+      "client_errors": 0,
+      "provider_real_calls": 0,
+      "provider_stub_calls": 3
+    },
+    {
+      "fault": "commit_lost_ack",
+      "seed": 3,
+      "variant": "lost_ack",
+      "triggered": true,
+      "outcome": "pass",
+      "pass": true,
+      "completed_turns_kept": {
+        "n": 2,
+        "of": 2
+      },
+      "partial_turn": "recovered",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "counts": {
+        "journal_entries": 3,
+        "entities": 4,
+        "relations": 3,
+        "conversation_turns": 3,
+        "session_briefs": 0
+      },
+      "resumed": 0,
+      "turn2_extractions": 1,
+      "conflicts": 0,
+      "client_errors": 0,
+      "provider_real_calls": 0,
+      "provider_stub_calls": 3
+    },
+    {
+      "fault": "commit_lost_ack",
+      "seed": 4,
+      "variant": "lost_ack",
+      "triggered": true,
+      "outcome": "pass",
+      "pass": true,
+      "completed_turns_kept": {
+        "n": 2,
+        "of": 2
+      },
+      "partial_turn": "recovered",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "counts": {
+        "journal_entries": 3,
+        "entities": 4,
+        "relations": 3,
+        "conversation_turns": 3,
+        "session_briefs": 0
+      },
+      "resumed": 0,
+      "turn2_extractions": 1,
+      "conflicts": 0,
+      "client_errors": 0,
+      "provider_real_calls": 0,
+      "provider_stub_calls": 3
+    },
+    {
+      "fault": "commit_lost_ack",
+      "seed": 5,
+      "variant": "lost_ack",
+      "triggered": true,
+      "outcome": "pass",
+      "pass": true,
+      "completed_turns_kept": {
+        "n": 2,
+        "of": 2
+      },
+      "partial_turn": "recovered",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "counts": {
+        "journal_entries": 3,
+        "entities": 4,
+        "relations": 3,
+        "conversation_turns": 3,
+        "session_briefs": 0
+      },
+      "resumed": 0,
+      "turn2_extractions": 1,
+      "conflicts": 0,
+      "client_errors": 0,
+      "provider_real_calls": 0,
+      "provider_stub_calls": 3
+    },
+    {
+      "fault": "commit_lost_ack",
+      "seed": 6,
+      "variant": "lost_ack",
+      "triggered": true,
+      "outcome": "pass",
+      "pass": true,
+      "completed_turns_kept": {
+        "n": 2,
+        "of": 2
+      },
+      "partial_turn": "recovered",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "counts": {
+        "journal_entries": 3,
+        "entities": 4,
+        "relations": 3,
+        "conversation_turns": 3,
+        "session_briefs": 0
+      },
+      "resumed": 0,
+      "turn2_extractions": 1,
+      "conflicts": 0,
+      "client_errors": 0,
+      "provider_real_calls": 0,
+      "provider_stub_calls": 3
+    },
+    {
+      "fault": "commit_lost_ack",
+      "seed": 7,
+      "variant": "lost_ack",
+      "triggered": true,
+      "outcome": "pass",
+      "pass": true,
+      "completed_turns_kept": {
+        "n": 2,
+        "of": 2
+      },
+      "partial_turn": "recovered",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "counts": {
+        "journal_entries": 3,
+        "entities": 4,
+        "relations": 3,
+        "conversation_turns": 3,
+        "session_briefs": 0
+      },
+      "resumed": 0,
+      "turn2_extractions": 1,
+      "conflicts": 0,
+      "client_errors": 0,
+      "provider_real_calls": 0,
+      "provider_stub_calls": 3
+    },
+    {
+      "fault": "commit_lost_ack",
+      "seed": 8,
+      "variant": "lost_ack",
+      "triggered": true,
+      "outcome": "pass",
+      "pass": true,
+      "completed_turns_kept": {
+        "n": 2,
+        "of": 2
+      },
+      "partial_turn": "recovered",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "counts": {
+        "journal_entries": 3,
+        "entities": 4,
+        "relations": 3,
+        "conversation_turns": 3,
+        "session_briefs": 0
+      },
+      "resumed": 0,
+      "turn2_extractions": 1,
+      "conflicts": 0,
+      "client_errors": 0,
+      "provider_real_calls": 0,
+      "provider_stub_calls": 3
+    },
+    {
+      "fault": "commit_lost_ack",
+      "seed": 9,
+      "variant": "lost_ack",
+      "triggered": true,
+      "outcome": "pass",
+      "pass": true,
+      "completed_turns_kept": {
+        "n": 2,
+        "of": 2
+      },
+      "partial_turn": "recovered",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "counts": {
+        "journal_entries": 3,
+        "entities": 4,
+        "relations": 3,
+        "conversation_turns": 3,
+        "session_briefs": 0
+      },
+      "resumed": 0,
+      "turn2_extractions": 1,
+      "conflicts": 0,
+      "client_errors": 0,
+      "provider_real_calls": 0,
+      "provider_stub_calls": 3
+    },
+    {
+      "fault": "commit_lost_ack",
+      "seed": 10,
+      "variant": "lost_ack",
+      "triggered": true,
+      "outcome": "pass",
+      "pass": true,
+      "completed_turns_kept": {
+        "n": 2,
+        "of": 2
+      },
+      "partial_turn": "recovered",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "counts": {
+        "journal_entries": 3,
+        "entities": 4,
+        "relations": 3,
+        "conversation_turns": 3,
+        "session_briefs": 0
+      },
+      "resumed": 0,
+      "turn2_extractions": 1,
+      "conflicts": 0,
+      "client_errors": 0,
+      "provider_real_calls": 0,
+      "provider_stub_calls": 3
+    },
+    {
+      "fault": "kill_after_journal",
+      "seed": 1,
+      "variant": "kill_after",
+      "triggered": true,
+      "outcome": "pass",
+      "pass": true,
+      "completed_turns_kept": {
+        "n": 2,
+        "of": 2
+      },
+      "partial_turn": "recovered",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "counts": {
+        "journal_entries": 3,
+        "entities": 4,
+        "relations": 3,
+        "conversation_turns": 3,
+        "session_briefs": 0
+      },
+      "resumed": 1,
+      "turn2_extractions": 1,
+      "conflicts": 0,
+      "client_errors": 0,
+      "provider_real_calls": 0,
+      "provider_stub_calls": 3
+    },
+    {
+      "fault": "kill_after_journal",
+      "seed": 2,
+      "variant": "kill",
+      "triggered": true,
+      "outcome": "pass",
+      "pass": true,
+      "completed_turns_kept": {
+        "n": 2,
+        "of": 2
+      },
+      "partial_turn": "recovered",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "counts": {
+        "journal_entries": 3,
+        "entities": 4,
+        "relations": 3,
+        "conversation_turns": 3,
+        "session_briefs": 0
+      },
+      "resumed": 1,
+      "turn2_extractions": 1,
+      "conflicts": 0,
+      "client_errors": 0,
+      "provider_real_calls": 0,
+      "provider_stub_calls": 3
+    },
+    {
+      "fault": "kill_after_journal",
+      "seed": 3,
+      "variant": "kill_after",
+      "triggered": true,
+      "outcome": "pass",
+      "pass": true,
+      "completed_turns_kept": {
+        "n": 2,
+        "of": 2
+      },
+      "partial_turn": "recovered",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "counts": {
+        "journal_entries": 3,
+        "entities": 4,
+        "relations": 3,
+        "conversation_turns": 3,
+        "session_briefs": 0
+      },
+      "resumed": 1,
+      "turn2_extractions": 1,
+      "conflicts": 0,
+      "client_errors": 0,
+      "provider_real_calls": 0,
+      "provider_stub_calls": 3
+    },
+    {
+      "fault": "kill_after_journal",
+      "seed": 4,
+      "variant": "kill",
+      "triggered": true,
+      "outcome": "pass",
+      "pass": true,
+      "completed_turns_kept": {
+        "n": 2,
+        "of": 2
+      },
+      "partial_turn": "recovered",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "counts": {
+        "journal_entries": 3,
+        "entities": 4,
+        "relations": 3,
+        "conversation_turns": 3,
+        "session_briefs": 0
+      },
+      "resumed": 1,
+      "turn2_extractions": 1,
+      "conflicts": 0,
+      "client_errors": 0,
+      "provider_real_calls": 0,
+      "provider_stub_calls": 3
+    },
+    {
+      "fault": "kill_after_journal",
+      "seed": 5,
+      "variant": "kill_after",
+      "triggered": true,
+      "outcome": "pass",
+      "pass": true,
+      "completed_turns_kept": {
+        "n": 2,
+        "of": 2
+      },
+      "partial_turn": "recovered",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "counts": {
+        "journal_entries": 3,
+        "entities": 4,
+        "relations": 3,
+        "conversation_turns": 3,
+        "session_briefs": 0
+      },
+      "resumed": 1,
+      "turn2_extractions": 1,
+      "conflicts": 0,
+      "client_errors": 0,
+      "provider_real_calls": 0,
+      "provider_stub_calls": 3
+    },
+    {
+      "fault": "kill_after_journal",
+      "seed": 6,
+      "variant": "kill",
+      "triggered": true,
+      "outcome": "pass",
+      "pass": true,
+      "completed_turns_kept": {
+        "n": 2,
+        "of": 2
+      },
+      "partial_turn": "recovered",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "counts": {
+        "journal_entries": 3,
+        "entities": 4,
+        "relations": 3,
+        "conversation_turns": 3,
+        "session_briefs": 0
+      },
+      "resumed": 1,
+      "turn2_extractions": 1,
+      "conflicts": 0,
+      "client_errors": 0,
+      "provider_real_calls": 0,
+      "provider_stub_calls": 3
+    },
+    {
+      "fault": "kill_after_journal",
+      "seed": 7,
+      "variant": "kill_after",
+      "triggered": true,
+      "outcome": "pass",
+      "pass": true,
+      "completed_turns_kept": {
+        "n": 2,
+        "of": 2
+      },
+      "partial_turn": "recovered",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "counts": {
+        "journal_entries": 3,
+        "entities": 4,
+        "relations": 3,
+        "conversation_turns": 3,
+        "session_briefs": 0
+      },
+      "resumed": 1,
+      "turn2_extractions": 1,
+      "conflicts": 0,
+      "client_errors": 0,
+      "provider_real_calls": 0,
+      "provider_stub_calls": 3
+    },
+    {
+      "fault": "kill_after_journal",
+      "seed": 8,
+      "variant": "kill",
+      "triggered": true,
+      "outcome": "pass",
+      "pass": true,
+      "completed_turns_kept": {
+        "n": 2,
+        "of": 2
+      },
+      "partial_turn": "recovered",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "counts": {
+        "journal_entries": 3,
+        "entities": 4,
+        "relations": 3,
+        "conversation_turns": 3,
+        "session_briefs": 0
+      },
+      "resumed": 1,
+      "turn2_extractions": 1,
+      "conflicts": 0,
+      "client_errors": 0,
+      "provider_real_calls": 0,
+      "provider_stub_calls": 3
+    },
+    {
+      "fault": "kill_after_journal",
+      "seed": 9,
+      "variant": "kill_after",
+      "triggered": true,
+      "outcome": "pass",
+      "pass": true,
+      "completed_turns_kept": {
+        "n": 2,
+        "of": 2
+      },
+      "partial_turn": "recovered",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "counts": {
+        "journal_entries": 3,
+        "entities": 4,
+        "relations": 3,
+        "conversation_turns": 3,
+        "session_briefs": 0
+      },
+      "resumed": 1,
+      "turn2_extractions": 1,
+      "conflicts": 0,
+      "client_errors": 0,
+      "provider_real_calls": 0,
+      "provider_stub_calls": 3
+    },
+    {
+      "fault": "kill_after_journal",
+      "seed": 10,
+      "variant": "kill",
+      "triggered": true,
+      "outcome": "pass",
+      "pass": true,
+      "completed_turns_kept": {
+        "n": 2,
+        "of": 2
+      },
+      "partial_turn": "recovered",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "counts": {
+        "journal_entries": 3,
+        "entities": 4,
+        "relations": 3,
+        "conversation_turns": 3,
+        "session_briefs": 0
+      },
+      "resumed": 1,
+      "turn2_extractions": 1,
+      "conflicts": 0,
+      "client_errors": 0,
+      "provider_real_calls": 0,
+      "provider_stub_calls": 3
+    },
+    {
+      "fault": "kill_after_extract",
+      "seed": 1,
+      "variant": "kill_after",
+      "triggered": true,
+      "outcome": "pass",
+      "pass": true,
+      "completed_turns_kept": {
+        "n": 2,
+        "of": 2
+      },
+      "partial_turn": "recovered",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "counts": {
+        "journal_entries": 3,
+        "entities": 4,
+        "relations": 3,
+        "conversation_turns": 3,
+        "session_briefs": 0
+      },
+      "resumed": 1,
+      "turn2_extractions": 1,
+      "conflicts": 0,
+      "client_errors": 0,
+      "provider_real_calls": 0,
+      "provider_stub_calls": 3
+    },
+    {
+      "fault": "kill_after_extract",
+      "seed": 2,
+      "variant": "kill",
+      "triggered": true,
+      "outcome": "pass",
+      "pass": true,
+      "completed_turns_kept": {
+        "n": 2,
+        "of": 2
+      },
+      "partial_turn": "recovered",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "counts": {
+        "journal_entries": 3,
+        "entities": 4,
+        "relations": 3,
+        "conversation_turns": 3,
+        "session_briefs": 0
+      },
+      "resumed": 1,
+      "turn2_extractions": 1,
+      "conflicts": 0,
+      "client_errors": 0,
+      "provider_real_calls": 0,
+      "provider_stub_calls": 3
+    },
+    {
+      "fault": "kill_after_extract",
+      "seed": 3,
+      "variant": "kill_after",
+      "triggered": true,
+      "outcome": "pass",
+      "pass": true,
+      "completed_turns_kept": {
+        "n": 2,
+        "of": 2
+      },
+      "partial_turn": "recovered",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "counts": {
+        "journal_entries": 3,
+        "entities": 4,
+        "relations": 3,
+        "conversation_turns": 3,
+        "session_briefs": 0
+      },
+      "resumed": 1,
+      "turn2_extractions": 1,
+      "conflicts": 0,
+      "client_errors": 0,
+      "provider_real_calls": 0,
+      "provider_stub_calls": 3
+    },
+    {
+      "fault": "kill_after_extract",
+      "seed": 4,
+      "variant": "kill",
+      "triggered": true,
+      "outcome": "pass",
+      "pass": true,
+      "completed_turns_kept": {
+        "n": 2,
+        "of": 2
+      },
+      "partial_turn": "recovered",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "counts": {
+        "journal_entries": 3,
+        "entities": 4,
+        "relations": 3,
+        "conversation_turns": 3,
+        "session_briefs": 0
+      },
+      "resumed": 1,
+      "turn2_extractions": 1,
+      "conflicts": 0,
+      "client_errors": 0,
+      "provider_real_calls": 0,
+      "provider_stub_calls": 3
+    },
+    {
+      "fault": "kill_after_extract",
+      "seed": 5,
+      "variant": "kill_after",
+      "triggered": true,
+      "outcome": "pass",
+      "pass": true,
+      "completed_turns_kept": {
+        "n": 2,
+        "of": 2
+      },
+      "partial_turn": "recovered",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "counts": {
+        "journal_entries": 3,
+        "entities": 4,
+        "relations": 3,
+        "conversation_turns": 3,
+        "session_briefs": 0
+      },
+      "resumed": 1,
+      "turn2_extractions": 1,
+      "conflicts": 0,
+      "client_errors": 0,
+      "provider_real_calls": 0,
+      "provider_stub_calls": 3
+    },
+    {
+      "fault": "kill_after_extract",
+      "seed": 6,
+      "variant": "kill",
+      "triggered": true,
+      "outcome": "pass",
+      "pass": true,
+      "completed_turns_kept": {
+        "n": 2,
+        "of": 2
+      },
+      "partial_turn": "recovered",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "counts": {
+        "journal_entries": 3,
+        "entities": 4,
+        "relations": 3,
+        "conversation_turns": 3,
+        "session_briefs": 0
+      },
+      "resumed": 1,
+      "turn2_extractions": 1,
+      "conflicts": 0,
+      "client_errors": 0,
+      "provider_real_calls": 0,
+      "provider_stub_calls": 3
+    },
+    {
+      "fault": "kill_after_extract",
+      "seed": 7,
+      "variant": "kill_after",
+      "triggered": true,
+      "outcome": "pass",
+      "pass": true,
+      "completed_turns_kept": {
+        "n": 2,
+        "of": 2
+      },
+      "partial_turn": "recovered",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "counts": {
+        "journal_entries": 3,
+        "entities": 4,
+        "relations": 3,
+        "conversation_turns": 3,
+        "session_briefs": 0
+      },
+      "resumed": 1,
+      "turn2_extractions": 1,
+      "conflicts": 0,
+      "client_errors": 0,
+      "provider_real_calls": 0,
+      "provider_stub_calls": 3
+    },
+    {
+      "fault": "kill_after_extract",
+      "seed": 8,
+      "variant": "kill",
+      "triggered": true,
+      "outcome": "pass",
+      "pass": true,
+      "completed_turns_kept": {
+        "n": 2,
+        "of": 2
+      },
+      "partial_turn": "recovered",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "counts": {
+        "journal_entries": 3,
+        "entities": 4,
+        "relations": 3,
+        "conversation_turns": 3,
+        "session_briefs": 0
+      },
+      "resumed": 1,
+      "turn2_extractions": 1,
+      "conflicts": 0,
+      "client_errors": 0,
+      "provider_real_calls": 0,
+      "provider_stub_calls": 3
+    },
+    {
+      "fault": "kill_after_extract",
+      "seed": 9,
+      "variant": "kill_after",
+      "triggered": true,
+      "outcome": "pass",
+      "pass": true,
+      "completed_turns_kept": {
+        "n": 2,
+        "of": 2
+      },
+      "partial_turn": "recovered",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "counts": {
+        "journal_entries": 3,
+        "entities": 4,
+        "relations": 3,
+        "conversation_turns": 3,
+        "session_briefs": 0
+      },
+      "resumed": 1,
+      "turn2_extractions": 1,
+      "conflicts": 0,
+      "client_errors": 0,
+      "provider_real_calls": 0,
+      "provider_stub_calls": 3
+    },
+    {
+      "fault": "kill_after_extract",
+      "seed": 10,
+      "variant": "kill",
+      "triggered": true,
+      "outcome": "pass",
+      "pass": true,
+      "completed_turns_kept": {
+        "n": 2,
+        "of": 2
+      },
+      "partial_turn": "recovered",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "counts": {
+        "journal_entries": 3,
+        "entities": 4,
+        "relations": 3,
+        "conversation_turns": 3,
+        "session_briefs": 0
+      },
+      "resumed": 1,
+      "turn2_extractions": 1,
+      "conflicts": 0,
+      "client_errors": 0,
+      "provider_real_calls": 0,
+      "provider_stub_calls": 3
+    },
+    {
+      "fault": "concurrent_commit",
+      "seed": 1,
+      "variant": "two_devices",
+      "triggered": true,
+      "outcome": "pass",
+      "pass": true,
+      "completed_turns_kept": {
+        "n": 2,
+        "of": 2
+      },
+      "partial_turn": "recovered",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "counts": {
+        "journal_entries": 4,
+        "entities": 4,
+        "relations": 4,
+        "conversation_turns": 4,
+        "session_briefs": 0
+      },
+      "resumed": 0,
+      "turn2_extractions": 1,
+      "conflicts": 1,
+      "client_errors": 0,
+      "provider_real_calls": 0,
+      "provider_stub_calls": 4
+    },
+    {
+      "fault": "concurrent_commit",
+      "seed": 2,
+      "variant": "two_devices",
+      "triggered": true,
+      "outcome": "pass",
+      "pass": true,
+      "completed_turns_kept": {
+        "n": 2,
+        "of": 2
+      },
+      "partial_turn": "recovered",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "counts": {
+        "journal_entries": 4,
+        "entities": 4,
+        "relations": 4,
+        "conversation_turns": 4,
+        "session_briefs": 0
+      },
+      "resumed": 0,
+      "turn2_extractions": 1,
+      "conflicts": 1,
+      "client_errors": 0,
+      "provider_real_calls": 0,
+      "provider_stub_calls": 4
+    },
+    {
+      "fault": "concurrent_commit",
+      "seed": 3,
+      "variant": "two_devices",
+      "triggered": true,
+      "outcome": "pass",
+      "pass": true,
+      "completed_turns_kept": {
+        "n": 2,
+        "of": 2
+      },
+      "partial_turn": "recovered",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "counts": {
+        "journal_entries": 4,
+        "entities": 4,
+        "relations": 4,
+        "conversation_turns": 4,
+        "session_briefs": 0
+      },
+      "resumed": 0,
+      "turn2_extractions": 1,
+      "conflicts": 1,
+      "client_errors": 0,
+      "provider_real_calls": 0,
+      "provider_stub_calls": 4
+    },
+    {
+      "fault": "concurrent_commit",
+      "seed": 4,
+      "variant": "two_devices",
+      "triggered": true,
+      "outcome": "pass",
+      "pass": true,
+      "completed_turns_kept": {
+        "n": 2,
+        "of": 2
+      },
+      "partial_turn": "recovered",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "counts": {
+        "journal_entries": 4,
+        "entities": 4,
+        "relations": 4,
+        "conversation_turns": 4,
+        "session_briefs": 0
+      },
+      "resumed": 0,
+      "turn2_extractions": 1,
+      "conflicts": 1,
+      "client_errors": 0,
+      "provider_real_calls": 0,
+      "provider_stub_calls": 4
+    },
+    {
+      "fault": "concurrent_commit",
+      "seed": 5,
+      "variant": "two_devices",
+      "triggered": true,
+      "outcome": "pass",
+      "pass": true,
+      "completed_turns_kept": {
+        "n": 2,
+        "of": 2
+      },
+      "partial_turn": "recovered",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "counts": {
+        "journal_entries": 4,
+        "entities": 4,
+        "relations": 4,
+        "conversation_turns": 4,
+        "session_briefs": 0
+      },
+      "resumed": 0,
+      "turn2_extractions": 1,
+      "conflicts": 1,
+      "client_errors": 0,
+      "provider_real_calls": 0,
+      "provider_stub_calls": 4
+    },
+    {
+      "fault": "concurrent_commit",
+      "seed": 6,
+      "variant": "two_devices",
+      "triggered": true,
+      "outcome": "pass",
+      "pass": true,
+      "completed_turns_kept": {
+        "n": 2,
+        "of": 2
+      },
+      "partial_turn": "recovered",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "counts": {
+        "journal_entries": 4,
+        "entities": 4,
+        "relations": 4,
+        "conversation_turns": 4,
+        "session_briefs": 0
+      },
+      "resumed": 0,
+      "turn2_extractions": 1,
+      "conflicts": 1,
+      "client_errors": 0,
+      "provider_real_calls": 0,
+      "provider_stub_calls": 4
+    },
+    {
+      "fault": "concurrent_commit",
+      "seed": 7,
+      "variant": "two_devices",
+      "triggered": true,
+      "outcome": "pass",
+      "pass": true,
+      "completed_turns_kept": {
+        "n": 2,
+        "of": 2
+      },
+      "partial_turn": "recovered",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "counts": {
+        "journal_entries": 4,
+        "entities": 4,
+        "relations": 4,
+        "conversation_turns": 4,
+        "session_briefs": 0
+      },
+      "resumed": 0,
+      "turn2_extractions": 1,
+      "conflicts": 1,
+      "client_errors": 0,
+      "provider_real_calls": 0,
+      "provider_stub_calls": 4
+    },
+    {
+      "fault": "concurrent_commit",
+      "seed": 8,
+      "variant": "two_devices",
+      "triggered": true,
+      "outcome": "pass",
+      "pass": true,
+      "completed_turns_kept": {
+        "n": 2,
+        "of": 2
+      },
+      "partial_turn": "recovered",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "counts": {
+        "journal_entries": 4,
+        "entities": 4,
+        "relations": 4,
+        "conversation_turns": 4,
+        "session_briefs": 0
+      },
+      "resumed": 0,
+      "turn2_extractions": 1,
+      "conflicts": 1,
+      "client_errors": 0,
+      "provider_real_calls": 0,
+      "provider_stub_calls": 4
+    },
+    {
+      "fault": "concurrent_commit",
+      "seed": 9,
+      "variant": "two_devices",
+      "triggered": true,
+      "outcome": "pass",
+      "pass": true,
+      "completed_turns_kept": {
+        "n": 2,
+        "of": 2
+      },
+      "partial_turn": "recovered",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "counts": {
+        "journal_entries": 4,
+        "entities": 4,
+        "relations": 4,
+        "conversation_turns": 4,
+        "session_briefs": 0
+      },
+      "resumed": 0,
+      "turn2_extractions": 1,
+      "conflicts": 1,
+      "client_errors": 0,
+      "provider_real_calls": 0,
+      "provider_stub_calls": 4
+    },
+    {
+      "fault": "concurrent_commit",
+      "seed": 10,
+      "variant": "two_devices",
+      "triggered": true,
+      "outcome": "pass",
+      "pass": true,
+      "completed_turns_kept": {
+        "n": 2,
+        "of": 2
+      },
+      "partial_turn": "recovered",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "counts": {
+        "journal_entries": 4,
+        "entities": 4,
+        "relations": 4,
+        "conversation_turns": 4,
+        "session_briefs": 0
+      },
+      "resumed": 0,
+      "turn2_extractions": 1,
+      "conflicts": 1,
+      "client_errors": 0,
+      "provider_real_calls": 0,
+      "provider_stub_calls": 4
+    },
+    {
+      "fault": "brief_lost_ack",
+      "seed": 1,
+      "variant": "lost_ack",
+      "triggered": true,
+      "outcome": "pass",
+      "pass": true,
+      "completed_turns_kept": {
+        "n": 3,
+        "of": 3
+      },
+      "partial_turn": "recovered",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "counts": {
+        "journal_entries": 3,
+        "entities": 4,
+        "relations": 3,
+        "conversation_turns": 3,
+        "session_briefs": 1
+      },
+      "resumed": 0,
+      "turn2_extractions": 1,
+      "conflicts": 0,
+      "brief": {
+        "first": "lost",
+        "retry": "unchanged"
+      },
+      "client_errors": 0,
+      "provider_real_calls": 0,
+      "provider_stub_calls": 5
+    },
+    {
+      "fault": "brief_lost_ack",
+      "seed": 2,
+      "variant": "lost_ack",
+      "triggered": true,
+      "outcome": "pass",
+      "pass": true,
+      "completed_turns_kept": {
+        "n": 3,
+        "of": 3
+      },
+      "partial_turn": "recovered",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "counts": {
+        "journal_entries": 3,
+        "entities": 4,
+        "relations": 3,
+        "conversation_turns": 3,
+        "session_briefs": 1
+      },
+      "resumed": 0,
+      "turn2_extractions": 1,
+      "conflicts": 0,
+      "brief": {
+        "first": "lost",
+        "retry": "unchanged"
+      },
+      "client_errors": 0,
+      "provider_real_calls": 0,
+      "provider_stub_calls": 5
+    },
+    {
+      "fault": "brief_lost_ack",
+      "seed": 3,
+      "variant": "lost_ack",
+      "triggered": true,
+      "outcome": "pass",
+      "pass": true,
+      "completed_turns_kept": {
+        "n": 3,
+        "of": 3
+      },
+      "partial_turn": "recovered",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "counts": {
+        "journal_entries": 3,
+        "entities": 4,
+        "relations": 3,
+        "conversation_turns": 3,
+        "session_briefs": 1
+      },
+      "resumed": 0,
+      "turn2_extractions": 1,
+      "conflicts": 0,
+      "brief": {
+        "first": "lost",
+        "retry": "unchanged"
+      },
+      "client_errors": 0,
+      "provider_real_calls": 0,
+      "provider_stub_calls": 5
+    },
+    {
+      "fault": "brief_lost_ack",
+      "seed": 4,
+      "variant": "lost_ack",
+      "triggered": true,
+      "outcome": "pass",
+      "pass": true,
+      "completed_turns_kept": {
+        "n": 3,
+        "of": 3
+      },
+      "partial_turn": "recovered",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "counts": {
+        "journal_entries": 3,
+        "entities": 4,
+        "relations": 3,
+        "conversation_turns": 3,
+        "session_briefs": 1
+      },
+      "resumed": 0,
+      "turn2_extractions": 1,
+      "conflicts": 0,
+      "brief": {
+        "first": "lost",
+        "retry": "unchanged"
+      },
+      "client_errors": 0,
+      "provider_real_calls": 0,
+      "provider_stub_calls": 5
+    },
+    {
+      "fault": "brief_lost_ack",
+      "seed": 5,
+      "variant": "lost_ack",
+      "triggered": true,
+      "outcome": "pass",
+      "pass": true,
+      "completed_turns_kept": {
+        "n": 3,
+        "of": 3
+      },
+      "partial_turn": "recovered",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "counts": {
+        "journal_entries": 3,
+        "entities": 4,
+        "relations": 3,
+        "conversation_turns": 3,
+        "session_briefs": 1
+      },
+      "resumed": 0,
+      "turn2_extractions": 1,
+      "conflicts": 0,
+      "brief": {
+        "first": "lost",
+        "retry": "unchanged"
+      },
+      "client_errors": 0,
+      "provider_real_calls": 0,
+      "provider_stub_calls": 5
+    },
+    {
+      "fault": "brief_lost_ack",
+      "seed": 6,
+      "variant": "lost_ack",
+      "triggered": true,
+      "outcome": "pass",
+      "pass": true,
+      "completed_turns_kept": {
+        "n": 3,
+        "of": 3
+      },
+      "partial_turn": "recovered",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "counts": {
+        "journal_entries": 3,
+        "entities": 4,
+        "relations": 3,
+        "conversation_turns": 3,
+        "session_briefs": 1
+      },
+      "resumed": 0,
+      "turn2_extractions": 1,
+      "conflicts": 0,
+      "brief": {
+        "first": "lost",
+        "retry": "unchanged"
+      },
+      "client_errors": 0,
+      "provider_real_calls": 0,
+      "provider_stub_calls": 5
+    },
+    {
+      "fault": "brief_lost_ack",
+      "seed": 7,
+      "variant": "lost_ack",
+      "triggered": true,
+      "outcome": "pass",
+      "pass": true,
+      "completed_turns_kept": {
+        "n": 3,
+        "of": 3
+      },
+      "partial_turn": "recovered",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "counts": {
+        "journal_entries": 3,
+        "entities": 4,
+        "relations": 3,
+        "conversation_turns": 3,
+        "session_briefs": 1
+      },
+      "resumed": 0,
+      "turn2_extractions": 1,
+      "conflicts": 0,
+      "brief": {
+        "first": "lost",
+        "retry": "unchanged"
+      },
+      "client_errors": 0,
+      "provider_real_calls": 0,
+      "provider_stub_calls": 5
+    },
+    {
+      "fault": "brief_lost_ack",
+      "seed": 8,
+      "variant": "lost_ack",
+      "triggered": true,
+      "outcome": "pass",
+      "pass": true,
+      "completed_turns_kept": {
+        "n": 3,
+        "of": 3
+      },
+      "partial_turn": "recovered",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "counts": {
+        "journal_entries": 3,
+        "entities": 4,
+        "relations": 3,
+        "conversation_turns": 3,
+        "session_briefs": 1
+      },
+      "resumed": 0,
+      "turn2_extractions": 1,
+      "conflicts": 0,
+      "brief": {
+        "first": "lost",
+        "retry": "unchanged"
+      },
+      "client_errors": 0,
+      "provider_real_calls": 0,
+      "provider_stub_calls": 5
+    },
+    {
+      "fault": "brief_lost_ack",
+      "seed": 9,
+      "variant": "lost_ack",
+      "triggered": true,
+      "outcome": "pass",
+      "pass": true,
+      "completed_turns_kept": {
+        "n": 3,
+        "of": 3
+      },
+      "partial_turn": "recovered",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "counts": {
+        "journal_entries": 3,
+        "entities": 4,
+        "relations": 3,
+        "conversation_turns": 3,
+        "session_briefs": 1
+      },
+      "resumed": 0,
+      "turn2_extractions": 1,
+      "conflicts": 0,
+      "brief": {
+        "first": "lost",
+        "retry": "unchanged"
+      },
+      "client_errors": 0,
+      "provider_real_calls": 0,
+      "provider_stub_calls": 5
+    },
+    {
+      "fault": "brief_lost_ack",
+      "seed": 10,
+      "variant": "lost_ack",
+      "triggered": true,
+      "outcome": "pass",
+      "pass": true,
+      "completed_turns_kept": {
+        "n": 3,
+        "of": 3
+      },
+      "partial_turn": "recovered",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "counts": {
+        "journal_entries": 3,
+        "entities": 4,
+        "relations": 3,
+        "conversation_turns": 3,
+        "session_briefs": 1
+      },
+      "resumed": 0,
+      "turn2_extractions": 1,
+      "conflicts": 0,
+      "brief": {
+        "first": "lost",
+        "retry": "unchanged"
+      },
+      "client_errors": 0,
+      "provider_real_calls": 0,
+      "provider_stub_calls": 5
+    }
+  ]
+}

@@ -1,0 +1,135 @@
+[
+  {
+    "scenario": "continuity-indirect-reference",
+    "outcome": "saved",
+    "providerCalls": 2,
+    "actions": [],
+    "lostTurns": []
+  },
+  {
+    "scenario": "correction-city-same-session",
+    "outcome": "saved",
+    "providerCalls": 2,
+    "actions": [],
+    "lostTurns": []
+  },
+  {
+    "scenario": "deletion-forget-person",
+    "outcome": "saved",
+    "providerCalls": 2,
+    "actions": [
+      {
+        "after_session": 1,
+        "kind": "forget",
+        "name": "Dana Whitfield",
+        "entityId": "dana-whitfield",
+        "outcome": "applied"
+      }
+    ],
+    "lostTurns": []
+  },
+  {
+    "scenario": "changing-decided-then-reversed",
+    "outcome": "saved",
+    "providerCalls": 2,
+    "actions": [],
+    "lostTurns": []
+  },
+  {
+    "scenario": "continuity-paraphrase",
+    "outcome": "saved",
+    "providerCalls": 2,
+    "actions": [],
+    "lostTurns": []
+  },
+  {
+    "scenario": "correction-edit-description",
+    "outcome": "saved",
+    "providerCalls": 2,
+    "actions": [
+      {
+        "after_session": 1,
+        "kind": "correct",
+        "name": "Felix Navarro",
+        "description": "Felix Navarro is a physical therapist at Saint Corin hospital and an old friend from college.",
+        "entityId": "felix-navarro",
+        "outcome": "applied"
+      }
+    ],
+    "lostTurns": []
+  },
+  {
+    "scenario": "deletion-remove-project",
+    "outcome": "saved",
+    "providerCalls": 2,
+    "actions": [
+      {
+        "after_session": 1,
+        "kind": "remove",
+        "name": "Wren Box",
+        "entityId": "wren-box",
+        "outcome": "applied"
+      }
+    ],
+    "lostTurns": []
+  },
+  {
+    "scenario": "changing-similar-names",
+    "outcome": "saved",
+    "providerCalls": 2,
+    "actions": [],
+    "lostTurns": []
+  },
+  {
+    "scenario": "continuity-two-alexes",
+    "outcome": "saved",
+    "providerCalls": 3,
+    "actions": [],
+    "lostTurns": [
+      {
+        "turnId": "continuity-two-alexes-s3-t1",
+        "reason": "commit invalidChange",
+        "undeclaredEndpoints": [
+          "cookies"
+        ],
+        "patch": {
+          "entities": [],
+          "relations": [
+            {
+              "source": "extension ladder",
+              "label": "returned_to",
+              "target": "Alex Brandt"
+            },
+            {
+              "label": "thanked_with",
+              "target": "cookies",
+              "source": "Alex Brandt"
+            }
+          ],
+          "supersedes": []
+        }
+      }
+    ]
+  },
+  {
+    "scenario": "correction-job-title-next-session",
+    "outcome": "saved",
+    "providerCalls": 2,
+    "actions": [],
+    "lostTurns": []
+  },
+  {
+    "scenario": "changing-tentative-to-decided",
+    "outcome": "saved",
+    "providerCalls": 2,
+    "actions": [],
+    "lostTurns": []
+  },
+  {
+    "scenario": "continuity-two-sams",
+    "outcome": "saved",
+    "providerCalls": 2,
+    "actions": [],
+    "lostTurns": []
+  }
+]

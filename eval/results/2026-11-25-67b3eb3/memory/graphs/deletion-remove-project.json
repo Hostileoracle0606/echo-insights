@@ -1,0 +1,139 @@
+{
+  "meta": {
+    "scenario": "deletion-remove-project",
+    "extractorVersion": "memory-eval/v1",
+    "mode": "wiki",
+    "model": "gemini-2.5-flash",
+    "turns": 2,
+    "providerCalls": 2,
+    "actions": [
+      {
+        "after_session": 1,
+        "kind": "remove",
+        "name": "Wren Box",
+        "entityId": "wren-box",
+        "outcome": "applied"
+      }
+    ],
+    "lostTurns": [],
+    "extractedAt": "2026-11-25T02:19:48.704Z",
+    "commit": "67b3eb3"
+  },
+  "digest": "e3d0a9b332cfb34c45836f6fa1e03fe9e5ab5f0cf2cd447f7b1e1cc0091d21fe",
+  "snapshot": {
+    "version": 1,
+    "notebook": {
+      "title": "memory eval: deletion-remove-project",
+      "title_source": "auto",
+      "started_at": "2026-11-25T02:19:45.634+00:00",
+      "ended_at": null,
+      "duration_seconds": null,
+      "entity_count": 2,
+      "summary": null,
+      "archived_at": null,
+      "revision": 3,
+      "conversation_mode": "just_talk",
+      "mode_context": {},
+      "transcript_forgotten_at": null
+    },
+    "suppressionKey": "\\x86db2570f5946dd09cbd14defb1bc1b598fb2bec5f0ee80dcbeaf799bf201d13",
+    "tables": {
+      "journal_entries": [
+        {
+          "id": "$entry-1",
+          "text": "I'm building a birdhouse project called Wren Box for my nephew Otto.",
+          "created_at": "2026-11-25T02:19:47.187216+00:00",
+          "entity_ids": [
+            "otto"
+          ],
+          "relation_ids": []
+        },
+        {
+          "id": "$entry-2",
+          "text": "Otto asked about the Wren Box again, and his soccer team won on Sunday.",
+          "created_at": "2026-11-25T02:19:48.658008+00:00",
+          "entity_ids": [
+            "soccer-team",
+            "otto"
+          ],
+          "relation_ids": [
+            "otto__plays_for__soccer-team"
+          ]
+        }
+      ],
+      "entities": [
+        {
+          "id": "otto",
+          "name": "Otto",
+          "type": "person",
+          "description": "my nephew",
+          "metadata": {},
+          "mentions": 2,
+          "first_seen": "2026-11-25T02:19:47.186+00:00",
+          "last_seen": "2026-11-25T02:19:48.656+00:00",
+          "questions": [
+            "How old is Otto?",
+            "What's your relationship like with Otto?",
+            "What are Otto's interests?",
+            "Has Otto helped you with Wren Box?"
+          ],
+          "description_source": "extracted"
+        },
+        {
+          "id": "soccer-team",
+          "name": "soccer team",
+          "type": "organization",
+          "description": null,
+          "metadata": {},
+          "mentions": 1,
+          "first_seen": "2026-11-25T02:19:48.656+00:00",
+          "last_seen": "2026-11-25T02:19:48.656+00:00",
+          "questions": [
+            "What is the name of Otto's soccer team?",
+            "How long has he been playing for them?",
+            "What league do they play in?"
+          ],
+          "description_source": "extracted"
+        }
+      ],
+      "relations": [
+        {
+          "id": "otto__plays_for__soccer-team",
+          "source_id": "otto",
+          "target_id": "soccer-team",
+          "label": "plays_for",
+          "metadata": {},
+          "created_at": "2026-11-25T02:19:48.656+00:00",
+          "superseded_at": null
+        }
+      ],
+      "entity_suppressions": [
+        {
+          "entity_hash": "2ceadeb935590d5dce7f35dc84821955f10424ae24168436f7431101128f7759",
+          "created_at": "2026-11-25T02:19:47.197543+00:00",
+          "kind": "removed",
+          "match_inside": false,
+          "name_words": 3
+        }
+      ],
+      "conversation_turns": [
+        {
+          "turn_id": "deletion-remove-project-s1-t1",
+          "speaker": "user",
+          "text": "I'm building a birdhouse project called Wren Box for my nephew Otto.",
+          "spoken_at": "2026-11-25T02:19:45.646+00:00",
+          "created_at": "2026-11-25T02:19:45.650115+00:00",
+          "input": "typed"
+        },
+        {
+          "turn_id": "deletion-remove-project-s2-t1",
+          "speaker": "user",
+          "text": "Otto asked about the Wren Box again, and his soccer team won on Sunday.",
+          "spoken_at": "2026-11-25T02:19:47.204+00:00",
+          "created_at": "2026-11-25T02:19:47.205361+00:00",
+          "input": "typed"
+        }
+      ]
+    }
+  }
+}

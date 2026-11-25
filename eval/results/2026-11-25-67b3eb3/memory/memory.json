@@ -1,0 +1,2969 @@
+{
+  "version": 1,
+  "target": "local",
+  "commit": "67b3eb3",
+  "scoredAt": "2026-11-25T02:26:11.197Z",
+  "method": {
+    "extractionRunsPerScenario": 1,
+    "model": "gemini-2.5-flash (thinking off), extraction Lambda in-process",
+    "retrieval": "retrieve-memory, scope notebook, k=8, local gte-small embeddings; every probe notebook also holds the same 50 synthetic unrelated background entities (eval/memory/fixtures/background.json), so ranking is among distractors",
+    "insertions": "unrelated insertion = a retrieved background entity; other scenario entities are counted as sameStory; probe `related` names are left out of precision",
+    "staleNegation": "a stale term counts only where asserted: not after not/never/instead of/rather than/no longer, nor in a sentence saying misspoke/corrected/correction",
+    "pathAttribution": "combined: retrieve-memory returns one ranked list and does not say which path found an item",
+    "statusRule": "decided is correct when a retrieved entity description or active relation contains a decided marker and none contains a tentative marker; Lumen stores no tentative/decided field, so this scores the stored text",
+    "limitation": "N=1 extraction per scenario: no run-to-run spread is claimed"
+  },
+  "scenarios": {
+    "total": 12,
+    "scored": 12,
+    "probesScored": 48,
+    "probesTotal": 48,
+    "failed": [],
+    "pending": [],
+    "lostTurns": {
+      "continuity-two-alexes": [
+        {
+          "turnId": "continuity-two-alexes-s3-t1",
+          "reason": "commit invalidChange",
+          "undeclaredEndpoints": [
+            "cookies"
+          ],
+          "patch": {
+            "entities": [],
+            "relations": [
+              {
+                "source": "extension ladder",
+                "label": "returned_to",
+                "target": "Alex Brandt"
+              },
+              {
+                "label": "thanked_with",
+                "target": "cookies",
+                "source": "Alex Brandt"
+              }
+            ],
+            "supersedes": []
+          }
+        }
+      ]
+    },
+    "briefs": {
+      "continuity-indirect-reference": "ready",
+      "correction-city-same-session": "ready",
+      "deletion-forget-person": "ready",
+      "changing-decided-then-reversed": "not_run: BudgetExhausted",
+      "continuity-paraphrase": "not_run: BudgetExhausted",
+      "correction-edit-description": "not_run: BudgetExhausted",
+      "deletion-remove-project": "not_run: BudgetExhausted",
+      "changing-similar-names": "not_run: BudgetExhausted",
+      "continuity-two-alexes": "not_run: BudgetExhausted",
+      "correction-job-title-next-session": "not_run: BudgetExhausted",
+      "changing-tentative-to-decided": "not_run: BudgetExhausted",
+      "continuity-two-sams": "not_run: BudgetExhausted"
+    },
+    "actions": {
+      "deletion-forget-person": [
+        {
+          "after_session": 1,
+          "kind": "forget",
+          "name": "Dana Whitfield",
+          "entityId": "dana-whitfield",
+          "outcome": "applied"
+        }
+      ],
+      "correction-edit-description": [
+        {
+          "after_session": 1,
+          "kind": "correct",
+          "name": "Felix Navarro",
+          "description": "Felix Navarro is a physical therapist at Saint Corin hospital and an old friend from college.",
+          "entityId": "felix-navarro",
+          "outcome": "applied"
+        }
+      ],
+      "deletion-remove-project": [
+        {
+          "after_session": 1,
+          "kind": "remove",
+          "name": "Wren Box",
+          "entityId": "wren-box",
+          "outcome": "applied"
+        }
+      ]
+    }
+  },
+  "summary": {
+    "total": {
+      "probes": 48,
+      "recall": {
+        "hit": 36,
+        "of": 48
+      },
+      "recallAt1": {
+        "hit": 15,
+        "of": 48
+      },
+      "recallAt3": {
+        "hit": 26,
+        "of": 48
+      },
+      "coversGraph": {
+        "probes": 0,
+        "of": 48
+      },
+      "distractors": {
+        "confused": 2,
+        "of": 2
+      },
+      "staleVacuous": 0,
+      "briefs": {
+        "stale": 0,
+        "of": 2
+      },
+      "extractionMisses": {
+        "count": 0,
+        "ofExpected": 48
+      },
+      "precision": {
+        "hit": 38,
+        "of": 384
+      },
+      "inserted": {
+        "items": 253,
+        "probes": 48
+      },
+      "precisionAt3": {
+        "hit": 28,
+        "of": 144
+      },
+      "sameStory": 89,
+      "firstRank": {
+        "at1": 15,
+        "at2to3": 9,
+        "later": 8,
+        "none": 11
+      },
+      "stale": {
+        "probes": 5,
+        "of": 12,
+        "retrieval": 5,
+        "brief": 0,
+        "briefChecked": 6
+      },
+      "status": {
+        "correct": 3,
+        "of": 7
+      },
+      "order": {
+        "kept": 2,
+        "of": 3
+      },
+      "ambiguity": {
+        "acknowledged": 3,
+        "of": 3
+      }
+    },
+    "byCategory": {
+      "continuity": {
+        "probes": 16,
+        "recall": {
+          "hit": 14,
+          "of": 19
+        },
+        "recallAt1": {
+          "hit": 4,
+          "of": 19
+        },
+        "recallAt3": {
+          "hit": 9,
+          "of": 19
+        },
+        "coversGraph": {
+          "probes": 0,
+          "of": 16
+        },
+        "distractors": {
+          "confused": 0,
+          "of": 0
+        },
+        "staleVacuous": 0,
+        "briefs": {
+          "stale": 0,
+          "of": 0
+        },
+        "extractionMisses": {
+          "count": 0,
+          "ofExpected": 19
+        },
+        "precision": {
+          "hit": 14,
+          "of": 128
+        },
+        "inserted": {
+          "items": 68,
+          "probes": 16
+        },
+        "precisionAt3": {
+          "hit": 9,
+          "of": 48
+        },
+        "sameStory": 46,
+        "firstRank": {
+          "at1": 4,
+          "at2to3": 5,
+          "later": 3,
+          "none": 4
+        },
+        "stale": {
+          "probes": 0,
+          "of": 0,
+          "retrieval": 0,
+          "brief": 0,
+          "briefChecked": 0
+        },
+        "status": {
+          "correct": 0,
+          "of": 0
+        },
+        "order": {
+          "kept": 0,
+          "of": 0
+        },
+        "ambiguity": {
+          "acknowledged": 3,
+          "of": 3
+        }
+      },
+      "correction": {
+        "probes": 12,
+        "recall": {
+          "hit": 11,
+          "of": 12
+        },
+        "recallAt1": {
+          "hit": 5,
+          "of": 12
+        },
+        "recallAt3": {
+          "hit": 9,
+          "of": 12
+        },
+        "coversGraph": {
+          "probes": 0,
+          "of": 12
+        },
+        "distractors": {
+          "confused": 0,
+          "of": 0
+        },
+        "staleVacuous": 0,
+        "briefs": {
+          "stale": 0,
+          "of": 1
+        },
+        "extractionMisses": {
+          "count": 0,
+          "ofExpected": 12
+        },
+        "precision": {
+          "hit": 11,
+          "of": 96
+        },
+        "inserted": {
+          "items": 65,
+          "probes": 12
+        },
+        "precisionAt3": {
+          "hit": 9,
+          "of": 36
+        },
+        "sameStory": 18,
+        "firstRank": {
+          "at1": 5,
+          "at2to3": 3,
+          "later": 2,
+          "none": 1
+        },
+        "stale": {
+          "probes": 5,
+          "of": 6,
+          "retrieval": 5,
+          "brief": 0,
+          "briefChecked": 3
+        },
+        "status": {
+          "correct": 3,
+          "of": 5
+        },
+        "order": {
+          "kept": 0,
+          "of": 0
+        },
+        "ambiguity": {
+          "acknowledged": 0,
+          "of": 0
+        }
+      },
+      "deletion": {
+        "probes": 8,
+        "recall": {
+          "hit": 3,
+          "of": 4
+        },
+        "recallAt1": {
+          "hit": 2,
+          "of": 4
+        },
+        "recallAt3": {
+          "hit": 3,
+          "of": 4
+        },
+        "coversGraph": {
+          "probes": 0,
+          "of": 8
+        },
+        "distractors": {
+          "confused": 0,
+          "of": 0
+        },
+        "staleVacuous": 0,
+        "briefs": {
+          "stale": 0,
+          "of": 1
+        },
+        "extractionMisses": {
+          "count": 0,
+          "ofExpected": 4
+        },
+        "precision": {
+          "hit": 3,
+          "of": 64
+        },
+        "inserted": {
+          "items": 55,
+          "probes": 8
+        },
+        "precisionAt3": {
+          "hit": 3,
+          "of": 24
+        },
+        "sameStory": 6,
+        "firstRank": {
+          "at1": 2,
+          "at2to3": 1,
+          "later": 0,
+          "none": 1
+        },
+        "stale": {
+          "probes": 0,
+          "of": 6,
+          "retrieval": 0,
+          "brief": 0,
+          "briefChecked": 3
+        },
+        "status": {
+          "correct": 0,
+          "of": 0
+        },
+        "order": {
+          "kept": 0,
+          "of": 0
+        },
+        "ambiguity": {
+          "acknowledged": 0,
+          "of": 0
+        }
+      },
+      "changing_facts": {
+        "probes": 12,
+        "recall": {
+          "hit": 8,
+          "of": 13
+        },
+        "recallAt1": {
+          "hit": 4,
+          "of": 13
+        },
+        "recallAt3": {
+          "hit": 5,
+          "of": 13
+        },
+        "coversGraph": {
+          "probes": 0,
+          "of": 12
+        },
+        "distractors": {
+          "confused": 2,
+          "of": 2
+        },
+        "staleVacuous": 0,
+        "briefs": {
+          "stale": 0,
+          "of": 0
+        },
+        "extractionMisses": {
+          "count": 0,
+          "ofExpected": 13
+        },
+        "precision": {
+          "hit": 10,
+          "of": 96
+        },
+        "inserted": {
+          "items": 65,
+          "probes": 12
+        },
+        "precisionAt3": {
+          "hit": 7,
+          "of": 36
+        },
+        "sameStory": 19,
+        "firstRank": {
+          "at1": 4,
+          "at2to3": 0,
+          "later": 3,
+          "none": 5
+        },
+        "stale": {
+          "probes": 0,
+          "of": 0,
+          "retrieval": 0,
+          "brief": 0,
+          "briefChecked": 0
+        },
+        "status": {
+          "correct": 0,
+          "of": 2
+        },
+        "order": {
+          "kept": 2,
+          "of": 3
+        },
+        "ambiguity": {
+          "acknowledged": 0,
+          "of": 0
+        }
+      }
+    }
+  },
+  "probes": [
+    {
+      "scenario": "continuity-indirect-reference",
+      "category": "continuity",
+      "probeIndex": 0,
+      "ask": "How did my sister's opening go?",
+      "retrievedNames": [
+        "studio opening",
+        "Pickle",
+        "Maren",
+        "Clayhouse",
+        "Chess Club",
+        "Fernhollow Community Garden",
+        "Bellport",
+        "Sicilian Defense"
+      ],
+      "brief": "ready",
+      "recall": [
+        2,
+        2
+      ],
+      "recallAt1": [
+        0,
+        2
+      ],
+      "recallAt3": [
+        1,
+        2
+      ],
+      "firstRank": 3,
+      "coversGraph": false,
+      "precision": [
+        2,
+        8
+      ],
+      "precisionAt3": [
+        1,
+        3
+      ],
+      "inserted": 4,
+      "sameStory": 2,
+      "confused": null,
+      "stale": null,
+      "staleVacuous": false,
+      "staleIn": [],
+      "briefChecked": false,
+      "status": "n/a",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [],
+      "expectedCount": 2
+    },
+    {
+      "scenario": "continuity-indirect-reference",
+      "category": "continuity",
+      "probeIndex": 1,
+      "ask": "What is the pottery place called?",
+      "retrievedNames": [
+        "Clayhouse",
+        "studio opening",
+        "Maren",
+        "Fernhollow Community Garden",
+        "Tomato Seedlings",
+        "Acoustic Guitar",
+        "Backyard Telescope",
+        "Chess Club"
+      ],
+      "brief": "ready",
+      "recall": [
+        1,
+        1
+      ],
+      "recallAt1": [
+        1,
+        1
+      ],
+      "recallAt3": [
+        1,
+        1
+      ],
+      "firstRank": 1,
+      "coversGraph": false,
+      "precision": [
+        1,
+        8
+      ],
+      "precisionAt3": [
+        1,
+        3
+      ],
+      "inserted": 5,
+      "sameStory": 2,
+      "confused": null,
+      "stale": null,
+      "staleVacuous": false,
+      "staleIn": [],
+      "briefChecked": false,
+      "status": "n/a",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [],
+      "expectedCount": 1
+    },
+    {
+      "scenario": "continuity-indirect-reference",
+      "category": "continuity",
+      "probeIndex": 2,
+      "ask": "Which town is Maren's studio in?",
+      "retrievedNames": [
+        "studio opening",
+        "Clayhouse",
+        "Pickle",
+        "Maren",
+        "Backyard Telescope",
+        "Bellport",
+        "Tomato Seedlings",
+        "Raised Garden Bed"
+      ],
+      "brief": "ready",
+      "recall": [
+        1,
+        1
+      ],
+      "recallAt1": [
+        0,
+        1
+      ],
+      "recallAt3": [
+        0,
+        1
+      ],
+      "firstRank": 6,
+      "coversGraph": false,
+      "precision": [
+        1,
+        8
+      ],
+      "precisionAt3": [
+        0,
+        3
+      ],
+      "inserted": 4,
+      "sameStory": 3,
+      "confused": null,
+      "stale": null,
+      "staleVacuous": false,
+      "staleIn": [],
+      "briefChecked": false,
+      "status": "n/a",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [],
+      "expectedCount": 1
+    },
+    {
+      "scenario": "continuity-indirect-reference",
+      "category": "continuity",
+      "probeIndex": 3,
+      "ask": "Who runs Clayhouse?",
+      "retrievedNames": [
+        "Clayhouse",
+        "studio opening",
+        "Pickle",
+        "Maren",
+        "Quillmont Library",
+        "Backyard Telescope",
+        "Bellport",
+        "Wendell Ashby"
+      ],
+      "brief": "ready",
+      "recall": [
+        1,
+        1
+      ],
+      "recallAt1": [
+        0,
+        1
+      ],
+      "recallAt3": [
+        0,
+        1
+      ],
+      "firstRank": 4,
+      "coversGraph": false,
+      "precision": [
+        1,
+        8
+      ],
+      "precisionAt3": [
+        0,
+        3
+      ],
+      "inserted": 4,
+      "sameStory": 3,
+      "confused": null,
+      "stale": null,
+      "staleVacuous": false,
+      "staleIn": [],
+      "briefChecked": false,
+      "status": "n/a",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [],
+      "expectedCount": 1
+    },
+    {
+      "scenario": "correction-city-same-session",
+      "category": "correction",
+      "probeIndex": 0,
+      "ask": "Where does Imogen live now?",
+      "retrievedNames": [
+        "Imogen",
+        "Dayton",
+        "Dalton",
+        "Fernhollow Community Garden",
+        "Film Camera",
+        "Wool Scarf",
+        "Wendell Ashby",
+        "Pickle"
+      ],
+      "brief": "ready",
+      "recall": [
+        2,
+        2
+      ],
+      "recallAt1": [
+        1,
+        2
+      ],
+      "recallAt3": [
+        2,
+        2
+      ],
+      "firstRank": 1,
+      "coversGraph": false,
+      "precision": [
+        2,
+        8
+      ],
+      "precisionAt3": [
+        2,
+        3
+      ],
+      "inserted": 5,
+      "sameStory": 0,
+      "confused": null,
+      "stale": true,
+      "staleVacuous": false,
+      "staleIn": [
+        "combined"
+      ],
+      "briefChecked": true,
+      "status": "correct",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [],
+      "expectedCount": 2
+    },
+    {
+      "scenario": "correction-city-same-session",
+      "category": "correction",
+      "probeIndex": 1,
+      "ask": "Which of my friends moved recently?",
+      "retrievedNames": [
+        "Dayton",
+        "Imogen",
+        "Fiddle Leaf Fig",
+        "Fingerpicking Practice",
+        "Basil Pots",
+        "Neon Tetras",
+        "Repotting",
+        "Orion Nebula"
+      ],
+      "brief": "ready",
+      "recall": [
+        1,
+        1
+      ],
+      "recallAt1": [
+        0,
+        1
+      ],
+      "recallAt3": [
+        1,
+        1
+      ],
+      "firstRank": 2,
+      "coversGraph": false,
+      "precision": [
+        1,
+        8
+      ],
+      "precisionAt3": [
+        1,
+        3
+      ],
+      "inserted": 6,
+      "sameStory": 1,
+      "confused": null,
+      "stale": null,
+      "staleVacuous": false,
+      "staleIn": [],
+      "briefChecked": false,
+      "status": "n/a",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [],
+      "expectedCount": 1
+    },
+    {
+      "scenario": "correction-city-same-session",
+      "category": "correction",
+      "probeIndex": 2,
+      "ask": "Do I know anyone in Dayton?",
+      "retrievedNames": [
+        "Dayton",
+        "Imogen",
+        "Crossword Puzzles",
+        "Tomato Seedlings",
+        "Wool Scarf",
+        "Fernhollow Community Garden",
+        "Freshwater Aquarium",
+        "Repotting"
+      ],
+      "brief": "ready",
+      "recall": [
+        0,
+        0
+      ],
+      "recallAt1": [
+        0,
+        0
+      ],
+      "recallAt3": [
+        0,
+        0
+      ],
+      "firstRank": null,
+      "coversGraph": false,
+      "precision": [
+        0,
+        8
+      ],
+      "precisionAt3": [
+        0,
+        3
+      ],
+      "inserted": 6,
+      "sameStory": 1,
+      "confused": null,
+      "stale": true,
+      "staleVacuous": false,
+      "staleIn": [
+        "combined"
+      ],
+      "briefChecked": true,
+      "status": "n/a",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [],
+      "expectedCount": 0
+    },
+    {
+      "scenario": "correction-city-same-session",
+      "category": "correction",
+      "probeIndex": 3,
+      "ask": "Tell me about Imogen.",
+      "retrievedNames": [
+        "Imogen",
+        "Metronome",
+        "Merino Yarn",
+        "Perseid Meteor Shower",
+        "Dayton",
+        "Pickle",
+        "Freshwater Aquarium",
+        "Chess Club"
+      ],
+      "brief": "ready",
+      "recall": [
+        1,
+        1
+      ],
+      "recallAt1": [
+        1,
+        1
+      ],
+      "recallAt3": [
+        1,
+        1
+      ],
+      "firstRank": 1,
+      "coversGraph": false,
+      "precision": [
+        1,
+        8
+      ],
+      "precisionAt3": [
+        1,
+        3
+      ],
+      "inserted": 6,
+      "sameStory": 1,
+      "confused": null,
+      "stale": true,
+      "staleVacuous": false,
+      "staleIn": [
+        "combined"
+      ],
+      "briefChecked": true,
+      "status": "n/a",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [],
+      "expectedCount": 1
+    },
+    {
+      "scenario": "deletion-forget-person",
+      "category": "deletion",
+      "probeIndex": 0,
+      "ask": "Who did I have lunch with?",
+      "retrievedNames": [
+        "Ignatius Polk",
+        "Pickle",
+        "Quillmont Library",
+        "Tomato Seedlings",
+        "Jupiter",
+        "Crossword Puzzles",
+        "quarterly report",
+        "Wool Scarf"
+      ],
+      "brief": "ready",
+      "recall": [
+        0,
+        0
+      ],
+      "recallAt1": [
+        0,
+        0
+      ],
+      "recallAt3": [
+        0,
+        0
+      ],
+      "firstRank": null,
+      "coversGraph": false,
+      "precision": [
+        0,
+        8
+      ],
+      "precisionAt3": [
+        0,
+        3
+      ],
+      "inserted": 7,
+      "sameStory": 1,
+      "confused": null,
+      "stale": false,
+      "staleVacuous": false,
+      "staleIn": [],
+      "briefChecked": true,
+      "status": "n/a",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [],
+      "expectedCount": 0
+    },
+    {
+      "scenario": "deletion-forget-person",
+      "category": "deletion",
+      "probeIndex": 1,
+      "ask": "Who is moving to Oslo?",
+      "retrievedNames": [
+        "Oslo",
+        "Tomato Seedlings",
+        "Catnip Mice",
+        "Pickle",
+        "Sourdough Starter",
+        "Fernhollow Community Garden",
+        "Quillmont Library",
+        "Chess Club"
+      ],
+      "brief": "ready",
+      "recall": [
+        0,
+        0
+      ],
+      "recallAt1": [
+        0,
+        0
+      ],
+      "recallAt3": [
+        0,
+        0
+      ],
+      "firstRank": null,
+      "coversGraph": false,
+      "precision": [
+        0,
+        8
+      ],
+      "precisionAt3": [
+        0,
+        3
+      ],
+      "inserted": 7,
+      "sameStory": 1,
+      "confused": null,
+      "stale": false,
+      "staleVacuous": false,
+      "staleIn": [],
+      "briefChecked": true,
+      "status": "n/a",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [],
+      "expectedCount": 0
+    },
+    {
+      "scenario": "deletion-forget-person",
+      "category": "deletion",
+      "probeIndex": 2,
+      "ask": "Who is my manager?",
+      "retrievedNames": [
+        "Ruth Okafor",
+        "Pickle",
+        "Quillmont Library",
+        "Chess Club",
+        "Backyard Telescope",
+        "Fernhollow Community Garden",
+        "quarterly report",
+        "Monstera Plant"
+      ],
+      "brief": "ready",
+      "recall": [
+        1,
+        1
+      ],
+      "recallAt1": [
+        1,
+        1
+      ],
+      "recallAt3": [
+        1,
+        1
+      ],
+      "firstRank": 1,
+      "coversGraph": false,
+      "precision": [
+        1,
+        8
+      ],
+      "precisionAt3": [
+        1,
+        3
+      ],
+      "inserted": 6,
+      "sameStory": 1,
+      "confused": null,
+      "stale": null,
+      "staleVacuous": false,
+      "staleIn": [],
+      "briefChecked": false,
+      "status": "n/a",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [],
+      "expectedCount": 1
+    },
+    {
+      "scenario": "deletion-forget-person",
+      "category": "deletion",
+      "probeIndex": 3,
+      "ask": "Who did I work with this week?",
+      "retrievedNames": [
+        "Crossword Puzzles",
+        "quarterly report",
+        "Ignatius Polk",
+        "Pickle",
+        "Tomato Seedlings",
+        "Quillmont Library",
+        "Chess Club",
+        "Backyard Telescope"
+      ],
+      "brief": "ready",
+      "recall": [
+        0,
+        1
+      ],
+      "recallAt1": [
+        0,
+        1
+      ],
+      "recallAt3": [
+        0,
+        1
+      ],
+      "firstRank": null,
+      "coversGraph": false,
+      "precision": [
+        0,
+        8
+      ],
+      "precisionAt3": [
+        0,
+        3
+      ],
+      "inserted": 7,
+      "sameStory": 1,
+      "confused": null,
+      "stale": false,
+      "staleVacuous": false,
+      "staleIn": [],
+      "briefChecked": true,
+      "status": "n/a",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [
+        {
+          "name": "Ruth Okafor",
+          "why": "not_retrieved"
+        }
+      ],
+      "expectedCount": 1
+    },
+    {
+      "scenario": "changing-decided-then-reversed",
+      "category": "changing_facts",
+      "probeIndex": 0,
+      "ask": "Where are we going for our anniversary?",
+      "retrievedNames": [
+        "anniversary trip",
+        "Wendell Ashby",
+        "Crossword Puzzles",
+        "Water Testing Kit",
+        "Wool Scarf",
+        "Pickle",
+        "Sourdough Starter",
+        "Chess Club"
+      ],
+      "brief": "not_run: BudgetExhausted",
+      "recall": [
+        0,
+        1
+      ],
+      "recallAt1": [
+        0,
+        1
+      ],
+      "recallAt3": [
+        0,
+        1
+      ],
+      "firstRank": null,
+      "coversGraph": false,
+      "precision": [
+        0,
+        8
+      ],
+      "precisionAt3": [
+        0,
+        3
+      ],
+      "inserted": 7,
+      "sameStory": 1,
+      "confused": null,
+      "stale": null,
+      "staleVacuous": false,
+      "staleIn": [],
+      "briefChecked": false,
+      "status": "n/a",
+      "order": "kept",
+      "ambiguity": "n/a",
+      "misses": [
+        {
+          "name": "Kyoto",
+          "why": "not_retrieved"
+        }
+      ],
+      "expectedCount": 1
+    },
+    {
+      "scenario": "changing-decided-then-reversed",
+      "category": "changing_facts",
+      "probeIndex": 1,
+      "ask": "Is the Lisbon trip still on?",
+      "retrievedNames": [
+        "Lisbon",
+        "anniversary trip",
+        "Kyoto",
+        "Pickle",
+        "Sourdough Starter",
+        "Acoustic Guitar",
+        "Chess Club",
+        "Fernhollow Community Garden"
+      ],
+      "brief": "not_run: BudgetExhausted",
+      "recall": [
+        2,
+        2
+      ],
+      "recallAt1": [
+        1,
+        2
+      ],
+      "recallAt3": [
+        2,
+        2
+      ],
+      "firstRank": 1,
+      "coversGraph": false,
+      "precision": [
+        2,
+        8
+      ],
+      "precisionAt3": [
+        2,
+        3
+      ],
+      "inserted": 5,
+      "sameStory": 1,
+      "confused": null,
+      "stale": null,
+      "staleVacuous": false,
+      "staleIn": [],
+      "briefChecked": false,
+      "status": "n/a",
+      "order": "kept",
+      "ambiguity": "n/a",
+      "misses": [],
+      "expectedCount": 2
+    },
+    {
+      "scenario": "changing-decided-then-reversed",
+      "category": "changing_facts",
+      "probeIndex": 2,
+      "ask": "What did we book for June?",
+      "retrievedNames": [
+        "Wendell Ashby",
+        "Crossword Puzzles",
+        "Water Testing Kit",
+        "Wool Scarf",
+        "Monstera Plant",
+        "Sicilian Defense",
+        "anniversary trip",
+        "Kyoto"
+      ],
+      "brief": "not_run: BudgetExhausted",
+      "recall": [
+        1,
+        1
+      ],
+      "recallAt1": [
+        0,
+        1
+      ],
+      "recallAt3": [
+        0,
+        1
+      ],
+      "firstRank": 8,
+      "coversGraph": false,
+      "precision": [
+        1,
+        8
+      ],
+      "precisionAt3": [
+        0,
+        3
+      ],
+      "inserted": 6,
+      "sameStory": 1,
+      "confused": null,
+      "stale": null,
+      "staleVacuous": false,
+      "staleIn": [],
+      "briefChecked": false,
+      "status": "n/a",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [],
+      "expectedCount": 1
+    },
+    {
+      "scenario": "changing-decided-then-reversed",
+      "category": "changing_facts",
+      "probeIndex": 3,
+      "ask": "Do we have any travel plans?",
+      "retrievedNames": [
+        "Crossword Puzzles",
+        "Wendell Ashby",
+        "Backyard Telescope",
+        "anniversary trip",
+        "Tomato Seedlings",
+        "Freshwater Aquarium",
+        "Fernhollow Community Garden",
+        "Chess Club"
+      ],
+      "brief": "not_run: BudgetExhausted",
+      "recall": [
+        0,
+        1
+      ],
+      "recallAt1": [
+        0,
+        1
+      ],
+      "recallAt3": [
+        0,
+        1
+      ],
+      "firstRank": null,
+      "coversGraph": false,
+      "precision": [
+        0,
+        8
+      ],
+      "precisionAt3": [
+        0,
+        3
+      ],
+      "inserted": 7,
+      "sameStory": 1,
+      "confused": null,
+      "stale": null,
+      "staleVacuous": false,
+      "staleIn": [],
+      "briefChecked": false,
+      "status": "n/a",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [
+        {
+          "name": "Kyoto",
+          "why": "not_retrieved"
+        }
+      ],
+      "expectedCount": 1
+    },
+    {
+      "scenario": "continuity-paraphrase",
+      "category": "continuity",
+      "probeIndex": 0,
+      "ask": "How is the race prep going?",
+      "retrievedNames": [
+        "long run",
+        "running",
+        "Tobias Wren",
+        "knee",
+        "Chess Club",
+        "Tomato Seedlings",
+        "Acoustic Guitar",
+        "Backyard Telescope"
+      ],
+      "brief": "not_run: BudgetExhausted",
+      "recall": [
+        0,
+        1
+      ],
+      "recallAt1": [
+        0,
+        1
+      ],
+      "recallAt3": [
+        0,
+        1
+      ],
+      "firstRank": null,
+      "coversGraph": false,
+      "precision": [
+        0,
+        8
+      ],
+      "precisionAt3": [
+        0,
+        3
+      ],
+      "inserted": 4,
+      "sameStory": 4,
+      "confused": null,
+      "stale": null,
+      "staleVacuous": false,
+      "staleIn": [],
+      "briefChecked": false,
+      "status": "n/a",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [
+        {
+          "name": "Ridgeline",
+          "why": "not_retrieved"
+        }
+      ],
+      "expectedCount": 1
+    },
+    {
+      "scenario": "continuity-paraphrase",
+      "category": "continuity",
+      "probeIndex": 1,
+      "ask": "Who is helping me get ready to run?",
+      "retrievedNames": [
+        "Tobias Wren",
+        "long run",
+        "Metronome",
+        "running",
+        "Tomato Seedlings",
+        "Merino Yarn",
+        "Perseid Meteor Shower",
+        "knee"
+      ],
+      "brief": "not_run: BudgetExhausted",
+      "recall": [
+        1,
+        1
+      ],
+      "recallAt1": [
+        1,
+        1
+      ],
+      "recallAt3": [
+        1,
+        1
+      ],
+      "firstRank": 1,
+      "coversGraph": false,
+      "precision": [
+        1,
+        8
+      ],
+      "precisionAt3": [
+        1,
+        3
+      ],
+      "inserted": 4,
+      "sameStory": 3,
+      "confused": null,
+      "stale": null,
+      "staleVacuous": false,
+      "staleIn": [],
+      "briefChecked": false,
+      "status": "n/a",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [],
+      "expectedCount": 1
+    },
+    {
+      "scenario": "continuity-paraphrase",
+      "category": "continuity",
+      "probeIndex": 2,
+      "ask": "What did my coach say about my injury?",
+      "retrievedNames": [
+        "Tobias Wren",
+        "Sourdough Starter",
+        "Acoustic Guitar",
+        "Chess Club",
+        "running",
+        "Pickle",
+        "Vintage Radio",
+        "Monstera Plant"
+      ],
+      "brief": "not_run: BudgetExhausted",
+      "recall": [
+        1,
+        1
+      ],
+      "recallAt1": [
+        1,
+        1
+      ],
+      "recallAt3": [
+        1,
+        1
+      ],
+      "firstRank": 1,
+      "coversGraph": false,
+      "precision": [
+        1,
+        8
+      ],
+      "precisionAt3": [
+        1,
+        3
+      ],
+      "inserted": 6,
+      "sameStory": 1,
+      "confused": null,
+      "stale": null,
+      "staleVacuous": false,
+      "staleIn": [],
+      "briefChecked": false,
+      "status": "n/a",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [],
+      "expectedCount": 1
+    },
+    {
+      "scenario": "continuity-paraphrase",
+      "category": "continuity",
+      "probeIndex": 3,
+      "ask": "Have I signed up for any races?",
+      "retrievedNames": [
+        "Wool Scarf",
+        "Ignatius Polk",
+        "Jupiter",
+        "long run",
+        "Backyard Telescope",
+        "Tomato Seedlings",
+        "knee",
+        "Pickle"
+      ],
+      "brief": "not_run: BudgetExhausted",
+      "recall": [
+        0,
+        1
+      ],
+      "recallAt1": [
+        0,
+        1
+      ],
+      "recallAt3": [
+        0,
+        1
+      ],
+      "firstRank": null,
+      "coversGraph": false,
+      "precision": [
+        0,
+        8
+      ],
+      "precisionAt3": [
+        0,
+        3
+      ],
+      "inserted": 6,
+      "sameStory": 2,
+      "confused": null,
+      "stale": null,
+      "staleVacuous": false,
+      "staleIn": [],
+      "briefChecked": false,
+      "status": "n/a",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [
+        {
+          "name": "Ridgeline",
+          "why": "not_retrieved"
+        }
+      ],
+      "expectedCount": 1
+    },
+    {
+      "scenario": "correction-edit-description",
+      "category": "correction",
+      "probeIndex": 0,
+      "ask": "What does Felix do for work?",
+      "retrievedNames": [
+        "Saint Corin hospital",
+        "Felix",
+        "birthday dinner",
+        "Felix Navarro",
+        "Crossword Puzzles",
+        "Wool Scarf",
+        "Pickle",
+        "Sourdough Starter"
+      ],
+      "brief": "not_run: BudgetExhausted",
+      "recall": [
+        1,
+        1
+      ],
+      "recallAt1": [
+        0,
+        1
+      ],
+      "recallAt3": [
+        0,
+        1
+      ],
+      "firstRank": 4,
+      "coversGraph": false,
+      "precision": [
+        1,
+        8
+      ],
+      "precisionAt3": [
+        0,
+        3
+      ],
+      "inserted": 4,
+      "sameStory": 3,
+      "confused": null,
+      "stale": false,
+      "staleVacuous": false,
+      "staleIn": [],
+      "briefChecked": false,
+      "status": "correct",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [],
+      "expectedCount": 1
+    },
+    {
+      "scenario": "correction-edit-description",
+      "category": "correction",
+      "probeIndex": 1,
+      "ask": "Where does Felix work?",
+      "retrievedNames": [
+        "Saint Corin hospital",
+        "Felix",
+        "birthday dinner",
+        "Felix Navarro",
+        "Pickle",
+        "Backyard Telescope",
+        "Acoustic Guitar",
+        "Fernhollow Community Garden"
+      ],
+      "brief": "not_run: BudgetExhausted",
+      "recall": [
+        1,
+        1
+      ],
+      "recallAt1": [
+        1,
+        1
+      ],
+      "recallAt3": [
+        1,
+        1
+      ],
+      "firstRank": 1,
+      "coversGraph": false,
+      "precision": [
+        1,
+        8
+      ],
+      "precisionAt3": [
+        1,
+        3
+      ],
+      "inserted": 4,
+      "sameStory": 3,
+      "confused": null,
+      "stale": null,
+      "staleVacuous": false,
+      "staleIn": [],
+      "briefChecked": false,
+      "status": "n/a",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [],
+      "expectedCount": 1
+    },
+    {
+      "scenario": "correction-edit-description",
+      "category": "correction",
+      "probeIndex": 2,
+      "ask": "Whose birthday is coming up?",
+      "retrievedNames": [
+        "birthday dinner",
+        "Saint Corin hospital",
+        "Sourdough Starter",
+        "Chess Club",
+        "Acoustic Guitar",
+        "Fernhollow Community Garden",
+        "Backyard Telescope",
+        "Jupiter"
+      ],
+      "brief": "not_run: BudgetExhausted",
+      "recall": [
+        0,
+        1
+      ],
+      "recallAt1": [
+        0,
+        1
+      ],
+      "recallAt3": [
+        0,
+        1
+      ],
+      "firstRank": null,
+      "coversGraph": false,
+      "precision": [
+        0,
+        8
+      ],
+      "precisionAt3": [
+        0,
+        3
+      ],
+      "inserted": 6,
+      "sameStory": 2,
+      "confused": null,
+      "stale": null,
+      "staleVacuous": false,
+      "staleIn": [],
+      "briefChecked": false,
+      "status": "n/a",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [
+        {
+          "name": "Felix Navarro",
+          "why": "not_retrieved"
+        }
+      ],
+      "expectedCount": 1
+    },
+    {
+      "scenario": "correction-edit-description",
+      "category": "correction",
+      "probeIndex": 3,
+      "ask": "How do I know Felix?",
+      "retrievedNames": [
+        "Felix Navarro",
+        "Felix",
+        "birthday dinner",
+        "Crossword Puzzles",
+        "Saint Corin hospital",
+        "Ignatius Polk",
+        "Backyard Telescope",
+        "Seed Catalog"
+      ],
+      "brief": "not_run: BudgetExhausted",
+      "recall": [
+        1,
+        1
+      ],
+      "recallAt1": [
+        1,
+        1
+      ],
+      "recallAt3": [
+        1,
+        1
+      ],
+      "firstRank": 1,
+      "coversGraph": false,
+      "precision": [
+        1,
+        8
+      ],
+      "precisionAt3": [
+        1,
+        3
+      ],
+      "inserted": 4,
+      "sameStory": 3,
+      "confused": null,
+      "stale": null,
+      "staleVacuous": false,
+      "staleIn": [],
+      "briefChecked": false,
+      "status": "correct",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [],
+      "expectedCount": 1
+    },
+    {
+      "scenario": "deletion-remove-project",
+      "category": "deletion",
+      "probeIndex": 0,
+      "ask": "What am I building?",
+      "retrievedNames": [
+        "Ignatius Polk",
+        "Tomato Seedlings",
+        "Jupiter",
+        "Water Testing Kit",
+        "Crossword Puzzles",
+        "Wool Scarf",
+        "Pickle",
+        "Sourdough Starter"
+      ],
+      "brief": "not_run: BudgetExhausted",
+      "recall": [
+        0,
+        0
+      ],
+      "recallAt1": [
+        0,
+        0
+      ],
+      "recallAt3": [
+        0,
+        0
+      ],
+      "firstRank": null,
+      "coversGraph": false,
+      "precision": [
+        0,
+        8
+      ],
+      "precisionAt3": [
+        0,
+        3
+      ],
+      "inserted": 8,
+      "sameStory": 0,
+      "confused": null,
+      "stale": false,
+      "staleVacuous": false,
+      "staleIn": [],
+      "briefChecked": false,
+      "status": "n/a",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [],
+      "expectedCount": 0
+    },
+    {
+      "scenario": "deletion-remove-project",
+      "category": "deletion",
+      "probeIndex": 1,
+      "ask": "What's going on with Otto?",
+      "retrievedNames": [
+        "Otto",
+        "soccer team",
+        "Chess Club",
+        "Wool Scarf",
+        "Fingerpicking Practice",
+        "Crossword Puzzles",
+        "Jupiter",
+        "Dutch Oven"
+      ],
+      "brief": "not_run: BudgetExhausted",
+      "recall": [
+        1,
+        1
+      ],
+      "recallAt1": [
+        1,
+        1
+      ],
+      "recallAt3": [
+        1,
+        1
+      ],
+      "firstRank": 1,
+      "coversGraph": false,
+      "precision": [
+        1,
+        8
+      ],
+      "precisionAt3": [
+        1,
+        3
+      ],
+      "inserted": 6,
+      "sameStory": 1,
+      "confused": null,
+      "stale": false,
+      "staleVacuous": false,
+      "staleIn": [],
+      "briefChecked": false,
+      "status": "n/a",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [],
+      "expectedCount": 1
+    },
+    {
+      "scenario": "deletion-remove-project",
+      "category": "deletion",
+      "probeIndex": 2,
+      "ask": "Do I have any woodworking projects?",
+      "retrievedNames": [
+        "Crossword Puzzles",
+        "Ignatius Polk",
+        "Backyard Telescope",
+        "Seed Catalog",
+        "Tomato Seedlings",
+        "Sourdough Starter",
+        "Pickle",
+        "Chess Club"
+      ],
+      "brief": "not_run: BudgetExhausted",
+      "recall": [
+        0,
+        0
+      ],
+      "recallAt1": [
+        0,
+        0
+      ],
+      "recallAt3": [
+        0,
+        0
+      ],
+      "firstRank": null,
+      "coversGraph": false,
+      "precision": [
+        0,
+        8
+      ],
+      "precisionAt3": [
+        0,
+        3
+      ],
+      "inserted": 8,
+      "sameStory": 0,
+      "confused": null,
+      "stale": false,
+      "staleVacuous": false,
+      "staleIn": [],
+      "briefChecked": false,
+      "status": "n/a",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [],
+      "expectedCount": 0
+    },
+    {
+      "scenario": "deletion-remove-project",
+      "category": "deletion",
+      "probeIndex": 3,
+      "ask": "How did the soccer game go?",
+      "retrievedNames": [
+        "soccer team",
+        "Chess Club",
+        "Otto",
+        "Tomato Seedlings",
+        "Acoustic Guitar",
+        "Backyard Telescope",
+        "Fernhollow Community Garden",
+        "Raised Garden Bed"
+      ],
+      "brief": "not_run: BudgetExhausted",
+      "recall": [
+        1,
+        1
+      ],
+      "recallAt1": [
+        0,
+        1
+      ],
+      "recallAt3": [
+        1,
+        1
+      ],
+      "firstRank": 3,
+      "coversGraph": false,
+      "precision": [
+        1,
+        8
+      ],
+      "precisionAt3": [
+        1,
+        3
+      ],
+      "inserted": 6,
+      "sameStory": 1,
+      "confused": null,
+      "stale": null,
+      "staleVacuous": false,
+      "staleIn": [],
+      "briefChecked": false,
+      "status": "n/a",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [],
+      "expectedCount": 1
+    },
+    {
+      "scenario": "changing-similar-names",
+      "category": "changing_facts",
+      "probeIndex": 0,
+      "ask": "What does Priya do?",
+      "retrievedNames": [
+        "Priya Shah",
+        "Priyanka Rao",
+        "Crossword Puzzles",
+        "Project Atlas",
+        "Backyard Telescope",
+        "Seed Catalog",
+        "Atlas budget",
+        "Atlas migration"
+      ],
+      "brief": "not_run: BudgetExhausted",
+      "recall": [
+        1,
+        1
+      ],
+      "recallAt1": [
+        1,
+        1
+      ],
+      "recallAt3": [
+        1,
+        1
+      ],
+      "firstRank": 1,
+      "coversGraph": false,
+      "precision": [
+        1,
+        8
+      ],
+      "precisionAt3": [
+        1,
+        3
+      ],
+      "inserted": 3,
+      "sameStory": 3,
+      "confused": true,
+      "stale": null,
+      "staleVacuous": false,
+      "staleIn": [],
+      "briefChecked": false,
+      "status": "n/a",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [],
+      "expectedCount": 1
+    },
+    {
+      "scenario": "changing-similar-names",
+      "category": "changing_facts",
+      "probeIndex": 1,
+      "ask": "Who approved the budget?",
+      "retrievedNames": [
+        "Atlas budget",
+        "Pickle",
+        "Quillmont Library",
+        "Project Atlas",
+        "finance",
+        "Priyanka Rao",
+        "Chess Club",
+        "Acoustic Guitar"
+      ],
+      "brief": "not_run: BudgetExhausted",
+      "recall": [
+        1,
+        1
+      ],
+      "recallAt1": [
+        0,
+        1
+      ],
+      "recallAt3": [
+        0,
+        1
+      ],
+      "firstRank": 6,
+      "coversGraph": false,
+      "precision": [
+        1,
+        8
+      ],
+      "precisionAt3": [
+        0,
+        3
+      ],
+      "inserted": 4,
+      "sameStory": 3,
+      "confused": null,
+      "stale": null,
+      "staleVacuous": false,
+      "staleIn": [],
+      "briefChecked": false,
+      "status": "n/a",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [],
+      "expectedCount": 1
+    },
+    {
+      "scenario": "changing-similar-names",
+      "category": "changing_facts",
+      "probeIndex": 2,
+      "ask": "What team is Priyanka on?",
+      "retrievedNames": [
+        "Priyanka Rao",
+        "Project Atlas",
+        "Atlas migration",
+        "Priya Shah",
+        "Atlas budget",
+        "Pickle",
+        "Sourdough Starter",
+        "Backyard Telescope"
+      ],
+      "brief": "not_run: BudgetExhausted",
+      "recall": [
+        1,
+        1
+      ],
+      "recallAt1": [
+        1,
+        1
+      ],
+      "recallAt3": [
+        1,
+        1
+      ],
+      "firstRank": 1,
+      "coversGraph": false,
+      "precision": [
+        1,
+        8
+      ],
+      "precisionAt3": [
+        1,
+        3
+      ],
+      "inserted": 3,
+      "sameStory": 3,
+      "confused": true,
+      "stale": null,
+      "staleVacuous": false,
+      "staleIn": [],
+      "briefChecked": false,
+      "status": "n/a",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [],
+      "expectedCount": 1
+    },
+    {
+      "scenario": "changing-similar-names",
+      "category": "changing_facts",
+      "probeIndex": 3,
+      "ask": "What's happening with Atlas?",
+      "retrievedNames": [
+        "Project Atlas",
+        "Atlas migration",
+        "Atlas budget",
+        "Priyanka Rao",
+        "Pickle",
+        "Sourdough Starter",
+        "Tomato Seedlings",
+        "Backyard Telescope"
+      ],
+      "brief": "not_run: BudgetExhausted",
+      "recall": [
+        1,
+        1
+      ],
+      "recallAt1": [
+        1,
+        1
+      ],
+      "recallAt3": [
+        1,
+        1
+      ],
+      "firstRank": 1,
+      "coversGraph": false,
+      "precision": [
+        3,
+        8
+      ],
+      "precisionAt3": [
+        3,
+        3
+      ],
+      "inserted": 4,
+      "sameStory": 1,
+      "confused": null,
+      "stale": null,
+      "staleVacuous": false,
+      "staleIn": [],
+      "briefChecked": false,
+      "status": "n/a",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [],
+      "expectedCount": 1
+    },
+    {
+      "scenario": "continuity-two-alexes",
+      "category": "continuity",
+      "probeIndex": 0,
+      "ask": "Did I give back what I borrowed?",
+      "retrievedNames": [
+        "Backyard Telescope",
+        "Ignatius Polk",
+        "Quebec",
+        "Tomato Seedlings",
+        "Alex Moreau",
+        "Jupiter",
+        "Crossword Puzzles",
+        "Wool Scarf"
+      ],
+      "brief": "not_run: BudgetExhausted",
+      "recall": [
+        0,
+        1
+      ],
+      "recallAt1": [
+        0,
+        1
+      ],
+      "recallAt3": [
+        0,
+        1
+      ],
+      "firstRank": null,
+      "coversGraph": false,
+      "precision": [
+        0,
+        8
+      ],
+      "precisionAt3": [
+        0,
+        3
+      ],
+      "inserted": 6,
+      "sameStory": 2,
+      "confused": null,
+      "stale": null,
+      "staleVacuous": false,
+      "staleIn": [],
+      "briefChecked": false,
+      "status": "n/a",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [
+        {
+          "name": "Alex Brandt",
+          "why": "not_retrieved"
+        }
+      ],
+      "expectedCount": 1
+    },
+    {
+      "scenario": "continuity-two-alexes",
+      "category": "continuity",
+      "probeIndex": 1,
+      "ask": "Who is visiting from Quebec?",
+      "retrievedNames": [
+        "Quebec",
+        "Alex Moreau",
+        "Fernhollow Community Garden",
+        "Monstera Plant",
+        "Wendell Ashby",
+        "Marguerite Fenn",
+        "Backyard Telescope",
+        "Tomato Seedlings"
+      ],
+      "brief": "not_run: BudgetExhausted",
+      "recall": [
+        1,
+        1
+      ],
+      "recallAt1": [
+        0,
+        1
+      ],
+      "recallAt3": [
+        1,
+        1
+      ],
+      "firstRank": 2,
+      "coversGraph": false,
+      "precision": [
+        1,
+        8
+      ],
+      "precisionAt3": [
+        1,
+        3
+      ],
+      "inserted": 6,
+      "sameStory": 1,
+      "confused": null,
+      "stale": null,
+      "staleVacuous": false,
+      "staleIn": [],
+      "briefChecked": false,
+      "status": "n/a",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [],
+      "expectedCount": 1
+    },
+    {
+      "scenario": "continuity-two-alexes",
+      "category": "continuity",
+      "probeIndex": 2,
+      "ask": "Tell me about Alex.",
+      "retrievedNames": [
+        "Metronome",
+        "Alex Brandt",
+        "Merino Yarn",
+        "Perseid Meteor Shower",
+        "Alex Moreau",
+        "gutters",
+        "extension ladder",
+        "Quebec"
+      ],
+      "brief": "not_run: BudgetExhausted",
+      "recall": [
+        2,
+        2
+      ],
+      "recallAt1": [
+        0,
+        2
+      ],
+      "recallAt3": [
+        1,
+        2
+      ],
+      "firstRank": 2,
+      "coversGraph": false,
+      "precision": [
+        2,
+        8
+      ],
+      "precisionAt3": [
+        1,
+        3
+      ],
+      "inserted": 3,
+      "sameStory": 3,
+      "confused": null,
+      "stale": null,
+      "staleVacuous": false,
+      "staleIn": [],
+      "briefChecked": false,
+      "status": "n/a",
+      "order": "n/a",
+      "ambiguity": "acknowledged",
+      "misses": [],
+      "expectedCount": 2
+    },
+    {
+      "scenario": "continuity-two-alexes",
+      "category": "continuity",
+      "probeIndex": 3,
+      "ask": "Who lent me a ladder?",
+      "retrievedNames": [
+        "extension ladder",
+        "Alex Brandt",
+        "Perseid Meteor Shower",
+        "Metronome",
+        "Merino Yarn",
+        "gutters",
+        "Alex Moreau",
+        "Acoustic Guitar"
+      ],
+      "brief": "not_run: BudgetExhausted",
+      "recall": [
+        1,
+        1
+      ],
+      "recallAt1": [
+        0,
+        1
+      ],
+      "recallAt3": [
+        1,
+        1
+      ],
+      "firstRank": 2,
+      "coversGraph": false,
+      "precision": [
+        1,
+        8
+      ],
+      "precisionAt3": [
+        1,
+        3
+      ],
+      "inserted": 4,
+      "sameStory": 3,
+      "confused": null,
+      "stale": null,
+      "staleVacuous": false,
+      "staleIn": [],
+      "briefChecked": false,
+      "status": "n/a",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [],
+      "expectedCount": 1
+    },
+    {
+      "scenario": "correction-job-title-next-session",
+      "category": "correction",
+      "probeIndex": 0,
+      "ask": "What's my job title?",
+      "retrievedNames": [
+        "staff analyst",
+        "Larkfield Bank",
+        "senior analyst",
+        "Pickle",
+        "Sourdough Starter",
+        "Acoustic Guitar",
+        "Tomato Seedlings",
+        "Vintage Radio"
+      ],
+      "brief": "not_run: BudgetExhausted",
+      "recall": [
+        1,
+        1
+      ],
+      "recallAt1": [
+        0,
+        1
+      ],
+      "recallAt3": [
+        1,
+        1
+      ],
+      "firstRank": 2,
+      "coversGraph": false,
+      "precision": [
+        1,
+        8
+      ],
+      "precisionAt3": [
+        1,
+        3
+      ],
+      "inserted": 5,
+      "sameStory": 2,
+      "confused": null,
+      "stale": true,
+      "staleVacuous": false,
+      "staleIn": [
+        "combined"
+      ],
+      "briefChecked": false,
+      "status": "wrong",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [],
+      "expectedCount": 1
+    },
+    {
+      "scenario": "correction-job-title-next-session",
+      "category": "correction",
+      "probeIndex": 1,
+      "ask": "Where do I work?",
+      "retrievedNames": [
+        "Crossword Puzzles",
+        "Ignatius Polk",
+        "Backyard Telescope",
+        "Seed Catalog",
+        "Tomato Seedlings",
+        "Pickle",
+        "Sourdough Starter",
+        "Larkfield Bank"
+      ],
+      "brief": "not_run: BudgetExhausted",
+      "recall": [
+        1,
+        1
+      ],
+      "recallAt1": [
+        0,
+        1
+      ],
+      "recallAt3": [
+        0,
+        1
+      ],
+      "firstRank": 8,
+      "coversGraph": false,
+      "precision": [
+        1,
+        8
+      ],
+      "precisionAt3": [
+        0,
+        3
+      ],
+      "inserted": 7,
+      "sameStory": 0,
+      "confused": null,
+      "stale": null,
+      "staleVacuous": false,
+      "staleIn": [],
+      "briefChecked": false,
+      "status": "n/a",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [],
+      "expectedCount": 1
+    },
+    {
+      "scenario": "correction-job-title-next-session",
+      "category": "correction",
+      "probeIndex": 2,
+      "ask": "Did I get promoted?",
+      "retrievedNames": [
+        "Ignatius Polk",
+        "senior analyst",
+        "Larkfield Bank",
+        "Tomato Seedlings",
+        "Jupiter",
+        "Crossword Puzzles",
+        "Wool Scarf",
+        "Repotting"
+      ],
+      "brief": "not_run: BudgetExhausted",
+      "recall": [
+        1,
+        1
+      ],
+      "recallAt1": [
+        0,
+        1
+      ],
+      "recallAt3": [
+        1,
+        1
+      ],
+      "firstRank": 3,
+      "coversGraph": false,
+      "precision": [
+        1,
+        8
+      ],
+      "precisionAt3": [
+        1,
+        3
+      ],
+      "inserted": 6,
+      "sameStory": 1,
+      "confused": null,
+      "stale": true,
+      "staleVacuous": false,
+      "staleIn": [
+        "combined"
+      ],
+      "briefChecked": false,
+      "status": "n/a",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [],
+      "expectedCount": 1
+    },
+    {
+      "scenario": "correction-job-title-next-session",
+      "category": "correction",
+      "probeIndex": 3,
+      "ask": "What's my role at the bank?",
+      "retrievedNames": [
+        "Larkfield Bank",
+        "staff analyst",
+        "Fernhollow Community Garden",
+        "Acoustic Guitar",
+        "Chess Club",
+        "Wool Scarf",
+        "Crossword Puzzles",
+        "Quillmont Observatory"
+      ],
+      "brief": "not_run: BudgetExhausted",
+      "recall": [
+        1,
+        1
+      ],
+      "recallAt1": [
+        1,
+        1
+      ],
+      "recallAt3": [
+        1,
+        1
+      ],
+      "firstRank": 1,
+      "coversGraph": false,
+      "precision": [
+        1,
+        8
+      ],
+      "precisionAt3": [
+        1,
+        3
+      ],
+      "inserted": 6,
+      "sameStory": 1,
+      "confused": null,
+      "stale": null,
+      "staleVacuous": false,
+      "staleIn": [],
+      "briefChecked": false,
+      "status": "wrong",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [],
+      "expectedCount": 1
+    },
+    {
+      "scenario": "changing-tentative-to-decided",
+      "category": "changing_facts",
+      "probeIndex": 0,
+      "ask": "What happened with the job thing?",
+      "retrievedNames": [
+        "Monstera Plant",
+        "Catnip Mice",
+        "Acoustic Guitar",
+        "Seed Catalog",
+        "Film Camera",
+        "Fernhollow Community Garden",
+        "Vintage Radio",
+        "Quillmont Observatory"
+      ],
+      "brief": "not_run: BudgetExhausted",
+      "recall": [
+        0,
+        1
+      ],
+      "recallAt1": [
+        0,
+        1
+      ],
+      "recallAt3": [
+        0,
+        1
+      ],
+      "firstRank": null,
+      "coversGraph": false,
+      "precision": [
+        0,
+        8
+      ],
+      "precisionAt3": [
+        0,
+        3
+      ],
+      "inserted": 8,
+      "sameStory": 0,
+      "confused": null,
+      "stale": null,
+      "staleVacuous": false,
+      "staleIn": [],
+      "briefChecked": false,
+      "status": "wrong",
+      "order": "lost",
+      "ambiguity": "n/a",
+      "misses": [
+        {
+          "name": "Northwind",
+          "why": "not_retrieved"
+        }
+      ],
+      "expectedCount": 1
+    },
+    {
+      "scenario": "changing-tentative-to-decided",
+      "category": "changing_facts",
+      "probeIndex": 1,
+      "ask": "Am I leaving my job?",
+      "retrievedNames": [
+        "commute",
+        "Ignatius Polk",
+        "Tomato Seedlings",
+        "Jupiter",
+        "Crossword Puzzles",
+        "Water Testing Kit",
+        "Northwind",
+        "Wool Scarf"
+      ],
+      "brief": "not_run: BudgetExhausted",
+      "recall": [
+        1,
+        1
+      ],
+      "recallAt1": [
+        0,
+        1
+      ],
+      "recallAt3": [
+        0,
+        1
+      ],
+      "firstRank": 7,
+      "coversGraph": false,
+      "precision": [
+        1,
+        8
+      ],
+      "precisionAt3": [
+        0,
+        3
+      ],
+      "inserted": 6,
+      "sameStory": 1,
+      "confused": null,
+      "stale": null,
+      "staleVacuous": false,
+      "staleIn": [],
+      "briefChecked": false,
+      "status": "wrong",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [],
+      "expectedCount": 1
+    },
+    {
+      "scenario": "changing-tentative-to-decided",
+      "category": "changing_facts",
+      "probeIndex": 2,
+      "ask": "Who did I talk to about work?",
+      "retrievedNames": [
+        "Tomato Seedlings",
+        "commute",
+        "Northwind",
+        "Ignatius Polk",
+        "Pickle",
+        "Catnip Mice",
+        "Fernhollow Community Garden",
+        "Chess Club"
+      ],
+      "brief": "not_run: BudgetExhausted",
+      "recall": [
+        0,
+        1
+      ],
+      "recallAt1": [
+        0,
+        1
+      ],
+      "recallAt3": [
+        0,
+        1
+      ],
+      "firstRank": null,
+      "coversGraph": false,
+      "precision": [
+        0,
+        8
+      ],
+      "precisionAt3": [
+        0,
+        3
+      ],
+      "inserted": 6,
+      "sameStory": 2,
+      "confused": null,
+      "stale": null,
+      "staleVacuous": false,
+      "staleIn": [],
+      "briefChecked": false,
+      "status": "n/a",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [
+        {
+          "name": "Priya",
+          "why": "not_retrieved"
+        }
+      ],
+      "expectedCount": 1
+    },
+    {
+      "scenario": "changing-tentative-to-decided",
+      "category": "changing_facts",
+      "probeIndex": 3,
+      "ask": "Where do I work?",
+      "retrievedNames": [
+        "Crossword Puzzles",
+        "commute",
+        "Ignatius Polk",
+        "Backyard Telescope",
+        "Seed Catalog",
+        "Priya",
+        "Tomato Seedlings",
+        "Pickle"
+      ],
+      "brief": "not_run: BudgetExhausted",
+      "recall": [
+        0,
+        1
+      ],
+      "recallAt1": [
+        0,
+        1
+      ],
+      "recallAt3": [
+        0,
+        1
+      ],
+      "firstRank": null,
+      "coversGraph": false,
+      "precision": [
+        0,
+        8
+      ],
+      "precisionAt3": [
+        0,
+        3
+      ],
+      "inserted": 6,
+      "sameStory": 2,
+      "confused": null,
+      "stale": null,
+      "staleVacuous": false,
+      "staleIn": [],
+      "briefChecked": false,
+      "status": "n/a",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [
+        {
+          "name": "Northwind",
+          "why": "not_retrieved"
+        }
+      ],
+      "expectedCount": 1
+    },
+    {
+      "scenario": "continuity-two-sams",
+      "category": "continuity",
+      "probeIndex": 0,
+      "ask": "What did Sam think of the doc?",
+      "retrievedNames": [
+        "design doc",
+        "Sam Ortiz",
+        "caching section",
+        "Sam Lee",
+        "bouldering",
+        "Granite Hall",
+        "purple route",
+        "Backyard Telescope"
+      ],
+      "brief": "not_run: BudgetExhausted",
+      "recall": [
+        1,
+        1
+      ],
+      "recallAt1": [
+        0,
+        1
+      ],
+      "recallAt3": [
+        1,
+        1
+      ],
+      "firstRank": 2,
+      "coversGraph": false,
+      "precision": [
+        1,
+        8
+      ],
+      "precisionAt3": [
+        1,
+        3
+      ],
+      "inserted": 1,
+      "sameStory": 6,
+      "confused": null,
+      "stale": null,
+      "staleVacuous": false,
+      "staleIn": [],
+      "briefChecked": false,
+      "status": "n/a",
+      "order": "n/a",
+      "ambiguity": "acknowledged",
+      "misses": [],
+      "expectedCount": 1
+    },
+    {
+      "scenario": "continuity-two-sams",
+      "category": "continuity",
+      "probeIndex": 1,
+      "ask": "Who do I go climbing with?",
+      "retrievedNames": [
+        "design doc",
+        "Crossword Puzzles",
+        "Tomato Seedlings",
+        "Seed Catalog",
+        "Ignatius Polk",
+        "Pickle",
+        "Granite Hall",
+        "Backyard Telescope"
+      ],
+      "brief": "not_run: BudgetExhausted",
+      "recall": [
+        1,
+        2
+      ],
+      "recallAt1": [
+        0,
+        2
+      ],
+      "recallAt3": [
+        0,
+        2
+      ],
+      "firstRank": 7,
+      "coversGraph": false,
+      "precision": [
+        1,
+        8
+      ],
+      "precisionAt3": [
+        0,
+        3
+      ],
+      "inserted": 6,
+      "sameStory": 1,
+      "confused": null,
+      "stale": null,
+      "staleVacuous": false,
+      "staleIn": [],
+      "briefChecked": false,
+      "status": "n/a",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [
+        {
+          "name": "Sam Lee",
+          "why": "not_retrieved"
+        }
+      ],
+      "expectedCount": 2
+    },
+    {
+      "scenario": "continuity-two-sams",
+      "category": "continuity",
+      "probeIndex": 2,
+      "ask": "Which Sam is my coworker?",
+      "retrievedNames": [
+        "Sam Ortiz",
+        "Sam Lee",
+        "purple route",
+        "caching section",
+        "bouldering",
+        "Granite Hall",
+        "design doc",
+        "Backyard Telescope"
+      ],
+      "brief": "not_run: BudgetExhausted",
+      "recall": [
+        1,
+        1
+      ],
+      "recallAt1": [
+        1,
+        1
+      ],
+      "recallAt3": [
+        1,
+        1
+      ],
+      "firstRank": 1,
+      "coversGraph": false,
+      "precision": [
+        1,
+        8
+      ],
+      "precisionAt3": [
+        1,
+        3
+      ],
+      "inserted": 1,
+      "sameStory": 6,
+      "confused": null,
+      "stale": null,
+      "staleVacuous": false,
+      "staleIn": [],
+      "briefChecked": false,
+      "status": "n/a",
+      "order": "n/a",
+      "ambiguity": "acknowledged",
+      "misses": [],
+      "expectedCount": 1
+    },
+    {
+      "scenario": "continuity-two-sams",
+      "category": "continuity",
+      "probeIndex": 3,
+      "ask": "Where do I go bouldering?",
+      "retrievedNames": [
+        "bouldering",
+        "design doc",
+        "Crossword Puzzles",
+        "Tomato Seedlings",
+        "purple route",
+        "Ignatius Polk",
+        "Sam Lee",
+        "Backyard Telescope"
+      ],
+      "brief": "not_run: BudgetExhausted",
+      "recall": [
+        0,
+        1
+      ],
+      "recallAt1": [
+        0,
+        1
+      ],
+      "recallAt3": [
+        0,
+        1
+      ],
+      "firstRank": null,
+      "coversGraph": false,
+      "precision": [
+        0,
+        8
+      ],
+      "precisionAt3": [
+        0,
+        3
+      ],
+      "inserted": 4,
+      "sameStory": 4,
+      "confused": null,
+      "stale": null,
+      "staleVacuous": false,
+      "staleIn": [],
+      "briefChecked": false,
+      "status": "n/a",
+      "order": "n/a",
+      "ambiguity": "n/a",
+      "misses": [
+        {
+          "name": "Granite Hall",
+          "why": "not_retrieved"
+        }
+      ],
+      "expectedCount": 1
+    }
+  ]
+}
