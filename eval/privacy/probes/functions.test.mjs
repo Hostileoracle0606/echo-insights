@@ -1,3 +1,4 @@
+import { readdirSync } from 'node:fs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { FUNCTION_TARGETS, classifyFunction, probeFunctions } from './functions.mjs';
@@ -7,9 +8,16 @@ const KINDS = ['owner', 'missing', 'anon_only', 'expired', 'forged', 'malformed'
 const headersByKind = Object.fromEntries(KINDS.map((k) => [k, { apikey: 'k', authorization: `Bearer ${k}` }]));
 const base = { url: 'http://127.0.0.1:55321', headersByKind, notebookId: 'nb', canaries: [], internalSecret: 's', ownerMarkers: ['pm-entity-a'] };
 
-test('targets every edge function on main', () => {
-  assert.deepEqual(FUNCTION_TARGETS.map((t) => t.name).sort(),
-    ['embed-entities', 'extract-graph', 'retrieve-memory', 'speak-agent']);
+// Every edge function on disk is probed or excluded here with a reason.
+const NOT_PROBED = {
+  'delete-account': 'its owner control would delete test user A mid-run; covered by the pgTAP deletion tests (Release 1, #37)',
+};
+
+test('targets every edge function on disk', () => {
+  const dir = new URL('../../../supabase/functions/', import.meta.url);
+  const onDisk = readdirSync(dir, { withFileTypes: true })
+    .filter((d) => d.isDirectory() && !d.name.startsWith('_')).map((d) => d.name).sort();
+  assert.deepEqual([...FUNCTION_TARGETS.map((t) => t.name), ...Object.keys(NOT_PROBED)].sort(), onDisk);
 });
 
 test('classifyFunction: only auth refusals and post-auth notebook refusals deny', () => {
@@ -62,15 +70,6 @@ test('retrieve-memory owner control needs A\'s entity in the answer, not just a 
   assert.equal(control.observed, 'error');
 });
 
-test('legacy extract-graph owner control proves auth with a notebook that does not exist', async () => {
-  const bodies = [];
-  const cells = await probeFunctions({
-    ...base, kinds: ['owner'], targets: ['extract-graph'],
-    fetchImpl: async (_url, init) => { bodies.push(JSON.parse(init.body)); return new Response('{"error":"notebook not found"}', { status: 404 }); },
-  });
-  assert.notEqual(bodies[0].notebookId, 'nb');
-  assert.equal(cells.find((c) => c.control).pass, true);
-});
 
 test('speak-agent: a second real user may use it, a deleted one may not', async () => {
   const cells = await probeFunctions({

@@ -8,7 +8,8 @@ import { findLeaks, newCanary } from '../canary.mjs';
 export const FUNCTION_TARGETS = Object.freeze([
   { name: 'retrieve-memory' },
   { name: 'speak-agent', userScoped: true },
-  { name: 'extract-graph' },
+  // extract-graph (legacy Groq edge function) was removed by LM-118; extraction
+  // is the AWS Lambda, probed in-process by probes/lambdas.mjs.
   { name: 'embed-entities', internal: true },
 ]);
 
@@ -28,7 +29,7 @@ async function send(fetchImpl, url, headers, body) {
       method: 'POST',
       headers: { ...headers, 'content-type': 'application/json' },
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(20_000),
+      signal: AbortSignal.timeout(60_000), // a cold local edge runtime loads gte-small on first use (~30 s),
     });
     const text = await response.text();
     return { status: response.status, text: `${JSON.stringify([...response.headers])}\n${text}` };
@@ -78,17 +79,6 @@ export async function probeFunctions({
               } : undefined,
             });
           }
-        } else if (target.name === 'extract-graph' && owner) {
-          // Past auth, a notebook that doesn't exist is refused before any provider call.
-          await probe({
-            credential: kind, operation: 'invoke', headers, expected: 'allow', control: true,
-            body: { notebookId: randomUUID() },
-            judge: (result, watched) => {
-              if (findLeaks([result.text], watched).length) return 'leak';
-              return result.status === 404 && /notebook not found/.test(result.text) ? 'allow'
-                : classifyFunction({ ...result, canaries: watched }) === 'deny' ? 'deny' : 'error';
-            },
-          });
         } else {
           await probe({ credential: kind, operation: 'invoke', headers, expected, control: owner, body: { notebookId } });
         }
