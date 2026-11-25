@@ -52,7 +52,7 @@
 create extension if not exists pgtap;
 
 begin;
-select plan(2 + 3 * 19 + 1 + 2 + 3 * 7 + 3);
+select plan(2 + 3 * 23 + 1 + 2 + 3 * 7 + 3);
 
 -- ── inventory: table → predicate selecting one user's rows ─────────────────
 -- Placeholders: %U% user id, %N% that user's notebook id, %S% runtime session id.
@@ -74,6 +74,10 @@ insert into inventory values
   ('session_cards',                'user_id = ''%U%'''),
   ('session_briefs',               'user_id = ''%U%'''),
   ('forget_erase_jobs',            'user_id = ''%U%'''),
+  ('memory_facts',                 'user_id = ''%U%'''),
+  ('memory_fact_corrections',      'user_id = ''%U%'''),
+  ('conversation_state',           'user_id = ''%U%'''),
+  ('memory_backfill_progress',     'user_id = ''%U%'''),
   -- owned through a notebook / session only (no user_id): cascade from notebooks
   ('notebook_commit_requests',     'notebook_id = ''%N%'''),
   ('conversation_runtime_inbox',   'session_id = ''%S%'''),
@@ -209,6 +213,14 @@ insert into public.forget_erase_jobs (user_id, entity_hash, hashes, max_words)
   select uid, 'hash', array['h'], 2 from who;
 insert into public.forget_erase_batches (job_id, batch_no, request_hash, result)
   select j.id, 1, 'h', '{}'::jsonb from public.forget_erase_jobs j join who on j.user_id = who.uid;
+insert into public.memory_facts (user_id, entity_id, attribute, status, stated_at, value_text, source_notebook_id)
+  select uid, 'maya', 'city', 'confirmed', now(), 'Lisbon', nid from who;
+insert into public.memory_fact_corrections (user_id, fact_id, change, read_back)
+  select f.user_id, f.id, '{}'::jsonb, 'r' from public.memory_facts f join who on f.user_id = who.uid;
+insert into public.conversation_state (notebook_id, user_id, state)
+  select nid, uid, '{}'::jsonb from who;
+insert into public.memory_backfill_progress (user_id, last_created_at, last_entry_id)
+  select uid, now(), gen_random_uuid() from who;
 insert into public.retrieve_rate_limits (scope, window_start, count)
   select s, now(), 1 from who, unnest(array['user:' || uid, 'notebook:' || nid]) s;
 
