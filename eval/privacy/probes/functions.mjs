@@ -30,7 +30,7 @@ async function send(fetchImpl, url, headers, body) {
       headers: { ...headers, 'content-type': 'application/json' },
       body: JSON.stringify(body),
       // A cold local edge runtime can take 30 s+ on first use; PRIVACY_FUNCTION_TIMEOUT_MS overrides.
-      signal: AbortSignal.timeout(Number(process.env.PRIVACY_FUNCTION_TIMEOUT_MS ?? 60_000)),,
+      signal: AbortSignal.timeout(Number(process.env.PRIVACY_FUNCTION_TIMEOUT_MS ?? 60_000)),
     });
     const text = await response.text();
     return { status: response.status, text: `${JSON.stringify([...response.headers])}\n${text}` };
