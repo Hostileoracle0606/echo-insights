@@ -4,10 +4,12 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 
+import '../logic/timing_marks.dart';
 import '../logic/voice_log.dart';
 import '../models/session_brief.dart';
 import '../services/session_brief_service.dart';
 import 'supabase_provider.dart';
+import 'timing_provider.dart';
 
 /// Waits before re-asking for a brief that failed for a reason that can
 /// pass (Gemini's per-minute rate limit, a server error, the network).
@@ -24,10 +26,13 @@ class OpeningPrep {
   OpeningPrep(
     this._service, {
     Timer Function(Duration, void Function()) startTimer = Timer.new,
-  }) : _startTimer = startTimer;
+    TimingMarks? timing,
+  })  : _startTimer = startTimer,
+        _timing = timing ?? TimingMarks.instance;
 
   final SessionBriefService _service;
   final Timer Function(Duration, void Function()) _startTimer;
+  final TimingMarks _timing;
 
   /// The notebook whose brief failed and will be asked for again. Only the
   /// latest matters: the newest brief replaces older ones anyway.
@@ -140,13 +145,22 @@ class OpeningPrep {
   /// [clear]) is discarded.
   Future<void> refresh() async {
     final generation = ++_generation;
+    final started = _timing.now;
+    final overlapAtStart = _timing.turnActive;
+    var ok = false;
     try {
       final loaded = await _service.load();
+      ok = true;
       if (generation != _generation) return;
       _current = _keepLocalPlayed(loaded);
     } catch (error) {
       // debugPrintStack can itself throw on async traces; keep this plain.
       debugPrint('OpeningPrep.refresh failed: $error');
+    } finally {
+      _timing.span('opening_prep', since: started, fields: {
+        'ok': ok,
+        'overlap': overlapAtStart || _timing.turnActive,
+      });
     }
   }
 
@@ -229,5 +243,8 @@ class OpeningPrep {
 }
 
 final openingPrepProvider = Provider<OpeningPrep>((ref) {
-  return OpeningPrep(ref.watch(sessionBriefServiceProvider));
+  return OpeningPrep(
+    ref.watch(sessionBriefServiceProvider),
+    timing: ref.watch(timingMarksProvider),
+  );
 });

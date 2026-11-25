@@ -1,0 +1,234 @@
+{
+  "meta": {
+    "scenario": "changing-similar-names",
+    "extractorVersion": "memory-eval/v1",
+    "mode": "wiki",
+    "model": "gemini-2.5-flash",
+    "turns": 2,
+    "providerCalls": 2,
+    "actions": [],
+    "lostTurns": [],
+    "extractedAt": "2026-11-25T02:19:53.160Z",
+    "commit": "67b3eb3"
+  },
+  "digest": "4c63a7f653bbac5e89e6e63db7f0b39145bb28d4907f1338799970a07eb025a5",
+  "snapshot": {
+    "version": 1,
+    "notebook": {
+      "title": "memory eval: changing-similar-names",
+      "title_source": "auto",
+      "started_at": "2026-11-25T02:19:49.034+00:00",
+      "ended_at": null,
+      "duration_seconds": null,
+      "entity_count": 6,
+      "summary": null,
+      "archived_at": null,
+      "revision": 2,
+      "conversation_mode": "just_talk",
+      "mode_context": {},
+      "transcript_forgotten_at": null
+    },
+    "suppressionKey": null,
+    "tables": {
+      "journal_entries": [
+        {
+          "id": "$entry-1",
+          "text": "My colleague Priya Shah is leading the Atlas migration.",
+          "created_at": "2026-11-25T02:19:50.949152+00:00",
+          "entity_ids": [
+            "priya-shah",
+            "project-atlas",
+            "atlas-migration"
+          ],
+          "relation_ids": [
+            "priya-shah__leading__project-atlas",
+            "atlas-migration__part_of__project-atlas"
+          ]
+        },
+        {
+          "id": "$entry-2",
+          "text": "Priyanka Rao from finance approved the Atlas budget today.",
+          "created_at": "2026-11-25T02:19:52.991797+00:00",
+          "entity_ids": [
+            "priyanka-rao",
+            "finance",
+            "atlas-budget",
+            "project-atlas"
+          ],
+          "relation_ids": [
+            "priyanka-rao__from__finance",
+            "priyanka-rao__approved__atlas-budget",
+            "atlas-budget__part_of__project-atlas"
+          ]
+        }
+      ],
+      "entities": [
+        {
+          "id": "atlas-budget",
+          "name": "Atlas budget",
+          "type": "other",
+          "description": null,
+          "metadata": {},
+          "mentions": 1,
+          "first_seen": "2026-11-25T02:19:52.986+00:00",
+          "last_seen": "2026-11-25T02:19:52.986+00:00",
+          "questions": [
+            "What does the Atlas budget cover?",
+            "What was the original proposed amount for the Atlas budget?",
+            "What are the key components of the Atlas budget?"
+          ],
+          "description_source": "extracted"
+        },
+        {
+          "id": "atlas-migration",
+          "name": "Atlas migration",
+          "type": "event",
+          "description": "Priya Shah is leading the Atlas migration.",
+          "metadata": {},
+          "mentions": 1,
+          "first_seen": "2026-11-25T02:19:50.935+00:00",
+          "last_seen": "2026-11-25T02:19:50.935+00:00",
+          "questions": [
+            "What is the scope of the Atlas migration?",
+            "What are the key milestones for the Atlas migration?",
+            "What are the potential risks of the Atlas migration?",
+            "How will the Atlas migration impact your work?"
+          ],
+          "description_source": "extracted"
+        },
+        {
+          "id": "finance",
+          "name": "finance",
+          "type": "organization",
+          "description": null,
+          "metadata": {},
+          "mentions": 1,
+          "first_seen": "2026-11-25T02:19:52.986+00:00",
+          "last_seen": "2026-11-25T02:19:52.986+00:00",
+          "questions": [
+            "What is the structure of the finance department?",
+            "What are your typical interactions with the finance department?",
+            "What's your overall impression of the finance department?"
+          ],
+          "description_source": "extracted"
+        },
+        {
+          "id": "priya-shah",
+          "name": "Priya Shah",
+          "type": "person",
+          "description": "My colleague Priya Shah is leading the Atlas migration.",
+          "metadata": {},
+          "mentions": 1,
+          "first_seen": "2026-11-25T02:19:50.935+00:00",
+          "last_seen": "2026-11-25T02:19:50.935+00:00",
+          "questions": [
+            "What is Priya like as a colleague?",
+            "How long have you worked with Priya?",
+            "What are Priya's strengths?",
+            "What's Priya's background?"
+          ],
+          "description_source": "extracted"
+        },
+        {
+          "id": "priyanka-rao",
+          "name": "Priyanka Rao",
+          "type": "person",
+          "description": "from finance",
+          "metadata": {},
+          "mentions": 1,
+          "first_seen": "2026-11-25T02:19:52.986+00:00",
+          "last_seen": "2026-11-25T02:19:52.986+00:00",
+          "questions": [
+            "What is Priyanka's role in finance?",
+            "How often do you interact with Priyanka?",
+            "What's your working relationship with Priyanka like?"
+          ],
+          "description_source": "extracted"
+        },
+        {
+          "id": "project-atlas",
+          "name": "Project Atlas",
+          "type": "project",
+          "description": "Priya Shah is leading the Atlas migration.",
+          "metadata": {},
+          "mentions": 2,
+          "first_seen": "2026-11-25T02:19:50.935+00:00",
+          "last_seen": "2026-11-25T02:19:52.986+00:00",
+          "questions": [
+            "What is Project Atlas about?",
+            "What is the goal of the Atlas migration?",
+            "What challenges are involved in the Atlas migration?",
+            "Who else is working on Project Atlas?"
+          ],
+          "description_source": "extracted"
+        }
+      ],
+      "relations": [
+        {
+          "id": "atlas-budget__part_of__project-atlas",
+          "source_id": "atlas-budget",
+          "target_id": "project-atlas",
+          "label": "part_of",
+          "metadata": {},
+          "created_at": "2026-11-25T02:19:52.986+00:00",
+          "superseded_at": null
+        },
+        {
+          "id": "atlas-migration__part_of__project-atlas",
+          "source_id": "atlas-migration",
+          "target_id": "project-atlas",
+          "label": "part_of",
+          "metadata": {},
+          "created_at": "2026-11-25T02:19:50.935+00:00",
+          "superseded_at": null
+        },
+        {
+          "id": "priya-shah__leading__project-atlas",
+          "source_id": "priya-shah",
+          "target_id": "project-atlas",
+          "label": "leading",
+          "metadata": {},
+          "created_at": "2026-11-25T02:19:50.935+00:00",
+          "superseded_at": null
+        },
+        {
+          "id": "priyanka-rao__approved__atlas-budget",
+          "source_id": "priyanka-rao",
+          "target_id": "atlas-budget",
+          "label": "approved",
+          "metadata": {},
+          "created_at": "2026-11-25T02:19:52.986+00:00",
+          "superseded_at": null
+        },
+        {
+          "id": "priyanka-rao__from__finance",
+          "source_id": "priyanka-rao",
+          "target_id": "finance",
+          "label": "from",
+          "metadata": {},
+          "created_at": "2026-11-25T02:19:52.986+00:00",
+          "superseded_at": null
+        }
+      ],
+      "entity_suppressions": [],
+      "conversation_turns": [
+        {
+          "turn_id": "changing-similar-names-s1-t1",
+          "speaker": "user",
+          "text": "My colleague Priya Shah is leading the Atlas migration.",
+          "spoken_at": "2026-11-25T02:19:49.04+00:00",
+          "created_at": "2026-11-25T02:19:49.040196+00:00",
+          "input": "typed"
+        },
+        {
+          "turn_id": "changing-similar-names-s2-t1",
+          "speaker": "user",
+          "text": "Priyanka Rao from finance approved the Atlas budget today.",
+          "spoken_at": "2026-11-25T02:19:50.97+00:00",
+          "created_at": "2026-11-25T02:19:50.974296+00:00",
+          "input": "typed"
+        }
+      ]
+    }
+  }
+}

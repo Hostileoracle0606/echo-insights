@@ -1,0 +1,153 @@
+{
+  "meta": {
+    "scenario": "changing-tentative-to-decided",
+    "extractorVersion": "memory-eval/v1",
+    "mode": "wiki",
+    "model": "gemini-2.5-flash",
+    "turns": 2,
+    "providerCalls": 2,
+    "actions": [],
+    "lostTurns": [
+      {
+        "turnId": "changing-tentative-to-decided-s2-t1",
+        "reason": "commit invalidChange",
+        "undeclaredEndpoints": [
+          "talked"
+        ],
+        "patch": {
+          "entities": [
+            {
+              "questions": [
+                "How do you know Priya?",
+                "What is Priya like?",
+                "How often do you talk to Priya?"
+              ],
+              "type": "person",
+              "name": "Priya"
+            },
+            {
+              "name": "Northwind",
+              "type": "organization"
+            }
+          ],
+          "relations": [
+            {
+              "source": "Talked",
+              "label": "with",
+              "target": "Priya"
+            },
+            {
+              "target": "Northwind",
+              "label": "discussed",
+              "source": "Priya"
+            }
+          ],
+          "supersedes": []
+        }
+      }
+    ],
+    "extractedAt": "2026-11-24T18:36:26.750Z",
+    "commit": "c96c142"
+  },
+  "digest": "f8b23d3478a40f2b5191e9806f9acc0fc5fb9790dd7781efda4fae3d579bcd26",
+  "snapshot": {
+    "version": 1,
+    "notebook": {
+      "title": "memory eval: changing-tentative-to-decided",
+      "title_source": "auto",
+      "started_at": "2026-11-24T18:36:22.776+00:00",
+      "ended_at": null,
+      "duration_seconds": null,
+      "entity_count": 2,
+      "summary": null,
+      "archived_at": null,
+      "revision": 1,
+      "conversation_mode": "just_talk",
+      "mode_context": {},
+      "transcript_forgotten_at": null
+    },
+    "suppressionKey": null,
+    "tables": {
+      "journal_entries": [
+        {
+          "id": "$entry-1",
+          "text": "I might leave Northwind, the commute is killing me.",
+          "created_at": "2026-11-24T18:36:25.20749+00:00",
+          "entity_ids": [
+            "northwind",
+            "commute"
+          ],
+          "relation_ids": [
+            "commute__related_to__northwind"
+          ]
+        }
+      ],
+      "entities": [
+        {
+          "id": "commute",
+          "name": "commute",
+          "type": "activity",
+          "description": "The user's commute is causing them distress.",
+          "metadata": {},
+          "mentions": 1,
+          "first_seen": "2026-11-24T18:36:25.205+00:00",
+          "last_seen": "2026-11-24T18:36:25.205+00:00",
+          "questions": [
+            "What's your commute like?",
+            "How long is your commute?",
+            "What makes your commute so difficult?",
+            "What would an ideal commute look like?"
+          ],
+          "description_source": "extracted"
+        },
+        {
+          "id": "northwind",
+          "name": "Northwind",
+          "type": "organization",
+          "description": "The user might leave Northwind.",
+          "metadata": {},
+          "mentions": 1,
+          "first_seen": "2026-11-24T18:36:25.205+00:00",
+          "last_seen": "2026-11-24T18:36:25.205+00:00",
+          "questions": [
+            "What kind of organization is Northwind?",
+            "What do you do at Northwind?",
+            "What would you miss about Northwind?",
+            "What would a new job need to offer?"
+          ],
+          "description_source": "extracted"
+        }
+      ],
+      "relations": [
+        {
+          "id": "commute__related_to__northwind",
+          "source_id": "commute",
+          "target_id": "northwind",
+          "label": "related_to",
+          "metadata": {},
+          "created_at": "2026-11-24T18:36:25.205+00:00",
+          "superseded_at": null
+        }
+      ],
+      "entity_suppressions": [],
+      "conversation_turns": [
+        {
+          "turn_id": "changing-tentative-to-decided-s1-t1",
+          "speaker": "user",
+          "text": "I might leave Northwind, the commute is killing me.",
+          "spoken_at": "2026-11-24T18:36:22.784+00:00",
+          "created_at": "2026-11-24T18:36:22.784552+00:00",
+          "input": "typed"
+        },
+        {
+          "turn_id": "changing-tentative-to-decided-s2-t1",
+          "speaker": "user",
+          "text": "Talked it over with Priya. I decided to stay at Northwind.",
+          "spoken_at": "2026-11-24T18:36:25.22+00:00",
+          "created_at": "2026-11-24T18:36:25.220543+00:00",
+          "input": "typed"
+        }
+      ]
+    }
+  }
+}

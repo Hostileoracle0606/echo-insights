@@ -1,0 +1,8 @@
+{"id":"continuity-two-alexes","category":"continuity",
+ "sessions":[{"turns":["My neighbor Alex Brandt lent me his extension ladder for the gutters."]},
+             {"turns":["My cousin Alex Moreau is visiting from Quebec next week."]},
+             {"turns":["Returned the ladder to Alex this morning and thanked him with some cookies."]}],
+ "probes":[{"ask":"Did I give back what I borrowed?","expect_retrieved":["Alex Brandt"]},
+           {"ask":"Who is visiting from Quebec?","expect_retrieved":["Alex Moreau"]},
+           {"ask":"Tell me about Alex.","expect_retrieved":["Alex Brandt","Alex Moreau"],"expect_ambiguity":true,"ambiguity_token":"Alex"},
+           {"ask":"Who lent me a ladder?","expect_retrieved":["Alex Brandt"]}]}

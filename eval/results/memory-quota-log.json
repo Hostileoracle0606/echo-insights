@@ -1,0 +1,24 @@
+{
+  "2026-11-18": {
+    "used": 18,
+    "limit": 18,
+    "stops": [
+      "QuotaExhausted"
+    ]
+  },
+  "2026-11-19": {
+    "used": 7,
+    "limit": 18,
+    "stops": [
+      "QuotaExhausted",
+      "BudgetExhausted"
+    ]
+  },
+  "2026-11-24": {
+    "used": 69,
+    "limit": 18,
+    "stops": [
+      "BudgetExhausted"
+    ]
+  }
+}

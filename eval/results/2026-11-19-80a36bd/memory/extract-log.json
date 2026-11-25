@@ -1,0 +1,97 @@
+[
+  {
+    "scenario": "continuity-paraphrase",
+    "outcome": "saved",
+    "providerCalls": 2,
+    "actions": [],
+    "lostTurns": [
+      {
+        "turnId": "continuity-paraphrase-s1-t1",
+        "reason": "commit invalidChange",
+        "undeclaredEndpoints": [
+          "training"
+        ],
+        "patch": {
+          "entities": [
+            {
+              "name": "Ridgeline half marathon",
+              "type": "event",
+              "questions": [
+                "When is the Ridgeline half marathon?",
+                "Where is the Ridgeline half marathon taking place?",
+                "How long have you been training for it?",
+                "What are your goals for the race?"
+              ],
+              "description": "a half marathon event"
+            },
+            {
+              "name": "Tobias Wren",
+              "type": "person",
+              "description": "my running coach",
+              "questions": [
+                "How long have you been working with Tobias?",
+                "What's Tobias's coaching style like?",
+                "How did you find Tobias?",
+                "What kind of training plan has Tobias put together for you?"
+              ]
+            },
+            {
+              "name": "running",
+              "type": "activity",
+              "questions": [
+                "What do you enjoy most about running?",
+                "What are your running goals beyond the half marathon?",
+                "How often do you typically run?",
+                "What challenges have you faced with running?"
+              ]
+            }
+          ],
+          "relations": [
+            {
+              "target": "Ridgeline half marathon",
+              "label": "for",
+              "source": "training"
+            },
+            {
+              "source": "training",
+              "label": "with",
+              "target": "Tobias Wren"
+            },
+            {
+              "target": "running",
+              "label": "coaches",
+              "source": "Tobias Wren"
+            }
+          ],
+          "supersedes": []
+        }
+      }
+    ]
+  },
+  {
+    "scenario": "deletion-remove-project",
+    "outcome": "saved",
+    "providerCalls": 2,
+    "actions": [
+      {
+        "after_session": 1,
+        "kind": "remove",
+        "name": "Wren Box",
+        "entityId": "wren-box",
+        "outcome": "applied"
+      }
+    ],
+    "lostTurns": []
+  },
+  {
+    "scenario": "changing-similar-names",
+    "outcome": "saved",
+    "providerCalls": 2,
+    "actions": [],
+    "lostTurns": []
+  },
+  {
+    "scenario": "continuity-two-alexes",
+    "outcome": "QuotaExhausted"
+  }
+]

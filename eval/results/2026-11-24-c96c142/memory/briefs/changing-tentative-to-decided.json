@@ -1,0 +1,12 @@
+{
+  "digest": "f8b23d3478a40f2b5191e9806f9acc0fc5fb9790dd7781efda4fae3d579bcd26",
+  "brief": {
+    "focus": [
+      "Commute is difficult.",
+      "Decided to stay at Northwind."
+    ],
+    "openingLine": "Hey, good to hear from you. How are things with Northwind?",
+    "openingThread": "The person decided to stay at Northwind because the commute was difficult. This thread is worth asking about to see how they are feeling about their decision and if anything has changed."
+  },
+  "outcome": "ready"
+}

@@ -45,6 +45,8 @@ import '../services/memory_control_service.dart';
 import '../services/notebook_commit_service.dart' as commit_service;
 import '../services/notebook_runtime_service.dart';
 import '../services/retrieve_memory_service.dart';
+import '../logic/timing_marks.dart';
+import 'timing_provider.dart';
 import '../services/session_card_service.dart';
 import '../services/turn_journal_service.dart';
 import 'forget_redactor_provider.dart';
@@ -171,6 +173,14 @@ class JournalNotifier extends Notifier<JournalState> {
   /// request id is safe only when the expected revision and change are also
   /// reused byte-for-byte/logically unchanged.
   final Map<String, PreparedTurnCommit> _preparedCommits = {};
+
+  /// Turns whose commit RPC threw once: the next send is a retry (timing).
+  final Set<String> _commitRetried = {};
+
+  /// Timing only: when the user last spoke with no reply playing, and
+  /// whether a reply's audio has started.
+  int? _userSpokeAt;
+  bool _timingReplying = false;
   final Set<String> _restoredPreparedCommitIds = {};
   late final TurnEffectQueue _effectQueue = TurnEffectQueue(
     onFailure: (error, stackTrace) {
@@ -292,6 +302,7 @@ class JournalNotifier extends Notifier<JournalState> {
   // LM-63: the names forgotten since launch, redacted from everything the
   // app assembles for Lumen. Cleared on sign-out.
   ForgetRedactor get _redactor => ref.read(forgetRedactorProvider);
+  TimingMarks get _timing => ref.read(timingMarksProvider);
   // Someone was forgotten while the session was connecting: it is replaced
   // by a fresh one as soon as it is up.
   bool _reopenOnActivation = false;
@@ -448,6 +459,8 @@ class JournalNotifier extends Notifier<JournalState> {
   void _setStatus(SessionStatus status) {
     vlog('session', 'status → ${status.name}');
     _status = status;
+    _timing.turnActive =
+        status == SessionStatus.live || status == SessionStatus.paused;
     _notifyUi();
   }
 
@@ -1054,6 +1067,7 @@ class JournalNotifier extends Notifier<JournalState> {
   Future<void> _runDurableExtraction(StartDurableExtraction effect) async {
     final extractService = ref.read(extractGraphServiceProvider);
     final clock = Stopwatch()..start();
+    final extractStart = _timing.now;
     try {
       await _redactor.ensureLoaded();
       final retrieval =
@@ -1079,6 +1093,7 @@ class JournalNotifier extends Notifier<JournalState> {
         spokenAt: _spokenAt(effect.key.turnId),
       );
       vlog('timing', 'extract model +${clock.elapsedMilliseconds}ms');
+      _timing.span('extraction', since: extractStart, fields: {'ok': true});
       _lastPatches[effect.key.turnId] = patch;
       // The checkpoint carries the real result, not a marker: a restart must be
       // able to reuse exactly what the model returned.
@@ -1088,6 +1103,7 @@ class JournalNotifier extends Notifier<JournalState> {
       ));
     } catch (error) {
       vlog('session', 'durable extraction failed: $error');
+      _timing.span('extraction', since: extractStart, fields: {'ok': false});
       _dispatchTurn(
           DurableExtractionFailed(key: effect.key, message: '$error'));
     }
@@ -1187,6 +1203,7 @@ class JournalNotifier extends Notifier<JournalState> {
 
     final commitService = ref.read(notebookCommitServiceProvider);
     commit_service.CommitOutcome outcome;
+    final commitStart = _timing.now;
     try {
       final commitClock = Stopwatch()..start();
       outcome = await commitService.commitNotebook(
@@ -1196,7 +1213,16 @@ class JournalNotifier extends Notifier<JournalState> {
         change: prepared.change,
       );
       vlog('timing', 'commit +${commitClock.elapsedMilliseconds}ms');
+      _timing.span('commit', since: commitStart, fields: {
+        'ok': true,
+        'retry': _commitRetried.remove(turn.turnId),
+      });
     } catch (error) {
+      _timing.span('commit', since: commitStart, fields: {
+        'ok': false,
+        'retry': _commitRetried.contains(turn.turnId),
+      });
+      if (_timing.enabled) _commitRetried.add(turn.turnId);
       // Unknown outcome: retry the identical request with the same id. The
       // server ledger replays it if it already committed.
       vlog('session', 'commit RPC threw, retrying same requestId: $error');
@@ -1288,9 +1314,13 @@ class JournalNotifier extends Notifier<JournalState> {
   Future<void> _reloadSnapshot() async {
     final notebookId = _activeNotebookId;
     if (notebookId == null) return;
+    final started = _timing.now;
+    final overlapAtStart = _timing.turnActive;
+    var ok = false;
     try {
       final commitService = ref.read(notebookCommitServiceProvider);
       final snapshot = await commitService.getNotebookSnapshot(notebookId);
+      ok = true;
       if (snapshot == null) return;
       _revision = snapshot.revision;
       state = _adoptSnapshot(snapshot);
@@ -1299,6 +1329,11 @@ class JournalNotifier extends Notifier<JournalState> {
       _dispatchTurn(SnapshotReloaded(revision: snapshot.revision));
     } catch (error) {
       vlog('session', 'snapshot reload failed: $error');
+    } finally {
+      _timing.span('snapshot_reload', since: started, fields: {
+        'ok': ok,
+        'overlap': overlapAtStart || _timing.turnActive,
+      });
     }
   }
 
@@ -1727,6 +1762,7 @@ class JournalNotifier extends Notifier<JournalState> {
 
   Future<void> _loadNotebookUnlocked(String notebookId) async {
     final clock = Stopwatch()..start();
+    _timing.begin('notebook_open');
     // Who this account forgot, before anything is read or sent (LM-63).
     await _redactor.ensureLoaded();
     final commitService = ref.read(notebookCommitServiceProvider);
@@ -1752,6 +1788,10 @@ class JournalNotifier extends Notifier<JournalState> {
     _savedAtOpen = {for (final turn in _conversation) turn.turnId};
     _wentOffRecord = offTheRecord;
     vlog('timing', 'open: turn journal +${clock.elapsedMilliseconds}ms');
+    _timing.end('notebook_open', fields: {
+      'size': entityCountBucket(state.entities.length),
+      'overlap': _timing.turnActive,
+    });
   }
 
   /// The saved conversation, or none if it can't be read right now (the
@@ -1908,6 +1948,7 @@ class JournalNotifier extends Notifier<JournalState> {
 
   Future<NotebookTransitionResult> startSession() {
     final intent = ++_lifecycleIntent;
+    _timing.begin('tap_to_mic_open');
     // Instant feedback: the dock shows "Lumen · Connecting" on the tap
     // itself, even while another lifecycle step finishes ahead of this
     // request in the serialized queue.
@@ -2188,6 +2229,7 @@ class JournalNotifier extends Notifier<JournalState> {
       _preconnectBytes = 0;
       _capture = capture;
       await capture.start((pcm) => _onMicFrame(lease, pcm));
+      if (_timing.isOpen('tap_to_mic_open')) _timing.end('tap_to_mic_open');
       if (!_liveSessionGuard.isCurrent(lease)) return _superseded;
       final echoCancelled = await ref.read(echoCancellationProvider)();
       _echoGate = EchoGate(echoCancelled: echoCancelled)
@@ -2708,6 +2750,13 @@ class JournalNotifier extends Notifier<JournalState> {
         }
         if (text.isEmpty && !isFinal) return;
         if (text.trim().isNotEmpty) _userStillSpeaking();
+        // The wait starts at the user's last transcribed words while no
+        // reply plays (ReplyTimer's rule): transcription has no ordering
+        // guarantee against the reply, so `isFinal` can land mid-reply or
+        // only with turnComplete.
+        if (text.trim().isNotEmpty && !_timingReplying) {
+          _userSpokeAt = _timing.now;
+        }
         final events =
             isFinal ? _assembler.userFinal(text) : _assembler.userChunk(text);
         for (final event in events) {
@@ -2728,6 +2777,14 @@ class JournalNotifier extends Notifier<JournalState> {
         }
       case AgentAudio(:final pcm, :final sampleRate):
         if (_droppingCutOffReply) return;
+        if (!_timingReplying) {
+          _timingReplying = true;
+          final spokeAt = _userSpokeAt;
+          _userSpokeAt = null;
+          if (spokeAt != null) {
+            _timing.span('user_turn_end_to_first_audio', since: spokeAt);
+          }
+        }
         // Muted audio still runs the playback clock, so the dock keeps
         // showing that Lumen has the floor.
         final fed = _player?.feed(
@@ -2740,6 +2797,7 @@ class JournalNotifier extends Notifier<JournalState> {
       case InterruptedSignal():
         _memoryTurnGeneration++;
         _memoryUserTurnOpen = false;
+        _timingReplying = false;
         // Gemini supplies audio and transcription without a trustworthy
         // word-level alignment. Queuing PCM therefore cannot prove any text
         // was physically heard. The null boundary safely skips durable
@@ -2751,6 +2809,12 @@ class JournalNotifier extends Notifier<JournalState> {
       case TurnCompleteSignal():
         _memoryTurnGeneration++;
         _memoryUserTurnOpen = false;
+        // Spoken to and answered without audio: the wait never ended.
+        if (_userSpokeAt != null && !_timingReplying) {
+          _timing.end('user_turn_end_to_first_audio');
+        }
+        _userSpokeAt = null;
+        _timingReplying = false;
         // Lumen may end a turn without speaking; that ends the wait too,
         // unless it is the cut-off reply's own completion.
         if (!_droppingCutOffReply) {

@@ -1,0 +1,267 @@
+{
+  "meta": {
+    "scenario": "continuity-indirect-reference",
+    "extractorVersion": "memory-eval/v1",
+    "mode": "wiki",
+    "model": "gemini-2.5-flash",
+    "turns": 2,
+    "providerCalls": 2,
+    "actions": [],
+    "extractedAt": "2026-11-18T18:15:48.771Z",
+    "commit": "e099990"
+  },
+  "digest": "bec954f43ae5ee51426339acb53bfed543535bbee656c6ce48e24ecbba7bc703",
+  "snapshot": {
+    "version": 1,
+    "notebook": {
+      "title": "memory eval: continuity-indirect-reference",
+      "title_source": "auto",
+      "started_at": "2026-11-18T18:15:43.415+00:00",
+      "ended_at": null,
+      "duration_seconds": null,
+      "entity_count": 6,
+      "summary": null,
+      "archived_at": null,
+      "revision": 2,
+      "conversation_mode": "just_talk",
+      "mode_context": {},
+      "transcript_forgotten_at": null
+    },
+    "suppressionKey": null,
+    "tables": {
+      "journal_entries": [
+        {
+          "id": "$entry-1",
+          "text": "My sister Maren just opened a pottery studio called Clayhouse in Bellport.",
+          "created_at": "2026-11-18T18:15:46.676089+00:00",
+          "entity_ids": [
+            "maren",
+            "clayhouse",
+            "bellport",
+            "pottery-studio"
+          ],
+          "relation_ids": [
+            "maren__opened__clayhouse",
+            "clayhouse__situated_at__bellport",
+            "clayhouse__is_a__pottery-studio",
+            "maren__operates__pottery-studio"
+          ]
+        },
+        {
+          "id": "$entry-2",
+          "text": "Went to her studio opening on Saturday, the kiln room was packed all evening.",
+          "created_at": "2026-11-18T18:15:48.721731+00:00",
+          "entity_ids": [
+            "studio-opening",
+            "kiln-room",
+            "clayhouse",
+            "maren"
+          ],
+          "relation_ids": [
+            "studio-opening__event_for__clayhouse",
+            "studio-opening__event_for__maren",
+            "kiln-room__part_of__clayhouse",
+            "studio-opening__involved_place__kiln-room"
+          ]
+        }
+      ],
+      "entities": [
+        {
+          "id": "bellport",
+          "name": "Bellport",
+          "type": "place",
+          "description": "The location of Maren's new pottery studio, Clayhouse.",
+          "metadata": {},
+          "mentions": 1,
+          "first_seen": "2026-11-18T18:15:46.671+00:00",
+          "last_seen": "2026-11-18T18:15:46.671+00:00",
+          "questions": [
+            "What's Bellport like as a town?",
+            "Is Bellport a place Maren has lived for a while?",
+            "What made Maren choose Bellport for Clayhouse?",
+            "Are there other interesting places in Bellport?"
+          ],
+          "description_source": "extracted"
+        },
+        {
+          "id": "clayhouse",
+          "name": "Clayhouse",
+          "type": "organization",
+          "description": "A pottery studio opened by Maren in Bellport.",
+          "metadata": {},
+          "mentions": 2,
+          "first_seen": "2026-11-18T18:15:46.671+00:00",
+          "last_seen": "2026-11-18T18:15:48.716+00:00",
+          "questions": [
+            "What kind of classes or workshops does Clayhouse offer?",
+            "What's the atmosphere like at Clayhouse?",
+            "Is Clayhouse Maren's first business venture?",
+            "What are Maren's hopes for Clayhouse?"
+          ],
+          "description_source": "extracted"
+        },
+        {
+          "id": "kiln-room",
+          "name": "kiln room",
+          "type": "place",
+          "description": null,
+          "metadata": {},
+          "mentions": 1,
+          "first_seen": "2026-11-18T18:15:48.716+00:00",
+          "last_seen": "2026-11-18T18:15:48.716+00:00",
+          "questions": [
+            "What is a kiln room?",
+            "What kind of kilns do they have?",
+            "Is the kiln room usually packed?",
+            "What's the capacity of the kiln room?"
+          ],
+          "description_source": "extracted"
+        },
+        {
+          "id": "maren",
+          "name": "Maren",
+          "type": "person",
+          "description": "The user's sister who just opened a pottery studio.",
+          "metadata": {},
+          "mentions": 2,
+          "first_seen": "2026-11-18T18:15:46.671+00:00",
+          "last_seen": "2026-11-18T18:15:48.716+00:00",
+          "questions": [
+            "What's Maren like?",
+            "What inspired Maren to open a pottery studio?",
+            "Has Maren always been interested in pottery?",
+            "How long has Maren been working on this project?"
+          ],
+          "description_source": "extracted"
+        },
+        {
+          "id": "pottery-studio",
+          "name": "pottery studio",
+          "type": "activity",
+          "description": "A place for creating pottery, like Clayhouse.",
+          "metadata": {},
+          "mentions": 1,
+          "first_seen": "2026-11-18T18:15:46.671+00:00",
+          "last_seen": "2026-11-18T18:15:46.671+00:00",
+          "questions": [
+            "What kind of pottery is made at the studio?",
+            "Does the user have any interest in pottery?",
+            "What are the challenges of running a pottery studio?",
+            "What's the process of making pottery like?"
+          ],
+          "description_source": "extracted"
+        },
+        {
+          "id": "studio-opening",
+          "name": "studio opening",
+          "type": "event",
+          "description": null,
+          "metadata": {},
+          "mentions": 1,
+          "first_seen": "2026-11-18T18:15:48.716+00:00",
+          "last_seen": "2026-11-18T18:15:48.716+00:00",
+          "questions": [
+            "What was the atmosphere like at the studio opening?",
+            "Who all was there?",
+            "What was your favorite part of the opening?",
+            "How long did you stay?"
+          ],
+          "description_source": "extracted"
+        }
+      ],
+      "relations": [
+        {
+          "id": "clayhouse__is_a__pottery-studio",
+          "source_id": "clayhouse",
+          "target_id": "pottery-studio",
+          "label": "is_a",
+          "metadata": {},
+          "created_at": "2026-11-18T18:15:46.671+00:00",
+          "superseded_at": null
+        },
+        {
+          "id": "clayhouse__situated_at__bellport",
+          "source_id": "clayhouse",
+          "target_id": "bellport",
+          "label": "situated_at",
+          "metadata": {},
+          "created_at": "2026-11-18T18:15:46.671+00:00",
+          "superseded_at": null
+        },
+        {
+          "id": "kiln-room__part_of__clayhouse",
+          "source_id": "kiln-room",
+          "target_id": "clayhouse",
+          "label": "part_of",
+          "metadata": {},
+          "created_at": "2026-11-18T18:15:48.716+00:00",
+          "superseded_at": null
+        },
+        {
+          "id": "maren__opened__clayhouse",
+          "source_id": "maren",
+          "target_id": "clayhouse",
+          "label": "opened",
+          "metadata": {},
+          "created_at": "2026-11-18T18:15:46.671+00:00",
+          "superseded_at": null
+        },
+        {
+          "id": "maren__operates__pottery-studio",
+          "source_id": "maren",
+          "target_id": "pottery-studio",
+          "label": "operates",
+          "metadata": {},
+          "created_at": "2026-11-18T18:15:46.671+00:00",
+          "superseded_at": null
+        },
+        {
+          "id": "studio-opening__event_for__clayhouse",
+          "source_id": "studio-opening",
+          "target_id": "clayhouse",
+          "label": "event_for",
+          "metadata": {},
+          "created_at": "2026-11-18T18:15:48.716+00:00",
+          "superseded_at": null
+        },
+        {
+          "id": "studio-opening__event_for__maren",
+          "source_id": "studio-opening",
+          "target_id": "maren",
+          "label": "event_for",
+          "metadata": {},
+          "created_at": "2026-11-18T18:15:48.716+00:00",
+          "superseded_at": null
+        },
+        {
+          "id": "studio-opening__involved_place__kiln-room",
+          "source_id": "studio-opening",
+          "target_id": "kiln-room",
+          "label": "involved_place",
+          "metadata": {},
+          "created_at": "2026-11-18T18:15:48.716+00:00",
+          "superseded_at": null
+        }
+      ],
+      "entity_suppressions": [],
+      "conversation_turns": [
+        {
+          "turn_id": "continuity-indirect-reference-s1-t1",
+          "speaker": "user",
+          "text": "My sister Maren just opened a pottery studio called Clayhouse in Bellport.",
+          "spoken_at": "2026-11-18T18:15:43.441+00:00",
+          "created_at": "2026-11-18T18:15:43.445142+00:00",
+          "input": "typed"
+        },
+        {
+          "turn_id": "continuity-indirect-reference-s2-t1",
+          "speaker": "user",
+          "text": "Went to her studio opening on Saturday, the kiln room was packed all evening.",
+          "spoken_at": "2026-11-18T18:15:46.693+00:00",
+          "created_at": "2026-11-18T18:15:46.697882+00:00",
+          "input": "typed"
+        }
+      ]
+    }
+  }
+}

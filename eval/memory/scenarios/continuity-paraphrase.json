@@ -1,0 +1,7 @@
+{"id":"continuity-paraphrase","category":"continuity",
+ "sessions":[{"turns":["I've been training for the Ridgeline half marathon with my running coach, Tobias Wren."]},
+             {"turns":["My knee is sore after the long run, and Tobias says I should rest for two days."]}],
+ "probes":[{"ask":"How is the race prep going?","expect_retrieved":["Ridgeline"]},
+           {"ask":"Who is helping me get ready to run?","expect_retrieved":["Tobias Wren"]},
+           {"ask":"What did my coach say about my injury?","expect_retrieved":["Tobias Wren"]},
+           {"ask":"Have I signed up for any races?","expect_retrieved":["Ridgeline"]}]}

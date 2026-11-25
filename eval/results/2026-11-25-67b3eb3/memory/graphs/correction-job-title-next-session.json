@@ -1,0 +1,146 @@
+{
+  "meta": {
+    "scenario": "correction-job-title-next-session",
+    "extractorVersion": "memory-eval/v1",
+    "mode": "wiki",
+    "model": "gemini-2.5-flash",
+    "turns": 2,
+    "providerCalls": 2,
+    "actions": [],
+    "lostTurns": [],
+    "extractedAt": "2026-11-25T02:20:01.624Z",
+    "commit": "67b3eb3"
+  },
+  "digest": "83d2639f79121d9f9bb3d504243ba6487172f0ca519051b3d4a8204dcce03fb8",
+  "snapshot": {
+    "version": 1,
+    "notebook": {
+      "title": "memory eval: correction-job-title-next-session",
+      "title_source": "auto",
+      "started_at": "2026-11-25T02:19:58.676+00:00",
+      "ended_at": null,
+      "duration_seconds": null,
+      "entity_count": 3,
+      "summary": null,
+      "archived_at": null,
+      "revision": 2,
+      "conversation_mode": "just_talk",
+      "mode_context": {},
+      "transcript_forgotten_at": null
+    },
+    "suppressionKey": null,
+    "tables": {
+      "journal_entries": [
+        {
+          "id": "$entry-1",
+          "text": "Big news, I got promoted to senior analyst at Larkfield Bank.",
+          "created_at": "2026-11-25T02:20:00.47226+00:00",
+          "entity_ids": [
+            "larkfield-bank",
+            "senior-analyst"
+          ],
+          "relation_ids": [
+            "senior-analyst__at__larkfield-bank"
+          ]
+        },
+        {
+          "id": "$entry-2",
+          "text": "Correction from yesterday: my new title is actually staff analyst, not senior analyst.",
+          "created_at": "2026-11-25T02:20:01.592896+00:00",
+          "entity_ids": [
+            "staff-analyst",
+            "larkfield-bank"
+          ],
+          "relation_ids": [
+            "staff-analyst__at__larkfield-bank"
+          ]
+        }
+      ],
+      "entities": [
+        {
+          "id": "larkfield-bank",
+          "name": "Larkfield Bank",
+          "type": "organization",
+          "description": "The user got promoted to senior analyst at Larkfield Bank.",
+          "metadata": {},
+          "mentions": 2,
+          "first_seen": "2026-11-25T02:20:00.463+00:00",
+          "last_seen": "2026-11-25T02:20:01.591+00:00",
+          "questions": [
+            "What kind of bank is Larkfield Bank?",
+            "What are your responsibilities at Larkfield Bank?",
+            "How long have you been working at Larkfield Bank?"
+          ],
+          "description_source": "extracted"
+        },
+        {
+          "id": "senior-analyst",
+          "name": "senior analyst",
+          "type": "other",
+          "description": "The user was promoted to senior analyst.",
+          "metadata": {},
+          "mentions": 1,
+          "first_seen": "2026-11-25T02:20:00.463+00:00",
+          "last_seen": "2026-11-25T02:20:00.463+00:00",
+          "questions": [
+            "What does a senior analyst do?",
+            "What are the challenges of being a senior analyst?",
+            "What are your goals in this new role?"
+          ],
+          "description_source": "extracted"
+        },
+        {
+          "id": "staff-analyst",
+          "name": "staff analyst",
+          "type": "other",
+          "description": "The user's new title at Larkfield Bank.",
+          "metadata": {},
+          "mentions": 1,
+          "first_seen": "2026-11-25T02:20:01.591+00:00",
+          "last_seen": "2026-11-25T02:20:01.591+00:00",
+          "questions": null,
+          "description_source": "extracted"
+        }
+      ],
+      "relations": [
+        {
+          "id": "senior-analyst__at__larkfield-bank",
+          "source_id": "senior-analyst",
+          "target_id": "larkfield-bank",
+          "label": "at",
+          "metadata": {},
+          "created_at": "2026-11-25T02:20:00.463+00:00",
+          "superseded_at": "2026-11-25T02:20:01.591+00:00"
+        },
+        {
+          "id": "staff-analyst__at__larkfield-bank",
+          "source_id": "staff-analyst",
+          "target_id": "larkfield-bank",
+          "label": "at",
+          "metadata": {},
+          "created_at": "2026-11-25T02:20:01.591+00:00",
+          "superseded_at": null
+        }
+      ],
+      "entity_suppressions": [],
+      "conversation_turns": [
+        {
+          "turn_id": "correction-job-title-next-session-s1-t1",
+          "speaker": "user",
+          "text": "Big news, I got promoted to senior analyst at Larkfield Bank.",
+          "spoken_at": "2026-11-25T02:19:58.683+00:00",
+          "created_at": "2026-11-25T02:19:58.683423+00:00",
+          "input": "typed"
+        },
+        {
+          "turn_id": "correction-job-title-next-session-s2-t1",
+          "speaker": "user",
+          "text": "Correction from yesterday: my new title is actually staff analyst, not senior analyst.",
+          "spoken_at": "2026-11-25T02:20:00.482+00:00",
+          "created_at": "2026-11-25T02:20:00.486531+00:00",
+          "input": "typed"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,175 @@
+{
+  "meta": {
+    "scenario": "changing-decided-then-reversed",
+    "extractorVersion": "memory-eval/v1",
+    "mode": "wiki",
+    "model": "gemini-2.5-flash",
+    "turns": 2,
+    "providerCalls": 2,
+    "actions": [],
+    "extractedAt": "2026-11-18T18:15:58.952Z",
+    "commit": "e099990"
+  },
+  "digest": "5a3aa8ffd0058efa6ff17d5c806603aa1d993db4198a2170698f1358d55be5d1",
+  "snapshot": {
+    "version": 1,
+    "notebook": {
+      "title": "memory eval: changing-decided-then-reversed",
+      "title_source": "auto",
+      "started_at": "2026-11-18T18:15:56.193+00:00",
+      "ended_at": null,
+      "duration_seconds": null,
+      "entity_count": 4,
+      "summary": null,
+      "archived_at": null,
+      "revision": 2,
+      "conversation_mode": "just_talk",
+      "mode_context": {},
+      "transcript_forgotten_at": null
+    },
+    "suppressionKey": null,
+    "tables": {
+      "journal_entries": [
+        {
+          "id": "$entry-1",
+          "text": "We booked our anniversary trip to Lisbon for June.",
+          "created_at": "2026-11-18T18:15:57.885534+00:00",
+          "entity_ids": [
+            "anniversary-trip",
+            "lisbon",
+            "june"
+          ],
+          "relation_ids": [
+            "anniversary-trip__to__lisbon",
+            "anniversary-trip__in__june"
+          ]
+        },
+        {
+          "id": "$entry-2",
+          "text": "Plans changed, we cancelled Lisbon and are going to Kyoto instead.",
+          "created_at": "2026-11-18T18:15:58.910137+00:00",
+          "entity_ids": [
+            "kyoto",
+            "anniversary-trip"
+          ],
+          "relation_ids": [
+            "anniversary-trip__to__kyoto"
+          ]
+        }
+      ],
+      "entities": [
+        {
+          "id": "anniversary-trip",
+          "name": "anniversary trip",
+          "type": "event",
+          "description": null,
+          "metadata": {},
+          "mentions": 2,
+          "first_seen": "2026-11-18T18:15:57.881+00:00",
+          "last_seen": "2026-11-18T18:15:58.908+00:00",
+          "questions": [
+            "What anniversary is this?",
+            "What do you usually do for your anniversary?",
+            "Who are you going with?"
+          ],
+          "description_source": "extracted"
+        },
+        {
+          "id": "june",
+          "name": "June",
+          "type": "other",
+          "description": null,
+          "metadata": {},
+          "mentions": 1,
+          "first_seen": "2026-11-18T18:15:57.881+00:00",
+          "last_seen": "2026-11-18T18:15:57.881+00:00",
+          "questions": [
+            "What dates in June are you going?",
+            "Is there anything else happening in June that you're looking forward to?"
+          ],
+          "description_source": "extracted"
+        },
+        {
+          "id": "kyoto",
+          "name": "Kyoto",
+          "type": "place",
+          "description": null,
+          "metadata": {},
+          "mentions": 1,
+          "first_seen": "2026-11-18T18:15:58.908+00:00",
+          "last_seen": "2026-11-18T18:15:58.908+00:00",
+          "questions": [
+            "What do you know about Kyoto?",
+            "What are you looking forward to seeing or doing in Kyoto?",
+            "Who are you traveling with to Kyoto?"
+          ],
+          "description_source": "extracted"
+        },
+        {
+          "id": "lisbon",
+          "name": "Lisbon",
+          "type": "place",
+          "description": null,
+          "metadata": {},
+          "mentions": 1,
+          "first_seen": "2026-11-18T18:15:57.881+00:00",
+          "last_seen": "2026-11-18T18:15:57.881+00:00",
+          "questions": [
+            "What are you hoping to see or do in Lisbon?",
+            "Have you been to Lisbon before?",
+            "What made you choose Lisbon for your trip?"
+          ],
+          "description_source": "extracted"
+        }
+      ],
+      "relations": [
+        {
+          "id": "anniversary-trip__in__june",
+          "source_id": "anniversary-trip",
+          "target_id": "june",
+          "label": "in",
+          "metadata": {},
+          "created_at": "2026-11-18T18:15:57.881+00:00",
+          "superseded_at": null
+        },
+        {
+          "id": "anniversary-trip__to__kyoto",
+          "source_id": "anniversary-trip",
+          "target_id": "kyoto",
+          "label": "to",
+          "metadata": {},
+          "created_at": "2026-11-18T18:15:58.908+00:00",
+          "superseded_at": null
+        },
+        {
+          "id": "anniversary-trip__to__lisbon",
+          "source_id": "anniversary-trip",
+          "target_id": "lisbon",
+          "label": "to",
+          "metadata": {},
+          "created_at": "2026-11-18T18:15:57.881+00:00",
+          "superseded_at": "2026-11-18T18:15:58.908+00:00"
+        }
+      ],
+      "entity_suppressions": [],
+      "conversation_turns": [
+        {
+          "turn_id": "changing-decided-then-reversed-s1-t1",
+          "speaker": "user",
+          "text": "We booked our anniversary trip to Lisbon for June.",
+          "spoken_at": "2026-11-18T18:15:56.205+00:00",
+          "created_at": "2026-11-18T18:15:56.207356+00:00",
+          "input": "typed"
+        },
+        {
+          "turn_id": "changing-decided-then-reversed-s2-t1",
+          "speaker": "user",
+          "text": "Plans changed, we cancelled Lisbon and are going to Kyoto instead.",
+          "spoken_at": "2026-11-18T18:15:57.9+00:00",
+          "created_at": "2026-11-18T18:15:57.90339+00:00",
+          "input": "typed"
+        }
+      ]
+    }
+  }
+}

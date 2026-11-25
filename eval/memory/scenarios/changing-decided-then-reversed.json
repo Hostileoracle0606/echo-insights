@@ -1,0 +1,7 @@
+{"id":"changing-decided-then-reversed","category":"changing_facts",
+ "sessions":[{"turns":["We booked our anniversary trip to Lisbon for June."]},
+             {"turns":["Plans changed, we cancelled Lisbon and are going to Kyoto instead."]}],
+ "probes":[{"ask":"Where are we going for our anniversary?","expect_retrieved":["Kyoto"],"expect_order":["Lisbon","Kyoto"]},
+           {"ask":"Is the Lisbon trip still on?","expect_retrieved":["Lisbon","Kyoto"],"expect_order":["Lisbon","Kyoto"]},
+           {"ask":"What did we book for June?","expect_retrieved":["Kyoto"]},
+           {"ask":"Do we have any travel plans?","expect_retrieved":["Kyoto"]}]}

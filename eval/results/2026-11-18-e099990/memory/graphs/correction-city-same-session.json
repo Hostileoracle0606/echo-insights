@@ -1,0 +1,151 @@
+{
+  "meta": {
+    "scenario": "correction-city-same-session",
+    "extractorVersion": "memory-eval/v1",
+    "mode": "wiki",
+    "model": "gemini-2.5-flash",
+    "turns": 2,
+    "providerCalls": 2,
+    "actions": [],
+    "extractedAt": "2026-11-18T18:15:51.766Z",
+    "commit": "e099990"
+  },
+  "digest": "3e7c548109ac8aab2010d92607f7e99ef1194b3280ea1c44ab750a62ab1397be",
+  "snapshot": {
+    "version": 1,
+    "notebook": {
+      "title": "memory eval: correction-city-same-session",
+      "title_source": "auto",
+      "started_at": "2026-11-18T18:15:49.111+00:00",
+      "ended_at": null,
+      "duration_seconds": null,
+      "entity_count": 3,
+      "summary": null,
+      "archived_at": null,
+      "revision": 2,
+      "conversation_mode": "just_talk",
+      "mode_context": {},
+      "transcript_forgotten_at": null
+    },
+    "suppressionKey": null,
+    "tables": {
+      "journal_entries": [
+        {
+          "id": "$entry-1",
+          "text": "My best friend Imogen moved to Dayton last month.",
+          "created_at": "2026-11-18T18:15:50.727874+00:00",
+          "entity_ids": [
+            "imogen",
+            "dayton"
+          ],
+          "relation_ids": [
+            "imogen__moved_to__dayton"
+          ]
+        },
+        {
+          "id": "$entry-2",
+          "text": "Sorry, I misspoke, Imogen moved to Dalton, not Dayton.",
+          "created_at": "2026-11-18T18:15:51.686781+00:00",
+          "entity_ids": [
+            "dalton",
+            "imogen"
+          ],
+          "relation_ids": [
+            "imogen__moved_to__dalton"
+          ]
+        }
+      ],
+      "entities": [
+        {
+          "id": "dalton",
+          "name": "Dalton",
+          "type": "place",
+          "description": null,
+          "metadata": {},
+          "mentions": 1,
+          "first_seen": "2026-11-18T18:15:51.68+00:00",
+          "last_seen": "2026-11-18T18:15:51.68+00:00",
+          "questions": [
+            "What's Dalton like?",
+            "What do you know about Dalton?",
+            "Have you visited Dalton?"
+          ],
+          "description_source": "extracted"
+        },
+        {
+          "id": "dayton",
+          "name": "Dayton",
+          "type": "place",
+          "description": "Imogen moved to Dayton last month.",
+          "metadata": {},
+          "mentions": 1,
+          "first_seen": "2026-11-18T18:15:50.716+00:00",
+          "last_seen": "2026-11-18T18:15:50.716+00:00",
+          "questions": [
+            "What do you know about Dayton?",
+            "Have you visited Dayton?",
+            "What's it like for Imogen living in Dayton?",
+            "What's the significance of Dayton to Imogen?"
+          ],
+          "description_source": "extracted"
+        },
+        {
+          "id": "imogen",
+          "name": "Imogen",
+          "type": "person",
+          "description": "My best friend Imogen moved to Dayton last month.",
+          "metadata": {},
+          "mentions": 2,
+          "first_seen": "2026-11-18T18:15:50.716+00:00",
+          "last_seen": "2026-11-18T18:15:51.68+00:00",
+          "questions": [
+            "How long have you known Imogen?",
+            "What's Imogen like?",
+            "How often do you see or talk to Imogen?",
+            "What do you miss most about Imogen being nearby?"
+          ],
+          "description_source": "extracted"
+        }
+      ],
+      "relations": [
+        {
+          "id": "imogen__moved_to__dalton",
+          "source_id": "imogen",
+          "target_id": "dalton",
+          "label": "moved_to",
+          "metadata": {},
+          "created_at": "2026-11-18T18:15:51.68+00:00",
+          "superseded_at": null
+        },
+        {
+          "id": "imogen__moved_to__dayton",
+          "source_id": "imogen",
+          "target_id": "dayton",
+          "label": "moved_to",
+          "metadata": {},
+          "created_at": "2026-11-18T18:15:50.716+00:00",
+          "superseded_at": "2026-11-18T18:15:51.68+00:00"
+        }
+      ],
+      "entity_suppressions": [],
+      "conversation_turns": [
+        {
+          "turn_id": "correction-city-same-session-s1-t1",
+          "speaker": "user",
+          "text": "My best friend Imogen moved to Dayton last month.",
+          "spoken_at": "2026-11-18T18:15:49.127+00:00",
+          "created_at": "2026-11-18T18:15:49.128484+00:00",
+          "input": "typed"
+        },
+        {
+          "turn_id": "correction-city-same-session-s1-t2",
+          "speaker": "user",
+          "text": "Sorry, I misspoke, Imogen moved to Dalton, not Dayton.",
+          "spoken_at": "2026-11-18T18:15:50.74+00:00",
+          "created_at": "2026-11-18T18:15:50.742065+00:00",
+          "input": "typed"
+        }
+      ]
+    }
+  }
+}

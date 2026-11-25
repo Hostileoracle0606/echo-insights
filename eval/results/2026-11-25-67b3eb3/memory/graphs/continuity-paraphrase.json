@@ -1,0 +1,258 @@
+{
+  "meta": {
+    "scenario": "continuity-paraphrase",
+    "extractorVersion": "memory-eval/v1",
+    "mode": "wiki",
+    "model": "gemini-2.5-flash",
+    "turns": 2,
+    "providerCalls": 2,
+    "actions": [],
+    "lostTurns": [],
+    "extractedAt": "2026-11-25T02:19:41.335Z",
+    "commit": "67b3eb3"
+  },
+  "digest": "29c3b18cfd88e596a4896489f2f6848e456d01639cff9536cdbd83d1004202e0",
+  "snapshot": {
+    "version": 1,
+    "notebook": {
+      "title": "memory eval: continuity-paraphrase",
+      "title_source": "auto",
+      "started_at": "2026-11-25T02:19:36.929+00:00",
+      "ended_at": null,
+      "duration_seconds": null,
+      "entity_count": 6,
+      "summary": null,
+      "archived_at": null,
+      "revision": 2,
+      "conversation_mode": "just_talk",
+      "mode_context": {},
+      "transcript_forgotten_at": null
+    },
+    "suppressionKey": null,
+    "tables": {
+      "journal_entries": [
+        {
+          "id": "$entry-1",
+          "text": "I've been training for the Ridgeline half marathon with my running coach, Tobias Wren.",
+          "created_at": "2026-11-25T02:19:39.034931+00:00",
+          "entity_ids": [
+            "ridgeline-half-marathon",
+            "tobias-wren",
+            "running"
+          ],
+          "relation_ids": [
+            "ridgeline-half-marathon__involves__running",
+            "tobias-wren__coaches__running",
+            "running__has_coach__tobias-wren",
+            "ridgeline-half-marathon__training_with__tobias-wren"
+          ]
+        },
+        {
+          "id": "$entry-2",
+          "text": "My knee is sore after the long run, and Tobias says I should rest for two days.",
+          "created_at": "2026-11-25T02:19:41.283693+00:00",
+          "entity_ids": [
+            "knee",
+            "long-run",
+            "rest",
+            "tobias-wren",
+            "running"
+          ],
+          "relation_ids": [
+            "knee__sore_after__long-run",
+            "tobias-wren__recommended__rest",
+            "long-run__instance_of__running"
+          ]
+        }
+      ],
+      "entities": [
+        {
+          "id": "knee",
+          "name": "knee",
+          "type": "other",
+          "description": "sore after the long run",
+          "metadata": {},
+          "mentions": 1,
+          "first_seen": "2026-11-25T02:19:41.281+00:00",
+          "last_seen": "2026-11-25T02:19:41.281+00:00",
+          "questions": [
+            "Which knee is sore?",
+            "How long has your knee been sore?",
+            "What do you think caused the soreness?",
+            "What have you done to alleviate the soreness?"
+          ],
+          "description_source": "extracted"
+        },
+        {
+          "id": "long-run",
+          "name": "long run",
+          "type": "activity",
+          "description": "The user's knee is sore after this run.",
+          "metadata": {},
+          "mentions": 1,
+          "first_seen": "2026-11-25T02:19:41.281+00:00",
+          "last_seen": "2026-11-25T02:19:41.281+00:00",
+          "questions": [
+            "How long was this long run?",
+            "Where did you go on this long run?",
+            "Was this a typical long run for you?",
+            "What was your pace like during this long run?"
+          ],
+          "description_source": "extracted"
+        },
+        {
+          "id": "rest",
+          "name": "rest",
+          "type": "activity",
+          "description": "Tobias Wren recommended the user rest for two days.",
+          "metadata": {},
+          "mentions": 1,
+          "first_seen": "2026-11-25T02:19:41.281+00:00",
+          "last_seen": "2026-11-25T02:19:41.281+00:00",
+          "questions": [
+            "What kind of rest did Tobias recommend?",
+            "How do you feel about resting for two days?",
+            "What will you do instead of running during this rest period?",
+            "Has Tobias recommended rest before?"
+          ],
+          "description_source": "extracted"
+        },
+        {
+          "id": "ridgeline-half-marathon",
+          "name": "Ridgeline half marathon",
+          "type": "event",
+          "description": "a half marathon event",
+          "metadata": {},
+          "mentions": 1,
+          "first_seen": "2026-11-25T02:19:39.025+00:00",
+          "last_seen": "2026-11-25T02:19:39.025+00:00",
+          "questions": [
+            "When is the Ridgeline half marathon?",
+            "Where is it taking place?",
+            "What's your goal for this race?",
+            "How long have you been training for it?"
+          ],
+          "description_source": "extracted"
+        },
+        {
+          "id": "running",
+          "name": "running",
+          "type": "activity",
+          "description": null,
+          "metadata": {},
+          "mentions": 2,
+          "first_seen": "2026-11-25T02:19:39.025+00:00",
+          "last_seen": "2026-11-25T02:19:41.281+00:00",
+          "questions": [
+            "What do you enjoy most about running?",
+            "What are your running goals?",
+            "How often do you go running?",
+            "What challenges do you face with running?"
+          ],
+          "description_source": "extracted"
+        },
+        {
+          "id": "tobias-wren",
+          "name": "Tobias Wren",
+          "type": "person",
+          "description": "my running coach",
+          "metadata": {},
+          "mentions": 2,
+          "first_seen": "2026-11-25T02:19:39.025+00:00",
+          "last_seen": "2026-11-25T02:19:41.281+00:00",
+          "questions": [
+            "How long have you been working with Tobias?",
+            "What's his coaching style like?",
+            "How has Tobias helped you with your training?",
+            "Where did you find Tobias?"
+          ],
+          "description_source": "extracted"
+        }
+      ],
+      "relations": [
+        {
+          "id": "knee__sore_after__long-run",
+          "source_id": "knee",
+          "target_id": "long-run",
+          "label": "sore_after",
+          "metadata": {},
+          "created_at": "2026-11-25T02:19:41.281+00:00",
+          "superseded_at": null
+        },
+        {
+          "id": "long-run__instance_of__running",
+          "source_id": "long-run",
+          "target_id": "running",
+          "label": "instance_of",
+          "metadata": {},
+          "created_at": "2026-11-25T02:19:41.281+00:00",
+          "superseded_at": null
+        },
+        {
+          "id": "ridgeline-half-marathon__involves__running",
+          "source_id": "ridgeline-half-marathon",
+          "target_id": "running",
+          "label": "involves",
+          "metadata": {},
+          "created_at": "2026-11-25T02:19:39.025+00:00",
+          "superseded_at": null
+        },
+        {
+          "id": "ridgeline-half-marathon__training_with__tobias-wren",
+          "source_id": "ridgeline-half-marathon",
+          "target_id": "tobias-wren",
+          "label": "training_with",
+          "metadata": {},
+          "created_at": "2026-11-25T02:19:39.025+00:00",
+          "superseded_at": null
+        },
+        {
+          "id": "running__has_coach__tobias-wren",
+          "source_id": "running",
+          "target_id": "tobias-wren",
+          "label": "has_coach",
+          "metadata": {},
+          "created_at": "2026-11-25T02:19:39.025+00:00",
+          "superseded_at": null
+        },
+        {
+          "id": "tobias-wren__coaches__running",
+          "source_id": "tobias-wren",
+          "target_id": "running",
+          "label": "coaches",
+          "metadata": {},
+          "created_at": "2026-11-25T02:19:39.025+00:00",
+          "superseded_at": null
+        },
+        {
+          "id": "tobias-wren__recommended__rest",
+          "source_id": "tobias-wren",
+          "target_id": "rest",
+          "label": "recommended",
+          "metadata": {},
+          "created_at": "2026-11-25T02:19:41.281+00:00",
+          "superseded_at": null
+        }
+      ],
+      "entity_suppressions": [],
+      "conversation_turns": [
+        {
+          "turn_id": "continuity-paraphrase-s1-t1",
+          "speaker": "user",
+          "text": "I've been training for the Ridgeline half marathon with my running coach, Tobias Wren.",
+          "spoken_at": "2026-11-25T02:19:36.939+00:00",
+          "created_at": "2026-11-25T02:19:36.94125+00:00",
+          "input": "typed"
+        },
+        {
+          "turn_id": "continuity-paraphrase-s2-t1",
+          "speaker": "user",
+          "text": "My knee is sore after the long run, and Tobias says I should rest for two days.",
+          "spoken_at": "2026-11-25T02:19:39.051+00:00",
+          "created_at": "2026-11-25T02:19:39.054973+00:00",
+          "input": "typed"
+        }
+      ]
+    }
+  }
+}

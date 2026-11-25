@@ -1,0 +1,12 @@
+{
+  "digest": "db041b32e4d3cfb9fc78e7e435cf7181281f7aae25d280f834bf3dcb252b71ff",
+  "brief": {
+    "focus": [
+      "Decided to stay at Northwind.",
+      "Commute is difficult."
+    ],
+    "openingLine": "Hey, good to hear from you. How are things with Northwind?",
+    "openingThread": "The person decided to stay at Northwind despite a difficult commute, after talking it over with Priya."
+  },
+  "outcome": "ready"
+}

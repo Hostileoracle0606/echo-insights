@@ -1,0 +1,166 @@
+{
+  "meta": {
+    "scenario": "deletion-forget-person",
+    "extractorVersion": "memory-eval/v1",
+    "mode": "wiki",
+    "model": "gemini-2.5-flash",
+    "turns": 2,
+    "providerCalls": 2,
+    "actions": [
+      {
+        "after_session": 1,
+        "kind": "forget",
+        "name": "Dana Whitfield",
+        "entityId": "dana-whitfield",
+        "outcome": "applied"
+      }
+    ],
+    "lostTurns": [],
+    "extractedAt": "2026-11-25T02:19:33.178Z",
+    "commit": "67b3eb3"
+  },
+  "digest": "e7d8f7a66ccad02366daeb9fcede7d1f27e0bff143946cb07674186803e7c8a7",
+  "snapshot": {
+    "version": 1,
+    "notebook": {
+      "title": "memory eval: deletion-forget-person",
+      "title_source": "auto",
+      "started_at": "2026-11-25T02:19:29.56+00:00",
+      "ended_at": null,
+      "duration_seconds": null,
+      "entity_count": 3,
+      "summary": null,
+      "archived_at": null,
+      "revision": 4,
+      "conversation_mode": "just_talk",
+      "mode_context": {},
+      "transcript_forgotten_at": null
+    },
+    "suppressionKey": "\\xf7a08bfba6336528a14c4e0fc6cc18dfd8aa257762c137cd2dfaa1c5daa427fc",
+    "tables": {
+      "journal_entries": [
+        {
+          "id": "$entry-1",
+          "text": "Had lunch with Dana Whitfield, she's thinking about moving to Oslo.",
+          "created_at": "2026-11-25T02:19:30.991146+00:00",
+          "entity_ids": [
+            "oslo"
+          ],
+          "relation_ids": []
+        },
+        {
+          "id": "$entry-2",
+          "text": "Worked on the quarterly report with my manager Ruth Okafor.",
+          "created_at": "2026-11-25T02:19:33.107977+00:00",
+          "entity_ids": [
+            "quarterly-report",
+            "ruth-okafor"
+          ],
+          "relation_ids": [
+            "quarterly-report__worked_with__ruth-okafor",
+            "ruth-okafor__worked_on__quarterly-report"
+          ]
+        }
+      ],
+      "entities": [
+        {
+          "id": "oslo",
+          "name": "Oslo",
+          "type": "place",
+          "description": null,
+          "metadata": {},
+          "mentions": 1,
+          "first_seen": "2026-11-25T02:19:30.987+00:00",
+          "last_seen": "2026-11-25T02:19:30.987+00:00",
+          "questions": [
+            "What do you know about Oslo?",
+            "Why is Dana considering Oslo?",
+            "Have you ever been to Oslo?"
+          ],
+          "description_source": "extracted"
+        },
+        {
+          "id": "quarterly-report",
+          "name": "quarterly report",
+          "type": "project",
+          "description": "A report worked on with Ruth Okafor.",
+          "metadata": {},
+          "mentions": 1,
+          "first_seen": "2026-11-25T02:19:33.096+00:00",
+          "last_seen": "2026-11-25T02:19:33.096+00:00",
+          "questions": [
+            "What is the purpose of this report?",
+            "What kind of information does it contain?",
+            "How often do you work on it?",
+            "What are the biggest challenges in preparing it?"
+          ],
+          "description_source": "extracted"
+        },
+        {
+          "id": "ruth-okafor",
+          "name": "Ruth Okafor",
+          "type": "person",
+          "description": "The user's manager.",
+          "metadata": {},
+          "mentions": 1,
+          "first_seen": "2026-11-25T02:19:33.096+00:00",
+          "last_seen": "2026-11-25T02:19:33.096+00:00",
+          "questions": [
+            "What is Ruth's role in the company?",
+            "How long have you been working with Ruth?",
+            "What's your working relationship like?",
+            "What are some of Ruth's strengths as a manager?"
+          ],
+          "description_source": "extracted"
+        }
+      ],
+      "relations": [
+        {
+          "id": "quarterly-report__worked_with__ruth-okafor",
+          "source_id": "quarterly-report",
+          "target_id": "ruth-okafor",
+          "label": "worked_with",
+          "metadata": {},
+          "created_at": "2026-11-25T02:19:33.096+00:00",
+          "superseded_at": null
+        },
+        {
+          "id": "ruth-okafor__worked_on__quarterly-report",
+          "source_id": "ruth-okafor",
+          "target_id": "quarterly-report",
+          "label": "worked_on",
+          "metadata": {},
+          "created_at": "2026-11-25T02:19:33.096+00:00",
+          "superseded_at": null
+        }
+      ],
+      "entity_suppressions": [
+        {
+          "entity_hash": "f330ed55ceebba175de6b8e8862d9704bbcfac7f84a3ab6ecab27ecfd1254803",
+          "created_at": "2026-11-25T02:19:31.019082+00:00",
+          "kind": "forgotten",
+          "match_inside": false,
+          "name_words": 2
+        }
+      ],
+      "conversation_turns": [
+        {
+          "turn_id": "deletion-forget-person-s1-t1",
+          "speaker": "user",
+          "text": "Had lunch with Dana Whitfield, she's thinking about moving to Oslo.",
+          "spoken_at": "2026-11-25T02:19:29.585+00:00",
+          "created_at": "2026-11-25T02:19:29.587275+00:00",
+          "input": "typed"
+        },
+        {
+          "turn_id": "deletion-forget-person-s2-t1",
+          "speaker": "user",
+          "text": "Worked on the quarterly report with my manager Ruth Okafor.",
+          "spoken_at": "2026-11-25T02:19:31.056+00:00",
+          "created_at": "2026-11-25T02:19:31.05646+00:00",
+          "input": "typed"
+        }
+      ]
+    }
+  }
+}

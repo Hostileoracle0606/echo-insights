@@ -1,0 +1,188 @@
+{
+  "meta": {
+    "scenario": "continuity-indirect-reference",
+    "extractorVersion": "memory-eval/v1",
+    "mode": "wiki",
+    "model": "gemini-2.5-flash",
+    "turns": 2,
+    "providerCalls": 2,
+    "actions": [],
+    "lostTurns": [],
+    "extractedAt": "2026-11-25T02:19:25.438Z",
+    "commit": "67b3eb3"
+  },
+  "digest": "651ea785360cc69873f47d41f170eef0a4d87bc70202bafcab990f8fc1b03625",
+  "snapshot": {
+    "version": 1,
+    "notebook": {
+      "title": "memory eval: continuity-indirect-reference",
+      "title_source": "auto",
+      "started_at": "2026-11-25T02:19:19.897+00:00",
+      "ended_at": null,
+      "duration_seconds": null,
+      "entity_count": 4,
+      "summary": null,
+      "archived_at": null,
+      "revision": 2,
+      "conversation_mode": "just_talk",
+      "mode_context": {},
+      "transcript_forgotten_at": null
+    },
+    "suppressionKey": null,
+    "tables": {
+      "journal_entries": [
+        {
+          "id": "$entry-1",
+          "text": "My sister Maren just opened a pottery studio called Clayhouse in Bellport.",
+          "created_at": "2026-11-25T02:19:23.652348+00:00",
+          "entity_ids": [
+            "maren",
+            "clayhouse",
+            "bellport"
+          ],
+          "relation_ids": [
+            "maren__opened__clayhouse",
+            "clayhouse__situated_in__bellport"
+          ]
+        },
+        {
+          "id": "$entry-2",
+          "text": "Went to her studio opening on Saturday, the kiln room was packed all evening.",
+          "created_at": "2026-11-25T02:19:25.03536+00:00",
+          "entity_ids": [
+            "studio-opening",
+            "clayhouse",
+            "maren"
+          ],
+          "relation_ids": [
+            "studio-opening__event_for__clayhouse",
+            "studio-opening__hosted_by__maren"
+          ]
+        }
+      ],
+      "entities": [
+        {
+          "id": "bellport",
+          "name": "Bellport",
+          "type": "place",
+          "description": null,
+          "metadata": {},
+          "mentions": 1,
+          "first_seen": "2026-11-25T02:19:23.622+00:00",
+          "last_seen": "2026-11-25T02:19:23.622+00:00",
+          "questions": [
+            "What's Bellport like?",
+            "Have you visited Bellport before?",
+            "What do you like about Bellport?"
+          ],
+          "description_source": "extracted"
+        },
+        {
+          "id": "clayhouse",
+          "name": "Clayhouse",
+          "type": "organization",
+          "description": "A pottery studio opened by Maren.",
+          "metadata": {},
+          "mentions": 2,
+          "first_seen": "2026-11-25T02:19:23.622+00:00",
+          "last_seen": "2026-11-25T02:19:25.003+00:00",
+          "questions": [
+            "What kind of pottery does Clayhouse focus on?",
+            "What inspired Maren to open Clayhouse?",
+            "What are Maren's plans for Clayhouse?"
+          ],
+          "description_source": "extracted"
+        },
+        {
+          "id": "maren",
+          "name": "Maren",
+          "type": "person",
+          "description": "The user's sister.",
+          "metadata": {},
+          "mentions": 2,
+          "first_seen": "2026-11-25T02:19:23.622+00:00",
+          "last_seen": "2026-11-25T02:19:25.003+00:00",
+          "questions": [
+            "What's Maren like?",
+            "How often do you see Maren?",
+            "What's your relationship with Maren like?"
+          ],
+          "description_source": "extracted"
+        },
+        {
+          "id": "studio-opening",
+          "name": "studio opening",
+          "type": "event",
+          "description": "The opening event for Maren's pottery studio, Clayhouse.",
+          "metadata": {},
+          "mentions": 1,
+          "first_seen": "2026-11-25T02:19:25.003+00:00",
+          "last_seen": "2026-11-25T02:19:25.003+00:00",
+          "questions": [
+            "What was the atmosphere like at the opening?",
+            "Who all was there?",
+            "What was your favorite part of the event?"
+          ],
+          "description_source": "extracted"
+        }
+      ],
+      "relations": [
+        {
+          "id": "clayhouse__situated_in__bellport",
+          "source_id": "clayhouse",
+          "target_id": "bellport",
+          "label": "situated_in",
+          "metadata": {},
+          "created_at": "2026-11-25T02:19:23.622+00:00",
+          "superseded_at": null
+        },
+        {
+          "id": "maren__opened__clayhouse",
+          "source_id": "maren",
+          "target_id": "clayhouse",
+          "label": "opened",
+          "metadata": {},
+          "created_at": "2026-11-25T02:19:23.622+00:00",
+          "superseded_at": null
+        },
+        {
+          "id": "studio-opening__event_for__clayhouse",
+          "source_id": "studio-opening",
+          "target_id": "clayhouse",
+          "label": "event_for",
+          "metadata": {},
+          "created_at": "2026-11-25T02:19:25.003+00:00",
+          "superseded_at": null
+        },
+        {
+          "id": "studio-opening__hosted_by__maren",
+          "source_id": "studio-opening",
+          "target_id": "maren",
+          "label": "hosted_by",
+          "metadata": {},
+          "created_at": "2026-11-25T02:19:25.003+00:00",
+          "superseded_at": null
+        }
+      ],
+      "entity_suppressions": [],
+      "conversation_turns": [
+        {
+          "turn_id": "continuity-indirect-reference-s1-t1",
+          "speaker": "user",
+          "text": "My sister Maren just opened a pottery studio called Clayhouse in Bellport.",
+          "spoken_at": "2026-11-25T02:19:20.395+00:00",
+          "created_at": "2026-11-25T02:19:20.425838+00:00",
+          "input": "typed"
+        },
+        {
+          "turn_id": "continuity-indirect-reference-s2-t1",
+          "speaker": "user",
+          "text": "Went to her studio opening on Saturday, the kiln room was packed all evening.",
+          "spoken_at": "2026-11-25T02:19:23.708+00:00",
+          "created_at": "2026-11-25T02:19:23.715181+00:00",
+          "input": "typed"
+        }
+      ]
+    }
+  }
+}

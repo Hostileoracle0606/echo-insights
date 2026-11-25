@@ -1,0 +1,492 @@
+{
+  "worldId": "test-20001",
+  "replay": {
+    "worldId": "test-20001",
+    "extraction": {
+      "entities": {
+        "tp": 7,
+        "fp": 1,
+        "fn": 0
+      },
+      "pairs": {
+        "tp": 5,
+        "fp": 5,
+        "fn": 0
+      },
+      "typed": {
+        "tp": 5,
+        "fp": 5,
+        "fn": 0
+      },
+      "attributes": {
+        "hit": 3,
+        "of": 4
+      },
+      "extractedNames": [
+        "Niamh Kilbride",
+        "Calder",
+        "climbing",
+        "Benedikt Dunstan",
+        "mural commission",
+        "Dovetail Roastery",
+        "Juniper Cove",
+        "Caldwell"
+      ],
+      "matched": {
+        "niamh kilbride": "niamh-kilbride",
+        "calder": "calder",
+        "benedikt dunstan": "benedikt-dunstan",
+        "mural commission": "mural-commission",
+        "dovetail roastery": "dovetail-roastery",
+        "juniper cove": "juniper-cove",
+        "caldwell": "caldwell"
+      }
+    },
+    "admission": [
+      {
+        "name": "Niamh Kilbride",
+        "gold": "niamh-kilbride",
+        "outcome": "rejected",
+        "turnId": "test-20001-s1-t1"
+      },
+      {
+        "name": "Calder",
+        "gold": "calder",
+        "outcome": "rejected",
+        "turnId": "test-20001-s1-t1"
+      },
+      {
+        "name": "Benedikt Dunstan",
+        "gold": "benedikt-dunstan",
+        "outcome": "rejected",
+        "turnId": "test-20001-s1-t2"
+      },
+      {
+        "name": "mural commission",
+        "gold": "mural-commission",
+        "outcome": "persisted",
+        "turnId": "test-20001-s2-t1"
+      },
+      {
+        "name": "Benedikt Dunstan",
+        "gold": "benedikt-dunstan",
+        "outcome": "persisted",
+        "turnId": "test-20001-s2-t2"
+      },
+      {
+        "name": "Dovetail Roastery",
+        "gold": "dovetail-roastery",
+        "outcome": "persisted",
+        "turnId": "test-20001-s3-t1"
+      },
+      {
+        "name": "Juniper Cove",
+        "gold": "juniper-cove",
+        "outcome": "persisted",
+        "turnId": "test-20001-s3-t1"
+      },
+      {
+        "name": "Niamh Kilbride",
+        "gold": "niamh-kilbride",
+        "outcome": "persisted",
+        "turnId": "test-20001-s4-t1"
+      },
+      {
+        "name": "Caldwell",
+        "gold": "caldwell",
+        "outcome": "persisted",
+        "turnId": "test-20001-s5-t1"
+      },
+      {
+        "name": "Benedikt Dunstan",
+        "gold": "benedikt-dunstan",
+        "outcome": "merged_correct",
+        "turnId": "test-20001-s5-t1"
+      }
+    ],
+    "latency": [
+      {
+        "turnId": "test-20001-s1-t1",
+        "extraction": 2144,
+        "commit": 42
+      },
+      {
+        "turnId": "test-20001-s1-t2",
+        "extraction": 1324,
+        "commit": 25
+      },
+      {
+        "turnId": "test-20001-s2-t1",
+        "extraction": 1134,
+        "commit": 27
+      },
+      {
+        "turnId": "test-20001-s2-t2",
+        "extraction": 1251,
+        "commit": 35
+      },
+      {
+        "turnId": "test-20001-s3-t1",
+        "extraction": 2609,
+        "commit": 15
+      },
+      {
+        "turnId": "test-20001-s4-t1",
+        "extraction": 1060,
+        "commit": 11
+      },
+      {
+        "turnId": "test-20001-s5-t1",
+        "extraction": 1517,
+        "commit": 38
+      }
+    ],
+    "lostTurns": [
+      {
+        "turnId": "test-20001-s1-t1",
+        "reason": "commit invalidChange",
+        "undeclaredEndpoints": [
+          "data-analyst"
+        ],
+        "patch": {
+          "entities": [
+            {
+              "description": "The user's climbing partner and a data analyst. She grew up in Calder.",
+              "type": "person",
+              "questions": [
+                "How long have you been climbing with Niamh?",
+                "What's Niamh like as a climbing partner?",
+                "What kind of data analysis does Niamh do?",
+                "What are some memorable climbing experiences you've had with Niamh?"
+              ],
+              "name": "Niamh Kilbride"
+            },
+            {
+              "name": "Calder",
+              "type": "place",
+              "questions": [
+                "What's Calder like?",
+                "Have you ever visited Calder?",
+                "What did Niamh say about learning to climb in Calder?"
+              ]
+            },
+            {
+              "name": "climbing",
+              "type": "activity",
+              "questions": [
+                "What do you enjoy about climbing?",
+                "What are your climbing goals?",
+                "Where do you usually go climbing?",
+                "How did you get into climbing?"
+              ]
+            }
+          ],
+          "relations": [
+            {
+              "label": "partner_for",
+              "source": "Niamh Kilbride",
+              "target": "climbing"
+            },
+            {
+              "source": "Niamh Kilbride",
+              "target": "Calder",
+              "label": "grew_up_in"
+            },
+            {
+              "label": "works_as",
+              "source": "Niamh Kilbride",
+              "target": "data analyst"
+            },
+            {
+              "label": "done_with",
+              "source": "climbing",
+              "target": "Niamh Kilbride"
+            }
+          ],
+          "supersedes": []
+        }
+      },
+      {
+        "turnId": "test-20001-s1-t2",
+        "reason": "commit invalidChange",
+        "undeclaredEndpoints": [
+          "neighbor",
+          "nurse"
+        ],
+        "patch": {
+          "entities": [
+            {
+              "description": "Benedikt Dunstan is the user's neighbor and a nurse.",
+              "questions": [
+                "How long has Benedikt been your neighbor?",
+                "What's your relationship with Benedikt like?",
+                "Do you often see Benedikt around?",
+                "What do you talk about with Benedikt?"
+              ],
+              "name": "Benedikt Dunstan",
+              "type": "person"
+            }
+          ],
+          "relations": [
+            {
+              "source": "Benedikt Dunstan",
+              "target": "neighbor",
+              "label": "is_a"
+            },
+            {
+              "label": "works_as",
+              "target": "nurse",
+              "source": "Benedikt Dunstan"
+            }
+          ],
+          "supersedes": []
+        }
+      }
+    ],
+    "actions": [],
+    "providerCalls": 7,
+    "extractedGold": [
+      "niamh-kilbride",
+      "calder",
+      "benedikt-dunstan",
+      "mural-commission",
+      "dovetail-roastery",
+      "juniper-cove",
+      "caldwell"
+    ],
+    "storedGold": [
+      "caldwell",
+      "juniper-cove",
+      "niamh-kilbride",
+      "benedikt-dunstan",
+      "mural-commission",
+      "dovetail-roastery"
+    ]
+  },
+  "e2e": [
+    {
+      "worldId": "test-20001",
+      "queryId": "test-20001-q1",
+      "family": "distractor",
+      "answerable": true,
+      "answer": "Ah, Niamh! You mentioned she works at Dovetail Roastery. Was it Juniper Cove where she grew up, or somewhere else?",
+      "verdict": "wrong",
+      "reason": "The answer guesses \"Juniper Cove where she grew up\" instead of the correct \"Calder\", so it offers a wrong specific answer.",
+      "correct": false,
+      "foundAnswersTop10": false,
+      "stage": "admission",
+      "latencyMs": {
+        "retrieval": 453,
+        "answer": 717
+      }
+    },
+    {
+      "worldId": "test-20001",
+      "queryId": "test-20001-q2",
+      "family": "paraphrase",
+      "answerable": true,
+      "answer": "It sounds like you were working with Benedikt on a mural commission – how has that been coming along?",
+      "verdict": "correct",
+      "reason": "The answer names the \"mural commission\" with the neighbour, matching the correct answer.",
+      "correct": true,
+      "foundAnswersTop10": true,
+      "stage": null,
+      "latencyMs": {
+        "retrieval": 189,
+        "answer": 772
+      }
+    },
+    {
+      "worldId": "test-20001",
+      "queryId": "test-20001-q3",
+      "family": "multi_hop",
+      "answerable": true,
+      "answer": "It sounds like you're trying to remember where Niamh works. I'm recalling that Niamh works at Dovetail Roastery, which is in Juniper Cove. Does that sound right?",
+      "verdict": "correct",
+      "reason": "The answer states Niamh's work is \"in Juniper Cove,\" matching the correct answer (the extra detail about Dovetail Roastery doesn't contradict it).",
+      "correct": true,
+      "foundAnswersTop10": false,
+      "stage": null,
+      "latencyMs": {
+        "retrieval": 172,
+        "answer": 856
+      }
+    }
+  ],
+  "oracle": [
+    {
+      "worldId": "test-20001",
+      "queryId": "test-20001-q1",
+      "family": "distractor",
+      "mode": "hybrid",
+      "answerable": true,
+      "ranked": [
+        "bg-tomato-seedlings",
+        "niamh-kilbride",
+        "calder",
+        "bg-jupiter",
+        "bg-ignatius-polk",
+        "bg-fernhollow-community-garden",
+        "bg-raised-garden-bed",
+        "caldwell",
+        "bg-herbal-tea",
+        "bg-catnip-mice"
+      ],
+      "context": "## Entities\n- Tomato Seedlings (project): Seedlings started on the windowsill in March, waiting to go into the raised bed. [mentions: 3]\n- Niamh Kilbride (person): Niamh Kilbride is the user's climbing partner, who works as a data analyst. Niamh Kilbride grew up in Calder. Niamh Kilbride works at Dovetail Roastery. [mentions: 1]\n- Calder (place): Calder is a place the user mentioned. Niamh Kilbride grew up in Calder. [mentions: 1]\n- Jupiter (place): Gas giant watched for its four bright moons. [mentions: 2]\n- Ignatius Polk (person): Restores old valve radios and swaps spare parts. [mentions: 1]\n- Fernhollow Community Garden (place): Shared allotments with a tool shed and a rain barrel. [mentions: 3]\n- Raised Garden Bed (project): A cedar raised bed built for tomatoes and peppers. [mentions: 2]\n- Caldwell (place): Caldwell is a place the user mentioned. Benedikt Dunstan grew up in Caldwell. [mentions: 1]\n- Herbal Tea (other): Chamomile and mint tea brewed before bed. [mentions: 1]\n- Catnip Mice (other): Felt toys stuffed with catnip. [mentions: 1]\n- Pickle (person): A grey tabby cat who sleeps on the radiator. [mentions: 4]\n- Fiddle Leaf Fig (other): Temperamental fig that drops leaves when moved from its spot. [mentions: 1]\n- Acoustic Guitar (other): A secondhand steel-string guitar with a cracked pickguard. [mentions: 3]\n- Chess Club (organization): Thursday evening club that meets for rapid games. [mentions: 3]\n- Backyard Telescope (other): An eight-inch Dobsonian set up on clear nights. [mentions: 3]\n- Vintage Radio (project): A valve radio being restored with new capacitors. [mentions: 2]\n- Fingerpicking Practice (activity): Twenty minutes of Travis picking patterns each evening. [mentions: 2]\n- Perseid Meteor Shower (event): August meteor shower watched from a hillside at night. [mentions: 2]\n- Quillmont Observatory (place): Small hilltop observatory with a public viewing night. [mentions: 2]\n- Film Camera (other): A manual rangefinder loaded with black-and-white film. [mentions: 2]\n- Dutch Oven (other): Cast-iron pot used for baking boules at high heat. [mentions: 2]\n- Benedikt Dunstan (person): Benedikt Dunstan is the user's neighbour, who works as a nurse. Benedikt Dunstan grew up in Caldwell. Benedikt Dunstan helps with mural commission. [mentions: 1]\n- Cat Tree (other): Carpeted climbing tower by the window for Pickle. [mentions: 1]\n- Sourdough Starter (project): A rye-fed starter named Bubbles, kept on the counter. [mentions: 4]\n## Relations\n- Benedikt Dunstan --grew_up_in--> Caldwell\n- Backyard Telescope --pointed_at--> Jupiter\n- Fingerpicking Practice --played_on--> Acoustic Guitar\n- Ignatius Polk --swaps_parts_for--> Vintage Radio\n- Pickle --plays_with--> Catnip Mice\n- Pickle --sleeps_on--> Cat Tree\n- Raised Garden Bed --located_at--> Fernhollow Community Garden\n- Sourdough Starter --baked_in--> Dutch Oven\n- Tomato Seedlings --planted_in--> Raised Garden Bed\n- Niamh Kilbride --grew_up_in--> Calder",
+      "quotes": [],
+      "latencyMs": 365,
+      "metrics": {
+        "recallAt1": 0,
+        "recallAt5": 1,
+        "recallAt10": 1,
+        "mrr": 0.3333333333333333,
+        "ndcg10": 0.58688267143572
+      }
+    },
+    {
+      "worldId": "test-20001",
+      "queryId": "test-20001-q2",
+      "family": "paraphrase",
+      "mode": "hybrid",
+      "answerable": true,
+      "ranked": [
+        "bg-metronome",
+        "bg-merino-yarn",
+        "bg-chess-club",
+        "bg-perseid-meteor-shower",
+        "bg-jupiter",
+        "bg-fiddle-leaf-fig",
+        "bg-ignatius-polk",
+        "bg-backyard-telescope",
+        "bg-tomato-seedlings",
+        "dovetail-roastery"
+      ],
+      "context": "## Entities\n- Metronome (other): Wind-up metronome set to sixty beats per minute. [mentions: 1]\n- Merino Yarn (other): Soft merino skeins bought at a craft fair. [mentions: 1]\n- Chess Club (organization): Thursday evening club that meets for rapid games. [mentions: 3]\n- Perseid Meteor Shower (event): August meteor shower watched from a hillside at night. [mentions: 2]\n- Jupiter (place): Gas giant watched for its four bright moons. [mentions: 2]\n- Fiddle Leaf Fig (other): Temperamental fig that drops leaves when moved from its spot. [mentions: 1]\n- Ignatius Polk (person): Restores old valve radios and swaps spare parts. [mentions: 1]\n- Backyard Telescope (other): An eight-inch Dobsonian set up on clear nights. [mentions: 3]\n- Tomato Seedlings (project): Seedlings started on the windowsill in March, waiting to go into the raised bed. [mentions: 3]\n- Dovetail Roastery (organization): Dovetail Roastery is an organisation the user mentioned. Niamh Kilbride works at Dovetail Roastery. Dovetail Roastery is based in Juniper Cove. [mentions: 1]\n- mural commission (project): mural commission is a project the user mentioned. Benedikt Dunstan helps with mural commission. [mentions: 1]\n- Calder (place): Calder is a place the user mentioned. Niamh Kilbride grew up in Calder. [mentions: 1]\n- Caldwell (place): Caldwell is a place the user mentioned. Benedikt Dunstan grew up in Caldwell. [mentions: 1]\n- Juniper Cove (place): Juniper Cove is a place the user mentioned. Dovetail Roastery is based in Juniper Cove. [mentions: 1]\n- Fernhollow Community Garden (place): Shared allotments with a tool shed and a rain barrel. [mentions: 3]\n- Fingerpicking Practice (activity): Twenty minutes of Travis picking patterns each evening. [mentions: 2]\n- Quillmont Library (place): Library whose reading room hosts the chess club. [mentions: 2]\n- Sicilian Defense (concept): Sharp chess opening studied from a puzzle book. [mentions: 2]\n- Hollis Grady (person): Organizes the spring seed swap at Fernhollow Community Garden. [mentions: 2]\n- Dutch Oven (other): Cast-iron pot used for baking boules at high heat. [mentions: 2]\n- Benedikt Dunstan (person): Benedikt Dunstan is the user's neighbour, who works as a nurse. Benedikt Dunstan grew up in Caldwell. Benedikt Dunstan helps with mural commission. [mentions: 1]\n- Pickle (person): A grey tabby cat who sleeps on the radiator. [mentions: 4]\n- Sourdough Starter (project): A rye-fed starter named Bubbles, kept on the counter. [mentions: 4]\n- Acoustic Guitar (other): A secondhand steel-string guitar with a cracked pickguard. [mentions: 3]\n## Relations\n- Benedikt Dunstan --grew_up_in--> Caldwell\n- Benedikt Dunstan --helps_with--> mural commission\n- Backyard Telescope --pointed_at--> Jupiter\n- Chess Club --meets_at--> Quillmont Library\n- Fingerpicking Practice --played_on--> Acoustic Guitar\n- Hollis Grady --organizes_seed_swap_at--> Fernhollow Community Garden\n- Metronome --keeps_time_for--> Fingerpicking Practice\n- Sicilian Defense --studied_for--> Chess Club\n- Sourdough Starter --baked_in--> Dutch Oven\n- Dovetail Roastery --located_in--> Juniper Cove",
+      "quotes": [],
+      "latencyMs": 203,
+      "metrics": {
+        "recallAt1": 0,
+        "recallAt5": 0,
+        "recallAt10": 0,
+        "mrr": 0,
+        "ndcg10": 0
+      }
+    },
+    {
+      "worldId": "test-20001",
+      "queryId": "test-20001-q3",
+      "family": "multi_hop",
+      "mode": "hybrid",
+      "answerable": true,
+      "ranked": [
+        "bg-tomato-seedlings",
+        "bg-jupiter",
+        "niamh-kilbride",
+        "bg-guitar-capo",
+        "bg-wool-scarf",
+        "bg-chess-club",
+        "bg-raised-garden-bed",
+        "calder",
+        "dovetail-roastery",
+        "bg-cat-tree"
+      ],
+      "context": "## Entities\n- Tomato Seedlings (project): Seedlings started on the windowsill in March, waiting to go into the raised bed. [mentions: 3]\n- Jupiter (place): Gas giant watched for its four bright moons. [mentions: 2]\n- Niamh Kilbride (person): Niamh Kilbride is the user's climbing partner, who works as a data analyst. Niamh Kilbride grew up in Calder. Niamh Kilbride works at Dovetail Roastery. [mentions: 1]\n- Guitar Capo (other): Spring capo clipped to the headstock. [mentions: 1]\n- Wool Scarf (project): A half-finished scarf in forest green. [mentions: 2]\n- Chess Club (organization): Thursday evening club that meets for rapid games. [mentions: 3]\n- Raised Garden Bed (project): A cedar raised bed built for tomatoes and peppers. [mentions: 2]\n- Calder (place): Calder is a place the user mentioned. Niamh Kilbride grew up in Calder. [mentions: 1]\n- Dovetail Roastery (organization): Dovetail Roastery is an organisation the user mentioned. Niamh Kilbride works at Dovetail Roastery. Dovetail Roastery is based in Juniper Cove. [mentions: 1]\n- Cat Tree (other): Carpeted climbing tower by the window for Pickle. [mentions: 1]\n- Ignatius Polk (person): Restores old valve radios and swaps spare parts. [mentions: 1]\n- Catnip Mice (other): Felt toys stuffed with catnip. [mentions: 1]\n- Acoustic Guitar (other): A secondhand steel-string guitar with a cracked pickguard. [mentions: 3]\n- Fernhollow Community Garden (place): Shared allotments with a tool shed and a rain barrel. [mentions: 3]\n- Fiddle Leaf Fig (other): Temperamental fig that drops leaves when moved from its spot. [mentions: 1]\n- Vintage Radio (project): A valve radio being restored with new capacitors. [mentions: 2]\n- Quillmont Library (place): Library whose reading room hosts the chess club. [mentions: 2]\n- Marguerite Fenn (person): Captain of the chess club and a fierce blitz player. [mentions: 2]\n- Sicilian Defense (concept): Sharp chess opening studied from a puzzle book. [mentions: 2]\n- Compost Bin (project): A tumbling compost bin fed with coffee grounds and vegetable peels. [mentions: 2]\n- Monstera Plant (other): Large monstera with split leaves near the bookcase. [mentions: 2]\n- Wendell Ashby (person): Runs the monthly stargazing night and lends out eyepieces. [mentions: 2]\n- Film Camera (other): A manual rangefinder loaded with black-and-white film. [mentions: 2]\n- Fingerpicking Practice (activity): Twenty minutes of Travis picking patterns each evening. [mentions: 2]\n## Relations\n- Chess Club --meets_at--> Quillmont Library\n- Compost Bin --feeds--> Raised Garden Bed\n- Fingerpicking Practice --played_on--> Acoustic Guitar\n- Guitar Capo --clipped_on--> Acoustic Guitar\n- Ignatius Polk --swaps_parts_for--> Vintage Radio\n- Marguerite Fenn --captains--> Chess Club\n- Raised Garden Bed --located_at--> Fernhollow Community Garden\n- Sicilian Defense --studied_for--> Chess Club\n- Tomato Seedlings --planted_in--> Raised Garden Bed\n- Niamh Kilbride --grew_up_in--> Calder\n- Niamh Kilbride --works_at--> Dovetail Roastery",
+      "quotes": [],
+      "latencyMs": 197,
+      "metrics": {
+        "recallAt1": 0,
+        "recallAt5": 0,
+        "recallAt10": 0,
+        "mrr": 0,
+        "ndcg10": 0.19391034063734408
+      }
+    },
+    {
+      "worldId": "test-20001",
+      "queryId": "test-20001-q1",
+      "family": "distractor",
+      "mode": "lexical",
+      "answerable": true,
+      "ranked": [
+        "bg-tomato-seedlings",
+        "niamh-kilbride",
+        "calder",
+        "bg-jupiter",
+        "bg-ignatius-polk",
+        "bg-fernhollow-community-garden",
+        "bg-raised-garden-bed",
+        "caldwell",
+        "bg-herbal-tea",
+        "bg-catnip-mice"
+      ],
+      "context": "## Entities\n- Tomato Seedlings (project): Seedlings started on the windowsill in March, waiting to go into the raised bed. [mentions: 3]\n- Niamh Kilbride (person): Niamh Kilbride is the user's climbing partner, who works as a data analyst. Niamh Kilbride grew up in Calder. Niamh Kilbride works at Dovetail Roastery. [mentions: 1]\n- Calder (place): Calder is a place the user mentioned. Niamh Kilbride grew up in Calder. [mentions: 1]\n- Jupiter (place): Gas giant watched for its four bright moons. [mentions: 2]\n- Ignatius Polk (person): Restores old valve radios and swaps spare parts. [mentions: 1]\n- Fernhollow Community Garden (place): Shared allotments with a tool shed and a rain barrel. [mentions: 3]\n- Raised Garden Bed (project): A cedar raised bed built for tomatoes and peppers. [mentions: 2]\n- Caldwell (place): Caldwell is a place the user mentioned. Benedikt Dunstan grew up in Caldwell. [mentions: 1]\n- Herbal Tea (other): Chamomile and mint tea brewed before bed. [mentions: 1]\n- Catnip Mice (other): Felt toys stuffed with catnip. [mentions: 1]\n- Pickle (person): A grey tabby cat who sleeps on the radiator. [mentions: 4]\n- Sourdough Starter (project): A rye-fed starter named Bubbles, kept on the counter. [mentions: 4]\n- Fiddle Leaf Fig (other): Temperamental fig that drops leaves when moved from its spot. [mentions: 1]\n- Acoustic Guitar (other): A secondhand steel-string guitar with a cracked pickguard. [mentions: 3]\n- Chess Club (organization): Thursday evening club that meets for rapid games. [mentions: 3]\n- Backyard Telescope (other): An eight-inch Dobsonian set up on clear nights. [mentions: 3]\n- Vintage Radio (project): A valve radio being restored with new capacitors. [mentions: 2]\n- Hollis Grady (person): Organizes the spring seed swap at Fernhollow Community Garden. [mentions: 2]\n- Monstera Plant (other): Large monstera with split leaves near the bookcase. [mentions: 2]\n- Fingerpicking Practice (activity): Twenty minutes of Travis picking patterns each evening. [mentions: 2]\n- Perseid Meteor Shower (event): August meteor shower watched from a hillside at night. [mentions: 2]\n- Quillmont Observatory (place): Small hilltop observatory with a public viewing night. [mentions: 2]\n- Film Camera (other): A manual rangefinder loaded with black-and-white film. [mentions: 2]\n- Benedikt Dunstan (person): Benedikt Dunstan is the user's neighbour, who works as a nurse. Benedikt Dunstan grew up in Caldwell. Benedikt Dunstan helps with mural commission. [mentions: 1]\n## Relations\n- Benedikt Dunstan --grew_up_in--> Caldwell\n- Backyard Telescope --pointed_at--> Jupiter\n- Fingerpicking Practice --played_on--> Acoustic Guitar\n- Hollis Grady --organizes_seed_swap_at--> Fernhollow Community Garden\n- Ignatius Polk --swaps_parts_for--> Vintage Radio\n- Pickle --naps_by--> Monstera Plant\n- Pickle --plays_with--> Catnip Mice\n- Raised Garden Bed --located_at--> Fernhollow Community Garden\n- Tomato Seedlings --planted_in--> Raised Garden Bed\n- Niamh Kilbride --grew_up_in--> Calder",
+      "quotes": [],
+      "latencyMs": 194,
+      "metrics": {
+        "recallAt1": 0,
+        "recallAt5": 1,
+        "recallAt10": 1,
+        "mrr": 0.3333333333333333,
+        "ndcg10": 0.58688267143572
+      }
+    },
+    {
+      "worldId": "test-20001",
+      "queryId": "test-20001-q2",
+      "family": "paraphrase",
+      "mode": "lexical",
+      "answerable": true,
+      "ranked": [
+        "bg-metronome",
+        "bg-merino-yarn",
+        "bg-chess-club",
+        "bg-perseid-meteor-shower",
+        "bg-jupiter",
+        "bg-fiddle-leaf-fig",
+        "bg-ignatius-polk",
+        "bg-backyard-telescope",
+        "bg-tomato-seedlings",
+        "dovetail-roastery"
+      ],
+      "context": "## Entities\n- Metronome (other): Wind-up metronome set to sixty beats per minute. [mentions: 1]\n- Merino Yarn (other): Soft merino skeins bought at a craft fair. [mentions: 1]\n- Chess Club (organization): Thursday evening club that meets for rapid games. [mentions: 3]\n- Perseid Meteor Shower (event): August meteor shower watched from a hillside at night. [mentions: 2]\n- Jupiter (place): Gas giant watched for its four bright moons. [mentions: 2]\n- Fiddle Leaf Fig (other): Temperamental fig that drops leaves when moved from its spot. [mentions: 1]\n- Ignatius Polk (person): Restores old valve radios and swaps spare parts. [mentions: 1]\n- Backyard Telescope (other): An eight-inch Dobsonian set up on clear nights. [mentions: 3]\n- Tomato Seedlings (project): Seedlings started on the windowsill in March, waiting to go into the raised bed. [mentions: 3]\n- Dovetail Roastery (organization): Dovetail Roastery is an organisation the user mentioned. Niamh Kilbride works at Dovetail Roastery. Dovetail Roastery is based in Juniper Cove. [mentions: 1]\n- mural commission (project): mural commission is a project the user mentioned. Benedikt Dunstan helps with mural commission. [mentions: 1]\n- Calder (place): Calder is a place the user mentioned. Niamh Kilbride grew up in Calder. [mentions: 1]\n- Caldwell (place): Caldwell is a place the user mentioned. Benedikt Dunstan grew up in Caldwell. [mentions: 1]\n- Juniper Cove (place): Juniper Cove is a place the user mentioned. Dovetail Roastery is based in Juniper Cove. [mentions: 1]\n- Fernhollow Community Garden (place): Shared allotments with a tool shed and a rain barrel. [mentions: 3]\n- Fingerpicking Practice (activity): Twenty minutes of Travis picking patterns each evening. [mentions: 2]\n- Quillmont Library (place): Library whose reading room hosts the chess club. [mentions: 2]\n- Sicilian Defense (concept): Sharp chess opening studied from a puzzle book. [mentions: 2]\n- Hollis Grady (person): Organizes the spring seed swap at Fernhollow Community Garden. [mentions: 2]\n- Dutch Oven (other): Cast-iron pot used for baking boules at high heat. [mentions: 2]\n- Benedikt Dunstan (person): Benedikt Dunstan is the user's neighbour, who works as a nurse. Benedikt Dunstan grew up in Caldwell. Benedikt Dunstan helps with mural commission. [mentions: 1]\n- Pickle (person): A grey tabby cat who sleeps on the radiator. [mentions: 4]\n- Sourdough Starter (project): A rye-fed starter named Bubbles, kept on the counter. [mentions: 4]\n- Acoustic Guitar (other): A secondhand steel-string guitar with a cracked pickguard. [mentions: 3]\n## Relations\n- Benedikt Dunstan --grew_up_in--> Caldwell\n- Benedikt Dunstan --helps_with--> mural commission\n- Backyard Telescope --pointed_at--> Jupiter\n- Chess Club --meets_at--> Quillmont Library\n- Fingerpicking Practice --played_on--> Acoustic Guitar\n- Hollis Grady --organizes_seed_swap_at--> Fernhollow Community Garden\n- Metronome --keeps_time_for--> Fingerpicking Practice\n- Sicilian Defense --studied_for--> Chess Club\n- Sourdough Starter --baked_in--> Dutch Oven\n- Dovetail Roastery --located_in--> Juniper Cove",
+      "quotes": [],
+      "latencyMs": 321,
+      "metrics": {
+        "recallAt1": 0,
+        "recallAt5": 0,
+        "recallAt10": 0,
+        "mrr": 0,
+        "ndcg10": 0
+      }
+    },
+    {
+      "worldId": "test-20001",
+      "queryId": "test-20001-q3",
+      "family": "multi_hop",
+      "mode": "lexical",
+      "answerable": true,
+      "ranked": [
+        "bg-tomato-seedlings",
+        "bg-jupiter",
+        "niamh-kilbride",
+        "bg-guitar-capo",
+        "bg-wool-scarf",
+        "bg-chess-club",
+        "bg-raised-garden-bed",
+        "calder",
+        "dovetail-roastery",
+        "bg-cat-tree"
+      ],
+      "context": "## Entities\n- Tomato Seedlings (project): Seedlings started on the windowsill in March, waiting to go into the raised bed. [mentions: 3]\n- Jupiter (place): Gas giant watched for its four bright moons. [mentions: 2]\n- Niamh Kilbride (person): Niamh Kilbride is the user's climbing partner, who works as a data analyst. Niamh Kilbride grew up in Calder. Niamh Kilbride works at Dovetail Roastery. [mentions: 1]\n- Guitar Capo (other): Spring capo clipped to the headstock. [mentions: 1]\n- Wool Scarf (project): A half-finished scarf in forest green. [mentions: 2]\n- Chess Club (organization): Thursday evening club that meets for rapid games. [mentions: 3]\n- Raised Garden Bed (project): A cedar raised bed built for tomatoes and peppers. [mentions: 2]\n- Calder (place): Calder is a place the user mentioned. Niamh Kilbride grew up in Calder. [mentions: 1]\n- Dovetail Roastery (organization): Dovetail Roastery is an organisation the user mentioned. Niamh Kilbride works at Dovetail Roastery. Dovetail Roastery is based in Juniper Cove. [mentions: 1]\n- Cat Tree (other): Carpeted climbing tower by the window for Pickle. [mentions: 1]\n- Ignatius Polk (person): Restores old valve radios and swaps spare parts. [mentions: 1]\n- Catnip Mice (other): Felt toys stuffed with catnip. [mentions: 1]\n- Acoustic Guitar (other): A secondhand steel-string guitar with a cracked pickguard. [mentions: 3]\n- Fernhollow Community Garden (place): Shared allotments with a tool shed and a rain barrel. [mentions: 3]\n- Fiddle Leaf Fig (other): Temperamental fig that drops leaves when moved from its spot. [mentions: 1]\n- Vintage Radio (project): A valve radio being restored with new capacitors. [mentions: 2]\n- Quillmont Library (place): Library whose reading room hosts the chess club. [mentions: 2]\n- Marguerite Fenn (person): Captain of the chess club and a fierce blitz player. [mentions: 2]\n- Sicilian Defense (concept): Sharp chess opening studied from a puzzle book. [mentions: 2]\n- Compost Bin (project): A tumbling compost bin fed with coffee grounds and vegetable peels. [mentions: 2]\n- Hollis Grady (person): Organizes the spring seed swap at Fernhollow Community Garden. [mentions: 2]\n- Monstera Plant (other): Large monstera with split leaves near the bookcase. [mentions: 2]\n- Wendell Ashby (person): Runs the monthly stargazing night and lends out eyepieces. [mentions: 2]\n- Film Camera (other): A manual rangefinder loaded with black-and-white film. [mentions: 2]\n## Relations\n- Chess Club --meets_at--> Quillmont Library\n- Compost Bin --feeds--> Raised Garden Bed\n- Guitar Capo --clipped_on--> Acoustic Guitar\n- Hollis Grady --organizes_seed_swap_at--> Fernhollow Community Garden\n- Ignatius Polk --swaps_parts_for--> Vintage Radio\n- Marguerite Fenn --captains--> Chess Club\n- Raised Garden Bed --located_at--> Fernhollow Community Garden\n- Sicilian Defense --studied_for--> Chess Club\n- Tomato Seedlings --planted_in--> Raised Garden Bed\n- Niamh Kilbride --grew_up_in--> Calder\n- Niamh Kilbride --works_at--> Dovetail Roastery",
+      "quotes": [],
+      "latencyMs": 173,
+      "metrics": {
+        "recallAt1": 0,
+        "recallAt5": 0,
+        "recallAt10": 0,
+        "mrr": 0,
+        "ndcg10": 0.19391034063734408
+      }
+    }
+  ]
+}
