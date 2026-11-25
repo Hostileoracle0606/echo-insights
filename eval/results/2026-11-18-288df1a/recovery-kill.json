@@ -1,0 +1,233 @@
+{
+  "version": 1,
+  "kind": "simulator_kill",
+  "target": "local",
+  "commit": "288df1a",
+  "simulator": "iPhone 17 simulator, iOS-26-4",
+  "recordedAt": "2026-11-18T21:43:34.712Z",
+  "method": "integration_test/recovery_kill_test.dart killed with simctl terminate, relaunched to resume; see eval/recovery/README.md",
+  "summary": {
+    "transcription": {
+      "runs": 5,
+      "pass": 5,
+      "fail": 0,
+      "not_triggered": 0,
+      "error": 0,
+      "partial_turn": {
+        "dropped": 5
+      }
+    },
+    "extraction": {
+      "runs": 5,
+      "pass": 5,
+      "fail": 0,
+      "not_triggered": 0,
+      "error": 0,
+      "partial_turn": {
+        "recovered": 5
+      }
+    }
+  },
+  "runs": [
+    {
+      "case": "transcription",
+      "run": 1,
+      "delay_ms": 0,
+      "journal_checkpoints_at_relaunch": 0,
+      "drained": true,
+      "completed_turns_kept": {
+        "n": 1,
+        "of": 1
+      },
+      "partial_turn": "dropped",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "outcome": "pass"
+    },
+    {
+      "case": "transcription",
+      "run": 2,
+      "delay_ms": 150,
+      "journal_checkpoints_at_relaunch": 0,
+      "drained": true,
+      "completed_turns_kept": {
+        "n": 1,
+        "of": 1
+      },
+      "partial_turn": "dropped",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "outcome": "pass"
+    },
+    {
+      "case": "transcription",
+      "run": 3,
+      "delay_ms": 300,
+      "journal_checkpoints_at_relaunch": 0,
+      "drained": true,
+      "completed_turns_kept": {
+        "n": 1,
+        "of": 1
+      },
+      "partial_turn": "dropped",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "outcome": "pass"
+    },
+    {
+      "case": "transcription",
+      "run": 4,
+      "delay_ms": 600,
+      "journal_checkpoints_at_relaunch": 0,
+      "drained": true,
+      "completed_turns_kept": {
+        "n": 1,
+        "of": 1
+      },
+      "partial_turn": "dropped",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "outcome": "pass"
+    },
+    {
+      "case": "transcription",
+      "run": 5,
+      "delay_ms": 1200,
+      "journal_checkpoints_at_relaunch": 0,
+      "drained": true,
+      "completed_turns_kept": {
+        "n": 1,
+        "of": 1
+      },
+      "partial_turn": "dropped",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "outcome": "pass"
+    },
+    {
+      "case": "extraction",
+      "run": 1,
+      "delay_ms": 0,
+      "journal_checkpoints_at_relaunch": 1,
+      "drained": true,
+      "completed_turns_kept": {
+        "n": 1,
+        "of": 1
+      },
+      "partial_turn": "recovered",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "outcome": "pass"
+    },
+    {
+      "case": "extraction",
+      "run": 2,
+      "delay_ms": 400,
+      "journal_checkpoints_at_relaunch": 1,
+      "drained": true,
+      "completed_turns_kept": {
+        "n": 1,
+        "of": 1
+      },
+      "partial_turn": "recovered",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "outcome": "pass"
+    },
+    {
+      "case": "extraction",
+      "run": 3,
+      "delay_ms": 800,
+      "journal_checkpoints_at_relaunch": 1,
+      "drained": true,
+      "completed_turns_kept": {
+        "n": 1,
+        "of": 1
+      },
+      "partial_turn": "recovered",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "outcome": "pass"
+    },
+    {
+      "case": "extraction",
+      "run": 4,
+      "delay_ms": 1200,
+      "journal_checkpoints_at_relaunch": 1,
+      "drained": true,
+      "completed_turns_kept": {
+        "n": 1,
+        "of": 1
+      },
+      "partial_turn": "recovered",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "outcome": "pass"
+    },
+    {
+      "case": "extraction",
+      "run": 5,
+      "delay_ms": 1800,
+      "journal_checkpoints_at_relaunch": 1,
+      "drained": true,
+      "completed_turns_kept": {
+        "n": 1,
+        "of": 1
+      },
+      "partial_turn": "recovered",
+      "duplicates": {
+        "journal_entries": 0,
+        "entities": 0,
+        "relations": 0,
+        "conversation_turns": 0,
+        "session_briefs": 0
+      },
+      "outcome": "pass"
+    }
+  ]
+}
