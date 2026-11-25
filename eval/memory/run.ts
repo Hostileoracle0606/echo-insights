@@ -71,8 +71,13 @@ const readJson = (path: string) => JSON.parse(readFileSync(path, "utf8"));
 
 // The newest saved file for a scenario across every run directory, so a run
 // resumes whatever commit it is on (results.mjs: by day, then write time).
+// MEMORY_SINCE=YYYY-MM-DD ignores graphs and briefs saved by earlier runs, so
+// a rerun on new code extracts everything again; older results stay on disk
+// as the "before".
+const since = env.MEMORY_SINCE?.trim() ?? "";
 function latest(kind: "graphs" | "briefs", id: string): string | null {
-  return newestRunFile(resultsRoot, `${kind}/${id}.json`);
+  return newestRunFile(resultsRoot, `${kind}/${id}.json`,
+    (path: string) => !since || relative(resultsRoot, path).slice(0, 10) >= since);
 }
 
 // Free tier: 20 requests/day/model, reset at midnight Pacific. Spend is logged
