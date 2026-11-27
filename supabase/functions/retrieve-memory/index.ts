@@ -6,6 +6,7 @@ import { createHandler, type DbClient } from "./handler.ts";
 import { createDecisionsRouter } from "./decisions.ts";
 import { createHttpMemoryReranker, DEFAULT_RERANK_BUDGET_MS } from "./memory-reranker.ts";
 import { createEdgeMemoryReranker } from "./memory-reranker-edge.ts";
+import { loadVerifiedModel } from "./model-artifact.ts";
 import rerankManifest from "../_shared/reranker/manifest.json" with { type: "json" };
 
 // Thin entry point: real clients, embedder and log sink. The request logic,
@@ -113,8 +114,9 @@ function localEvalConfiguration() {
 
 // RERANKER_MODE=shadow|on turns the reranker on for the default live path (v2).
 // It is MEMORY_RERANKER_URL's HTTP service when that is set, otherwise the
-// pool-trained 2-layer model served in this function (_shared/reranker; fetch
-// the binary with ml/reranker/deploy/fetch_model.sh and list it in static_files).
+// pool-trained 2-layer model served in this function (_shared/reranker). Its
+// weights live in the project's private `ml-models` bucket under their hash
+// (ml/reranker/deploy/upload_model.sh); only the vocabulary ships as a static file.
 // Scoring code loads on the first scored call, so cold starts with it off are unchanged.
 function defaultPathReranker() {
   const mode = Deno.env.get("RERANKER_MODE");
@@ -126,7 +128,16 @@ function defaultPathReranker() {
     timeoutMs,
     score: async (query, cards) => {
       scorer ??= import("../_shared/reranker/scorer.ts").then(({ createReranker }) => createReranker({
-        model: () => Deno.readFile(new URL("model.int8.onnx", dir)),
+        // The model is a stored artifact (bucket ml-models), refused unless it matches the pin.
+        model: () => loadVerifiedModel({
+          sha256: rerankManifest.sha256,
+          download: async (path) => {
+            const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+            const { data, error } = await admin.storage.from("ml-models").download(path);
+            if (error || !data) throw new Error("Reranker model unavailable");
+            return new Uint8Array(await data.arrayBuffer());
+          },
+        }),
         vocab: () => Deno.readTextFile(new URL("vocab.txt", dir)),
         maxLength: rerankManifest.max_length,
         timeoutMs,

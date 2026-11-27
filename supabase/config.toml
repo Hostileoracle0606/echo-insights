@@ -5,9 +5,10 @@ verify_jwt = true
 
 [functions.retrieve-memory]
 verify_jwt = true
-# The memory reranker's model and vocabulary, read when RERANKER_MODE is set.
-# Fetch the model first: ml/reranker/deploy/fetch_model.sh (pinned, sha-checked).
-static_files = ["./functions/_shared/reranker/model.int8.onnx", "./functions/_shared/reranker/vocab.txt"]
+# The memory reranker's vocabulary, read when RERANKER_MODE is set. Its model is too
+# large for the bundle; it lives in the private `ml-models` bucket under its hash
+# (ml/reranker/deploy/upload_model.sh) and is sha-checked when loaded.
+static_files = ["./functions/_shared/reranker/vocab.txt"]
 
 [functions.embed-entities]
 verify_jwt = false
