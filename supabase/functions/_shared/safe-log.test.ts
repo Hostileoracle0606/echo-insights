@@ -29,3 +29,9 @@ Deno.test("safeLog output never contains a field it dropped", () => {
   assert(!lines.join("").includes(MARKER));
   assertEquals(JSON.parse(lines[0]), { fn: "f", count: 2, droppedFields: 1 });
 });
+
+Deno.test("the reranker's mode and error class are loggable; prose under those keys is not", () => {
+  assertEquals(sanitizeLogFields({ rerank: "shadow", rerankError: "TypeError", stage: "session" }),
+    { rerank: "shadow", rerankError: "TypeError", stage: "session" });
+  assertEquals(sanitizeLogFields({ rerank: "Aurelio lives in Mossley" }), { droppedFields: 1 });
+});

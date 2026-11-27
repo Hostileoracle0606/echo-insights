@@ -556,6 +556,8 @@ Deno.test("a v2 reranker failure falls back to current search and is logged", as
   const h = harness(rerankFixture(), { embedder: () => new StubEmbedder(), rerankMode: "on", reranker: { rank: () => Promise.reject(new Error("deadline")) } });
   assertEquals((await h.call(lumenQuery)).body, plain.body);
   assert(JSON.stringify(h.logs).includes('"rerank":"error"'));
+  assert(JSON.stringify(h.logs).includes('"rerankError":"Error"'), "the error class is logged, never its message");
+  assert(!JSON.stringify(h.logs).includes("deadline"));
 });
 
 Deno.test("a configured reranker without a v2 mode leaves the default path untouched", async () => {

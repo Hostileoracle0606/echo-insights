@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { GteSmallEmbedder } from "../_shared/embedder.ts";
-import { safeLog } from "../_shared/safe-log.ts";
+import { errorClass, safeLog } from "../_shared/safe-log.ts";
 import { createHandler, type DbClient } from "./handler.ts";
 import { createDecisionsRouter } from "./decisions.ts";
 import { createHttpMemoryReranker, DEFAULT_RERANK_BUDGET_MS } from "./memory-reranker.ts";
@@ -123,31 +123,46 @@ function defaultPathReranker() {
   if (mode !== "shadow" && mode !== "on") return {};
   const timeoutMs = Number(Deno.env.get("RERANKER_TIMEOUT_MS") ?? 1200);
   const dir = new URL("../_shared/reranker/", import.meta.url);
-  let scorer: Promise<(query: string, cards: string[]) => Promise<number[]>> | null = null;
-  const edge = createEdgeMemoryReranker({
-    timeoutMs,
-    score: async (query, cards) => {
-      scorer ??= import("../_shared/reranker/scorer.ts").then(({ createReranker }) => createReranker({
-        // The model is a stored artifact (bucket ml-models), refused unless it matches the pin.
-        model: () => loadVerifiedModel({
-          sha256: rerankManifest.sha256,
-          download: async (path) => {
-            const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
-            const { data, error } = await admin.storage.from("ml-models").download(path);
-            if (error || !data) throw new Error("Reranker model unavailable");
-            return new Uint8Array(await data.arrayBuffer());
-          },
-        }),
-        vocab: () => Deno.readTextFile(new URL("vocab.txt", dir)),
-        maxLength: rerankManifest.max_length,
-        timeoutMs,
-      })).catch((error) => {
-        scorer = null;
-        throw error;
-      });
-      return (await scorer)(query, cards);
+  // The model is a stored artifact (bucket ml-models), refused unless it matches the pin.
+  let modelBytes: Promise<Uint8Array> | null = null;
+  const model = () => (modelBytes ??= loadVerifiedModel({
+    sha256: rerankManifest.sha256,
+    download: async (path) => {
+      const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+      const { data, error } = await admin.storage.from("ml-models").download(path);
+      if (error || !data) throw new Error("Reranker model unavailable");
+      return new Uint8Array(await data.arrayBuffer());
     },
-  });
+  }).catch((error) => {
+    modelBytes = null;
+    throw error;
+  }));
+  let scorer: Promise<(query: string, cards: string[]) => Promise<number[]>> | null = null;
+  const getScorer = () => (scorer ??= import("../_shared/reranker/scorer.ts").then(({ createReranker }) => createReranker({
+    model,
+    vocab: () => Deno.readTextFile(new URL("vocab.txt", dir)),
+    maxLength: rerankManifest.max_length,
+    timeoutMs,
+  })).catch((error) => {
+    scorer = null;
+    throw error;
+  }));
+  const edge = createEdgeMemoryReranker({ timeoutMs, score: async (query, cards) => (await getScorer())(query, cards) });
+  // Warm up when the worker boots, so the first scored recall rarely pays for the
+  // download and session; logged by stage (content-free) to show where a failure is.
+  if (!Deno.env.get("MEMORY_RERANKER_URL")?.trim()) {
+    const started = Date.now();
+    let stage = "download";
+    (async () => {
+      await model();
+      stage = "session";
+      await (await getScorer())("warm up", ["warm up"]);
+      stage = "ready";
+    })().then(
+      () => safeLog("retrieve-memory", { event: "reranker_warmup", stage, ms: Date.now() - started }),
+      (error) => safeLog("retrieve-memory", { event: "reranker_warmup", stage, error: errorClass(error), ms: Date.now() - started }),
+    );
+  }
   // deno-lint-ignore no-explicit-any
   const edgeRuntime = (globalThis as any).EdgeRuntime as { waitUntil?: (p: Promise<unknown>) => void } | undefined;
   return {

@@ -16,6 +16,9 @@ const SAFE_STRING_KEYS = new Set([
   "error",
   "errorClass",
   "qHash",
+  // The memory reranker's mode ("shadow" | "on" | "error" | "skipped") and error class.
+  "rerank",
+  "rerankError",
 ]);
 const SAFE_STRING = /^[A-Za-z0-9_.:-]{1,64}$/;
 

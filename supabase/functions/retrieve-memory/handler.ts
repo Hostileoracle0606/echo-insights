@@ -12,6 +12,7 @@ import { buildContext } from "./context.ts";
 import { graphEvidence } from "./graph-evidence.ts";
 import { isMemoryFactHistory, type MemoryFact } from "../_shared/memory-fact-contract.ts";
 import { selectRelevant } from "./select.ts";
+import { errorClass } from "../_shared/safe-log.ts";
 import { candidateDocument, candidateIds, selectReranked } from "../_shared/reranker/core.ts";
 import { normalizeName } from "../_shared/graphloop/noise.ts";
 import { loadQuotes } from "./quotes.ts";
@@ -81,8 +82,9 @@ async function rerankSelection(
       result: mode === "on" ? reranked : baseline,
       log: { rerank: mode, rerankMs: Date.now() - started, rerankCandidates: candidates.length, rerankSeedsChanged: changed },
     };
-  } catch {
-    return { result: baseline, log: { rerank: "error", rerankMs: Date.now() - started } };
+  } catch (error) {
+    // The class name only (safe-log): a message can echo content.
+    return { result: baseline, log: { rerank: "error", rerankError: errorClass(error), rerankMs: Date.now() - started } };
   }
 }
 
