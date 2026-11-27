@@ -5,6 +5,8 @@ import { safeLog } from "../_shared/safe-log.ts";
 import { createHandler, type DbClient } from "./handler.ts";
 import { createDecisionsRouter } from "./decisions.ts";
 import { createHttpMemoryReranker, DEFAULT_RERANK_BUDGET_MS } from "./memory-reranker.ts";
+import { createEdgeMemoryReranker } from "./memory-reranker-edge.ts";
+import rerankManifest from "../_shared/reranker/manifest.json" with { type: "json" };
 
 // Thin entry point: real clients, embedder and log sink. The request logic,
 // both scopes and their tests live in handler.ts.
@@ -109,6 +111,41 @@ function localEvalConfiguration() {
   }
 }
 
+// RERANKER_MODE=shadow|on turns the reranker on for the default live path (v2).
+// It is MEMORY_RERANKER_URL's HTTP service when that is set, otherwise the
+// pool-trained 2-layer model served in this function (_shared/reranker; fetch
+// the binary with ml/reranker/deploy/fetch_model.sh and list it in static_files).
+// Scoring code loads on the first scored call, so cold starts with it off are unchanged.
+function defaultPathReranker() {
+  const mode = Deno.env.get("RERANKER_MODE");
+  if (mode !== "shadow" && mode !== "on") return {};
+  const timeoutMs = Number(Deno.env.get("RERANKER_TIMEOUT_MS") ?? 1200);
+  const dir = new URL("../_shared/reranker/", import.meta.url);
+  let scorer: Promise<(query: string, cards: string[]) => Promise<number[]>> | null = null;
+  const edge = createEdgeMemoryReranker({
+    timeoutMs,
+    score: async (query, cards) => {
+      scorer ??= import("../_shared/reranker/scorer.ts").then(({ createReranker }) => createReranker({
+        model: () => Deno.readFile(new URL("model.int8.onnx", dir)),
+        vocab: () => Deno.readTextFile(new URL("vocab.txt", dir)),
+        maxLength: rerankManifest.max_length,
+        timeoutMs,
+      })).catch((error) => {
+        scorer = null;
+        throw error;
+      });
+      return (await scorer)(query, cards);
+    },
+  });
+  // deno-lint-ignore no-explicit-any
+  const edgeRuntime = (globalThis as any).EdgeRuntime as { waitUntil?: (p: Promise<unknown>) => void } | undefined;
+  return {
+    rerankMode: mode as "shadow" | "on",
+    ...(Deno.env.get("MEMORY_RERANKER_URL")?.trim() ? {} : { reranker: edge }),
+    ...(edgeRuntime?.waitUntil && { waitUntil: (work: Promise<unknown>) => edgeRuntime.waitUntil!(work) }),
+  };
+}
+
 serve(
   createHandler({
     userClient: (authHeader) =>
@@ -126,6 +163,7 @@ serve(
       memoryQuery: routeConfiguration(),
     }),
     ...rerankerConfiguration(),
+    ...defaultPathReranker(),
     ...localEvalConfiguration(),
   }),
 );

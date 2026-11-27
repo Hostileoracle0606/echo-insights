@@ -12,6 +12,8 @@ import { buildContext } from "./context.ts";
 import { graphEvidence } from "./graph-evidence.ts";
 import { isMemoryFactHistory, type MemoryFact } from "../_shared/memory-fact-contract.ts";
 import { selectRelevant } from "./select.ts";
+import { candidateDocument, candidateIds, selectReranked } from "../_shared/reranker/core.ts";
+import { normalizeName } from "../_shared/graphloop/noise.ts";
 import { loadQuotes } from "./quotes.ts";
 import { runMemoryQuery, type MemoryQueryDeps } from "./memory-query.ts";
 import { memoryQueryResponse } from "./memory-query-types.ts";
@@ -41,6 +43,47 @@ export interface RetrieveMemoryDeps {
   rerankDebug?: (trace: MemoryRerankTrace) => void;
   /** Enabled only by the isolated local evaluation entrypoint. */
   evalSelectionArms?: boolean;
+  /**
+   * The reranker on the default live path (v2 user scope): "shadow" scores every
+   * pool after the response and logs what would change; "on" seeds from its order.
+   * Absent = current search only, even when `reranker` serves the routed path.
+   */
+  rerankMode?: "shadow" | "on";
+  /** Runs work after the response (EdgeRuntime.waitUntil): shadow scoring never delays the user. */
+  waitUntil?: (work: Promise<unknown>) => void;
+}
+
+/**
+ * Re-seeds current search's selection from the reranker's order, as it was
+ * evaluated (ml/embedding/validation/rerank.ts on feat/reranker): candidates
+ * are the eligible vector seeds plus name matches, the seed count is current
+ * search's, and the production selector still owns neighbour expansion. The
+ * seeds go in as `semantic` priorities, exactly as evaluated. Logs are content-free.
+ */
+async function rerankSelection(
+  reranker: MemoryReranker,
+  mode: "shadow" | "on",
+  g: GraphState,
+  query: string,
+  extraSeeds: Map<string, number> | undefined,
+  baseline: ReturnType<typeof selectRelevant>,
+): Promise<{ result: ReturnType<typeof selectRelevant>; log: Record<string, unknown> }> {
+  const candidates = candidateIds(g.entities, query, [...(extraSeeds?.keys() ?? [])], normalizeName);
+  if (!candidates.length || !baseline.seeds.length) return { result: baseline, log: { rerank: "skipped" } };
+  const started = Date.now();
+  try {
+    const scores = await reranker.rank(query, candidates.map((id) => ({ id, text: candidateDocument(g, id) })),
+      new AbortController().signal);
+    const logits = candidates.map((id) => scores.get(id) ?? Number.NaN);
+    const reranked = selectReranked(candidates, logits, baseline.seeds.length, (priority) => selectRelevant(g, "", priority));
+    const changed = reranked.seeds.filter((id) => !baseline.seeds.includes(id)).length;
+    return {
+      result: mode === "on" ? reranked : baseline,
+      log: { rerank: mode, rerankMs: Date.now() - started, rerankCandidates: candidates.length, rerankSeedsChanged: changed },
+    };
+  } catch {
+    return { result: baseline, log: { rerank: "error", rerankMs: Date.now() - started } };
+  }
 }
 
 export const corsHeaders = {
@@ -407,13 +450,25 @@ export function createHandler(deps: RetrieveMemoryDeps): (req: Request) => Promi
           return json(200, retrieveMemoryResponseV2("", [], []));
         }
         // The live tool: only what is close in meaning to the query (select.ts).
-        const result = selectRelevant(g, query, extraSeeds);
+        const baseline = selectRelevant(g, query, extraSeeds);
+        let result = baseline;
+        let rerankLog: Record<string, unknown> = {};
+        if (deps.reranker && deps.rerankMode === "on") {
+          ({ result, log: rerankLog } = await rerankSelection(deps.reranker, "on", g, query, extraSeeds, baseline));
+        } else if (deps.reranker && deps.rerankMode === "shadow") {
+          // Shadow: same scoring, its own content-free log line, never in the response path.
+          const shadow = rerankSelection(deps.reranker, "shadow", g, query, extraSeeds, baseline)
+            .then(({ log }) => logTelemetry({ ok: true, scope, ...log }));
+          if (deps.waitUntil) deps.waitUntil(shadow);
+          else await shadow;
+        }
         const context = buildContext(result);
         const entityIds = result.entities.map((entity) => entity.id);
         const quotes = entityIds.length === 0 ? [] : await loadQuotes(supa, entityIds, notebookId);
         logTelemetry({
           ok: true,
           scope,
+          ...rerankLog,
           entityCount: result.entities.length,
           relationCount: result.relations.length,
           seedCount: result.seeds.length,
