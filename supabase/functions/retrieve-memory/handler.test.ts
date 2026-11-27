@@ -580,3 +580,18 @@ Deno.test("v2 shadow scoring runs after the response, so it never delays the use
   await Promise.all(background);
   assert(JSON.stringify(h.logs).includes('"rerank":"shadow"'));
 });
+
+Deno.test("v2 shadow scoring is not even started until the response is built", async () => {
+  // Edge scoring is synchronous CPU on the worker's one thread: started next to the
+  // quote fetch, it delays the response even under waitUntil (seen on staging).
+  let startedBeforeResponse = false;
+  let responded = false;
+  const background: Promise<unknown>[] = [];
+  const h = harness(rerankFixture(), { embedder: () => new StubEmbedder(), rerankMode: "shadow", waitUntil: (p) => background.push(p),
+    reranker: { rank: (q, docs) => { if (!responded) startedBeforeResponse = true; return preferSamsung.rank(q, docs); } } });
+  assertEquals((await h.call(lumenQuery)).status, 200);
+  responded = true;
+  await Promise.all(background);
+  assertEquals(startedBeforeResponse, false);
+  assert(JSON.stringify(h.logs).includes('"rerank":"shadow"'));
+});

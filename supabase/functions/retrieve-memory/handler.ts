@@ -457,13 +457,14 @@ export function createHandler(deps: RetrieveMemoryDeps): (req: Request) => Promi
         let rerankLog: Record<string, unknown> = {};
         if (deps.reranker && deps.rerankMode === "on") {
           ({ result, log: rerankLog } = await rerankSelection(deps.reranker, "on", g, query, extraSeeds, baseline));
-        } else if (deps.reranker && deps.rerankMode === "shadow") {
-          // Shadow: same scoring, its own content-free log line, never in the response path.
-          const shadow = rerankSelection(deps.reranker, "shadow", g, query, extraSeeds, baseline)
-            .then(({ log }) => logTelemetry({ ok: true, scope, ...log }));
-          if (deps.waitUntil) deps.waitUntil(shadow);
-          else await shadow;
         }
+        // Shadow: same scoring, its own content-free log line, never in the response path.
+        // Scoring is synchronous CPU work on the worker's one thread, so it starts only
+        // after the response is built (a macrotask later), not alongside the quote fetch.
+        const shadowReranker = deps.rerankMode === "shadow" ? deps.reranker : undefined;
+        const runShadow = () =>
+          rerankSelection(shadowReranker!, "shadow", g, query, extraSeeds, baseline)
+            .then(({ log }) => logTelemetry({ ok: true, scope, ...log }));
         const context = buildContext(result);
         const entityIds = result.entities.map((entity) => entity.id);
         const quotes = entityIds.length === 0 ? [] : await loadQuotes(supa, entityIds, notebookId);
@@ -479,7 +480,12 @@ export function createHandler(deps: RetrieveMemoryDeps): (req: Request) => Promi
           latencyMs: Date.now() - startedAt,
           qHash: await queryHash(query),
         });
-        return json(200, retrieveMemoryResponseV2(context, entityIds, quotes));
+        const response = json(200, retrieveMemoryResponseV2(context, entityIds, quotes));
+        if (shadowReranker) {
+          if (deps.waitUntil) deps.waitUntil(new Promise((resolve) => setTimeout(resolve, 0)).then(runShadow));
+          else await runShadow();
+        }
+        return response;
       }
 
       const entities = body.state?.entities ?? {};

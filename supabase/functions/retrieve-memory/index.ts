@@ -147,22 +147,31 @@ function defaultPathReranker() {
     scorer = null;
     throw error;
   }));
-  const edge = createEdgeMemoryReranker({ timeoutMs, score: async (query, cards) => (await getScorer())(query, cards) });
-  // Warm up when the worker boots, so the first scored recall rarely pays for the
-  // download and session; logged by stage (content-free) to show where a failure is.
-  if (!Deno.env.get("MEMORY_RERANKER_URL")?.trim()) {
+  // No warm-up at boot: an edge worker is retired after about a second of CPU, and
+  // loading the session costs about half of that, so a worker pays for the model only
+  // when it first scores. That first load is logged by stage (content-free).
+  let loaded: Promise<void> | null = null;
+  const ensureLoaded = () => (loaded ??= (async () => {
     const started = Date.now();
     let stage = "download";
-    (async () => {
+    try {
       await model();
       stage = "session";
-      await (await getScorer())("warm up", ["warm up"]);
-      stage = "ready";
-    })().then(
-      () => safeLog("retrieve-memory", { event: "reranker_warmup", stage, ms: Date.now() - started }),
-      (error) => safeLog("retrieve-memory", { event: "reranker_warmup", stage, error: errorClass(error), ms: Date.now() - started }),
-    );
-  }
+      await (await getScorer())("load", ["load"]); // creates the session (it is lazy)
+      safeLog("retrieve-memory", { event: "reranker_load", stage: "ready", ms: Date.now() - started });
+    } catch (error) {
+      safeLog("retrieve-memory", { event: "reranker_load", stage, error: errorClass(error), ms: Date.now() - started });
+      loaded = null;
+      throw error;
+    }
+  })());
+  const edge = createEdgeMemoryReranker({
+    timeoutMs,
+    score: async (query, cards) => {
+      await ensureLoaded();
+      return (await getScorer())(query, cards);
+    },
+  });
   // deno-lint-ignore no-explicit-any
   const edgeRuntime = (globalThis as any).EdgeRuntime as { waitUntil?: (p: Promise<unknown>) => void } | undefined;
   return {
