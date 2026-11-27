@@ -59,3 +59,6 @@ supabase/.temp/
 # Release 1 early static site (scripts/build-release1-site.tsx)
 dist-release1/
 test-runs/
+
+# Served reranker binary (ml/reranker/deploy/fetch_model.sh)
+supabase/functions/_shared/reranker/model.int8.onnx
