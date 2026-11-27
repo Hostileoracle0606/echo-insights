@@ -178,10 +178,10 @@
       }
     },
     "edgeLatencyMs": {
-      "p50": 230,
-      "p95": 338,
-      "cold": 624,
-      "host": "Apple M4, Deno WASM, 1 thread"
+      "p50": 223,
+      "p95": 335,
+      "cold": 721,
+      "host": "Apple M4, Deno WASM, 1 thread, onnxruntime-web 1.18.0 (no shared memory)"
     },
     "budget": {
       "edgeP95Ms": 600,

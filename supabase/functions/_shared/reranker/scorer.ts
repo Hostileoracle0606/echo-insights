@@ -2,7 +2,10 @@
 // cross-encoder (int8 ONNX, onnxruntime-web WASM) scores every candidate card
 // against the live tool's query in one batched run. Trained and evaluated in
 // ml/reranker (RESULTS.md); manifest.json pins the weights' hash.
-import * as ort from "npm:onnxruntime-web@1.22.0";
+// 1.18.0: later versions ship only the threaded WASM build, which needs shared
+// memory; Supabase's edge runtime refuses it ("Creating a shared memory is not
+// supported"). 1.18 still has the single-threaded ort-wasm-simd build.
+import * as ort from "npm:onnxruntime-web@1.18.0";
 
 import { WordPiece } from "./wordpiece.ts";
 
