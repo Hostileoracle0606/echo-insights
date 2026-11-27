@@ -39,7 +39,7 @@ function fakeClient(
 function harness(
   rpcs: Record<string, RpcImpl>,
   opts: { embedder?: () => StubEmbedder; reranker?: RetrieveMemoryDeps["reranker"]; rerankMode?: RetrieveMemoryDeps["rerankMode"];
-    waitUntil?: RetrieveMemoryDeps["waitUntil"] } = {},
+    waitUntil?: RetrieveMemoryDeps["waitUntil"]; defaultPathReranker?: RetrieveMemoryDeps["defaultPathReranker"] } = {},
 ) {
   const calls: Call[] = [];
   const logs: Record<string, unknown>[] = [];
@@ -59,6 +59,7 @@ function harness(
     ...(opts.reranker && { reranker: opts.reranker }),
     ...(opts.rerankMode && { rerankMode: opts.rerankMode }),
     ...(opts.waitUntil && { waitUntil: opts.waitUntil }),
+    ...(opts.defaultPathReranker && { defaultPathReranker: opts.defaultPathReranker }),
   };
   const handler = createHandler(deps);
   const call = async (body: unknown) => {
@@ -594,4 +595,14 @@ Deno.test("v2 shadow scoring is not even started until the response is built", a
   await Promise.all(background);
   assertEquals(startedBeforeResponse, false);
   assert(JSON.stringify(h.logs).includes('"rerank":"shadow"'));
+});
+
+Deno.test("the default path's own reranker is used there, and the shared one is left alone", async () => {
+  let shared = 0;
+  let own = 0;
+  const h = harness(rerankFixture(), { embedder: () => new StubEmbedder(), rerankMode: "on",
+    reranker: { rank: (q, docs) => { shared += 1; return preferSamsung.rank(q, docs); } },
+    defaultPathReranker: { rank: (q, docs) => { own += 1; return preferSamsung.rank(q, docs); } } });
+  assertEquals((await h.call(lumenQuery)).status, 200);
+  assertEquals([own, shared], [1, 0]);
 });

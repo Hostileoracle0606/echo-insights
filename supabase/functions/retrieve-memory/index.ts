@@ -112,16 +112,39 @@ function localEvalConfiguration() {
   }
 }
 
-// RERANKER_MODE=shadow|on turns the reranker on for the default live path (v2).
-// It is MEMORY_RERANKER_URL's HTTP service when that is set, otherwise the
-// pool-trained 2-layer model served in this function (_shared/reranker). Its
-// weights live in the project's private `ml-models` bucket under their hash
-// (ml/reranker/deploy/upload_model.sh); only the vocabulary ships as a static file.
-// Scoring code loads on the first scored call, so cold starts with it off are unchanged.
+// RERANKER_MODE=shadow|on turns the reranker on for the default live path (v2),
+// as its own dependency (defaultPathReranker), so it never reaches the routed path.
+// In order of preference:
+// - RERANKER_SERVICE_URL (+ RERANKER_SERVICE_TOKEN): the reranker service
+//   (infra/lib/memory-reranker-stack.ts), the same model on native onnxruntime;
+// - MEMORY_RERANKER_URL's HTTP service, which then serves both paths;
+// - the model in this function (_shared/reranker): weights in the private
+//   `ml-models` bucket (ml/reranker/deploy/upload_model.sh). Edge workers are retired
+//   after about a second of CPU, so this is for local runs, not hosted ones.
 function defaultPathReranker() {
   const mode = Deno.env.get("RERANKER_MODE");
   if (mode !== "shadow" && mode !== "on") return {};
   const timeoutMs = Number(Deno.env.get("RERANKER_TIMEOUT_MS") ?? 1200);
+  // deno-lint-ignore no-explicit-any
+  const edgeRuntime = (globalThis as any).EdgeRuntime as { waitUntil?: (p: Promise<unknown>) => void } | undefined;
+  const waitUntil = edgeRuntime?.waitUntil && { waitUntil: (work: Promise<unknown>) => edgeRuntime.waitUntil!(work) };
+  const service = Deno.env.get("RERANKER_SERVICE_URL")?.trim();
+  if (service) {
+    try {
+      return {
+        rerankMode: mode as "shadow" | "on",
+        defaultPathReranker: createHttpMemoryReranker({
+          endpoint: service,
+          timeoutMs,
+          bearerToken: Deno.env.get("RERANKER_SERVICE_TOKEN") ?? undefined,
+        }),
+        ...waitUntil,
+      };
+    } catch (error) {
+      safeLog("retrieve-memory", { event: "reranker_configuration_invalid", error: errorClass(error) });
+      return {};
+    }
+  }
   const dir = new URL("../_shared/reranker/", import.meta.url);
   // The model is a stored artifact (bucket ml-models), refused unless it matches the pin.
   let modelBytes: Promise<Uint8Array> | null = null;
@@ -172,12 +195,10 @@ function defaultPathReranker() {
       return (await getScorer())(query, cards);
     },
   });
-  // deno-lint-ignore no-explicit-any
-  const edgeRuntime = (globalThis as any).EdgeRuntime as { waitUntil?: (p: Promise<unknown>) => void } | undefined;
   return {
     rerankMode: mode as "shadow" | "on",
-    ...(Deno.env.get("MEMORY_RERANKER_URL")?.trim() ? {} : { reranker: edge }),
-    ...(edgeRuntime?.waitUntil && { waitUntil: (work: Promise<unknown>) => edgeRuntime.waitUntil!(work) }),
+    ...(Deno.env.get("MEMORY_RERANKER_URL")?.trim() ? {} : { defaultPathReranker: edge }),
+    ...waitUntil,
   };
 }
 

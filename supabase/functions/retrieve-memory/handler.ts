@@ -50,6 +50,12 @@ export interface RetrieveMemoryDeps {
    * Absent = current search only, even when `reranker` serves the routed path.
    */
   rerankMode?: "shadow" | "on";
+  /**
+   * The reranker for that default path alone (RERANKER_MODE). Kept apart from
+   * `reranker`, which the routed path uses live whenever it is set; without it
+   * the default path falls back to `reranker`.
+   */
+  defaultPathReranker?: MemoryReranker;
   /** Runs work after the response (EdgeRuntime.waitUntil): shadow scoring never delays the user. */
   waitUntil?: (work: Promise<unknown>) => void;
 }
@@ -455,13 +461,14 @@ export function createHandler(deps: RetrieveMemoryDeps): (req: Request) => Promi
         const baseline = selectRelevant(g, query, extraSeeds);
         let result = baseline;
         let rerankLog: Record<string, unknown> = {};
-        if (deps.reranker && deps.rerankMode === "on") {
-          ({ result, log: rerankLog } = await rerankSelection(deps.reranker, "on", g, query, extraSeeds, baseline));
+        const pathReranker = deps.defaultPathReranker ?? deps.reranker;
+        if (pathReranker && deps.rerankMode === "on") {
+          ({ result, log: rerankLog } = await rerankSelection(pathReranker, "on", g, query, extraSeeds, baseline));
         }
         // Shadow: same scoring, its own content-free log line, never in the response path.
         // Scoring is synchronous CPU work on the worker's one thread, so it starts only
         // after the response is built (a macrotask later), not alongside the quote fetch.
-        const shadowReranker = deps.rerankMode === "shadow" ? deps.reranker : undefined;
+        const shadowReranker = deps.rerankMode === "shadow" ? pathReranker : undefined;
         const runShadow = () =>
           rerankSelection(shadowReranker!, "shadow", g, query, extraSeeds, baseline)
             .then(({ log }) => logTelemetry({ ok: true, scope, ...log }));
