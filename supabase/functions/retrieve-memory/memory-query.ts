@@ -22,7 +22,7 @@ export type MemoryQueryDeps = {
  * fact stored for them (EC-06).
  */
 export type GraphEvidenceSource = {
-  evidence(query: string, signal: AbortSignal): Promise<MemoryPassage[]>;
+  evidence(query: string, signal: AbortSignal, rerankQuery?: string): Promise<MemoryPassage[]>;
   facts(signal: AbortSignal): Promise<{ entities: FactEntity[]; facts: MemoryFact[] }>;
 };
 
@@ -135,7 +135,7 @@ export async function runMemoryQuery(
       });
     }
 
-    const passages = await graph.evidence(safeHint || safeQuestion, signal);
+    const passages = await graph.evidence(safeHint || safeQuestion, signal, safeQuestion);
     signal.throwIfAborted();
     if (isOpenRecall(route)) {
       if (!passages.length) {

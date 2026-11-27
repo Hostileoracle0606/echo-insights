@@ -15,6 +15,8 @@ import { selectRelevant } from "./select.ts";
 import { loadQuotes } from "./quotes.ts";
 import { runMemoryQuery, type MemoryQueryDeps } from "./memory-query.ts";
 import { memoryQueryResponse } from "./memory-query-types.ts";
+import type { MemoryReranker } from "./memory-reranker.ts";
+import type { MemoryRerankTrace } from "./graph-evidence.ts";
 
 // The handler takes its clients, embedder and logger as dependencies so it
 // can be tested without a Supabase stack; index.ts wires the real ones.
@@ -31,6 +33,14 @@ export interface RetrieveMemoryDeps {
   log(fields: Record<string, unknown>): void;
   /** Optional while the routed voice workflow is evaluated. */
   memoryQuery?: MemoryQueryDeps;
+  /** Optional Lumen-only stage-two ranker. Disabled unless an endpoint is configured. */
+  reranker?: MemoryReranker;
+  rerankerCandidateCount?: number;
+  rerankerBudgetMs?: number;
+  /** Private test/debug hook. It receives IDs and features, never memory text. */
+  rerankDebug?: (trace: MemoryRerankTrace) => void;
+  /** Enabled only by the isolated local evaluation entrypoint. */
+  evalSelectionArms?: boolean;
 }
 
 export const corsHeaders = {
@@ -191,9 +201,24 @@ export function createHandler(deps: RetrieveMemoryDeps): (req: Request) => Promi
   const logTelemetry = deps.log;
 
   return async (req: Request): Promise<Response> => {
-    if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+    if (req.method === "OPTIONS") {
+      const headers: Record<string, string> = { ...corsHeaders };
+      if (deps.evalSelectionArms) {
+        headers["Access-Control-Allow-Headers"] += ", x-lumen-eval-selection-arm, x-lumen-eval-trial-id";
+        headers["Access-Control-Expose-Headers"] = "x-lumen-eval-trace";
+      }
+      return new Response(null, { headers });
+    }
     const startedAt = Date.now();
     let scope: Scope = "notebook";
+    const armHeader = req.headers.get("x-lumen-eval-selection-arm");
+    const evalArm = deps.evalSelectionArms &&
+        (armHeader === "baseline" || armHeader === "dense" || armHeader === "dense-pairwise")
+      ? armHeader
+      : undefined;
+    const rawTrialId = req.headers.get("x-lumen-eval-trial-id") ?? "";
+    const evalTrialId = /^[A-Za-z0-9_-]{1,64}$/.test(rawTrialId) ? rawTrialId : undefined;
+    let evalTrace: MemoryRerankTrace | undefined;
     try {
       const raw = await req.text();
       if (raw.length > MAX_BODY_BYTES) return json(413, { error: "body too large" });
@@ -279,20 +304,32 @@ export function createHandler(deps: RetrieveMemoryDeps): (req: Request) => Promi
         // facts stored for those entities (EC-06).
         let selected: { id: string; name: string }[] = [];
         const graphSource = {
-          evidence: async (graphQuery: string, signal: AbortSignal) => {
+          evidence: async (graphQuery: string, signal: AbortSignal, rerankQuery = graphQuery) => {
             const [graph, seeds] = await Promise.all([
               supa.rpc("get_user_graph", { p_types: null, p_limit: USER_GRAPH_LIMIT }),
               semanticSeeds(deps, graphQuery, (vector, model) => ({
                 fn: "match_user_entity_embeddings",
-                args: { p_user_id: user.id, p_query: vector, p_limit: SEED_LIMIT, p_model: model },
+                args: { p_user_id: user.id, p_query: vector, p_limit: evalArm === "dense" || evalArm === "dense-pairwise" ? 20 : SEED_LIMIT, p_model: model },
               })),
             ]);
             signal.throwIfAborted();
             if (graph.error) return [];
             const g = userGraphToState(graph.data);
             if (!Object.keys(g.entities).length) return [];
-            const found = await graphEvidence(supa, g, graphQuery, seeds, signal);
-            selected = found.entityIds.map((id) => ({ id, name: g.entities[id]?.name ?? id }));
+            const found = await graphEvidence(supa, g, graphQuery, seeds, signal, {
+              reranker: deps.reranker,
+              rerankQuery,
+              candidateCount: evalArm === "dense-pairwise" ? 20 : deps.rerankerCandidateCount,
+              budgetMs: deps.rerankerBudgetMs,
+              evalArm,
+              evalTrialId,
+              debug: evalArm ? (trace) => { evalTrace = trace; } : deps.rerankDebug,
+              // Facts must keep using the same baseline candidate set as
+              // before reranking; only passage selection is reranked.
+              onBaselineEntityIds: (ids) => {
+                selected = ids.map((id) => ({ id, name: g.entities[id]?.name ?? id }));
+              },
+            });
             return found.passages;
           },
           facts: async (signal: AbortSignal) => {
@@ -307,7 +344,7 @@ export function createHandler(deps: RetrieveMemoryDeps): (req: Request) => Promi
             return { entities: selected, facts: data as MemoryFact[] };
           },
         };
-        return json(
+        const response = json(
           200,
           await runMemoryQuery(
             deps.memoryQuery,
@@ -319,6 +356,29 @@ export function createHandler(deps: RetrieveMemoryDeps): (req: Request) => Promi
             logTelemetry,
           ),
         );
+        if (evalArm && evalTrace) {
+          const trace = {
+            v: 1,
+            arm: evalTrace.arm,
+            trial: evalTrace.trialId,
+            candidates: evalTrace.candidates.map(({ id, hash, score }) => [id, hash, score]),
+            baseline: evalTrace.baselineIds,
+            selected: evalTrace.rerankedIds,
+            baselineEntities: evalTrace.baselineEntityHashes,
+            returnedEntities: evalTrace.selectedEntityHashes,
+            baselineSeeds: evalTrace.baselineSeedHashes,
+            selectedSeeds: evalTrace.selectedSeedHashes,
+            retainedEntries: evalTrace.retainedEntryIds,
+            fallback: evalTrace.fallback,
+            elapsedMs: evalTrace.durationMs,
+          };
+          const bytes = new TextEncoder().encode(JSON.stringify(trace));
+          let binary = "";
+          for (const byte of bytes) binary += String.fromCharCode(byte);
+          response.headers.set("x-lumen-eval-trace", btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, ""));
+          response.headers.set("Access-Control-Expose-Headers", "x-lumen-eval-trace");
+        }
+        return response;
       }
 
       if (scope === "user") {
