@@ -36,7 +36,11 @@ function fakeClient(
   };
 }
 
-function harness(rpcs: Record<string, RpcImpl>, opts: { embedder?: () => StubEmbedder } = {}) {
+function harness(
+  rpcs: Record<string, RpcImpl>,
+  opts: { embedder?: () => StubEmbedder; reranker?: RetrieveMemoryDeps["reranker"]; rerankMode?: RetrieveMemoryDeps["rerankMode"];
+    waitUntil?: RetrieveMemoryDeps["waitUntil"]; defaultPathReranker?: RetrieveMemoryDeps["defaultPathReranker"] } = {},
+) {
   const calls: Call[] = [];
   const logs: Record<string, unknown>[] = [];
   const all: Record<string, RpcImpl> = {
@@ -52,6 +56,10 @@ function harness(rpcs: Record<string, RpcImpl>, opts: { embedder?: () => StubEmb
         throw new Error("no Supabase.ai locally");
       }),
     log: (fields) => logs.push(fields),
+    ...(opts.reranker && { reranker: opts.reranker }),
+    ...(opts.rerankMode && { rerankMode: opts.rerankMode }),
+    ...(opts.waitUntil && { waitUntil: opts.waitUntil }),
+    ...(opts.defaultPathReranker && { defaultPathReranker: opts.defaultPathReranker }),
   };
   const handler = createHandler(deps);
   const call = async (body: unknown) => {
@@ -489,4 +497,112 @@ Deno.test("user scope with no close match returns empty memory", async () => {
   assertEquals(res.body.entityIds, []);
   assertEquals(res.body.context, "");
   assertEquals(res.body.quotes, []);
+});
+
+// ── memory reranker on the default (v2) live path ─────────────
+
+// Lumen app and Samsung both clear the vector threshold; current search seeds only Lumen app.
+function rerankFixture() {
+  const graph = {
+    entityCount: 5,
+    relationCount: 2,
+    entities: [
+      ent("lumen-app", "Lumen app", "project", "the user's iOS app"),
+      ent("launch-checklist", "launch checklist", "other"),
+      ent("samsung", "Samsung", "organization", "where the user works on enterprise AI"),
+      ent("ai", "AI", "project", "enterprise AI project at work"),
+      ent("europe", "Europe", "place"),
+    ],
+    relations: [
+      { id: "r1", source: "lumen-app", target: "launch-checklist", label: "has" },
+      { id: "r2", source: "ai", target: "samsung", label: "at" },
+    ],
+  };
+  return {
+    get_user_graph: () => ({ data: graph, error: null }),
+    match_user_entity_embeddings: () => ({
+      data: [{ entity_id: "lumen-app", notebook_id: "nb-b", score: 0.86 }, { entity_id: "samsung", notebook_id: "nb-c", score: 0.74 }],
+      error: null,
+    }),
+    get_entity_mentions: () => ({ data: { total: 0, mentions: [] }, error: null }),
+  };
+}
+const preferSamsung = { rank: async (_q: string, docs: { id: string; text: string }[]) =>
+  new Map(docs.map((d) => [d.id, d.text.startsWith("Samsung") ? 5 : 0])) };
+const lumenQuery = { query: "Lumen project", notebookId: OPEN_NB, scope: "user" };
+
+Deno.test("v2 reranker in shadow mode scores the pool but returns current search's memory", async () => {
+  const plain = await harness(rerankFixture(), { embedder: () => new StubEmbedder() }).call(lumenQuery);
+  const seen: string[] = [];
+  const h = harness(rerankFixture(), { embedder: () => new StubEmbedder(), rerankMode: "shadow",
+    reranker: { rank: (q, docs, s) => { seen.push(q, ...docs.map((d) => d.text)); return preferSamsung.rank(q, docs); } } });
+  const res = await h.call(lumenQuery);
+  assertEquals(res.body, plain.body);
+  assertEquals(seen[0], "Lumen project");
+  assert(seen.some((card) => card.startsWith("Samsung (organization)")));
+  const logged = JSON.stringify(h.logs);
+  assert(logged.includes('"rerank":"shadow"') && logged.includes('"rerankSeedsChanged":1'));
+  assert(!logged.includes("Samsung") && !logged.includes("Lumen"), "the reranker log is content-free");
+});
+
+Deno.test("v2 reranker on takes its seeds from the reranker's order", async () => {
+  const res = await harness(rerankFixture(), { embedder: () => new StubEmbedder(), rerankMode: "on", reranker: preferSamsung }).call(lumenQuery);
+  assert(isRetrieveMemoryResponseV2(res.body));
+  assertEquals(res.body.entityIds[0], "samsung");
+  assert(res.body.context.includes("Samsung"));
+});
+
+Deno.test("a v2 reranker failure falls back to current search and is logged", async () => {
+  const plain = await harness(rerankFixture(), { embedder: () => new StubEmbedder() }).call(lumenQuery);
+  const h = harness(rerankFixture(), { embedder: () => new StubEmbedder(), rerankMode: "on", reranker: { rank: () => Promise.reject(new Error("deadline")) } });
+  assertEquals((await h.call(lumenQuery)).body, plain.body);
+  assert(JSON.stringify(h.logs).includes('"rerank":"error"'));
+  assert(JSON.stringify(h.logs).includes('"rerankError":"Error"'), "the error class is logged, never its message");
+  assert(!JSON.stringify(h.logs).includes("deadline"));
+});
+
+Deno.test("a configured reranker without a v2 mode leaves the default path untouched", async () => {
+  const plain = await harness(rerankFixture(), { embedder: () => new StubEmbedder() }).call(lumenQuery);
+  let called = false;
+  const h = harness(rerankFixture(), { embedder: () => new StubEmbedder(), reranker: { rank: (q, d, s) => { called = true; return preferSamsung.rank(q, d); } } });
+  assertEquals((await h.call(lumenQuery)).body, plain.body);
+  assertEquals(called, false);
+});
+
+Deno.test("v2 shadow scoring runs after the response, so it never delays the user", async () => {
+  let release!: () => void;
+  const scored = new Promise<void>((r) => { release = r; });
+  const background: Promise<unknown>[] = [];
+  const h = harness(rerankFixture(), { embedder: () => new StubEmbedder(), rerankMode: "shadow", waitUntil: (p) => background.push(p),
+    reranker: { rank: async (q, docs) => { await scored; return preferSamsung.rank(q, docs); } } });
+  assertEquals((await h.call(lumenQuery)).status, 200);
+  assertEquals(JSON.stringify(h.logs).includes('"rerank":"shadow"'), false);
+  release();
+  await Promise.all(background);
+  assert(JSON.stringify(h.logs).includes('"rerank":"shadow"'));
+});
+
+Deno.test("v2 shadow scoring is not even started until the response is built", async () => {
+  // Edge scoring is synchronous CPU on the worker's one thread: started next to the
+  // quote fetch, it delays the response even under waitUntil (seen on staging).
+  let startedBeforeResponse = false;
+  let responded = false;
+  const background: Promise<unknown>[] = [];
+  const h = harness(rerankFixture(), { embedder: () => new StubEmbedder(), rerankMode: "shadow", waitUntil: (p) => background.push(p),
+    reranker: { rank: (q, docs) => { if (!responded) startedBeforeResponse = true; return preferSamsung.rank(q, docs); } } });
+  assertEquals((await h.call(lumenQuery)).status, 200);
+  responded = true;
+  await Promise.all(background);
+  assertEquals(startedBeforeResponse, false);
+  assert(JSON.stringify(h.logs).includes('"rerank":"shadow"'));
+});
+
+Deno.test("the default path's own reranker is used there, and the shared one is left alone", async () => {
+  let shared = 0;
+  let own = 0;
+  const h = harness(rerankFixture(), { embedder: () => new StubEmbedder(), rerankMode: "on",
+    reranker: { rank: (q, docs) => { shared += 1; return preferSamsung.rank(q, docs); } },
+    defaultPathReranker: { rank: (q, docs) => { own += 1; return preferSamsung.rank(q, docs); } } });
+  assertEquals((await h.call(lumenQuery)).status, 200);
+  assertEquals([own, shared], [1, 0]);
 });

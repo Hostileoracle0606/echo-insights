@@ -7,7 +7,12 @@ import { createHandler, type DbClient } from "./handler.ts";
 // A description word ("project") must not bring another topic's entries in.
 
 const NOW = new Date().toISOString();
-const ent = (id: string, name: string, type: string, description: string | null = null) => ({
+const ent = (
+  id: string,
+  name: string,
+  type: string,
+  description: string | null = null,
+) => ({
   id,
   name,
   type,
@@ -36,22 +41,42 @@ const graph = {
     ent("lumen-app", "Lumen app", "project"),
     ent("launch-checklist", "launch checklist", "project"),
     // "project" only in the description: a keyword hit the old ranking seeded.
-    ent("samsung", "Samsung", "organization", "where the enterprise AI project is"),
+    ent(
+      "samsung",
+      "Samsung",
+      "organization",
+      "where the enterprise AI project is",
+    ),
   ],
-  relations: [{ id: "r1", source: "lumen-app", target: "launch-checklist", label: "has" }],
+  relations: [{
+    id: "r1",
+    source: "lumen-app",
+    target: "launch-checklist",
+    label: "has",
+  }],
 };
 const mentions: Record<string, unknown[]> = {
   "lumen-app": [mention("l1", "nb-a", "Lumen should be out by mid December")],
-  "launch-checklist": [mention("c1", "nb-a", "I finished the launch checklist")],
-  samsung: [mention("s1", "nb-b", "It's mostly our own enterprise AI at Samsung")],
+  "launch-checklist": [
+    mention("c1", "nb-a", "I finished the launch checklist"),
+  ],
+  samsung: [
+    mention("s1", "nb-b", "It's mostly our own enterprise AI at Samsung"),
+  ],
 };
 
 function client(): DbClient {
   return {
-    auth: { getUser: () => Promise.resolve({ data: { user: { id: "u1" } }, error: null }) },
+    auth: {
+      getUser: () =>
+        Promise.resolve({ data: { user: { id: "u1" } }, error: null }),
+    },
     from: () => ({
       select: () => ({
-        eq: () => ({ single: () => Promise.resolve({ data: { id: "book-1" }, error: null }) }),
+        eq: () => ({
+          single: () =>
+            Promise.resolve({ data: { id: "book-1" }, error: null }),
+        }),
       }),
     }),
     rpc: (name, args) => {
@@ -84,7 +109,8 @@ Deno.test("routed recall's evidence is only entries of close matches", async () 
       timeoutMs: 500,
       // No stored fact answers this, so the linked entries come back as the
       // user's own words: only those of the close matches.
-      route: () => Promise.resolve({ operation: "recall", timeScope: "current" }),
+      route: () =>
+        Promise.resolve({ operation: "recall", timeScope: "current" }),
     },
   });
 
@@ -104,5 +130,65 @@ Deno.test("routed recall's evidence is only entries of close matches", async () 
 
   assertEquals(response.status, 200);
   const body = await response.json();
-  assertEquals(body.quotes.map((q: { entryId: string }) => q.entryId).sort(), ["c1", "l1"]);
+  assertEquals(body.quotes.map((q: { entryId: string }) => q.entryId).sort(), [
+    "c1",
+    "l1",
+  ]);
+});
+
+Deno.test("V3 reranks quotes with the full redacted question and keeps baseline fact inputs", async () => {
+  const db = client();
+  let selectedFacts: unknown = null;
+  const userDb: DbClient = {
+    ...db,
+    rpc: (name, args) => {
+      if (name === "get_entity_fact_history") selectedFacts = args.p_entity_ids;
+      if (name === "redact_forgotten_text") {
+        return Promise.resolve({
+          data: String(args.p_text).replace("private-marker", "[redacted]"),
+          error: null,
+        });
+      }
+      return db.rpc(name, args);
+    },
+  };
+  const handler = createHandler({
+    userClient: () => userDb,
+    adminClient: client,
+    embedder: () => new StubEmbedder(),
+    log: () => {},
+    memoryQuery: {
+      timeoutMs: 1000,
+      route: () =>
+        Promise.resolve({ operation: "recall", timeScope: "current" }),
+    },
+    reranker: {
+      rank: (question, documents) => {
+        assertEquals(
+          question,
+          "Where were we with the project before [redacted]?",
+        );
+        return Promise.resolve(
+          new Map(documents.map(({ id }) => [id, id === "samsung" ? 1 : -1])),
+        );
+      },
+    },
+  });
+  const response = await handler(
+    new Request("http://local/retrieve-memory", {
+      method: "POST",
+      headers: { Authorization: "Bearer synthetic" },
+      body: JSON.stringify({
+        scope: "user",
+        notebookId: "book-1",
+        version: 3,
+        query: "Lumen project",
+        question: "Where were we with the project before private-marker?",
+      }),
+    }),
+  );
+  assertEquals(response.status, 200);
+  const body = await response.json();
+  assertEquals(body.quotes[0].entryId, "s1");
+  assertEquals(selectedFacts, ["lumen-app", "launch-checklist"]);
 });

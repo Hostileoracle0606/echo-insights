@@ -1,0 +1,202 @@
+{
+  "max_length": 256,
+  "sha256": "f6f38efadd561d233f9e5f528308fb82900bb257002f15eb092a15d6071e7b0c",
+  "source_sha256": "ada5f2d8ace7b3c74bd443c78e193f230a1680d30ae097d3a52e870f732287d0",
+  "parity": {
+    "pools": 108,
+    "seed_agreement_top3": 0.9351851851851852,
+    "rows": [
+      {
+        "id": "val-10001-q1",
+        "query": "Did I ever mention what Aurelio does for a living? I'm not sure I told you.",
+        "documents": [
+          "Aurelio Sutherland (person)\na nurse\nAurelio Sutherland --closest_to--> Jetstream Brewery\nAurelio Sutherland --coworker_at--> work\nAurelio Sutherland --lives_in--> Mossley\nAurelio Sutherland --mentioned_with--> Nolan Everly\nAurelio Sutherland --moved_from--> Hazelmere\nwork --involves--> Aurelio Sutherland",
+          "Bread Scoring (activity)\nPracticing wheat-ear cuts with a lame before baking.\nBread Scoring --practiced_on--> Sourdough Starter",
+          "Darkroom Chemistry (concept)\nDeveloper, stop bath and fixer mixed for home prints.\nFilm Camera --developed_with--> Darkroom Chemistry",
+          "Ignatius Polk (person)\nRestores old valve radios and swaps spare parts.\nIgnatius Polk --swaps_parts_for--> Vintage Radio",
+          "Metronome (other)\nWind-up metronome set to sixty beats per minute.\nMetronome --keeps_time_for--> Fingerpicking Practice",
+          "Neon Tetras (other)\nA school of eight neon tetras in the tank.\nNeon Tetras --live_in--> Freshwater Aquarium",
+          "Saturn Rings (concept)\nRing tilt seen through the telescope in late summer.\nBackyard Telescope --pointed_at--> Saturn Rings",
+          "Sicilian Defense (concept)\nSharp chess opening studied from a puzzle book.\nSicilian Defense --studied_for--> Chess Club",
+          "Wendell Ashby (person)\nRuns the monthly stargazing night and lends out eyepieces.\nPerseid Meteor Shower --watched_with--> Wendell Ashby\nWendell Ashby --lent_eyepiece_for--> Backyard Telescope\nWendell Ashby --runs_stargazing_at--> Quillmont Observatory",
+          "Brackenridge (place)\nFurther out than the user thought.\nJetstream Brewery --based_in--> Brackenridge",
+          "jobs (concept)\nwork --has_mix_of--> jobs",
+          "work (activity)\nAurelio Sutherland --coworker_at--> work\nNolan Everly --coworker_at--> work\nwork --has_mix_of--> jobs\nwork --involves--> Aurelio Sutherland\nwork --involves--> Nolan Everly"
+        ],
+        "torch": [
+          -2.737177610397339,
+          -11.159884452819824,
+          -11.168532371520996,
+          -10.502506256103516,
+          -11.161691665649414,
+          -10.616567611694336,
+          -11.196796417236328,
+          -11.075318336486816,
+          -9.972559928894043,
+          -10.581676483154297,
+          -11.340914726257324,
+          -6.187922954559326
+        ]
+      },
+      {
+        "id": "val-10001-q2",
+        "query": "Do you happen to know which town Aurelio works in? I might have said it at some point.",
+        "documents": [
+          "Aurelio Sutherland (person)\na nurse\nAurelio Sutherland --closest_to--> Jetstream Brewery\nAurelio Sutherland --coworker_at--> work\nAurelio Sutherland --lives_in--> Mossley\nAurelio Sutherland --mentioned_with--> Nolan Everly\nAurelio Sutherland --moved_from--> Hazelmere\nwork --involves--> Aurelio Sutherland",
+          "Basil Pots (project)\nThree pots of Genovese basil on the balcony railing.\nBasil Pots --grown_from--> Seed Catalog",
+          "Hollis Grady (person)\nOrganizes the spring seed swap at Fernhollow Community Garden.\nHollis Grady --organizes_seed_swap_at--> Fernhollow Community Garden",
+          "Ignatius Polk (person)\nRestores old valve radios and swaps spare parts.\nIgnatius Polk --swaps_parts_for--> Vintage Radio",
+          "Jupiter (place)\nGas giant watched for its four bright moons.\nBackyard Telescope --pointed_at--> Jupiter",
+          "Perseid Meteor Shower (event)\nAugust meteor shower watched from a hillside at night.\nPerseid Meteor Shower --watched_with--> Wendell Ashby",
+          "Saturn Rings (concept)\nRing tilt seen through the telescope in late summer.\nBackyard Telescope --pointed_at--> Saturn Rings",
+          "Sicilian Defense (concept)\nSharp chess opening studied from a puzzle book.\nSicilian Defense --studied_for--> Chess Club",
+          "Wendell Ashby (person)\nRuns the monthly stargazing night and lends out eyepieces.\nPerseid Meteor Shower --watched_with--> Wendell Ashby\nWendell Ashby --lent_eyepiece_for--> Backyard Telescope\nWendell Ashby --runs_stargazing_at--> Quillmont Observatory",
+          "Brackenridge (place)\nFurther out than the user thought.\nJetstream Brewery --based_in--> Brackenridge",
+          "jobs (concept)\nwork --has_mix_of--> jobs",
+          "work (activity)\nAurelio Sutherland --coworker_at--> work\nNolan Everly --coworker_at--> work\nwork --has_mix_of--> jobs\nwork --involves--> Aurelio Sutherland\nwork --involves--> Nolan Everly"
+        ],
+        "torch": [
+          -3.4079205989837646,
+          -10.716949462890625,
+          -10.100285530090332,
+          -10.34874153137207,
+          -10.422703742980957,
+          -10.02122688293457,
+          -10.566706657409668,
+          -10.776508331298828,
+          -9.323437690734863,
+          -9.77342700958252,
+          -10.401090621948242,
+          -5.419510841369629
+        ]
+      },
+      {
+        "id": "val-10001-q3",
+        "query": "I can't remember if I told you where Aurelio lives these days \u2014 do you know?",
+        "documents": [
+          "Aurelio Sutherland (person)\na nurse\nAurelio Sutherland --closest_to--> Jetstream Brewery\nAurelio Sutherland --coworker_at--> work\nAurelio Sutherland --lives_in--> Mossley\nAurelio Sutherland --mentioned_with--> Nolan Everly\nAurelio Sutherland --moved_from--> Hazelmere\nwork --involves--> Aurelio Sutherland",
+          "Basil Pots (project)\nThree pots of Genovese basil on the balcony railing.\nBasil Pots --grown_from--> Seed Catalog",
+          "Fiddle Leaf Fig (other)\nTemperamental fig that drops leaves when moved from its spot.\nRepotting --done_for--> Fiddle Leaf Fig",
+          "Ignatius Polk (person)\nRestores old valve radios and swaps spare parts.\nIgnatius Polk --swaps_parts_for--> Vintage Radio",
+          "Jupiter (place)\nGas giant watched for its four bright moons.\nBackyard Telescope --pointed_at--> Jupiter",
+          "Orion Nebula (place)\nGlowing gas cloud below the belt of Orion.\nBackyard Telescope --pointed_at--> Orion Nebula",
+          "Perseid Meteor Shower (event)\nAugust meteor shower watched from a hillside at night.\nPerseid Meteor Shower --watched_with--> Wendell Ashby",
+          "Saturn Rings (concept)\nRing tilt seen through the telescope in late summer.\nBackyard Telescope --pointed_at--> Saturn Rings",
+          "Sicilian Defense (concept)\nSharp chess opening studied from a puzzle book.\nSicilian Defense --studied_for--> Chess Club",
+          "Wendell Ashby (person)\nRuns the monthly stargazing night and lends out eyepieces.\nPerseid Meteor Shower --watched_with--> Wendell Ashby\nWendell Ashby --lent_eyepiece_for--> Backyard Telescope\nWendell Ashby --runs_stargazing_at--> Quillmont Observatory",
+          "Brackenridge (place)\nFurther out than the user thought.\nJetstream Brewery --based_in--> Brackenridge",
+          "work (activity)\nAurelio Sutherland --coworker_at--> work\nNolan Everly --coworker_at--> work\nwork --has_mix_of--> jobs\nwork --involves--> Aurelio Sutherland\nwork --involves--> Nolan Everly"
+        ],
+        "torch": [
+          -3.331345319747925,
+          -11.029875755310059,
+          -10.883198738098145,
+          -10.383909225463867,
+          -10.947676658630371,
+          -10.483774185180664,
+          -10.492779731750488,
+          -10.981500625610352,
+          -10.981645584106445,
+          -9.63348388671875,
+          -10.42142105102539,
+          -6.797412395477295
+        ]
+      },
+      {
+        "id": "val-10001-q4",
+        "query": "Did I ever say where Aurelio lived before he moved? I'm not sure that came up.",
+        "documents": [
+          "Aurelio Sutherland (person)\na nurse\nAurelio Sutherland --closest_to--> Jetstream Brewery\nAurelio Sutherland --coworker_at--> work\nAurelio Sutherland --lives_in--> Mossley\nAurelio Sutherland --mentioned_with--> Nolan Everly\nAurelio Sutherland --moved_from--> Hazelmere\nwork --involves--> Aurelio Sutherland",
+          "Fiddle Leaf Fig (other)\nTemperamental fig that drops leaves when moved from its spot.\nRepotting --done_for--> Fiddle Leaf Fig",
+          "Ignatius Polk (person)\nRestores old valve radios and swaps spare parts.\nIgnatius Polk --swaps_parts_for--> Vintage Radio",
+          "Jupiter (place)\nGas giant watched for its four bright moons.\nBackyard Telescope --pointed_at--> Jupiter",
+          "Orion Nebula (place)\nGlowing gas cloud below the belt of Orion.\nBackyard Telescope --pointed_at--> Orion Nebula",
+          "Perseid Meteor Shower (event)\nAugust meteor shower watched from a hillside at night.\nPerseid Meteor Shower --watched_with--> Wendell Ashby",
+          "Raised Garden Bed (project)\nA cedar raised bed built for tomatoes and peppers.\nCompost Bin --feeds--> Raised Garden Bed\nRaised Garden Bed --located_at--> Fernhollow Community Garden\nTomato Seedlings --planted_in--> Raised Garden Bed",
+          "Saturn Rings (concept)\nRing tilt seen through the telescope in late summer.\nBackyard Telescope --pointed_at--> Saturn Rings",
+          "Sicilian Defense (concept)\nSharp chess opening studied from a puzzle book.\nSicilian Defense --studied_for--> Chess Club",
+          "Tomato Seedlings (project)\nSeedlings started on the windowsill in March, waiting to go into the raised bed.\nTomato Seedlings --grown_from--> Seed Catalog\nTomato Seedlings --planted_in--> Raised Garden Bed",
+          "Brackenridge (place)\nFurther out than the user thought.\nJetstream Brewery --based_in--> Brackenridge",
+          "Nolan Everly (person)\none of the architects\nAurelio Sutherland --mentioned_with--> Nolan Everly\nNolan Everly --coworker_at--> work\nschool reunion --attended_with--> Nolan Everly\nwork --involves--> Nolan Everly"
+        ],
+        "torch": [
+          -2.5105535984039307,
+          -10.263863563537598,
+          -9.977773666381836,
+          -10.68394660949707,
+          -10.047078132629395,
+          -10.393645286560059,
+          -10.888101577758789,
+          -10.777502059936523,
+          -10.691516876220703,
+          -10.905329704284668,
+          -9.763946533203125,
+          -5.246714115142822
+        ]
+      }
+    ]
+  },
+  "registry": {
+    "repo": "trinab06/lumen-reranker-minilm-l2-pools-v1",
+    "revision": "1347852a49336f7130a3af53091442524ccaaa00",
+    "path": "edge/model.int8.onnx"
+  },
+  "release": {
+    "validation": {
+      "hitAt3": {
+        "search": 55,
+        "reranked": 62,
+        "delta": {
+          "diff": 0.07216494845360821,
+          "lo": 0.021739130434782594,
+          "hi": 0.1333333333333333,
+          "n": 97,
+          "histories": 38
+        }
+      },
+      "allPrimary": {
+        "search": 64,
+        "reranked": 74,
+        "delta": {
+          "diff": 0.1030927835051546,
+          "lo": 0.030000000000000027,
+          "hi": 0.1923076923076923,
+          "n": 97,
+          "histories": 38
+        }
+      },
+      "allAt10": {
+        "search": 64,
+        "reranked": 73,
+        "delta": {
+          "diff": 0.09278350515463918,
+          "lo": 0.01980198019801982,
+          "hi": 0.18085106382978722,
+          "n": 97,
+          "histories": 38
+        }
+      }
+    },
+    "edgeLatencyMs": {
+      "p50": 223,
+      "p95": 335,
+      "cold": 721,
+      "host": "Apple M4, Deno WASM, 1 thread, onnxruntime-web 1.18.0 (no shared memory)",
+      "note": "Edge WASM, measured on an M4. Hosted edge workers are retired after about a second of CPU, so the edge build serves local runs; hosted runs use the service."
+    },
+    "budget": {
+      "edgeP95Ms": 600,
+      "minCompleteEvidenceDeltaLo": 0.0,
+      "serviceP95Ms": 300
+    },
+    "serviceLatencyMs": {
+      "p50": 66,
+      "p95": 78,
+      "max": 90,
+      "n": 24,
+      "host": "MemoryRerankerStack Lambda (onnxruntime-node 1.31.1, arm64, 1769 MB), called from staging retrieve-memory in ca-central-1, RERANKER_MODE=on, warm container",
+      "measured": "2026-11-28, ml/reranker/deploy/shadow_probe.mjs, rerankMs as retrieve-memory logged it (round trip)",
+      "cold": "about 750 ms (init plus model load), longer than the timeout: falls back to plain search; the stack's warmer keeps a container loaded"
+    }
+  }
+}

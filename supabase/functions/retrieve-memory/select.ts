@@ -1,5 +1,10 @@
 import { normalizeName } from "../_shared/graphloop/noise.ts";
-import type { Entity, GraphState, Relation, RetrievalResult } from "../_shared/graphloop/types.ts";
+import type {
+  Entity,
+  GraphState,
+  Relation,
+  RetrievalResult,
+} from "../_shared/graphloop/types.ts";
 
 /**
  * Which part of the user's memory answers a live recall (get_relevant_memory).
@@ -47,12 +52,24 @@ export function selectRelevant(
   g: GraphState,
   query: string,
   semantic: Map<string, number> | undefined,
+  rerankPriority?: Map<string, number>,
 ): RetrievalResult {
-  const scores = nameScores(g, query);
-  for (const [id, score] of semantic ?? []) {
-    if (g.entities[id]) scores.set(id, Math.max(scores.get(id) ?? 0, score));
+  // A successful second-stage rank is authoritative over stage-one scores.
+  // Keep the legacy name/semantic path untouched when reranking is disabled.
+  const scores = rerankPriority === undefined
+    ? nameScores(g, query)
+    : new Map<string, number>();
+  if (rerankPriority === undefined) {
+    for (const [id, score] of semantic ?? []) {
+      if (g.entities[id]) scores.set(id, Math.max(scores.get(id) ?? 0, score));
+    }
   }
-  const ranked = [...scores.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  for (const [id, score] of rerankPriority ?? []) {
+    if (g.entities[id] && Number.isFinite(score)) scores.set(id, score);
+  }
+  const ranked = [...scores.entries()].sort((a, b) =>
+    b[1] - a[1] || a[0].localeCompare(b[0])
+  );
   if (ranked.length === 0) {
     return { entities: [], relations: [], entries: [], seeds: [], context: "" };
   }
@@ -85,5 +102,11 @@ export function selectRelevant(
     (seedSet.has(relation.source) || seedSet.has(relation.target))
   );
   const entities: Entity[] = [...kept].map((id) => g.entities[id]);
-  return { entities, relations: keptRelations, entries: [], seeds, context: "" };
+  return {
+    entities,
+    relations: keptRelations,
+    entries: [],
+    seeds,
+    context: "",
+  };
 }
