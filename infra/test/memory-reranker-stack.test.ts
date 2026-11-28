@@ -41,3 +41,17 @@ test("its URL is gated by a generated bearer token the function alone can read",
 test("keeps its logs two weeks (LM-44)", () => {
   synthesizeTemplate().hasResourceProperties("AWS::Logs::LogGroup", { RetentionInDays: 14 });
 });
+
+test("a scheduled direct invoke keeps a container loaded", () => {
+  synthesizeTemplate().hasResourceProperties("AWS::Events::Rule", {
+    ScheduleExpression: "rate(5 minutes)",
+    Targets: [Match.objectLike({ Input: JSON.stringify({ warm: true }) })],
+  });
+});
+
+test("alarms on failures the handler absorbs, Lambda errors, throttles and slow scoring", () => {
+  const template = synthesizeTemplate();
+  template.resourceCountIs("AWS::CloudWatch::Alarm", 4);
+  template.hasResourceProperties("AWS::Logs::MetricFilter", { FilterPattern: '?"unhandled" ?"model_load_failed"' });
+  template.hasResourceProperties("AWS::CloudWatch::Alarm", { MetricName: "Duration", ExtendedStatistic: "p95", Threshold: 250, EvaluationPeriods: 3 });
+});

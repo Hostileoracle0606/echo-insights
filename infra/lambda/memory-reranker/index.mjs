@@ -1,5 +1,7 @@
 // Lambda entry point (Function URL) for the memory reranker. The model loads
 // during init, which gets a full CPU burst, so the first request only scores.
+// A scheduled {warm: true} invoke (MemoryRerankerStack) keeps a container
+// loaded, so a quiet spell doesn't cost the next recall a cold start.
 // The request logic and its tests are in core.mjs.
 import { GetSecretValueCommand, SecretsManagerClient } from "@aws-sdk/client-secrets-manager";
 
@@ -27,7 +29,9 @@ const ready = loadScorer({
     throw error;
   },
 );
-ready.catch(() => {}); // reported above; each request then fails with a 500
+// Finish loading during init (boosted CPU, not billed to a request); a failure
+// is reported above and each request then fails with a 500.
+await ready.catch(() => {});
 
 const secrets = new SecretsManagerClient({});
 let tokenValue = null;
@@ -42,8 +46,11 @@ const token = () => (tokenValue ??= secrets
     throw error;
   }));
 
-export const handler = guardHandler(
+const serve = guardHandler(
   SOURCE,
   createHandler({ score: async (query, cards) => (await ready)(query, cards), token, log }),
   () => ({ statusCode: 500, headers: { "content-type": "application/json" }, body: '{"error":"reranker failed"}' }),
 );
+
+// A direct invoke (never the URL, whose events carry requestContext) with {warm: true}.
+export const handler = (event) => (event?.warm === true && !event.requestContext ? ready.then(() => ({ warm: true })) : serve(event));

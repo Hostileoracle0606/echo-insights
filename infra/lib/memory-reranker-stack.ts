@@ -1,7 +1,13 @@
 import * as cdk from "aws-cdk-lib/core";
+import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
+import * as cloudwatchActions from "aws-cdk-lib/aws-cloudwatch-actions";
+import * as events from "aws-cdk-lib/aws-events";
+import * as targets from "aws-cdk-lib/aws-events-targets";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as logs from "aws-cdk-lib/aws-logs";
 import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
+import * as sns from "aws-cdk-lib/aws-sns";
+import * as subscriptions from "aws-cdk-lib/aws-sns-subscriptions";
 import { Construct } from "constructs";
 import { execFileSync } from "node:child_process";
 import * as path from "node:path";
@@ -25,6 +31,10 @@ export class MemoryRerankerStack extends cdk.Stack {
       generateSecretString: { passwordLength: 48, excludePunctuation: true },
     });
 
+    const logGroup = new logs.LogGroup(this, "MemoryRerankerFunctionLogs", {
+      retention: logs.RetentionDays.TWO_WEEKS,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
     const lambdaDirectory = path.join(__dirname, "..", "lambda", "memory-reranker");
     const buildScript = path.join(__dirname, "..", "scripts", "build-memory-reranker.mjs");
     const reranker = new lambda.Function(this, "MemoryRerankerFunction", {
@@ -52,12 +62,59 @@ export class MemoryRerankerStack extends cdk.Stack {
         },
       }),
       environment: { RERANKER_TOKEN_SECRET_ARN: token.secretArn },
-      logGroup: new logs.LogGroup(this, "MemoryRerankerFunctionLogs", {
-        retention: logs.RetentionDays.TWO_WEEKS,
-        removalPolicy: cdk.RemovalPolicy.DESTROY,
-      }),
+      logGroup,
     });
     token.grantRead(reranker);
+
+    // Keep one container loaded: a cold start (~0.75 s) is longer than
+    // retrieve-memory's rerank timeout, so after a quiet spell the next recall
+    // would fall back to plain search. A direct invoke every 5 minutes costs
+    // almost nothing; provisioned concurrency would also cover bursts.
+    new events.Rule(this, "MemoryRerankerWarmer", {
+      description: "Keeps a memory reranker container loaded",
+      schedule: events.Schedule.rate(cdk.Duration.minutes(5)),
+      targets: [new targets.LambdaFunction(reranker, { event: events.RuleTargetInput.fromObject({ warm: true }) })],
+    });
+
+    // Alerts, as InfraStack's (LM-54): the address is never in the repo
+    // (`-c alertEmail=...` at deploy time). retrieve-memory falls back to plain
+    // search on any failure, so these say the reranker is off, not that recall is.
+    const alerts = new sns.Topic(this, "RerankerAlertsTopic", { displayName: "Lumen memory reranker alerts" });
+    const alertEmail = this.node.tryGetContext("alertEmail");
+    if (typeof alertEmail === "string" && alertEmail.trim() !== "") {
+      alerts.addSubscription(new subscriptions.EmailSubscription(alertEmail.trim()));
+    }
+    const fiveMinutes = cdk.Duration.minutes(5);
+    // guardHandler answers a crash with a 500, so Lambda's Errors metric misses
+    // it; the content-free log events count it instead.
+    const failures = new logs.MetricFilter(this, "RerankerFailures", {
+      logGroup,
+      filterPattern: logs.FilterPattern.anyTerm("unhandled", "model_load_failed"),
+      metricNamespace: "Lumen/MemoryReranker",
+      metricName: "Failures",
+      metricValue: "1",
+      defaultValue: 0,
+    }).metric({ period: fiveMinutes, statistic: "Sum" });
+    const alarms: Array<[string, string, cloudwatch.IMetric, number, number]> = [
+      ["RerankerFailuresAlarm", "Memory reranker failed 3 or more requests in 5 minutes", failures, 3, 1],
+      ["RerankerErrorsAlarm", "Memory reranker had 3 or more Lambda errors in 5 minutes",
+        reranker.metricErrors({ period: fiveMinutes, statistic: "Sum" }), 3, 1],
+      ["RerankerThrottlesAlarm", "Memory reranker was throttled in 5 minutes",
+        reranker.metricThrottles({ period: fiveMinutes, statistic: "Sum" }), 1, 1],
+      // Scoring is ~50 ms; retrieve-memory gives up at its timeout (300 ms on staging).
+      ["RerankerSlowAlarm", "Memory reranker p95 duration of 250 ms or more for 15 minutes",
+        reranker.metricDuration({ period: fiveMinutes, statistic: "p95" }), 250, 3],
+    ];
+    for (const [id, description, metric, threshold, periods] of alarms) {
+      new cloudwatch.Alarm(this, id, {
+        alarmDescription: description,
+        metric,
+        threshold,
+        evaluationPeriods: periods,
+        comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+        treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+      }).addAlarmAction(new cloudwatchActions.SnsAction(alerts));
+    }
 
     // Server-to-server only (retrieve-memory), so no CORS; the bearer token is the gate.
     const url = reranker.addFunctionUrl({ authType: lambda.FunctionUrlAuthType.NONE });

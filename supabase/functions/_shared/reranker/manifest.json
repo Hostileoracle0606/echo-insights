@@ -181,11 +181,22 @@
       "p50": 223,
       "p95": 335,
       "cold": 721,
-      "host": "Apple M4, Deno WASM, 1 thread, onnxruntime-web 1.18.0 (no shared memory)"
+      "host": "Apple M4, Deno WASM, 1 thread, onnxruntime-web 1.18.0 (no shared memory)",
+      "note": "Edge WASM, measured on an M4. Hosted edge workers are retired after about a second of CPU, so the edge build serves local runs; hosted runs use the service."
     },
     "budget": {
       "edgeP95Ms": 600,
-      "minCompleteEvidenceDeltaLo": 0.0
+      "minCompleteEvidenceDeltaLo": 0.0,
+      "serviceP95Ms": 300
+    },
+    "serviceLatencyMs": {
+      "p50": 66,
+      "p95": 78,
+      "max": 90,
+      "n": 24,
+      "host": "MemoryRerankerStack Lambda (onnxruntime-node 1.31.1, arm64, 1769 MB), called from staging retrieve-memory in ca-central-1, RERANKER_MODE=on, warm container",
+      "measured": "2026-11-28, ml/reranker/deploy/shadow_probe.mjs, rerankMs as retrieve-memory logged it (round trip)",
+      "cold": "about 750 ms (init plus model load), longer than the timeout: falls back to plain search; the stack's warmer keeps a container loaded"
     }
   }
 }

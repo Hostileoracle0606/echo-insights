@@ -22,6 +22,13 @@ Deno.test("its measured edge p95 fits the latency budget", () => {
   assert(manifest.release.edgeLatencyMs.p95 <= manifest.release.budget.edgeP95Ms);
 });
 
+Deno.test("served from the reranker service, its measured round-trip p95 fits that budget", () => {
+  // The hosted path (RERANKER_SERVICE_URL); retrieve-memory's rerank timeout should be the budget.
+  const { serviceLatencyMs, budget } = manifest.release;
+  assert(serviceLatencyMs.n >= 20, "measure at least 20 warm calls");
+  assert(serviceLatencyMs.p95 <= budget.serviceP95Ms);
+});
+
 Deno.test("a local model file, when present, is the pinned one", async () => {
   const bytes = await Deno.readFile(new URL("model.int8.onnx", dir)).catch(() => null);
   if (!bytes) return;
